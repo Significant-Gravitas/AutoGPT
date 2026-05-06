@@ -11,9 +11,11 @@ from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import (
     AutoTopUpConfig,
-    BetaUserCredit,
+    DisabledUserCredit,
     UsageTransactionMetadata,
+    UserCredit,
     get_auto_top_up,
+    get_user_credit_model,
     set_auto_top_up,
 )
 from backend.util.json import SafeJson
@@ -61,7 +63,7 @@ async def test_credit_transaction_enum_casting_integration(cleanup_test_user):
     platform."CreditTransactionType" but got "CreditTransactionType".
     """
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Test each transaction type to ensure enum casting works
     test_cases = [
@@ -111,11 +113,9 @@ async def test_auto_top_up_integration(cleanup_test_user, monkeypatch):
     from backend.data.credit import settings
 
     monkeypatch.setattr(settings.config, "enable_credit", True)
-    monkeypatch.setattr(settings.config, "enable_beta_monthly_credit", True)
-    monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
 
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # First add some initial credits so we can test the configuration and subsequent behavior
     balance, _ = await credit_system._add_transaction(
@@ -177,7 +177,7 @@ async def test_enable_transaction_enum_casting_integration(cleanup_test_user):
     involves SQL queries with CreditTransactionType enum casting.
     """
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Create an inactive transaction
     balance, tx_key = await credit_system._add_transaction(
@@ -238,11 +238,9 @@ async def test_auto_top_up_configuration_storage(cleanup_test_user, monkeypatch)
     from backend.data.credit import settings
 
     monkeypatch.setattr(settings.config, "enable_credit", True)
-    monkeypatch.setattr(settings.config, "enable_beta_monthly_credit", True)
-    monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
 
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Set initial balance
     balance, _ = await credit_system._add_transaction(
@@ -275,3 +273,24 @@ async def test_auto_top_up_configuration_storage(cleanup_test_user, monkeypatch)
     # Should only have the initial GRANT transaction
     assert len(transactions) == 1
     assert transactions[0].type == CreditTransactionType.GRANT
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_user_credit_model_returns_usercredit_unconditionally(
+    cleanup_test_user, monkeypatch
+):
+    """Regression guard: the factory must never branch back to a beta-cohort class.
+
+    Uses ``__class__ is UserCredit`` (not ``isinstance``) so that any future
+    ``class BetaFoo(UserCredit)`` resurrection trips this test instead of
+    silently passing.
+    """
+    from backend.data.credit import settings
+
+    monkeypatch.setattr(settings.config, "enable_credit", True)
+    model = await get_user_credit_model(cleanup_test_user)
+    assert model.__class__ is UserCredit
+
+    monkeypatch.setattr(settings.config, "enable_credit", False)
+    model_disabled = await get_user_credit_model(cleanup_test_user)
+    assert model_disabled.__class__ is DisabledUserCredit

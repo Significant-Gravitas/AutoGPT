@@ -10,7 +10,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
-import { EASE_OUT, formatCents } from "../../../helpers";
+import { formatCents, getSectionMotionProps } from "../../../helpers";
 import { useBalanceCard } from "./useBalanceCard";
 
 interface Props {
@@ -36,8 +36,14 @@ export function BalanceCard({ index = 0 }: Props) {
     handleSubmit,
   } = useBalanceCard();
 
+  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
   if (isLoading) {
-    return <Skeleton className="h-[120px] rounded-[18px]" />;
+    return (
+      <motion.div {...sectionMotion}>
+        <Skeleton className="h-[120px] rounded-[18px]" />
+      </motion.div>
+    );
   }
 
   if (isError || balanceCents === null) {
@@ -51,16 +57,7 @@ export function BalanceCard({ index = 0 }: Props) {
   }
 
   return (
-    <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={
-        reduceMotion
-          ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
-      }
-      className="flex w-full flex-col gap-2"
-    >
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-1 px-4">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Automation credits

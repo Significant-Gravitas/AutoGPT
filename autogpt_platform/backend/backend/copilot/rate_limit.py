@@ -3,8 +3,22 @@
 Uses Redis fixed-window counters to track per-user USD spend (stored as
 microdollars, matching ``PlatformCostLog.cost_microdollars``) with
 configurable daily and weekly limits. Daily windows reset at midnight UTC;
-weekly windows reset at ISO week boundary (Monday 00:00 UTC). Fails open
-when Redis is unavailable to avoid blocking users.
+weekly windows reset at ISO week boundary (Monday 00:00 UTC).
+
+Failure-mode policy:
+
+* Enforcement path (:func:`check_rate_limit`) **fails closed** — if Redis
+  is unreachable we raise :class:`RateLimitUnavailable` so the API layer
+  returns HTTP 503. A brown-out must not let a user bypass their
+  daily / weekly USD cap.
+* Observability paths (:func:`get_usage_status`, the reset-count
+  read/write helpers, the recording path :func:`record_cost_usage`) keep
+  fail-open / best-effort semantics — losing a usage gauge or a single
+  cost increment is preferable to 500-ing the request, and the
+  authoritative cap is re-checked on the next turn.
+* Reset paths (:func:`reset_user_usage`, :func:`reset_daily_usage`,
+  :func:`acquire_reset_lock`) re-raise / return ``False`` so billed reset
+  operations cannot silently no-op.
 
 Storing microdollars rather than tokens means the counter already reflects
 real model pricing (including cache discounts and provider surcharges), so
@@ -44,7 +58,7 @@ from enum import Enum
 
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
-from redis.exceptions import RedisError
+from redis.exceptions import RedisClusterException, RedisError
 
 from backend.data.db_accessors import user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
@@ -433,6 +447,18 @@ class RateLimitExceeded(Exception):
         )
 
 
+class RateLimitUnavailable(Exception):
+    """Rate limit state is currently unreachable — request rejected to
+    prevent USD-cap bypass. Maps to HTTP 503 in the API layer.
+
+    Distinct from :class:`RateLimitExceeded` (HTTP 429): the user is not
+    over their cap, but Redis is down so we cannot prove they are under it
+    either. Failing closed avoids the brown-out bypass where a user could
+    blast the LLM during a Redis outage and exceed their daily/weekly USD
+    allowance by hundreds of dollars.
+    """
+
+
 async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
@@ -463,7 +489,9 @@ async def get_usage_status(
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
+        # ValueError: corrupt non-numeric counter (partial write / wrong-type
+        # SET) — same fail-open semantics, returns zeros.
         logger.warning("Redis unavailable for usage status, returning zeros")
 
     return CoPilotUsageStatus(
@@ -482,20 +510,136 @@ async def get_usage_status(
     )
 
 
+async def get_remaining_usd_budget(
+    user_id: str,
+    daily_cost_limit: int,
+    weekly_cost_limit: int,
+    floor_usd: float = 0.5,
+) -> float:
+    """Return the user's remaining USD spend cap for the current windows.
+
+    The result is the smaller of ``daily_remaining`` and ``weekly_remaining``
+    expressed in USD.  Used to size the SDK's per-query ``max_budget_usd``
+    so the in-CLI "wrap up gracefully" reminder fires earlier when the
+    user is close to their actual cap, and to feed the baseline path's
+    per-turn budget hint via :func:`build_budget_ctx`.
+
+    A limit of ``0`` is treated as unlimited.  Both limits unlimited →
+    ``float('inf')``.
+
+    Failure modes:
+        * Both limits unlimited → ``float('inf')`` (no Redis call).
+        * Redis brown-out → ``floor_usd`` (so callers using the value
+          as a soft hint don't pretend the user has unlimited budget;
+          the pre-turn gate has already failed closed at 503 in this
+          case, so we only land here from observability paths).
+
+    Args:
+        user_id: The user's ID.
+        daily_cost_limit: Daily cap in microdollars (0 = unlimited).
+        weekly_cost_limit: Weekly cap in microdollars (0 = unlimited).
+        floor_usd: Lower bound on the returned value (USD).  Avoids
+            handing the SDK a degenerate ``$0`` budget that would refuse
+            to start a turn.  Set to ``0.0`` when the caller wants a
+            faithful "no remaining budget" signal instead of a floor.
+    """
+    if daily_cost_limit <= 0 and weekly_cost_limit <= 0:
+        return float("inf")
+
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        daily_raw, weekly_raw = await asyncio.gather(
+            redis.get(_daily_key(user_id, now=now)),
+            redis.get(_weekly_key(user_id, now=now)),
+        )
+        daily_used = int(daily_raw or 0)
+        weekly_used = int(weekly_raw or 0)
+    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
+        logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
+        return floor_usd
+
+    remaining_microdollars = float("inf")
+    if daily_cost_limit > 0:
+        remaining_microdollars = min(
+            remaining_microdollars, max(0, daily_cost_limit - daily_used)
+        )
+    if weekly_cost_limit > 0:
+        remaining_microdollars = min(
+            remaining_microdollars, max(0, weekly_cost_limit - weekly_used)
+        )
+    remaining_usd = (
+        remaining_microdollars / 1_000_000.0
+        if remaining_microdollars != float("inf")
+        else float("inf")
+    )
+    return max(floor_usd, remaining_usd)
+
+
+async def build_budget_ctx(
+    user_id: str | None,
+    default_daily_cost_limit: int,
+    default_weekly_cost_limit: int,
+) -> str:
+    """Build the inner content for an ``<budget_context>`` block.
+
+    Returns the *inner* text — the caller (``inject_user_context``)
+    wraps it in the ``<budget_context>`` tag.  Combines the tier-limit
+    lookup (``get_global_rate_limits``) and the remaining-USD lookup
+    (``get_remaining_usd_budget``) so callers don't have to compose
+    them by hand on every turn.
+
+    Returns ``""`` when:
+        * no ``user_id`` is available,
+        * the user's tier limits are unlimited (no cap to surface),
+        * Redis is unavailable (we'd rather emit nothing than a
+          misleading ``$0.00`` hint — the pre-turn gate already fails
+          closed at 503 in that case).
+    """
+    if not user_id:
+        return ""
+    daily_limit, weekly_limit, _tier = await get_global_rate_limits(
+        user_id,
+        default_daily_cost_limit,
+        default_weekly_cost_limit,
+    )
+    if daily_limit <= 0 and weekly_limit <= 0:
+        return ""
+    remaining = await get_remaining_usd_budget(
+        user_id=user_id,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
+        # 0.0 here is a sentinel meaning "Redis brown-out / no value" —
+        # we map it back to "" below so the model doesn't see a
+        # misleading $0.00 hint when our metrics are degraded.
+        floor_usd=0.0,
+    )
+    if remaining == float("inf") or remaining <= 0.0:
+        return ""
+    return (
+        f"Approximate remaining USD budget for this user: ${remaining:.2f}.\n"
+        "Pace your tool use and reasoning depth so the response stays "
+        "within this envelope."
+    )
+
+
 async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
 ) -> None:
-    """Check if user is within rate limits. Raises RateLimitExceeded if not.
+    """Check if user is within rate limits.
+
+    Raises :class:`RateLimitExceeded` when the user is over their cap, and
+    :class:`RateLimitUnavailable` when Redis is unreachable so the caller
+    must fail closed (HTTP 503) — the daily/weekly USD caps are real money
+    and cannot be bypassed by a Redis brown-out.
 
     This is a pre-turn soft check. The authoritative usage counter is updated
     by ``record_cost_usage()`` after the turn completes. Under concurrency,
     two parallel turns may both pass this check against the same snapshot.
     This is acceptable because cost-based limits are approximate by nature
     (the exact cost is unknown until after generation).
-
-    Fails open: if Redis is unavailable, allows the request.
     """
     # Short-circuit: when both limits are 0 (unlimited) skip the Redis
     # round-trip entirely.
@@ -511,9 +655,22 @@ async def check_rate_limit(
         )
         daily_used = int(daily_raw or 0)
         weekly_used = int(weekly_raw or 0)
-    except (RedisError, ConnectionError, OSError):
-        logger.warning("Redis unavailable for rate limit check, allowing request")
-        return
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        ValueError,
+    ) as exc:
+        # RedisClusterException covers SlotNotCoveredError raised during a
+        # GKE rolling restart (it does NOT inherit from RedisError, only
+        # from Exception, so it would otherwise bubble up as a 500 — which
+        # is exactly the brown-out scenario this PR is meant to handle).
+        # ValueError covers a corrupt non-numeric counter value (partial
+        # write or wrong-type SET). Same spirit either way: we cannot prove
+        # the user is under their cap, so fail closed.
+        logger.warning("Rate limit state unreadable, rejecting request: %s", exc)
+        raise RateLimitUnavailable() from exc
 
     if daily_cost_limit > 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
@@ -556,7 +713,7 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting daily usage")
         return False
 
@@ -571,7 +728,7 @@ async def acquire_reset_lock(user_id: str, ttl_seconds: int = 10) -> bool:
         redis = await get_redis_async()
         key = f"{_RESET_LOCK_PREFIX}:{user_id}"
         return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
-    except (RedisError, ConnectionError, OSError) as exc:
+    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
         logger.warning("Redis unavailable for reset lock, rejecting reset: %s", exc)
         return False
 
@@ -581,7 +738,7 @@ async def release_reset_lock(user_id: str) -> None:
     try:
         redis = await get_redis_async()
         await redis.delete(f"{_RESET_LOCK_PREFIX}:{user_id}")
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError):
         pass  # Lock will expire via TTL
 
 
@@ -598,7 +755,9 @@ async def get_daily_reset_count(user_id: str) -> int | None:
         key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
         val = await redis.get(key)
         return int(val or 0)
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
+        # ValueError: corrupt non-numeric counter — fail-closed for billed
+        # resets (returning None makes the caller refuse the billed reset).
         logger.warning("Redis unavailable for reading daily reset count")
         return None
 
@@ -614,7 +773,7 @@ async def increment_daily_reset_count(user_id: str) -> None:
         seconds_until_reset = int((_daily_reset_time(now=now) - now).total_seconds())
         pipe.expire(key, max(seconds_until_reset, 1))
         await pipe.execute()
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning("Redis unavailable for tracking reset count")
 
 
@@ -654,7 +813,7 @@ async def record_cost_usage(
         # invariant that matters; the two counters are independent budgets.
         await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
         await _incr_counter_atomic(redis, w_key, cost_microdollars, weekly_ttl)
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning(
             "Redis unavailable for recording cost usage (microdollars=%d)",
             cost_microdollars,
@@ -839,7 +998,12 @@ async def _warn_if_stripe_subscription_drifts(
         current_price_id = price if isinstance(price, str) else price.id
         # Inside the try/except: an LD SDK failure here must not turn a
         # best-effort diagnostic into a 500 after the DB write committed.
-        expected_price_id = await get_subscription_price_id(new_tier)
+        # Match either cycle so a yearly subscriber on the right tier doesn't
+        # spuriously trigger the drift warning.
+        expected_monthly, expected_yearly = await asyncio.gather(
+            get_subscription_price_id(new_tier, "monthly"),
+            get_subscription_price_id(new_tier, "yearly"),
+        )
     except Exception:
         logger.debug(
             "_warn_if_stripe_subscription_drifts: drift lookup failed for"
@@ -848,19 +1012,20 @@ async def _warn_if_stripe_subscription_drifts(
             exc_info=True,
         )
         return
-    if expected_price_id is not None and expected_price_id == current_price_id:
+    if current_price_id and current_price_id in (expected_monthly, expected_yearly):
         return
     logger.warning(
         "Admin tier override will drift from Stripe: user=%s admin_tier=%s"
-        " stripe_sub=%s stripe_price=%s expected_price=%s — the next"
-        " customer.subscription.updated webhook will reconcile the DB tier"
-        " back to whatever Stripe has; cancel or modify the Stripe subscription"
-        " if you intended the admin override to stick.",
+        " stripe_sub=%s stripe_price=%s expected_prices=(monthly=%s, yearly=%s)"
+        " — the next customer.subscription.updated webhook will reconcile the"
+        " DB tier back to whatever Stripe has; cancel or modify the Stripe"
+        " subscription if you intended the admin override to stick.",
         user_id,
         new_tier.value,
         sub.id,
         current_price_id,
-        expected_price_id,
+        expected_monthly,
+        expected_yearly,
     )
 
 
@@ -939,7 +1104,7 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
         await redis.delete(d_key)
         if w_key is not None:
             await redis.delete(w_key)
-    except (RedisError, ConnectionError, OSError):
+    except (RedisError, RedisClusterException, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting user usage")
         raise
 

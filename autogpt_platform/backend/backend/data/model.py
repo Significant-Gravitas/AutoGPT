@@ -72,7 +72,7 @@ class User(BaseModel):
         None, description="Top up configuration"
     )
     subscription_tier: SubscriptionTier = Field(
-        default=SubscriptionTier.BASIC, description="User subscription tier"
+        default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
 
     # Notification preferences
@@ -148,7 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
-            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.BASIC,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis.exceptions import RedisError
+from redis.exceptions import RedisClusterException, RedisError
 
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
@@ -13,6 +13,7 @@ from .rate_limit import (
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
     RateLimitExceeded,
+    RateLimitUnavailable,
     SubscriptionTier,
     UsageWindow,
     _daily_key,
@@ -23,9 +24,11 @@ from .rate_limit import (
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
+    build_budget_ctx,
     check_rate_limit,
     get_daily_reset_count,
     get_global_rate_limits,
+    get_remaining_usd_budget,
     get_tier_multipliers,
     get_usage_status,
     get_user_tier,
@@ -216,16 +219,96 @@ class TestCheckRateLimit:
             assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
-    async def test_allows_when_redis_unavailable(self):
-        """Fail-open: allow requests when Redis is down."""
+    async def test_raises_unavailable_when_redis_connection_error(self):
+        """Fail-closed: ConnectionError must surface as RateLimitUnavailable so
+        the API layer can map it to HTTP 503 instead of silently letting the
+        request through and bypassing the per-user USD cap."""
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             side_effect=ConnectionError("Redis down"),
         ):
-            # Should not raise
-            await check_rate_limit(
-                _USER, daily_cost_limit=10000, weekly_cost_limit=50000
-            )
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_redis_redis_error(self):
+        """Fail-closed for redis-py RedisError (covers cluster-down /
+        CROSSSLOT-style failures during a brown-out)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=RedisError("cluster down"))
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_redis_cluster_exception(self):
+        """Fail-closed for RedisClusterException — covers SlotNotCoveredError
+        raised during a GKE rolling restart when slot coverage is briefly
+        incomplete. This subclass does NOT inherit from RedisError, so it
+        must be caught explicitly."""
+        try:
+            from redis.exceptions import SlotNotCoveredError as _ClusterExc
+        except ImportError:
+            _ClusterExc = RedisClusterException
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=_ClusterExc("slot 1234 uncovered"))
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_os_error(self):
+        """Fail-closed for OSError (DNS / TCP-level failures during a node
+        rolling-restart)."""
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=OSError("ECONNREFUSED"),
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_counter_is_corrupt(self):
+        """Fail-closed when a Redis counter holds a non-numeric value — the
+        ``int(...)`` cast would otherwise raise ValueError and surface as a
+        500, but the same fail-closed reasoning applies (we cannot prove the
+        user is under their cap)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["not-a-number", "200"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_skips_redis_and_does_not_raise_unavailable_when_unlimited(self):
+        """When both limits are 0 (unlimited) we must not even attempt Redis,
+        so a brown-out cannot 503 unlimited users."""
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ) as mock_get:
+            # Should not raise — short-circuited before touching Redis.
+            await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+            mock_get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skips_check_when_limit_is_zero(self):
@@ -1955,3 +2038,280 @@ class TestWorkspaceStorageLimits:
         ):
             result = await get_workspace_storage_limit_bytes("user-1")
         assert result == 250 * 1024 * 1024
+
+
+# _warn_if_stripe_subscription_drifts — yearly billing
+# ---------------------------------------------------------------------------
+
+
+class TestWarnIfStripeSubscriptionDriftsYearly:
+    @pytest.mark.asyncio
+    async def test_yearly_subscription_does_not_log_drift(self, caplog):
+        """A user on the yearly price for their admin-set tier must NOT trigger
+        a drift warning — the drift check now matches either monthly OR yearly."""
+        from backend.copilot.rate_limit import _warn_if_stripe_subscription_drifts
+
+        mock_user = MagicMock()
+        mock_user.stripe_customer_id = "cus_yearly"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_yearly"
+        mock_sub["items"].data = [MagicMock(price=MagicMock(id="price_pro_yearly"))]
+
+        async def price_lookup(tier, billing_cycle="monthly"):
+            if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+                return "price_pro_monthly"
+            if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+                return "price_pro_yearly"
+            return None
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=mock_user,
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_sub,
+            ),
+            patch(
+                "backend.data.credit.get_subscription_price_id",
+                side_effect=price_lookup,
+            ),
+        ):
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                await _warn_if_stripe_subscription_drifts(_USER, SubscriptionTier.PRO)
+
+        drift_records = [
+            r for r in caplog.records if "will drift from Stripe" in r.getMessage()
+        ]
+        assert drift_records == []
+
+    @pytest.mark.asyncio
+    async def test_genuine_drift_still_logs(self, caplog):
+        """When the Stripe price doesn't match either monthly or yearly for the
+        admin-set tier, the drift warning still fires."""
+        from backend.copilot.rate_limit import _warn_if_stripe_subscription_drifts
+
+        mock_user = MagicMock()
+        mock_user.stripe_customer_id = "cus_drift"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_drift"
+        mock_sub["items"].data = [MagicMock(price=MagicMock(id="price_max_yearly"))]
+
+        async def price_lookup(tier, billing_cycle="monthly"):
+            if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+                return "price_pro_monthly"
+            if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+                return "price_pro_yearly"
+            return None
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=mock_user,
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_sub,
+            ),
+            patch(
+                "backend.data.credit.get_subscription_price_id",
+                side_effect=price_lookup,
+            ),
+        ):
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                await _warn_if_stripe_subscription_drifts(_USER, SubscriptionTier.PRO)
+
+        drift_records = [
+            r for r in caplog.records if "will drift from Stripe" in r.getMessage()
+        ]
+        assert len(drift_records) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_remaining_usd_budget
+# ---------------------------------------------------------------------------
+
+
+class TestGetRemainingUsdBudget:
+    @pytest.mark.asyncio
+    async def test_returns_inf_when_both_limits_unlimited(self):
+        # No Redis call expected — the function short-circuits on 0/0.
+        result = await get_remaining_usd_budget(
+            _USER, daily_cost_limit=0, weekly_cost_limit=0
+        )
+        assert result == float("inf")
+
+    @pytest.mark.asyncio
+    async def test_smaller_of_daily_and_weekly_remaining(self):
+        # daily=$10 used $3 → $7 remaining.  weekly=$50 used $48 → $2 remaining.
+        # Returns the smaller (weekly $2).
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["3000000", "48000000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=10_000_000,
+                weekly_cost_limit=50_000_000,
+            )
+        assert result == pytest.approx(2.0)
+
+    @pytest.mark.asyncio
+    async def test_floor_applies_when_user_at_or_over_cap(self):
+        # daily=$5 used $5 → 0 remaining → floor returned.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["5000000", "0"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=5_000_000,
+                weekly_cost_limit=0,
+                floor_usd=0.5,
+            )
+        assert result == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_returns_floor_on_redis_error(self):
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=RedisError("boom"),
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=10_000_000,
+                weekly_cost_limit=50_000_000,
+                floor_usd=0.5,
+            )
+        assert result == 0.5
+
+    @pytest.mark.asyncio
+    async def test_only_daily_cap_configured(self):
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["1000000", None])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER,
+                daily_cost_limit=10_000_000,
+                weekly_cost_limit=0,
+            )
+        assert result == pytest.approx(9.0)
+
+
+# ---------------------------------------------------------------------------
+# build_budget_ctx
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBudgetCtx:
+    """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``
+    into a single call so callers don't have to compose them by hand on
+    every turn, and returns the *inner* text only — ``inject_user_context``
+    wraps it in the ``<budget_context>`` tag."""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_without_user_id(self):
+        result = await build_budget_ctx(
+            user_id=None,
+            default_daily_cost_limit=10_000_000,
+            default_weekly_cost_limit=0,
+        )
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_unlimited(self):
+        with patch(
+            "backend.copilot.rate_limit.get_global_rate_limits",
+            new=AsyncMock(return_value=(0, 0, DEFAULT_TIER)),
+        ):
+            result = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=50_000_000,
+            )
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_inner_text_with_remaining_in_dollars(self):
+        # daily=$10 used $4.50 → $5.50 remaining.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["4500000", "0"])
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            block = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
+            )
+        # No tag wrap — that's inject_user_context's job.
+        assert "<budget_context>" not in block
+        assert "</budget_context>" not in block
+        assert "$5.50" in block
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_redis_brownout(self):
+        """Redis brown-out → empty string, not a misleading ``$0.00`` hint.
+        Pre-turn rate-limit gate has already failed closed at 503 in this
+        case, so the model would never see the hint anyway."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                side_effect=RedisError("down"),
+            ),
+        ):
+            block = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
+            )
+        assert block == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_remaining_is_zero(self):
+        """At-or-over cap → no hint (the pre-turn gate has already
+        rejected this turn at 429; we only emit a hint when there's
+        actual headroom to communicate)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["10000000", "0"])
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            block = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
+            )
+        assert block == ""

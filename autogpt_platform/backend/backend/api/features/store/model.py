@@ -268,9 +268,25 @@ class StoreSubmission(pydantic.BaseModel):
         )
 
 
+class SubmissionStats(pydantic.BaseModel):
+    """Creator-wide aggregates over a user's non-deleted submissions.
+
+    Computed server-side so values stay accurate regardless of pagination —
+    summing client-side over the current page silently undercounts once the
+    creator has more submissions than fit on one page.
+    """
+
+    total: int
+    approved: int
+    pending: int
+    total_runs: int
+    average_rating: float | None
+
+
 class StoreSubmissionsResponse(pydantic.BaseModel):
     submissions: list[StoreSubmission]
     pagination: Pagination
+    stats: SubmissionStats
 
 
 class StoreSubmissionRequest(pydantic.BaseModel):

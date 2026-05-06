@@ -10,10 +10,12 @@ from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
     QueuePendingMessageResponse,
+    StreamRegistryUnavailable,
     check_pending_call_rate,
     combine_pending_with_current,
     drain_pending_safe,
     insert_pending_before_last,
+    is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
 )
@@ -47,6 +49,70 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 
     result = await check_pending_call_rate("user-1")
     assert result == 0
+
+
+# ── is_turn_in_flight: fail-closed on Redis errors ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_false_when_no_active_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=None),
+    )
+    assert await is_turn_in_flight("sess-1") is False
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_returns_true_when_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = MagicMock()
+    active.status = "running"
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(return_value=active),
+    )
+    assert await is_turn_in_flight("sess-1") is True
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis brown-out must NOT bubble as an unhandled 500. The helper
+    raises a typed ``StreamRegistryUnavailable`` so the chat-route
+    pre-flight chain can map it to 503 + Retry-After (matching the
+    ``RateLimitUnavailable`` mapping for the next pre-flight step)."""
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_is_turn_in_flight_raises_on_redis_cluster_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``RedisClusterException`` (e.g. ``SlotNotCoveredError`` during a
+    GKE rolling restart) does NOT inherit from ``RedisError`` — verify it
+    is caught explicitly by the same fail-closed branch."""
+    from redis.exceptions import RedisClusterException
+
+    monkeypatch.setattr(
+        helpers_module,
+        "get_active_session_meta",
+        AsyncMock(side_effect=RedisClusterException("slot not covered")),
+    )
+    with pytest.raises(StreamRegistryUnavailable):
+        await is_turn_in_flight("sess-1")
 
 
 # ── queue_pending_for_http: gate-then-bump ordering ───────────────────

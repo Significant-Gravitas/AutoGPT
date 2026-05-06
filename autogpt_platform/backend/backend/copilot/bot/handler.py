@@ -54,6 +54,14 @@ class MessageHandler:
                 )
             return
 
+        should_subscribe_thread = False
+        if ctx.channel_type == "thread":
+            is_subscribed = await threads.is_subscribed(ctx.platform, ctx.channel_id)
+            if not is_subscribed:
+                if not ctx.bot_mentioned:
+                    return
+                should_subscribe_thread = True
+
         if not await self._ensure_linked(ctx, adapter):
             return
 
@@ -61,7 +69,11 @@ class MessageHandler:
         if not target_id:
             return  # Thread not subscribed, ignore silently
 
-        await self._enqueue_and_process(ctx, adapter, target_id)
+        if should_subscribe_thread:
+            await threads.subscribe(ctx.platform, ctx.channel_id)
+
+        message_text = self._message_text(ctx) if should_subscribe_thread else ctx.text
+        await self._enqueue_and_process(ctx, adapter, target_id, message_text)
 
     # -- Target resolution --
 
@@ -72,9 +84,7 @@ class MessageHandler:
             return ctx.channel_id
 
         if ctx.channel_type == "thread":
-            if await threads.is_subscribed(ctx.platform, ctx.channel_id):
-                return ctx.channel_id
-            return None
+            return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
         thread_name = f"{ctx.username} × AutoPilot"
@@ -89,11 +99,31 @@ class MessageHandler:
 
     # -- Batched streaming --
 
+    def _message_text(self, ctx: MessageContext) -> str:
+        if not ctx.thread_history:
+            return ctx.text
+
+        platform_display = ctx.platform.capitalize()
+        lines = ["[Recent thread context before this message]"]
+        for entry in ctx.thread_history:
+            user = (
+                f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+                if entry.user_id
+                else entry.username
+            )
+            lines.append(f"\n[From {user}]\n{entry.text}")
+        lines.append(f"\n[Current message]\n{ctx.text}")
+        return "\n".join(lines)
+
     async def _enqueue_and_process(
-        self, ctx: MessageContext, adapter: PlatformAdapter, target_id: str
+        self,
+        ctx: MessageContext,
+        adapter: PlatformAdapter,
+        target_id: str,
+        message_text: str | None = None,
     ) -> None:
         state = self._targets.setdefault(target_id, TargetState())
-        state.pending.append((ctx.username, ctx.user_id, ctx.text))
+        state.pending.append((ctx.username, ctx.user_id, message_text or ctx.text))
 
         if state.processing:
             # Another invocation is streaming for this target — it will pick

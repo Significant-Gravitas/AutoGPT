@@ -5,12 +5,11 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import {
   formatResetTime,
-  formatCents,
+  formatTierLabel,
+  TIER_BADGE_CLASS_NAME,
 } from "@/app/(platform)/copilot/components/usageHelpers";
-import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
@@ -51,13 +50,11 @@ function UsageSection() {
   });
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
 
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
+
+  const tierLabel = formatTierLabel(usage.tier);
 
   return (
     <div className="py-2">
@@ -65,15 +62,15 @@ function UsageSection() {
         <Text variant="h5" className="text-neutral-800">
           Usage limits
         </Text>
-        {usage.tier && (
-          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
-            {usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()} plan
+        {tierLabel && (
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
+            {tierLabel} plan
           </Badge>
         )}
         <div className="flex-1" />
         {isBillingEnabled && (
           <Link
-            href="/profile/credits"
+            href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
           >
             Manage billing
@@ -96,11 +93,6 @@ function UsageSection() {
           />
         )}
       </div>
-      <UsageFooter
-        usage={usage}
-        hasInsufficientCredits={hasInsufficientCredits}
-        onCreditChange={fetchCredits}
-      />
     </div>
   );
 }
@@ -233,57 +225,6 @@ function AgentListSection({
             {showAll ? "Collapse" : `Show all (${filtered.length})`}
           </Button>
         </div>
-      )}
-    </div>
-  );
-}
-
-function UsageFooter({
-  usage,
-  hasInsufficientCredits,
-  onCreditChange,
-}: {
-  usage: CoPilotUsagePublic;
-  hasInsufficientCredits: boolean;
-  onCreditChange?: () => void;
-}) {
-  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const isWeeklyExhausted = !!usage.weekly && usage.weekly.percent_used >= 100;
-  const resetCost = usage.reset_cost ?? 0;
-  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
-
-  const showReset =
-    isDailyExhausted &&
-    !isWeeklyExhausted &&
-    resetCost > 0 &&
-    !hasInsufficientCredits;
-
-  const showAddCredits =
-    isDailyExhausted && !isWeeklyExhausted && hasInsufficientCredits;
-
-  if (!showReset && !showAddCredits) return null;
-
-  return (
-    <div className="mt-4 flex items-center gap-3">
-      {showReset && (
-        <Button
-          variant="primary"
-          size="small"
-          onClick={() => resetUsage()}
-          loading={isPending}
-        >
-          {isPending
-            ? "Resetting..."
-            : `Reset daily limit for ${formatCents(resetCost)}`}
-        </Button>
-      )}
-      {showAddCredits && (
-        <Link
-          href="/profile/credits"
-          className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Add credits to reset
-        </Link>
       )}
     </div>
   );

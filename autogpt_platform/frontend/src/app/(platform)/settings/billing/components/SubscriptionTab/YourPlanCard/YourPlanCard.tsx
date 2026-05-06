@@ -8,10 +8,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT, formatCents, formatShortDate } from "../../../helpers";
+import {
+  formatCents,
+  formatShortDate,
+  getSectionMotionProps,
+} from "../../../helpers";
+import { CycleToggle } from "./CycleToggle";
+import { SwitchCycleDialog } from "./SwitchCycleDialog";
+import { SwitchTierDialog } from "./SwitchTierDialog";
 import { useYourPlanCard } from "./useYourPlanCard";
-
-const PRICING_PAGE_URL = "https://agpt.co/pricing";
 
 interface Props {
   index?: number;
@@ -27,48 +32,50 @@ export function YourPlanCard({ index = 0 }: Props) {
     canUpgrade,
     canDowngrade,
     canResume,
+    selectedCycle,
+    pendingCycle,
+    pendingTierUpgrade,
+    pendingTierUpgradeLabel,
+    pendingTierDowngrade,
+    pendingTierDowngradeLabel,
+    isCycleToggleVisible,
+    cycleDialogBody,
+    tierUpgradeDialogBody,
+    tierDowngradeDialogBody,
+    onCycleChange,
+    onConfirmCycleSwitch,
+    onCancelCycleSwitch,
+    onConfirmTierUpgrade,
+    onCancelTierUpgrade,
+    onConfirmTierDowngrade,
+    onCancelTierDowngrade,
     onUpgrade,
     onDowngrade,
     onResume,
     onManage,
   } = useYourPlanCard();
 
+  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
   if (isLoading || !plan) {
-    return <Skeleton className="h-[100px] rounded-[18px]" />;
+    return (
+      <motion.div {...sectionMotion}>
+        <Skeleton className="h-[100px] rounded-[18px]" />
+      </motion.div>
+    );
   }
 
   return (
-    <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={
-        reduceMotion
-          ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
-      }
-      className="flex w-full flex-col gap-2"
-    >
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-2 px-4">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Your plan
         </Text>
-        <a
-          href={PRICING_PAGE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Compare plans on the AutoGPT pricing page"
-          className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-700"
-        >
-          <Text variant="small" as="span">
-            Compare plans
-          </Text>
-          <ArrowSquareOutIcon size={14} aria-hidden="true" />
-        </a>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Text variant="large-medium" as="span" className="text-textBlack">
               {plan.label}
             </Text>
@@ -76,7 +83,9 @@ export function YourPlanCard({ index = 0 }: Props) {
               variant="success"
               size="small"
               className={
-                plan.isPendingCancel || plan.isPendingDowngrade
+                plan.isPendingCancel ||
+                plan.isPendingDowngrade ||
+                plan.isPendingCycleSwitch
                   ? "bg-amber-100 text-amber-800"
                   : "bg-violet-100 text-violet-800"
               }
@@ -87,25 +96,46 @@ export function YourPlanCard({ index = 0 }: Props) {
                   ? "Cancellation scheduled"
                   : plan.isPendingDowngrade
                     ? "Downgrade scheduled"
-                    : "Active"}
+                    : plan.isPendingCycleSwitch
+                      ? "Cycle switch scheduled"
+                      : "Active"}
             </Badge>
+            {isCycleToggleVisible ? (
+              <CycleToggle
+                value={selectedCycle}
+                onChange={onCycleChange}
+                disabled={isUpdatingTier}
+              />
+            ) : null}
           </div>
           {plan.isPaidPlan ? (
             <Text variant="body" as="span" className="text-zinc-700">
-              {formatCents(plan.monthlyCostCents)} / month
+              {formatCents(plan.monthlyCostCents)}
+              {plan.billingCycle === "yearly" ? " / year" : " / month"}
               {plan.isPendingCancel && plan.pendingEffectiveAt
                 ? ` · Ends on ${formatShortDate(plan.pendingEffectiveAt)}`
                 : plan.isPendingDowngrade && plan.pendingEffectiveAt
                   ? ` · Switches to ${plan.pendingTierLabel} on ${formatShortDate(plan.pendingEffectiveAt)}`
-                  : plan.currentPeriodEnd
-                    ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
-                    : null}
+                  : plan.isPendingCycleSwitch && plan.pendingEffectiveAt
+                    ? ` · Active until ${formatShortDate(plan.pendingEffectiveAt)}`
+                    : plan.currentPeriodEnd
+                      ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
+                      : null}
             </Text>
           ) : (
             <Text variant="body" as="span" className="text-zinc-700">
               Pick a plan to continue using AutoGPT.
             </Text>
           )}
+          {plan.isPaidPlan &&
+          plan.isPendingCycleSwitch &&
+          plan.pendingEffectiveAt &&
+          plan.pendingCycle ? (
+            <Text variant="small" as="span" className="text-zinc-500">
+              Switching to {plan.pendingCycle} {plan.label} on{" "}
+              {formatShortDate(plan.pendingEffectiveAt)} · No charge today
+            </Text>
+          ) : null}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -119,7 +149,9 @@ export function YourPlanCard({ index = 0 }: Props) {
             >
               {plan.isPendingCancel
                 ? "Resume subscription"
-                : "Cancel downgrade"}
+                : plan.isPendingCycleSwitch
+                  ? "Cancel cycle switch"
+                  : "Cancel downgrade"}
             </Button>
           ) : null}
           {canDowngrade && plan.previousTierLabel ? (
@@ -165,6 +197,47 @@ export function YourPlanCard({ index = 0 }: Props) {
           ) : null}
         </div>
       </div>
+
+      {pendingCycle ? (
+        <SwitchCycleDialog
+          isOpen={pendingCycle !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelCycleSwitch();
+          }}
+          targetCycle={pendingCycle}
+          body={cycleDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmCycleSwitch}
+        />
+      ) : null}
+
+      {pendingTierUpgrade && pendingTierUpgradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierUpgrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierUpgrade();
+          }}
+          targetTierLabel={pendingTierUpgradeLabel}
+          body={tierUpgradeDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierUpgrade}
+        />
+      ) : null}
+
+      {pendingTierDowngrade && pendingTierDowngradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierDowngrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierDowngrade();
+          }}
+          targetTierLabel={pendingTierDowngradeLabel}
+          title={`Downgrade to ${pendingTierDowngradeLabel}?`}
+          confirmLabel={`Downgrade to ${pendingTierDowngradeLabel}`}
+          body={tierDowngradeDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierDowngrade}
+        />
+      ) : null}
     </motion.section>
   );
 }

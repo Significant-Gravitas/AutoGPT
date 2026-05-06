@@ -160,6 +160,575 @@ describe("YourPlanCard", () => {
   });
 });
 
+describe("YourPlanCard cycle toggle", () => {
+  it("renders Monthly selected when billing_cycle is monthly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const monthly = await screen.findByRole("radio", { name: /monthly/i });
+    const yearly = screen.getByRole("radio", { name: /yearly/i });
+    expect(monthly.getAttribute("aria-checked")).toBe("true");
+    expect(yearly.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("renders Yearly selected when billing_cycle is yearly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const yearly = await screen.findByRole("radio", { name: /yearly/i });
+    const monthly = screen.getByRole("radio", { name: /monthly/i });
+    expect(yearly.getAttribute("aria-checked")).toBe("true");
+    expect(monthly.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("opens the confirmation dialog with prorated copy when monthly Pro user clicks Yearly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const yearly = await screen.findByRole("radio", { name: /yearly/i });
+    fireEvent.click(yearly);
+
+    expect(
+      await screen.findByText(/Switch billing to Yearly\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/charged the prorated difference immediately/i),
+    ).toBeDefined();
+    expect(screen.getByText(/\$510\.00/)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /switch to yearly/i }),
+    ).toBeDefined();
+  });
+
+  it("fires updateTier with billing_cycle on confirm", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /switch to yearly/i }),
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("cancelling the dialog leaves no mutation fired", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /switch to yearly/i }),
+      ).toBeNull(),
+    );
+    expect(mutationFired).toBe(false);
+  });
+
+  it("opens a confirmation dialog (no API call) when a paid user clicks Upgrade to Max", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /upgrade to max/i }),
+    );
+
+    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
+    expect(
+      screen.getByText(
+        /charged the prorated difference immediately for the rest of your monthly period/i,
+      ),
+    ).toBeDefined();
+    expect(mutationFired).toBe(false);
+  });
+
+  it("fires updateTier with the server billing cycle when the upgrade dialog is confirmed", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /upgrade to max/i }),
+    );
+
+    const confirmInDialog = await screen.findAllByRole("button", {
+      name: /upgrade to max/i,
+    });
+    // Two buttons share the label: the card's trigger + the dialog's confirm.
+    // The confirm is the second one in DOM order.
+    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("MAX");
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("cancelling the upgrade dialog leaves no mutation fired", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /upgrade to max/i }),
+    );
+    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Upgrade to Max\?/i)).toBeNull(),
+    );
+    expect(mutationFired).toBe(false);
+  });
+
+  it("clicking Downgrade to Pro opens a confirmation dialog with end-of-period copy", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        current_period_end: 1900000000,
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+
+    expect(await screen.findByText(/Downgrade to Pro\?/i)).toBeDefined();
+    expect(
+      screen.getByText(/until .* then switch to Pro\. No charge today\./i),
+    ).toBeDefined();
+    expect(mutationFired).toBe(false);
+  });
+
+  it("confirming the downgrade dialog fires updateTier with prevTier + serverCycle", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 326400,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+
+    const confirmInDialog = await screen.findAllByRole("button", {
+      name: /downgrade to pro/i,
+    });
+    // Two buttons share the label: the card's trigger + the dialog's confirm.
+    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("cancelling the downgrade dialog leaves no mutation fired", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+    expect(await screen.findByText(/Downgrade to Pro\?/i)).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Downgrade to Pro\?/i)).toBeNull(),
+    );
+    expect(mutationFired).toBe(false);
+  });
+
+  it("NO_TIER user clicking Get Pro skips the confirmation dialog (Stripe Checkout flow)", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+
+    // No SwitchTierDialog rendered for free→paid (Checkout success_url path).
+    await waitFor(() => expect(mutationFired).toBe(true));
+    expect(screen.queryByText(/Upgrade to Pro\?/i)).toBeNull();
+  });
+
+  it("hides the cycle toggle entirely for ENTERPRISE tier", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
+  it("hides the cycle toggle entirely for BASIC tier", async () => {
+    // BASIC is a reserved internal slot (no Stripe sub, no upgrade target);
+    // showing a cycle toggle would imply user-manageable billing.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
+  it("hides the cycle toggle entirely for NO_TIER users (no active sub)", async () => {
+    // NO_TIER means no active subscription — the user has nothing to switch.
+    // The toggle would be dead UI implying functionality that doesn't apply.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
+  it("downgrade preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 326400,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+    // Downgrade now goes through a confirm dialog (symmetric with upgrade).
+    // Two buttons share the label: the card's trigger + the dialog's confirm —
+    // confirm is the second one in DOM order.
+    const confirmInDialog = await screen.findAllByRole("button", {
+      name: /downgrade to pro/i,
+    });
+    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      // Without forwarding the current cycle the backend defaults to monthly,
+      // silently flipping the yearly subscriber at period end.
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("resume preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "NO_TIER",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resume subscription/i }),
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      // Same-tier release path also defaults to monthly when billing_cycle is
+      // omitted — gates as a cycle-switch and silently flips to monthly.
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("shows 'Cycle switch scheduled' badge + cycle-only secondary line when same-tier yearly→monthly is queued", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "PRO",
+        pending_billing_cycle: "monthly",
+        pending_tier_effective_at: "2026-12-15T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Cycle switch scheduled")).toBeDefined();
+    // Active yearly price stays on the primary line; secondary line describes
+    // the queued switch with no charge today.
+    expect(screen.getByText(/\$510\.00 \/ year/)).toBeDefined();
+    expect(
+      screen.getByText(/Switching to monthly Pro on .* · No charge today/i),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /cancel cycle switch/i }),
+    ).toBeDefined();
+    // Tier-downgrade button is suppressed while a cycle switch is pending —
+    // the user needs to cancel/release the schedule first.
+    expect(screen.queryByRole("button", { name: /^downgrade to/i })).toBeNull();
+  });
+});
+
 describe("PaymentMethodCard", () => {
   it("disables 'Open portal' until the portal URL resolves", async () => {
     server.use(jsonHandler("get", "/api/credits/manage", { url: null }));
@@ -189,48 +758,35 @@ describe("PaymentMethodCard", () => {
 });
 
 describe("InvoicesCard", () => {
-  it("renders a no-invoices empty state when the credit history is empty", async () => {
-    server.use(
-      jsonHandler("get", "/api/credits/transactions", {
-        transactions: [],
-        next_transaction_time: null,
-      }),
-    );
+  it("renders a no-invoices empty state when Stripe returns no invoices", async () => {
+    server.use(jsonHandler("get", "/api/credits/invoices", []));
 
     render(<InvoicesCard />);
 
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();
   });
 
-  it("renders an invoice row per TOP_UP transaction (current fallback)", async () => {
+  it("renders an invoice row per Stripe invoice", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
-        transactions: [
-          {
-            transaction_key: "TXN-1",
-            transaction_time: "2026-04-01T00:00:00Z",
-            transaction_type: "TOP_UP",
-            amount: 2000,
-            description: "Top up",
-            running_balance: 2000,
-          },
-          {
-            transaction_key: "TXN-2",
-            transaction_time: "2026-04-02T00:00:00Z",
-            transaction_type: "USAGE",
-            amount: -50,
-            description: "Agent run",
-            running_balance: 1950,
-          },
-        ],
-        next_transaction_time: null,
-      }),
+      jsonHandler("get", "/api/credits/invoices", [
+        {
+          id: "in_001",
+          number: "INV-001",
+          created_at: "2026-04-01T00:00:00Z",
+          total_cents: 2000,
+          amount_paid_cents: 2000,
+          currency: "usd",
+          status: "paid",
+          description: "Top up",
+          hosted_invoice_url: "https://stripe.com/i/001",
+          invoice_pdf_url: "https://stripe.com/i/001.pdf",
+        },
+      ]),
     );
 
     render(<InvoicesCard />);
 
-    expect(await screen.findByText("TXN-1")).toBeDefined();
-    expect(screen.queryByText("TXN-2")).toBeNull();
+    expect(await screen.findByText("INV-001")).toBeDefined();
   });
 });
 
@@ -247,8 +803,8 @@ describe("AutopilotUsageCard", () => {
 
     expect(await screen.findByText("Today")).toBeDefined();
     expect(screen.getByText("This Week")).toBeDefined();
-    expect(screen.getByText("12%")).toBeDefined();
-    expect(screen.getByText("35%")).toBeDefined();
+    expect(screen.getByText("12% used")).toBeDefined();
+    expect(screen.getByText("35% used")).toBeDefined();
   });
 });
 

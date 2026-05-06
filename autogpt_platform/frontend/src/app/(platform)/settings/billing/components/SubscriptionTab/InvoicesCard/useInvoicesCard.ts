@@ -1,12 +1,7 @@
 "use client";
 
-// TODO: switch to the generated `useGetV1ListInvoices` hook once
-// `pnpm generate:api` is re-run on this branch (the openapi.json change
-// in this PR adds the `/credits/invoices` operation, but the regenerated
-// client lives outside the diff). Until then, derive the invoice list
-// from credit history TOP_UP transactions so the UI is still populated.
-import { useGetV1GetCreditHistory } from "@/app/api/__generated__/endpoints/credits/credits";
-import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
+import { useGetV1ListStripeInvoices } from "@/app/api/__generated__/endpoints/credits/credits";
+import type { InvoiceListItem } from "@/app/api/__generated__/models/invoiceListItem";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 
@@ -22,27 +17,25 @@ export interface InvoiceRow {
 }
 
 export function useInvoicesCard() {
-  const { data, isLoading, isError, refetch } = useGetV1GetCreditHistory(
-    { transaction_count_limit: 50 },
+  const { data, isLoading, isError, refetch } = useGetV1ListStripeInvoices(
+    { limit: 24 },
     {
       query: {
-        select: (res) => res.data as TransactionHistory | undefined,
+        select: (res) => res.data as InvoiceListItem[] | undefined,
       },
     },
   );
 
-  const invoices: InvoiceRow[] = (data?.transactions ?? [])
-    .filter((tx) => tx.transaction_type === "TOP_UP")
-    .map((tx, idx) => ({
-      id: tx.transaction_key ?? `top-up-${idx}`,
-      number: tx.transaction_key ?? "—",
-      date: formatShortDate(tx.transaction_time),
-      description: tx.description ?? "Top up",
-      amount: formatCents(Math.abs(tx.amount ?? 0)),
-      status: "paid",
-      hostedUrl: null,
-      pdfUrl: null,
-    }));
+  const invoices: InvoiceRow[] = (data ?? []).map((invoice, idx) => ({
+    id: invoice.id,
+    number: invoice.number ?? `#${idx + 1}`,
+    date: formatShortDate(invoice.created_at),
+    description: invoice.description ?? "Invoice",
+    amount: formatCents(invoice.total_cents),
+    status: invoice.status,
+    hostedUrl: invoice.hosted_invoice_url ?? null,
+    pdfUrl: invoice.invoice_pdf_url ?? null,
+  }));
 
   return { invoices, isLoading, isError, refetch };
 }

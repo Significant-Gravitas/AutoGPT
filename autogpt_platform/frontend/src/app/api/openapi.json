@@ -2495,7 +2495,10 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" }
+          "429": { "description": "Call-frequency cap exceeded" },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
         }
       }
     },
@@ -2602,6 +2605,9 @@
           },
           "429": {
             "description": "Cost rate-limit or call-frequency cap exceeded"
+          },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -7240,7 +7246,6 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
               "type": "string",
@@ -16627,10 +16632,11 @@
             "type": "array",
             "title": "Submissions"
           },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" },
+          "stats": { "$ref": "#/components/schemas/SubmissionStats" }
         },
         "type": "object",
-        "required": ["submissions", "pagination"],
+        "required": ["submissions", "pagination", "stats"],
         "title": "StoreSubmissionsResponse"
       },
       "StreamChatRequest": {
@@ -16696,6 +16702,28 @@
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
+      "SubmissionStats": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "approved": { "type": "integer", "title": "Approved" },
+          "pending": { "type": "integer", "title": "Pending" },
+          "total_runs": { "type": "integer", "title": "Total Runs" },
+          "average_rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "approved",
+          "pending",
+          "total_runs",
+          "average_rating"
+        ],
+        "title": "SubmissionStats",
+        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination —\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
+      },
       "SubmissionStatus": {
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
@@ -16720,6 +16748,19 @@
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs"
+          },
+          "tier_costs_yearly": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs Yearly",
+            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "description": "Billing cycle of the user's active Stripe subscription. Defaults to ``monthly`` for users without an active sub. ``monthly_cost`` above reflects this cycle's actual price (so a yearly subscriber sees their yearly amount, not the monthly equivalent).",
+            "default": "monthly"
           },
           "tier_multipliers": {
             "additionalProperties": { "type": "number" },
@@ -16759,6 +16800,14 @@
             ],
             "title": "Pending Tier Effective At"
           },
+          "pending_billing_cycle": {
+            "anyOf": [
+              { "type": "string", "enum": ["monthly", "yearly"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Billing Cycle",
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
+          },
           "url": {
             "type": "string",
             "title": "Url",
@@ -16797,6 +16846,12 @@
             "type": "string",
             "title": "Cancel Url",
             "default": ""
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
           }
         },
         "type": "object",

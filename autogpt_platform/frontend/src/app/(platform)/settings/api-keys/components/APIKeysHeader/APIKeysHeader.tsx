@@ -10,7 +10,7 @@ interface Props {
 
 export function APIKeysHeader({ onCreate }: Props) {
   return (
-    <div className="flex flex-col items-start gap-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col items-start gap-4 pb-6 pl-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-col">
         <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
           AutoGPT API Keys
