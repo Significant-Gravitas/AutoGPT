@@ -8,6 +8,10 @@ from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.platform_info import PlatformInfoTool
 
+# Shorthand patch targets
+_TIER_PATH = "backend.copilot.tools.platform_info.get_user_tier"
+_FLAG_PATH = "backend.util.feature_flag.is_feature_enabled"
+
 
 @pytest.fixture
 def tool():
@@ -19,6 +23,16 @@ def mock_session():
     session = MagicMock()
     session.session_id = "test-session-123"
     return session
+
+
+def _billing_enabled():
+    """Mock ``is_feature_enabled`` returning True (billing ON)."""
+    return patch(_FLAG_PATH, new_callable=AsyncMock, return_value=True)
+
+
+def _billing_disabled():
+    """Mock ``is_feature_enabled`` returning False (billing OFF)."""
+    return patch(_FLAG_PATH, new_callable=AsyncMock, return_value=False)
 
 
 class TestPlatformInfoTool:
@@ -39,10 +53,11 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_pro(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.PRO,
+        with (
+            _billing_enabled(),
+            patch(
+                _TIER_PATH, new_callable=AsyncMock, return_value=SubscriptionTier.PRO
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -56,10 +71,13 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_no_tier(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.NO_TIER,
+        with (
+            _billing_enabled(),
+            patch(
+                _TIER_PATH,
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.NO_TIER,
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -71,10 +89,11 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_max(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.MAX,
+        with (
+            _billing_enabled(),
+            patch(
+                _TIER_PATH, new_callable=AsyncMock, return_value=SubscriptionTier.MAX
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -86,10 +105,13 @@ class TestPlatformInfoTool:
     @pytest.mark.asyncio
     async def test_subscription_topic_business(self, tool, mock_session):
         """Business tier is valid — user can be on it, we just don't advertise it."""
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.BUSINESS,
+        with (
+            _billing_enabled(),
+            patch(
+                _TIER_PATH,
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BUSINESS,
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -115,10 +137,13 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_tier_lookup_failure(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            side_effect=Exception("DB down"),
+        with (
+            _billing_enabled(),
+            patch(
+                _TIER_PATH,
+                new_callable=AsyncMock,
+                side_effect=Exception("DB down"),
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -141,12 +166,42 @@ class TestPlatformInfoTool:
     @pytest.mark.asyncio
     async def test_response_mentions_autogpt_platform(self, tool, mock_session):
         """Platform identity context is in the response, not the description."""
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            return_value=SubscriptionTier.PRO,
+        with (
+            _billing_enabled(),
+            patch(_TIER_PATH, return_value=SubscriptionTier.PRO),
         ):
             result = await tool._execute(
                 user_id="u1", session=mock_session, topic="subscription"
             )
         assert "AutoGPT" in result.message
         assert "AutoPilot" in result.message
+
+    # -- Feature flag: billing disabled (self-hosted / beta) --
+
+    @pytest.mark.asyncio
+    async def test_billing_disabled_returns_open_access(self, tool, mock_session):
+        """When ENABLE_PLATFORM_PAYMENT is off, report open access."""
+        with _billing_disabled():
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, topic="subscription"
+            )
+
+        assert result.type == ResponseType.PLATFORM_INFO
+        assert result.tier == "OPEN_ACCESS"
+        assert result.billing_url is None
+        assert "open access" in result.message.lower()
+        assert "AutoPilot" in result.message
+
+    @pytest.mark.asyncio
+    async def test_billing_disabled_skips_tier_lookup(self, tool, mock_session):
+        """When billing is off, get_user_tier should never be called."""
+        tier_mock = AsyncMock()
+        with (
+            _billing_disabled(),
+            patch(_TIER_PATH, tier_mock),
+        ):
+            await tool._execute(
+                user_id="user-1", session=mock_session, topic="subscription"
+            )
+
+        tier_mock.assert_not_called()

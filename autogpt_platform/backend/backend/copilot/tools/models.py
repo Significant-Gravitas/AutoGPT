@@ -888,4 +888,4 @@ class PlatformInfoResponse(ToolResponseBase):
     type: ResponseType = ResponseType.PLATFORM_INFO
     topic: str
     tier: str | None = None
-    billing_url: str = "/settings/billing"
+    billing_url: str | None = "/settings/billing"

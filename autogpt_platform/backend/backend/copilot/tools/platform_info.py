@@ -81,6 +81,30 @@ class PlatformInfoTool(BaseTool):
                 session_id=session_id,
             )
 
+        # When billing is disabled (self-hosted, beta cohort), skip tier
+        # lookup and report open access — there is no billing page to manage.
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        billing_enabled = await is_feature_enabled(
+            Flag.ENABLE_PLATFORM_PAYMENT, user_id
+        )
+        if not billing_enabled:
+            return PlatformInfoResponse(
+                message=(
+                    "Billing is not enabled on this deployment. "
+                    "You have open access to the platform. "
+                    "You are AutoPilot, running on the AutoGPT platform. "
+                    "Under the hood you may use models via OpenRouter or Claude SDK, "
+                    "but only mention the AutoGPT platform to the user — "
+                    "that is the only thing they can manage or change. "
+                    "Never direct users to external AI provider billing pages."
+                ),
+                topic="subscription",
+                tier="OPEN_ACCESS",
+                billing_url=None,
+                session_id=session_id,
+            )
+
         try:
             tier = await get_user_tier(user_id)
         except Exception:
