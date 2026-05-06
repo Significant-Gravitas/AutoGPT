@@ -137,13 +137,13 @@ describe("UsagePanelContent", () => {
     expect(screen.queryByText("Go to billing")).toBeNull();
   });
 
-  it("does not render 'Go to billing' when weekly is also exhausted", () => {
+  it("still renders 'Go to billing' when both daily and weekly are exhausted", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({ dailyPercent: 100, weeklyPercent: 100 })}
       />,
     );
-    expect(screen.queryByText("Go to billing")).toBeNull();
+    expect(screen.getByText("Go to billing")).toBeDefined();
   });
 
   it("renders percent used in the usage bar", () => {

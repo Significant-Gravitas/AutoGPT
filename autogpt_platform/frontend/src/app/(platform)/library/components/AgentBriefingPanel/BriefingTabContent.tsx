@@ -51,9 +51,7 @@ function UsageSection() {
   if (!usage.daily && !usage.weekly) return null;
 
   const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const isWeeklyExhausted = !!usage.weekly && usage.weekly.percent_used >= 100;
-  const showGoToBilling =
-    isDailyExhausted && !isWeeklyExhausted && isBillingEnabled;
+  const showGoToBilling = isDailyExhausted && isBillingEnabled;
 
   return (
     <div className="py-2">

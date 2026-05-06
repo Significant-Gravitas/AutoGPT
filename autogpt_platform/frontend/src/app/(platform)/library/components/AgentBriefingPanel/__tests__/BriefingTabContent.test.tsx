@@ -131,14 +131,14 @@ describe("BriefingTabContent — UsageSection", () => {
     expect(screen.queryByText("Manage billing")).toBeNull();
   });
 
-  it("hides 'Go to billing' when the weekly limit is also exhausted", () => {
+  it("still shows 'Go to billing' when both daily and weekly are exhausted", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 100, weeklyPercent: 100 }),
       isSuccess: true,
     });
     mockUseGetFlag.mockReturnValue(true);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.queryByText("Go to billing")).toBeNull();
+    expect(screen.getByText("Go to billing")).toBeDefined();
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
   });
 

@@ -158,7 +158,6 @@ export function UsagePanelContent({
   const daily = usage.daily;
   const weekly = usage.weekly;
   const isDailyExhausted = !!daily && daily.percent_used >= 100;
-  const isWeeklyExhausted = !!weekly && weekly.percent_used >= 100;
 
   if (!daily && !weekly) {
     return (
@@ -210,7 +209,7 @@ export function UsagePanelContent({
         />
       )}
       <WorkspaceStorageSection />
-      {isDailyExhausted && !isWeeklyExhausted && isBillingEnabled && (
+      {isDailyExhausted && isBillingEnabled && (
         <Button
           as="NextLink"
           href="/settings/billing"
