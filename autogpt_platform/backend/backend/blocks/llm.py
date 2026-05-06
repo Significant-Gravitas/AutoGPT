@@ -64,7 +64,7 @@ _MODEL_UNAVAILABLE_MESSAGE_PATTERNS = (
     "model.*retired",
     "no.*such.*model",
     "invalid.*model",
-    "does not exist",
+    "model.*does not exist",
     "is not a valid model",
 )
 
@@ -78,11 +78,17 @@ def _get_model_error_guidance(error: Exception) -> str | None:
         and getattr(error, "status_code", None) in _MODEL_UNAVAILABLE_STATUS_CODES
     )
     msg = str(error).lower()
+
+    # Context-length errors are handled by the retry loop — don't interfere.
+    if "maximum context length" in msg or "token limit" in msg or "context length" in msg:
+        return None
+
+    # Only trust status codes from providers with well-defined error schemas
+    # (OpenAI, Anthropic). Other providers are matched on message patterns alone.
     pattern_match = any(
         re.search(pattern, msg) for pattern in _MODEL_UNAVAILABLE_MESSAGE_PATTERNS
     )
 
-    # Require message evidence to avoid classifying every 400/404 as model-unavailable.
     if pattern_match and (status_match or not is_api_error):
         return (
             "The configured model ID appears to be unavailable or deprecated. "
@@ -1701,6 +1707,21 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
+                msg_lower = str(e).lower()
+                # Context-length errors are retryable — handle before user-error check.
+                if (
+                    "maximum context length" in msg_lower
+                    or "token limit" in msg_lower
+                ):
+                    if input_data.max_tokens is None:
+                        input_data.max_tokens = llm_model.max_output_tokens or 4096
+                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    logger.debug(
+                        f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
+                    )
+                    error_feedback_message = f"Error calling LLM: {e}"
+                    continue
+
                 is_user_error = (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
@@ -1714,18 +1735,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     break
                 else:
                     logger.exception(f"Error calling LLM: {e}")
-                if (
-                    "maximum context length" in str(e).lower()
-                    or "token limit" in str(e).lower()
-                ):
-                    if input_data.max_tokens is None:
-                        input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
-                    logger.debug(
-                        f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
-                    )
-                    # Don't add retry prompt for token limit errors,
-                    # just retry with lower maximum output tokens
 
                 error_feedback_message = f"Error calling LLM: {e}"
 
