@@ -40,7 +40,7 @@ import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-import { UsageLimits } from "../UsageLimits/UsageLimits";
+import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -229,7 +229,7 @@ export function ChatSidebar() {
                   Your chats
                 </Text>
                 <div className="flex items-center">
-                  <UsageLimits />
+                  <UsagePopover />
                   <NotificationToggle />
                   <SidebarTrigger />
                 </div>

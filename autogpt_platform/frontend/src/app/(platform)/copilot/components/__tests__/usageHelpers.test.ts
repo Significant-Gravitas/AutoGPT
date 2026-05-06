@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatBytes,
   formatCents,
   formatMicrodollarsAsUsd,
   formatResetTime,
@@ -72,5 +73,21 @@ describe("formatResetTime", () => {
     // Not asserting exact format (localized), just that it's not the
     // minute/hour form.
     expect(formatResetTime(future, now)).not.toMatch(/^in \d/);
+  });
+});
+
+describe("formatBytes", () => {
+  it.each([
+    [0, "0 B"],
+    [512, "512 B"],
+    [1024, "1 KB"],
+    [250 * 1024, "250 KB"],
+    [1023 * 1024, "1023 KB"],
+    [1024 * 1024, "1 MB"],
+    [250 * 1024 * 1024, "250 MB"],
+    [1024 * 1024 * 1024, "1.0 GB"],
+    [5 * 1024 * 1024 * 1024, "5.0 GB"],
+  ])("formats %d bytes as %s", (input, expected) => {
+    expect(formatBytes(input)).toBe(expected);
   });
 });

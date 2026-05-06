@@ -15,10 +15,8 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import {
-  UsageLimitReachedCard,
-  useIsUsageLimitReached,
-} from "../UsageLimits/UsageLimitReachedCard";
+import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
+import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {

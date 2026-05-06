@@ -1,0 +1,74 @@
+"use client";
+
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { WarningIcon } from "@phosphor-icons/react";
+import { StorageBar } from "../StorageBar";
+import { UsageBar } from "../UsageBar";
+import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
+
+export function UsageLimitReachedCard() {
+  const { usage, isSuccess, isBillingEnabled } = useUsageLimitReachedCard();
+
+  if (!isSuccess || !usage) return null;
+
+  const tierLabel = usage.tier
+    ? usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()
+    : null;
+
+  return (
+    <div
+      role="alert"
+      className="mx-auto flex w-full max-w-[30rem] flex-col gap-3 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
+    >
+      <div className="flex items-center gap-2">
+        <WarningIcon className="size-5 text-orange-500" weight="fill" />
+        <Text
+          as="span"
+          variant="body-medium"
+          className="font-semibold text-neutral-900"
+        >
+          Usage limit reached
+        </Text>
+        {tierLabel && (
+          <Badge
+            variant="info"
+            size="small"
+            className="border border-neutral-200"
+          >
+            {tierLabel}
+          </Badge>
+        )}
+      </div>
+      {usage.daily && (
+        <UsageBar
+          label="Today"
+          percentUsed={usage.daily.percent_used}
+          resetsAt={usage.daily.resets_at}
+          size="md"
+        />
+      )}
+      {usage.weekly && (
+        <UsageBar
+          label="This week"
+          percentUsed={usage.weekly.percent_used}
+          resetsAt={usage.weekly.resets_at}
+          size="md"
+        />
+      )}
+      <StorageBar />
+      {isBillingEnabled && (
+        <Button
+          as="NextLink"
+          href="/settings/billing"
+          variant="primary"
+          size="small"
+          className="mt-1 w-full"
+        >
+          Go to billing
+        </Button>
+      )}
+    </div>
+  );
+}
