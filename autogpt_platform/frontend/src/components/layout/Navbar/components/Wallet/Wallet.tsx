@@ -72,7 +72,7 @@ export function Wallet() {
             name: "Open the Library page and run an agent",
             amount: 1,
             details: "Go to the Library, open an agent you want, and run it",
-            video: "/onboarding/marketplace-run.mp4",
+            video: "/onboarding/agent-run.mp4",
           },
         ],
       },
@@ -85,6 +85,7 @@ export function Wallet() {
             name: "Schedule your first agent",
             amount: 1,
             details: "Schedule an agent to run on a recurring basis",
+            video: "/onboarding/agent-schedule.mp4",
           },
           {
             id: "RUN_3_DAYS",

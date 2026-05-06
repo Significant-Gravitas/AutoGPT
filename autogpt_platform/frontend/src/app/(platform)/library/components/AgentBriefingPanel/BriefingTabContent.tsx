@@ -3,7 +3,11 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import { formatResetTime } from "@/app/(platform)/copilot/components/usageHelpers";
+import {
+  formatResetTime,
+  formatTierLabel,
+  TIER_BADGE_CLASS_NAME,
+} from "@/app/(platform)/copilot/components/usageHelpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -50,8 +54,7 @@ function UsageSection() {
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
-  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const showGoToBilling = isDailyExhausted && isBillingEnabled;
+  const tierLabel = formatTierLabel(usage.tier);
 
   return (
     <div className="py-2">
@@ -59,13 +62,13 @@ function UsageSection() {
         <Text variant="h5" className="text-neutral-800">
           Usage limits
         </Text>
-        {usage.tier && (
-          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
-            {usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()} plan
+        {tierLabel && (
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
+            {tierLabel} plan
           </Badge>
         )}
         <div className="flex-1" />
-        {isBillingEnabled && !showGoToBilling && (
+        {isBillingEnabled && (
           <Link
             href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
@@ -90,18 +93,6 @@ function UsageSection() {
           />
         )}
       </div>
-      {showGoToBilling && (
-        <div className="mt-4 flex items-center gap-3">
-          <Button
-            as="NextLink"
-            href="/settings/billing"
-            variant="primary"
-            size="small"
-          >
-            Go to billing
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -106,46 +106,36 @@ describe("BriefingTabContent — UsageSection", () => {
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
   });
 
-  it("shows 'Go to billing' when daily is exhausted and billing flag is on", () => {
+  it("shows 'Manage billing' when billing flag is on, regardless of usage", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
       isSuccess: true,
     });
     mockUseGetFlag.mockReturnValue(true);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.getByText("Go to billing")).toBeDefined();
+    expect(screen.getByText("Manage billing")).toBeDefined();
+    expect(screen.queryByText("Go to billing")).toBeNull();
   });
 
-  it("hides 'Manage billing' link when 'Go to billing' button is shown", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
-      isSuccess: true,
-    });
-    mockUseGetFlag.mockReturnValue(true);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.getByText("Go to billing")).toBeDefined();
-    expect(screen.queryByText("Manage billing")).toBeNull();
-  });
-
-  it("hides 'Go to billing' when billing flag is off", () => {
+  it("hides 'Manage billing' when billing flag is off", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
       isSuccess: true,
     });
     mockUseGetFlag.mockReturnValue(false);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.queryByText("Go to billing")).toBeNull();
     expect(screen.queryByText("Manage billing")).toBeNull();
+    expect(screen.queryByText("Go to billing")).toBeNull();
   });
 
-  it("still shows 'Go to billing' when both daily and weekly are exhausted", () => {
+  it("still shows 'Manage billing' when both daily and weekly are exhausted", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 100, weeklyPercent: 100 }),
       isSuccess: true,
     });
     mockUseGetFlag.mockReturnValue(true);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.getByText("Go to billing")).toBeDefined();
+    expect(screen.getByText("Manage billing")).toBeDefined();
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
   });
 

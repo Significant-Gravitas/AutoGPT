@@ -110,10 +110,16 @@ vi.mock("../../EmptySession/EmptySession", () => ({
   EmptySession: () => <div data-testid="empty-session" />,
 }));
 
-vi.mock("../../UsageLimits/UsageLimitReachedCard", () => ({
+vi.mock("../../UsageLimits/useIsUsageLimitReached", () => ({
   useIsUsageLimitReached: () => mockIsUsageLimitReached(),
-  UsageLimitReachedCard: () => <div role="alert">Usage limit reached</div>,
 }));
+
+vi.mock(
+  "../../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard",
+  () => ({
+    UsageLimitReachedCard: () => <div role="alert">Usage limit reached</div>,
+  }),
+);
 
 class MockResizeObserver {
   observe() {}
