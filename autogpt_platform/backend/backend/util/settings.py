@@ -419,6 +419,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between failed push subscription cleanup runs (1-168 hours)",
     )
 
+    platform_link_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,

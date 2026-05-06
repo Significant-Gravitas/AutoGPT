@@ -269,6 +269,16 @@ def cleanup_failed_push_subscriptions():
     run_async(_cleanup())
 
 
+def cleanup_platform_link_tokens():
+    """Delete PlatformLinkToken rows expired beyond the retention window."""
+
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_expired_platform_link_tokens()
+
+    run_async(_cleanup())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -599,6 +609,16 @@ class Scheduler(AppService):
                 trigger="interval",
                 replace_existing=True,
                 seconds=config.push_subscription_cleanup_interval_hours * 3600,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Platform Link Token Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_platform_link_tokens,
+                id="cleanup_platform_link_tokens",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.platform_link_token_cleanup_interval_hours * 3600,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

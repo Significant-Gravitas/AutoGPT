@@ -426,3 +426,20 @@ async def delete_user_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     await PlatformUserLink.prisma().delete(where={"id": link_id})
     logger.info("Unlinked %s DMs from AutoGPT user ...%s", link.platform, user_id[-8:])
     return DeleteLinkResponse(success=True)
+
+
+# ── Cleanup ──────────────────────────────────────────────────────────
+
+# Keep recently-expired rows for debugging.
+LINK_TOKEN_RETENTION_HOURS = 24
+
+
+async def cleanup_expired_platform_link_tokens() -> int:
+    """Delete PlatformLinkToken rows expired beyond the retention window."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LINK_TOKEN_RETENTION_HOURS)
+    deleted = await PlatformLinkToken.prisma().delete_many(
+        where={"expiresAt": {"lt": cutoff}}
+    )
+    if deleted > 0:
+        logger.info("Cleaned up %d expired platform link tokens", deleted)
+    return deleted
