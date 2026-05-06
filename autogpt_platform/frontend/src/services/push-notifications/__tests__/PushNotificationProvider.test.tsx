@@ -286,10 +286,33 @@ describe("PushNotificationProvider", () => {
       expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
     });
 
-    it("registers a service-worker message listener so PUSH_SUBSCRIPTION_CHANGED can renew", () => {
+    it("renews the subscription when PUSH_SUBSCRIPTION_CHANGED arrives", async () => {
       render(<PushNotificationProvider />);
 
+      await waitFor(() => {
+        expect(mockSendSubscriptionToServer).toHaveBeenCalledWith(
+          mockSubscription,
+        );
+      });
       expect(swMessageListeners.length).toBeGreaterThan(0);
+
+      mockSubscribeToPush.mockClear();
+      mockSendSubscriptionToServer.mockClear();
+
+      swMessageListeners.forEach((fn) =>
+        fn(
+          new MessageEvent("message", {
+            data: { type: "PUSH_SUBSCRIPTION_CHANGED" },
+          }),
+        ),
+      );
+
+      await waitFor(() => {
+        expect(mockSubscribeToPush).toHaveBeenCalled();
+      });
+      expect(mockSendSubscriptionToServer).toHaveBeenCalledWith(
+        mockSubscription,
+      );
     });
 
     it("unsubscribes on logout after having been authenticated", async () => {
