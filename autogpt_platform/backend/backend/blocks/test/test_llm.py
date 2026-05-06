@@ -145,10 +145,10 @@ class TestLLMStatsTracking:
                 max_tokens=100,
             )
 
-        # Verify OpenAI client was used (not Anthropic SDK) and model was prefixed
+        # Model must be rewritten to OR's canonical slug; date-suffixed IDs 400 (#13005).
         mock_openai.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["model"] == "anthropic/claude-3-haiku-20240307"
+        assert call_kwargs["model"] == "anthropic/claude-3-haiku"
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
@@ -1224,6 +1224,73 @@ class TestLlmModelMissing:
         assert (
             llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
         )
+
+
+class TestOpenRouterAnthropicSlugs:
+    """Regression tests for #13005 — every Claude model must have a valid OpenRouter slug."""
+
+    def test_every_anthropic_model_has_openrouter_slug(self):
+        for model, meta in llm.MODEL_METADATA.items():
+            if meta.provider != "anthropic":
+                continue
+            assert model in llm.OPEN_ROUTER_ANTHROPIC_IDS, (
+                f"{model} is provider=anthropic but missing from "
+                f"OPEN_ROUTER_ANTHROPIC_IDS — OpenRouter routing will 400."
+            )
+
+    @pytest.mark.parametrize(
+        "model, expected_slug",
+        [
+            (llm.LlmModel.CLAUDE_4_7_OPUS, "anthropic/claude-opus-4.7"),
+            (llm.LlmModel.CLAUDE_4_6_OPUS, "anthropic/claude-opus-4.6"),
+            (llm.LlmModel.CLAUDE_4_6_SONNET, "anthropic/claude-sonnet-4.6"),
+            (llm.LlmModel.CLAUDE_4_5_HAIKU, "anthropic/claude-haiku-4.5"),
+            (llm.LlmModel.CLAUDE_4_5_SONNET, "anthropic/claude-sonnet-4.5"),
+            (llm.LlmModel.CLAUDE_4_5_OPUS, "anthropic/claude-opus-4.5"),
+            (llm.LlmModel.CLAUDE_4_1_OPUS, "anthropic/claude-opus-4.1"),
+        ],
+    )
+    def test_known_slug_mappings(self, model, expected_slug):
+        assert llm.OPEN_ROUTER_ANTHROPIC_IDS[model] == expected_slug
+
+    @pytest.mark.asyncio
+    async def test_llm_call_uses_openrouter_slug_not_raw_value(self, monkeypatch):
+        """End-to-end: the OpenAI client receives the OR slug, not the raw enum value."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+
+        monkeypatch.setattr(llm.settings.secrets, "open_router_api_key", "test-or-key")
+
+        anthropic_creds = APIKeyCredentials(
+            id="test-anthropic-id",
+            provider="anthropic",
+            api_key=SecretStr("anthropic-key"),
+            title="Anthropic key",
+            expires_at=None,
+        )
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message = MagicMock(content="ok", tool_calls=None)
+        mock_response.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+        mock_response.headers = {}
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+            await llm.llm_call(
+                credentials=anthropic_creds,
+                llm_model=llm.LlmModel.CLAUDE_4_7_OPUS,
+                prompt=[{"role": "user", "content": "hi"}],
+                max_tokens=10,
+                compress_prompt_to_fit=False,
+            )
+
+            create_call = mock_client.chat.completions.create.call_args
+            assert create_call.kwargs["model"] == "anthropic/claude-opus-4.7"
 
 
 class TestExtractOpenRouterCost:

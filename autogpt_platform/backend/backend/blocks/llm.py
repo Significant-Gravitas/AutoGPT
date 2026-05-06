@@ -754,9 +754,32 @@ MODEL_METADATA = {
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
+# OpenRouter uses dotted slugs (anthropic/claude-opus-4.7), not the
+# date-suffixed Anthropic API IDs we store as LlmModel values.
+OPEN_ROUTER_ANTHROPIC_IDS: dict["LlmModel", str] = {
+    LlmModel.CLAUDE_4_1_OPUS: "anthropic/claude-opus-4.1",
+    LlmModel.CLAUDE_4_OPUS: "anthropic/claude-opus-4",
+    LlmModel.CLAUDE_4_SONNET: "anthropic/claude-sonnet-4",
+    LlmModel.CLAUDE_4_5_OPUS: "anthropic/claude-opus-4.5",
+    LlmModel.CLAUDE_4_5_SONNET: "anthropic/claude-sonnet-4.5",
+    LlmModel.CLAUDE_4_5_HAIKU: "anthropic/claude-haiku-4.5",
+    LlmModel.CLAUDE_4_6_OPUS: "anthropic/claude-opus-4.6",
+    LlmModel.CLAUDE_4_7_OPUS: "anthropic/claude-opus-4.7",
+    LlmModel.CLAUDE_4_6_SONNET: "anthropic/claude-sonnet-4.6",
+    LlmModel.CLAUDE_3_HAIKU: "anthropic/claude-3-haiku",
+}
+
 for model in LlmModel:
     if model not in MODEL_METADATA:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
+    if (
+        MODEL_METADATA[model].provider == "anthropic"
+        and model not in OPEN_ROUTER_ANTHROPIC_IDS
+    ):
+        raise ValueError(
+            f"Missing OpenRouter slug for Anthropic model: {model}. "
+            f"Add an entry to OPEN_ROUTER_ANTHROPIC_IDS."
+        )
 
 
 class ToolCall(BaseModel):
@@ -939,7 +962,7 @@ async def llm_call(
             title="OpenRouter (auto)",
             api_key=SecretStr(or_key),
         )
-        or_model_id = f"anthropic/{llm_model.value}"
+        or_model_id = OPEN_ROUTER_ANTHROPIC_IDS[llm_model]
 
     if compress_prompt_to_fit:
         result = await compress_context(
