@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatPrice } from "../countries";
+import { formatPrice } from "./countries";
 
 describe("formatPrice", () => {
   test("USD shows two decimals for sub-100 amounts", () => {
