@@ -4,6 +4,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { WarningIcon } from "@phosphor-icons/react";
+import { formatTierLabel } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
@@ -17,9 +18,7 @@ export function UsageLimitReachedCard() {
   const weeklyExhausted = (usage.weekly?.percent_used ?? 0) >= 100;
   if (!dailyExhausted && !weeklyExhausted) return null;
 
-  const tierLabel = usage.tier
-    ? usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()
-    : null;
+  const tierLabel = formatTierLabel(usage.tier);
 
   return (
     <div

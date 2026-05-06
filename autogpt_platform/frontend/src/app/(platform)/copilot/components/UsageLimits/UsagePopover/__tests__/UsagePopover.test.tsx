@@ -1,7 +1,7 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { UsagePopover } from "../UsagePopover";
 
 const mockUseGetFlag = vi.fn();
@@ -27,17 +27,18 @@ vi.mock("../../StorageBar", () => ({
   StorageBar: () => null,
 }));
 
-vi.mock("@/components/molecules/Popover/Popover", () => ({
-  Popover: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PopoverContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-}));
+vi.mock("@/components/molecules/Popover/Popover", () => {
+  function Popover({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function PopoverTrigger({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  function PopoverContent({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+  return { Popover, PopoverTrigger, PopoverContent };
+});
 
 interface UsageOverrides {
   dailyPercent?: number | null;
@@ -78,8 +79,7 @@ describe("UsagePopover", () => {
   it("renders nothing when no limits are configured", async () => {
     mockUsageResponse(makeUsage({ dailyPercent: null, weeklyPercent: null }));
     const { container } = render(<UsagePopover />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(container.innerHTML).toBe("");
+    await waitFor(() => expect(container.innerHTML).toBe(""));
   });
 
   it("renders the trigger button and panel when limits exist", async () => {

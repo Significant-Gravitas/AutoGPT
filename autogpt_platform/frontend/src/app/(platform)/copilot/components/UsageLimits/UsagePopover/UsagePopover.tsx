@@ -1,15 +1,16 @@
 "use client";
 
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { Button } from "@/components/ui/button";
 import { ChartBarIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import { formatTierLabel } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
@@ -20,9 +21,7 @@ export function UsagePopover() {
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
-  const tierLabel = usage.tier
-    ? usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()
-    : null;
+  const tierLabel = formatTierLabel(usage.tier);
 
   return (
     <Popover>

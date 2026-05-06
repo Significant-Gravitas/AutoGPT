@@ -1,7 +1,7 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { UsageLimitReachedCard } from "../UsageLimitReachedCard";
 
 const mockUseGetFlag = vi.fn();
@@ -66,8 +66,7 @@ describe("UsageLimitReachedCard", () => {
   it("renders nothing when neither daily nor weekly is exhausted", async () => {
     mockUsageResponse(makeUsage({ dailyPercent: 5, weeklyPercent: 4 }));
     const { container } = render(<UsageLimitReachedCard />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(container.innerHTML).toBe("");
+    await waitFor(() => expect(container.innerHTML).toBe(""));
   });
 
   it("renders the alert with daily and weekly bars when the daily limit is reached", async () => {

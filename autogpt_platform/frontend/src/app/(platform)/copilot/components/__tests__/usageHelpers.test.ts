@@ -4,6 +4,7 @@ import {
   formatCents,
   formatMicrodollarsAsUsd,
   formatResetTime,
+  formatTierLabel,
 } from "../usageHelpers";
 
 describe("formatCents", () => {
@@ -73,6 +74,29 @@ describe("formatResetTime", () => {
     // Not asserting exact format (localized), just that it's not the
     // minute/hour form.
     expect(formatResetTime(future, now)).not.toMatch(/^in \d/);
+  });
+});
+
+describe("formatTierLabel", () => {
+  it("returns null for null", () => {
+    expect(formatTierLabel(null)).toBeNull();
+  });
+
+  it("returns null for undefined", () => {
+    expect(formatTierLabel(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(formatTierLabel("")).toBeNull();
+  });
+
+  it("returns null for the NO_TIER sentinel", () => {
+    expect(formatTierLabel("NO_TIER")).toBeNull();
+  });
+
+  it("capitalizes a known tier", () => {
+    expect(formatTierLabel("PRO")).toBe("Pro");
+    expect(formatTierLabel("BASIC")).toBe("Basic");
   });
 });
 

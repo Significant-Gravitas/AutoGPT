@@ -217,8 +217,8 @@ export const ChatContainer = ({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-sm">
-                    You&apos;ve reached your usage limit. Reset your daily limit
-                    or wait for it to refresh before sending more messages.
+                    You&apos;ve reached your usage limit. Wait for it to refresh
+                    or upgrade your plan to continue sending messages.
                   </TooltipContent>
                 </Tooltip>
               </motion.div>
