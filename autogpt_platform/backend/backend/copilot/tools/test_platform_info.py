@@ -8,11 +8,6 @@ from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.platform_info import PlatformInfoTool
 
-_MOCK_MULTIPLIERS = {t.value: float(i) for i, t in enumerate(SubscriptionTier)}
-_MOCK_MULTIPLIERS.update({"NO_TIER": 0.0, "BASIC": 1.0, "PRO": 5.0, "MAX": 20.0})
-_MOCK_STORAGE = {t.value: 250 for t in SubscriptionTier}
-_MOCK_STORAGE.update({"PRO": 1024, "MAX": 5 * 1024, "BUSINESS": 15 * 1024})
-
 
 @pytest.fixture
 def tool():
@@ -44,22 +39,10 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_pro(self, tool, mock_session):
-        with (
-            patch(
-                "backend.copilot.tools.platform_info.get_user_tier",
-                new_callable=AsyncMock,
-                return_value=SubscriptionTier.PRO,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_tier_multipliers",
-                new_callable=AsyncMock,
-                return_value=_MOCK_MULTIPLIERS,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
-                new_callable=AsyncMock,
-                return_value=_MOCK_STORAGE,
-            ),
+        with patch(
+            "backend.copilot.tools.platform_info.get_user_tier",
+            new_callable=AsyncMock,
+            return_value=SubscriptionTier.PRO,
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -67,29 +50,16 @@ class TestPlatformInfoTool:
 
         assert result.type == ResponseType.PLATFORM_INFO
         assert result.tier == "PRO"
-        assert result.tier_multiplier == 5.0
-        assert result.workspace_storage_mb == 1024
         assert result.billing_url == "/settings/billing"
-        assert "upgrade_options" in result.data
+        assert "Pro" in result.message
+        assert "Settings" in result.message
 
     @pytest.mark.asyncio
     async def test_subscription_topic_no_tier(self, tool, mock_session):
-        with (
-            patch(
-                "backend.copilot.tools.platform_info.get_user_tier",
-                new_callable=AsyncMock,
-                return_value=SubscriptionTier.NO_TIER,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_tier_multipliers",
-                new_callable=AsyncMock,
-                return_value=_MOCK_MULTIPLIERS,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
-                new_callable=AsyncMock,
-                return_value=_MOCK_STORAGE,
-            ),
+        with patch(
+            "backend.copilot.tools.platform_info.get_user_tier",
+            new_callable=AsyncMock,
+            return_value=SubscriptionTier.NO_TIER,
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -97,40 +67,36 @@ class TestPlatformInfoTool:
 
         assert result.type == ResponseType.PLATFORM_INFO
         assert result.tier == "NO_TIER"
-        assert result.tier_multiplier == 0.0
-        # Should show upgrade options for tiers above NO_TIER
-        assert len(result.data["upgrade_options"]) > 0
+        assert "Free" in result.message
 
     @pytest.mark.asyncio
     async def test_subscription_topic_max(self, tool, mock_session):
-        with (
-            patch(
-                "backend.copilot.tools.platform_info.get_user_tier",
-                new_callable=AsyncMock,
-                return_value=SubscriptionTier.MAX,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_tier_multipliers",
-                new_callable=AsyncMock,
-                return_value=_MOCK_MULTIPLIERS,
-            ),
-            patch(
-                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
-                new_callable=AsyncMock,
-                return_value=_MOCK_STORAGE,
-            ),
+        with patch(
+            "backend.copilot.tools.platform_info.get_user_tier",
+            new_callable=AsyncMock,
+            return_value=SubscriptionTier.MAX,
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
             )
 
         assert result.tier == "MAX"
-        assert result.tier_multiplier == 20.0
-        assert result.workspace_storage_mb == 5 * 1024
-        # Only Business should be in upgrade options (Enterprise excluded)
-        upgrade_tiers = [o["tier"] for o in result.data["upgrade_options"]]
-        assert "BUSINESS" in upgrade_tiers
-        assert "ENTERPRISE" not in upgrade_tiers
+        assert "Max" in result.message
+
+    @pytest.mark.asyncio
+    async def test_subscription_topic_business(self, tool, mock_session):
+        """Business tier is valid — user can be on it, we just don't advertise it."""
+        with patch(
+            "backend.copilot.tools.platform_info.get_user_tier",
+            new_callable=AsyncMock,
+            return_value=SubscriptionTier.BUSINESS,
+        ):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, topic="subscription"
+            )
+
+        assert result.tier == "BUSINESS"
+        assert "Business" in result.message
 
     @pytest.mark.asyncio
     async def test_subscription_no_user_id(self, tool, mock_session):
@@ -171,3 +137,8 @@ class TestPlatformInfoTool:
         schema = tool.as_openai_tool()
         assert schema["type"] == "function"
         assert schema["function"]["name"] == "get_platform_info"
+
+    def test_description_mentions_autogpt_platform(self, tool):
+        desc = tool.description
+        assert "AutoGPT" in desc
+        assert "AutoPilot" in desc

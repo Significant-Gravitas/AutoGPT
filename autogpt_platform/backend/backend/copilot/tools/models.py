@@ -888,7 +888,4 @@ class PlatformInfoResponse(ToolResponseBase):
     type: ResponseType = ResponseType.PLATFORM_INFO
     topic: str
     tier: str | None = None
-    tier_multiplier: float | None = None
-    workspace_storage_mb: int | None = None
     billing_url: str = "/settings/billing"
-    data: dict[str, Any] = Field(default_factory=dict)

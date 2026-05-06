@@ -4,41 +4,26 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.copilot.rate_limit import (
-    SubscriptionTier,
-    get_tier_multipliers,
-    get_user_tier,
-    get_workspace_storage_limits_mb,
-)
+from backend.copilot.rate_limit import get_user_tier
 
 from .base import BaseTool
 from .models import ErrorResponse, PlatformInfoResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
-# Human-friendly tier descriptions for upgrade suggestions.
-_TIER_DESCRIPTIONS: dict[SubscriptionTier, str] = {
-    SubscriptionTier.NO_TIER: "No active subscription",
-    SubscriptionTier.BASIC: "Basic",
-    SubscriptionTier.PRO: "Pro — 5× usage limits",
-    SubscriptionTier.MAX: "Max — 20× usage limits, 5 GB storage",
-    SubscriptionTier.BUSINESS: "Business — 60× usage limits, 15 GB storage",
-    SubscriptionTier.ENTERPRISE: "Enterprise — 60× usage limits, 15 GB storage",
+# Human-friendly tier names shown to the user.
+_TIER_DISPLAY_NAMES: dict[str, str] = {
+    "NO_TIER": "Free (no active subscription)",
+    "BASIC": "Basic",
+    "PRO": "Pro",
+    "MAX": "Max",
+    "BUSINESS": "Business",
+    "ENTERPRISE": "Enterprise",
 }
-
-# Ordered list for upgrade suggestions (show tiers above current).
-_TIER_ORDER: list[SubscriptionTier] = [
-    SubscriptionTier.NO_TIER,
-    SubscriptionTier.BASIC,
-    SubscriptionTier.PRO,
-    SubscriptionTier.MAX,
-    SubscriptionTier.BUSINESS,
-    SubscriptionTier.ENTERPRISE,
-]
 
 
 class PlatformInfoTool(BaseTool):
-    """Provides subscription tier, limits, and billing info on demand."""
+    """Provides the user's subscription tier and billing link on demand."""
 
     @property
     def name(self) -> str:
@@ -47,8 +32,13 @@ class PlatformInfoTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Get the user's subscription plan, usage limits, and billing info. "
-            "Call when the user asks about their plan, limits, billing, or upgrading."
+            "Get the user's current AutoGPT subscription plan and billing link. "
+            "Call when the user asks about their plan, billing, or account. "
+            "You are AutoPilot, running on the AutoGPT platform. "
+            "Under the hood you may use models via OpenRouter or Claude SDK, "
+            "but only mention the AutoGPT platform to the user — "
+            "that is the only thing they can manage or change. "
+            "Never direct users to external AI provider billing pages."
         )
 
     @property
@@ -101,8 +91,6 @@ class PlatformInfoTool(BaseTool):
 
         try:
             tier = await get_user_tier(user_id)
-            tier_multipliers = await get_tier_multipliers()
-            storage_limits = await get_workspace_storage_limits_mb()
         except Exception:
             logger.exception("Failed to fetch subscription info for user %s", user_id)
             return ErrorResponse(
@@ -111,27 +99,15 @@ class PlatformInfoTool(BaseTool):
                 session_id=session_id,
             )
 
-        multiplier = tier_multipliers.get(tier.value, 1.0)
-        storage_mb = storage_limits.get(tier.value, 250)
-
-        # Build upgrade suggestions: show tiers above the current one.
-        current_idx = _TIER_ORDER.index(tier) if tier in _TIER_ORDER else 0
-        upgrade_options = [
-            {"tier": t.value, "description": _TIER_DESCRIPTIONS[t]}
-            for t in _TIER_ORDER[current_idx + 1 :]
-            if t != SubscriptionTier.ENTERPRISE  # not self-serve
-        ]
+        display_name = _TIER_DISPLAY_NAMES.get(tier.value, tier.value)
 
         return PlatformInfoResponse(
-            message=f"Your current plan: {tier.value}",
+            message=(
+                f"You are on the {display_name} plan. "
+                "You can manage your billing and subscription at Settings → Billing."
+            ),
             topic="subscription",
             tier=tier.value,
-            tier_multiplier=multiplier,
-            workspace_storage_mb=storage_mb,
             billing_url="/settings/billing",
-            data={
-                "upgrade_options": upgrade_options,
-                "manage_billing_url": "/settings/billing",
-            },
             session_id=session_id,
         )
