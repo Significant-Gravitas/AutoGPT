@@ -98,6 +98,11 @@ describe("formatTierLabel", () => {
     expect(formatTierLabel("PRO")).toBe("Pro");
     expect(formatTierLabel("BASIC")).toBe("Basic");
   });
+
+  it("normalizes first-letter casing for lowercase or mixed-case input", () => {
+    expect(formatTierLabel("pro")).toBe("Pro");
+    expect(formatTierLabel("pRo")).toBe("Pro");
+  });
 });
 
 describe("formatBytes", () => {

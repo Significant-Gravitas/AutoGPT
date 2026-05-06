@@ -37,7 +37,7 @@ export function formatTierLabel(
   tier: string | null | undefined,
 ): string | null {
   if (!tier || tier === "NO_TIER") return null;
-  return tier.charAt(0) + tier.slice(1).toLowerCase();
+  return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 
 export function formatBytes(bytes: number): string {
