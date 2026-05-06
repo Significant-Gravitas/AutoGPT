@@ -147,6 +147,10 @@ const toastMock = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseToast.mockReturnValue({ toast: toastMock });
+  mockGetQueryOptions.mockReturnValue({
+    queryKey: ["cred"],
+    queryFn: () => Promise.resolve(undefined),
+  });
 });
 
 afterEach(() => {
