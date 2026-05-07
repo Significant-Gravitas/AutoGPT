@@ -510,7 +510,7 @@ describe("useYourPlanCard", () => {
     expect(result.current.plan?.nextTierIsTeamLink).toBe(true);
   });
 
-  it("onDowngrade calls updateTier with the previous tier (MAX → PRO)", async () => {
+  it("onDowngrade stages the confirm dialog and onConfirmTierDowngrade fires updateTier (MAX → PRO)", async () => {
     let capturedTier: string | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
@@ -533,8 +533,19 @@ describe("useYourPlanCard", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    // Clicking Downgrade stages the dialog state — no mutation yet.
     await act(async () => {
       result.current.onDowngrade();
+    });
+
+    await waitFor(() =>
+      expect(result.current.pendingTierDowngrade).toBe("PRO"),
+    );
+    expect(capturedTier).toBeNull();
+
+    // Confirming the dialog fires the mutation.
+    await act(async () => {
+      result.current.onConfirmTierDowngrade();
     });
 
     await waitFor(() => expect(capturedTier).toBe("PRO"));
@@ -647,8 +658,16 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.canUpgrade).toBe(true);
 
+    // Paid → paid upgrade now stages a confirmation dialog before firing the
+    // mutation (silent prorated charge guard). onUpgrade only sets pending
+    // state; onConfirmTierUpgrade fires the actual updateTier call.
     await act(async () => {
       result.current.onUpgrade();
+    });
+    await waitFor(() => expect(result.current.pendingTierUpgrade).toBe("MAX"));
+
+    await act(async () => {
+      await result.current.onConfirmTierUpgrade();
     });
 
     await waitFor(() => expect(capturedTier).toBe("MAX"));

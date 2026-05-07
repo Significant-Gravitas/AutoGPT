@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from backend.copilot.bot.adapters.discord.adapter import DiscordAdapter
+from backend.copilot.bot.adapters.discord.adapter import (
+    THREAD_HISTORY_LIMIT,
+    DiscordAdapter,
+)
 
 
 def _bare_adapter(bot_id: int | None = 1000) -> tuple[DiscordAdapter, MagicMock]:
@@ -36,6 +39,21 @@ def _message(content: str, mentions: list[MagicMock]) -> MagicMock:
     msg.content = content
     msg.mentions = mentions
     return msg
+
+
+class _AsyncHistory:
+    def __init__(self, messages: list[MagicMock]):
+        self._messages = messages
+
+    def __aiter__(self):
+        self._iter = iter(self._messages)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
 
 
 # ── _strip_mentions ────────────────────────────────────────────────────
@@ -247,6 +265,39 @@ class TestSendMethods:
 
 
 # ── properties ─────────────────────────────────────────────────────────
+
+
+class TestThreadHistory:
+    @pytest.mark.asyncio
+    async def test_fetches_user_thread_history_oldest_first(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoPilot")
+
+        prior_1 = _message("first idea", [])
+        prior_1.author = MagicMock(bot=False, id=2000, display_name="Alice")
+        prior_2 = _message("<@1000> can ignore old bot ping", [bot])
+        prior_2.author = MagicMock(bot=False, id=3000, display_name="Bob")
+        bot_msg = _message("old bot output", [])
+        bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoPilot")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([prior_1, bot_msg, prior_2])
+        message = _message("<@1000> help", [bot])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        channel.history.assert_called_once_with(
+            limit=THREAD_HISTORY_LIMIT,
+            before=message,
+            oldest_first=True,
+        )
+        assert [entry.username for entry in history] == ["Alice", "Bob"]
+        assert [entry.user_id for entry in history] == ["2000", "3000"]
+        assert [entry.text for entry in history] == [
+            "first idea",
+            "can ignore old bot ping",
+        ]
 
 
 class TestProperties:

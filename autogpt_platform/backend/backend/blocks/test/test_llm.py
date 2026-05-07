@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -28,8 +28,14 @@ class TestLLMStatsTracking:
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response
-        with patch("openai.AsyncOpenAI") as mock_openai:
+        # Test with mocked OpenAI response. Suppress the OpenRouter key so the
+        # auto-reroute branch doesn't divert this test to the chat.completions
+        # path under a local .env that has open_router_api_key set.
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = ""
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = AsyncMock(return_value=mock_response)
@@ -523,7 +529,11 @@ class TestLLMStatsTracking:
             mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
-        with patch("openai.AsyncOpenAI") as mock_openai:
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = ""
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = mock_create
@@ -1227,67 +1237,72 @@ class TestLlmModelMissing:
 
 
 class TestExtractOpenRouterCost:
-    """Tests for extract_openrouter_cost — the x-total-cost header parser."""
+    """Tests for extract_openrouter_cost — reads ``response.usage.model_extra['cost']``.
 
-    def _mk_response(self, headers: dict | None):
+    OpenRouter's ``cost`` field is not a declared attribute on the OpenAI SDK's
+    ``CompletionUsage``; pydantic v2 puts unknown fields in ``model_extra`` when
+    the model is configured with ``extra='allow'``. Tests here exercise that
+    typed-access path — no duck typing.
+    """
+
+    def _mk_response(self, *, cost: Any = ...):
+        """Build a response with ``usage.model_extra['cost']`` set to ``cost``.
+
+        Pass ``cost=...`` (the default) to omit the cost key entirely.
+        """
         response = MagicMock()
-        if headers is None:
-            response._response = None
+        response.usage = MagicMock()
+        if cost is ...:
+            response.usage.model_extra = {}
         else:
-            raw = MagicMock()
-            raw.headers = headers
-            response._response = raw
+            response.usage.model_extra = {"cost": cost}
         return response
 
     def test_extracts_numeric_cost(self):
-        response = self._mk_response({"x-total-cost": "0.0042"})
-        assert llm.extract_openrouter_cost(response) == 0.0042
+        assert llm.extract_openrouter_cost(self._mk_response(cost=0.0042)) == 0.0042
 
-    def test_returns_none_when_header_missing(self):
-        response = self._mk_response({})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_extracts_string_cost(self):
+        assert llm.extract_openrouter_cost(self._mk_response(cost="0.0042")) == 0.0042
 
-    def test_returns_none_when_header_empty_string(self):
-        response = self._mk_response({"x-total-cost": ""})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_returns_none_when_cost_missing(self):
+        assert llm.extract_openrouter_cost(self._mk_response()) is None
 
-    def test_returns_none_when_header_non_numeric(self):
-        response = self._mk_response({"x-total-cost": "not-a-number"})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_returns_none_when_cost_is_none(self):
+        assert llm.extract_openrouter_cost(self._mk_response(cost=None)) is None
 
-    def test_returns_none_when_no_response_attr(self):
-        response = MagicMock(spec=[])  # no _response attr
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_raw_is_none(self):
-        response = self._mk_response(None)
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_raw_has_no_headers(self):
+    def test_returns_none_when_usage_missing(self):
         response = MagicMock()
-        response._response = MagicMock(spec=[])  # no headers attr
+        response.usage = None
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_model_extra_is_none(self):
+        response = MagicMock()
+        response.usage = MagicMock()
+        response.usage.model_extra = None
         assert llm.extract_openrouter_cost(response) is None
 
     def test_returns_zero_for_zero_cost(self):
         """Zero-cost is a valid value (free tier) and must not become None."""
-        response = self._mk_response({"x-total-cost": "0"})
-        assert llm.extract_openrouter_cost(response) == 0.0
+        assert llm.extract_openrouter_cost(self._mk_response(cost=0)) == 0.0
+
+    def test_returns_none_for_non_numeric(self):
+        assert (
+            llm.extract_openrouter_cost(self._mk_response(cost="not-a-number")) is None
+        )
 
     def test_returns_none_for_inf(self):
-        response = self._mk_response({"x-total-cost": "inf"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=float("inf"))) is None
 
     def test_returns_none_for_negative_inf(self):
-        response = self._mk_response({"x-total-cost": "-inf"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert (
+            llm.extract_openrouter_cost(self._mk_response(cost=float("-inf"))) is None
+        )
 
     def test_returns_none_for_nan(self):
-        response = self._mk_response({"x-total-cost": "nan"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=float("nan"))) is None
 
     def test_returns_none_for_negative_cost(self):
-        response = self._mk_response({"x-total-cost": "-0.005"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=-0.005)) is None
 
 
 class TestAnthropicCacheControl:

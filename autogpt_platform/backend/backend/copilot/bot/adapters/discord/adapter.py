@@ -13,10 +13,17 @@ from discord import app_commands
 
 from backend.copilot.bot.bot_backend import BotBackend
 
-from ..base import ChannelType, MessageCallback, MessageContext, PlatformAdapter
+from ..base import (
+    ChannelType,
+    MessageCallback,
+    MessageContext,
+    MessageHistoryEntry,
+    PlatformAdapter,
+)
 from . import commands, config
 
 logger = logging.getLogger(__name__)
+THREAD_HISTORY_LIMIT = 20
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -164,11 +171,16 @@ class DiscordAdapter(PlatformAdapter):
                 return
 
             channel_type = self._channel_type(message)
+            bot_mentioned = self._is_mentioned(message)
 
             # Channels require an explicit @mention; DMs and threads always forward
             # (handler checks thread subscription).
-            if channel_type == "channel" and not self._is_mentioned(message):
+            if channel_type == "channel" and not bot_mentioned:
                 return
+
+            thread_history = ()
+            if channel_type == "thread" and bot_mentioned:
+                thread_history = await self._thread_history(message)
 
             ctx = MessageContext(
                 platform="discord",
@@ -179,6 +191,8 @@ class DiscordAdapter(PlatformAdapter):
                 user_id=str(message.author.id),
                 username=message.author.display_name,
                 text=self._strip_mentions(message),
+                bot_mentioned=bot_mentioned,
+                thread_history=thread_history,
             )
             await self._on_message_callback(ctx, self)
 
@@ -207,3 +221,34 @@ class DiscordAdapter(PlatformAdapter):
             for token in raw_tokens:
                 text = text.replace(token, replacement)
         return text.strip()
+
+    async def _thread_history(
+        self, message: discord.Message
+    ) -> tuple[MessageHistoryEntry, ...]:
+        if not isinstance(message.channel, discord.Thread):
+            return ()
+
+        entries: list[MessageHistoryEntry] = []
+        try:
+            async for prior in message.channel.history(
+                limit=THREAD_HISTORY_LIMIT,
+                before=message,
+                oldest_first=True,
+            ):
+                if prior.author.bot:
+                    continue
+                text = self._strip_mentions(prior)
+                if not text:
+                    continue
+                entries.append(
+                    MessageHistoryEntry(
+                        username=prior.author.display_name,
+                        user_id=str(prior.author.id),
+                        text=text,
+                    )
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord thread history", exc_info=True)
+            return ()
+
+        return tuple(entries)

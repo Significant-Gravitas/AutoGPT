@@ -20,6 +20,15 @@ ChannelType = Literal["dm", "channel", "thread"]
 
 
 @dataclass
+class MessageHistoryEntry:
+    """A prior platform message included as context for the current turn."""
+
+    username: str
+    user_id: Optional[str]
+    text: str
+
+
+@dataclass
 class MessageContext:
     """Everything the core handler needs to know about an incoming message."""
 
@@ -31,6 +40,8 @@ class MessageContext:
     user_id: str
     username: str
     text: str  # with bot mentions stripped
+    bot_mentioned: bool = False
+    thread_history: tuple[MessageHistoryEntry, ...] = ()
 
     @property
     def is_dm(self) -> bool:

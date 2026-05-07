@@ -92,6 +92,12 @@ MEMORY_CONTEXT_TAG = "memory_context"
 # without polluting the cacheable system prompt.  Server-injected only.
 ENV_CONTEXT_TAG = "env_context"
 
+# Tag name for the per-turn budget hint block (baseline-only — the SDK CLI
+# has its own running-cost reminder via ``max_budget_usd``).  Kept as a
+# distinct tag so it does not nest inside ``<env_context>`` and so users
+# cannot spoof a fake budget figure to the model.  Server-injected only.
+BUDGET_CONTEXT_TAG = "budget_context"
+
 # Builder-binding tag names (``builder_context`` per-turn prefix, and
 # ``builder_session`` static system-prompt suffix) are defined in
 # ``backend.copilot.builder_context``; the system prompt below refers to
@@ -105,7 +111,7 @@ ENV_CONTEXT_TAG = "env_context"
 # sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
 # prompt_cache_test.py. The leading underscore is retained for backwards
 # compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
-_CACHEABLE_SYSTEM_PROMPT = f"""You are an AI automation assistant helping users build and run automations.
+_CACHEABLE_SYSTEM_PROMPT = f"""You are AutoPilot, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
 - Understanding their needs and business context
@@ -196,6 +202,14 @@ _ENV_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+_BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
+    rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
+)
+_BUDGET_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{BUDGET_CONTEXT_TAG}>", re.IGNORECASE)
+_BUDGET_CONTEXT_PREFIX_RE = re.compile(
+    rf"^<{BUDGET_CONTEXT_TAG}>.*?</{BUDGET_CONTEXT_TAG}>\n\n", re.DOTALL
+)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -257,7 +271,11 @@ def sanitize_user_supplied_context(message: str) -> str:
     # Strip <env_context> blocks and lone tags — prevents spoofing of working-directory
     # context that the SDK service injects server-side.
     without_env_ctx = _ENV_CONTEXT_ANYWHERE_RE.sub("", without_mem_ctx)
-    return _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
+    without_env_ctx = _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
+    # Strip <budget_context> blocks and lone tags — prevents spoofing of the
+    # server-injected per-turn USD-budget hint.
+    without_budget_ctx = _BUDGET_CONTEXT_ANYWHERE_RE.sub("", without_env_ctx)
+    return _BUDGET_CONTEXT_LONE_TAG_RE.sub("", without_budget_ctx)
 
 
 def strip_injected_context_for_display(message: str) -> str:
@@ -283,6 +301,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _USER_CONTEXT_PREFIX_RE.sub("", result)
         result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
         result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
+        result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
     return result
 
 
@@ -374,6 +393,8 @@ async def inject_user_context(
     session_messages: list[ChatMessage],
     warm_ctx: str = "",
     env_ctx: str = "",
+    budget_ctx: str = "",
+    user_id: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -438,6 +459,13 @@ async def inject_user_context(
         final_message = sanitized_message
     else:
         raw_ctx = format_understanding_for_prompt(understanding)
+        # Append subscription tier so the agent has ambient awareness.
+        if user_id:
+            from .rate_limit import get_user_tier
+
+            tier = await get_user_tier(user_id)
+            tier_line = f"Plan: {tier.value}"
+            raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
         if not raw_ctx:
             # All BusinessUnderstanding fields are empty/None — injecting an
             # empty <user_context>\n\n</user_context> block adds no value and
@@ -460,6 +488,18 @@ async def inject_user_context(
     if env_ctx:
         final_message = (
             f"<{ENV_CONTEXT_TAG}>\n{env_ctx}\n</{ENV_CONTEXT_TAG}>\n\n" + final_message
+        )
+    # Prepend budget context as its own block so the per-turn USD hint does
+    # NOT nest inside ``<env_context>`` (whose system-prompt contract says
+    # it carries the working directory only).  Server-injected — sanitised
+    # against user spoofing in ``sanitize_user_supplied_context``.  The
+    # cacheable system prompt is intentionally NOT updated to describe this
+    # tag: doing so would invalidate the cross-user prompt cache for an
+    # informational hint with negligible spoof-impact.
+    if budget_ctx:
+        final_message = (
+            f"<{BUDGET_CONTEXT_TAG}>\n{budget_ctx}\n</{BUDGET_CONTEXT_TAG}>\n\n"
+            + final_message
         )
     # Prepend Graphiti warm context as a <memory_context> block AFTER sanitization
     # so that the trusted server-injected block is never stripped by

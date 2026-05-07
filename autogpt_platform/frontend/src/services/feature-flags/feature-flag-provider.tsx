@@ -38,6 +38,8 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
         email_domain: user.email.split("@").at(-1),
       }),
       ...(user.role && { role: user.role }),
+      // Supabase JS emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
+      ...(user.created_at && { created_at: user.created_at }),
       custom: {
         ...(user.role && { role: user.role }),
       },
