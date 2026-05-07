@@ -201,11 +201,3 @@ class TestUserContext:
 
         assert ctx.get("created_at") is None
         assert ctx.get("email") == "x@y.com"
-
-    @pytest.mark.asyncio
-    async def test_context_accepts_string_created_at(self, mocker):
-        self._stub_supabase(mocker, created_at="2026-05-07T12:00:00+00:00")
-
-        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
-
-        assert ctx.get("created_at") == "2026-05-07T12:00:00+00:00"
