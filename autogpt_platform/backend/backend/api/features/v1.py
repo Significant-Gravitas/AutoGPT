@@ -27,7 +27,11 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_404_NOT_FOUND,
+)
 from typing_extensions import Optional, TypedDict
 
 from backend.api.features.workspace.routes import create_file_download_response
@@ -55,6 +59,7 @@ from backend.data.credit import (
     PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
+    UsageTransactionMetadata,
     UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
@@ -116,7 +121,11 @@ from backend.monitoring.instrumentation import (
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    InsufficientBalanceError,
+    NotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -468,6 +477,25 @@ async def execute_graph_block(
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
+
+    cost, cost_filter = execution_utils.block_usage_cost(obj, data)
+    if cost > 0:
+        credit_model = await get_user_credit_model(user_id)
+        try:
+            await credit_model.spend_credits(
+                user_id=user_id,
+                cost=cost,
+                metadata=UsageTransactionMetadata(
+                    block_id=block_id,
+                    block=obj.name,
+                    input=cost_filter,
+                    reason=f"Direct block execution of {obj.name}",
+                ),
+            )
+        except InsufficientBalanceError as e:
+            raise HTTPException(
+                status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+            ) from e
 
     start_time = time.time()
     try:
