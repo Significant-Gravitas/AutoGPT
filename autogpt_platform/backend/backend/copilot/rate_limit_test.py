@@ -11,6 +11,7 @@ from .rate_limit import (
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
+    CoPilotUsagePublic,
     CoPilotUsageStatus,
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -314,6 +315,57 @@ class TestCheckRateLimit:
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
             assert exc_info.value.window == "daily"
+
+
+class TestCoPilotUsagePublicFromStatus:
+    """Public-shape projection must surface a 0-limit window as fully
+    exhausted (the user is paywalled / blocked), not as `None`. Hiding
+    the window would tell the UI "no cap configured" — the same silent
+    bypass that motivated this PR."""
+
+    @staticmethod
+    def _status(daily_limit: int, weekly_limit: int) -> CoPilotUsageStatus:
+        from .rate_limit import UsageWindow
+
+        return CoPilotUsageStatus(
+            daily=UsageWindow(
+                used=0,
+                limit=daily_limit,
+                resets_at=_daily_reset_time(),
+            ),
+            weekly=UsageWindow(
+                used=0,
+                limit=weekly_limit,
+                resets_at=_weekly_reset_time(),
+            ),
+            tier=DEFAULT_TIER,
+            reset_cost=0,
+        )
+
+    def test_zero_limit_renders_as_fully_exhausted(self):
+        public = CoPilotUsagePublic.from_status(self._status(0, 0))
+        assert public.daily is not None
+        assert public.daily.percent_used == 100.0
+        assert public.weekly is not None
+        assert public.weekly.percent_used == 100.0
+
+    def test_positive_limit_renders_normally(self):
+        # daily limit $10, used $0 → 0% used
+        from .rate_limit import UsageWindow
+
+        status = CoPilotUsageStatus(
+            daily=UsageWindow(used=0, limit=10_000_000, resets_at=_daily_reset_time()),
+            weekly=UsageWindow(
+                used=5_000_000, limit=10_000_000, resets_at=_weekly_reset_time()
+            ),
+            tier=DEFAULT_TIER,
+            reset_cost=0,
+        )
+        public = CoPilotUsagePublic.from_status(status)
+        assert public.daily is not None
+        assert public.daily.percent_used == 0.0
+        assert public.weekly is not None
+        assert public.weekly.percent_used == 50.0
 
 
 class TestEnforcePaymentPaywall:

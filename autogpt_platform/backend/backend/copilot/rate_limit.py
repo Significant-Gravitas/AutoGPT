@@ -400,8 +400,20 @@ class CoPilotUsagePublic(BaseModel):
         """Project the internal status onto the client-safe schema."""
 
         def window(w: UsageWindow) -> UsageWindowPublic | None:
-            if w.limit <= 0:
+            if w.limit < 0:
+                # Defensive: nothing produces a negative limit today, but
+                # treat it as "no cap configured" → hide the window from
+                # the UI rather than divide-by-negative.
                 return None
+            if w.limit == 0:
+                # Limit of 0 means "no spend allowed" — surface as fully
+                # exhausted so the UI shows the user as blocked instead
+                # of silently treating it as null/unlimited (which was
+                # the source of the original autopilot paywall bypass).
+                return UsageWindowPublic(
+                    percent_used=100.0,
+                    resets_at=w.resets_at,
+                )
             # When at/over the cap, snap to exactly 100.0 so the UI's
             # rounded display and its exhaustion check (`percent_used >= 100`)
             # agree. Without this, e.g. 99.95% would render as "100% used"

@@ -1662,6 +1662,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2591,6 +2594,9 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
           },
           "404": { "description": "Session not found or access denied" },
           "422": {
@@ -4231,6 +4237,9 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
           },
           "422": {
             "description": "Validation Error",
