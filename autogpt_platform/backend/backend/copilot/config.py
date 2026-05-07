@@ -244,6 +244,10 @@ class ChatConfig(BaseSettings):
         "compaction cascades. Skipped unconditionally for Moonshot routes.",
     )
     claude_agent_max_thinking_tokens: int = Field(
+        deprecated=(
+            "Setting a thinking token budget is not supported in Claude 4.7+. "
+            "Use `claude_agent_thinking_effort` instead to steer thinking effort."
+        ),
         default=8192,
         ge=0,
         le=128000,
@@ -273,13 +277,15 @@ class ChatConfig(BaseSettings):
         description="Max Redis stream entries replayed on SSE reconnect.",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
+        # TODO: add xhigh when SDK support catches up
         Field(
             default=None,
             description="Thinking effort level: 'low', 'medium', 'high', 'max', or None. "
-            "Applies to models that emit a reasoning channel — Opus (extended "
-            "thinking) and Kimi K2.6 (OpenRouter ``reasoning`` extension lit "
-            "up by #12871).  Sonnet does not have extended thinking — setting "
-            "effort on Sonnet can cause <internal_reasoning> tag leaks. "
+            "Applies to models that emit a reasoning channel — Sonnet, Opus, "
+            "and Mythos (adaptive thinking) and Kimi K2.6 "
+            "(OpenRouter ``reasoning`` extension lit up by #12871). "
+            "Check https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking "  # noqa
+            "for model compatibility and guidance. "
             "None = let the model decide. Override via CHAT_CLAUDE_AGENT_THINKING_EFFORT.",
         )
     )

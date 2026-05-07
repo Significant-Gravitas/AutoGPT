@@ -420,9 +420,9 @@ class SDKResponseAdapter:
                 )
                 # Pair with StreamFinish so ``acc.stream_completed`` flips True
                 # in ``_dispatch_response`` — without it the service-layer
-                # post-stream branch mis-classifies the turn as "stopped by
-                # user" and appends a STOPPED_BY_USER_MARKER on top of the
-                # error marker.
+                # post-stream branch falls into the CLI-side-kill path and
+                # appends a STREAM_INCOMPLETE_MARKER on top of the error
+                # marker.
                 responses.append(StreamFinish())
                 logger.warning(
                     "[SDK] [%s] Empty-success ResultMessage detected — "

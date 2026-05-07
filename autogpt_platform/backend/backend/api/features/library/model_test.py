@@ -21,6 +21,7 @@ def _make_library_agent(
         isCreatedByUser=True,
         isDeleted=False,
         isArchived=False,
+        isHidden=False,
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
         isFavorite=False,

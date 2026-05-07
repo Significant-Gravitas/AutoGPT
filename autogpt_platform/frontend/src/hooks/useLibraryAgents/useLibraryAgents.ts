@@ -9,6 +9,7 @@ export function useLibraryAgents() {
       {
         page: 1,
         page_size: 100,
+        is_hidden: false,
       },
       {
         query: {

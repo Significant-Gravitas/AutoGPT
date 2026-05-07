@@ -6,15 +6,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from openai import AsyncOpenAI
-
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     get_business_understanding,
     upsert_business_understanding,
 )
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import get_openai_client
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -354,9 +352,11 @@ async def extract_business_understanding(
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
-    settings = Settings()
-    api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+    client = get_openai_client(prefer_openrouter=True)
+    if client is None:
+        raise RuntimeError(
+            "open_router_api_key not set, cannot extract business understanding"
+        )
 
     try:
         response = await asyncio.wait_for(

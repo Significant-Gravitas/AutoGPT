@@ -13,6 +13,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
@@ -140,6 +141,7 @@ def test_execute_graph_block(
     # Mock block
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.name = "TestBlock"
 
     async def mock_execute(*args, **kwargs):
         yield "output1", {"data": "result1"}
@@ -161,6 +163,17 @@ def test_execute_graph_block(
         return_value=mock_user,
     )
 
+    # Default to free block: cost = 0, no charge call.
+    cost_mock = mocker.patch(
+        "backend.api.features.v1.execution_utils.block_usage_cost",
+        return_value=(0, {}),
+    )
+    mock_credit_model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
     request_data = {
         "input_name": "test_input",
         "input_value": "test_value",
@@ -171,11 +184,112 @@ def test_execute_graph_block(
     assert response.status_code == 200
     response_data = response.json()
 
+    # Cost = 0 path: no spend_credits call.
+    cost_mock.assert_called_once()
+    mock_credit_model.spend_credits.assert_not_awaited()
+
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "blks_exec",
     )
+
+
+def test_execute_graph_block_charges_when_cost_positive(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Paid blocks must charge credits before executing."""
+    mock_block = Mock()
+    mock_block.disabled = False
+    mock_block.id = "paid-block"
+    mock_block.name = "PaidBlock"
+
+    async def mock_execute(*args, **kwargs):
+        yield "output", {"data": "ok"}
+
+    mock_block.execute = mock_execute
+
+    mocker.patch(
+        "backend.api.features.v1.get_block",
+        return_value=mock_block,
+    )
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        return_value=mock_user,
+    )
+
+    cost_filter = {"model": "gpt-4"}
+    mocker.patch(
+        "backend.executor.utils.block_usage_cost",
+        return_value=(42, cost_filter),
+    )
+    mock_credit_model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/blocks/paid-block/execute", json={"input_name": "x", "input_value": "y"}
+    )
+
+    assert response.status_code == 200
+    mock_credit_model.spend_credits.assert_awaited_once()
+    call_kwargs = mock_credit_model.spend_credits.await_args.kwargs
+    assert call_kwargs["cost"] == 42
+    metadata = call_kwargs["metadata"]
+    assert metadata.block_id == "paid-block"
+    assert metadata.block == "PaidBlock"
+    assert metadata.input == cost_filter
+    assert metadata.reason == "Direct internal block execution of PaidBlock"
+
+
+def test_execute_graph_block_returns_402_on_insufficient_balance(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """If spend_credits raises InsufficientBalanceError, endpoint returns 402."""
+    mock_block = Mock()
+    mock_block.disabled = False
+    mock_block.id = "paid-block"
+    mock_block.name = "PaidBlock"
+    mock_block.execute = AsyncMock()
+
+    mocker.patch(
+        "backend.api.features.v1.get_block",
+        return_value=mock_block,
+    )
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.executor.utils.block_usage_cost",
+        return_value=(99, {}),
+    )
+
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.spend_credits.side_effect = InsufficientBalanceError(
+        message="Insufficient balance",
+        user_id=test_user_id,
+        balance=10,
+        amount=99,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/blocks/paid-block/execute", json={"input_name": "x", "input_value": "y"}
+    )
+
+    assert response.status_code == 402
+    mock_block.execute.assert_not_called()
 
 
 def test_execute_graph_block_not_found(
@@ -574,10 +688,12 @@ async def test_upload_file_success(test_user_id: str):
     )
 
     # Mock dependencies
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = "gcs://test-bucket/uploads/123/test.txt"
@@ -624,10 +740,12 @@ async def test_upload_file_no_filename(test_user_id: str):
         ),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = (
@@ -705,10 +823,12 @@ async def test_upload_file_cloud_storage_failure(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.side_effect = RuntimeError("Storage error!")
@@ -752,10 +872,12 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.config.gcs_bucket_name = ""  # Simulate no GCS bucket configured

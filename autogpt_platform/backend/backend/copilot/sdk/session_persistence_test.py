@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from backend.copilot.constants import STOPPED_BY_USER_MARKER
+from backend.copilot.constants import STOPPED_BY_USER_MARKER, STREAM_INCOMPLETE_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
@@ -263,6 +263,28 @@ class TestPruneOrphanToolCalls:
                 tool_calls=[self._tool_call("tc_abc")],
             ),
             ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_stop_strips_stream_incomplete_marker_and_orphan(self) -> None:
+        """When the SDK CLI ends without a ResultMessage (per-query budget
+        exhausted, max_turns hit, OOM, crash) the service appends a
+        ``STREAM_INCOMPLETE_MARKER`` notice; the next turn's prune must drop
+        both the orphan assistant tool_use and the trailing notice so the
+        ``--resume`` transcript stays clean."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER),
         ]
 
         removed = prune_orphan_tool_calls(messages)

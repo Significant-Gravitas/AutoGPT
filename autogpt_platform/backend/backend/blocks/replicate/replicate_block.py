@@ -55,10 +55,16 @@ class ReplicateModelBlock(Block):
             placeholder="stability-ai/stable-diffusion",
             advanced=False,
         )
-        model_inputs: dict[str, str | int] = SchemaField(
+        model_inputs: dict[str, str | int | float | bool] = SchemaField(
             default={},
-            description="Dictionary of inputs to pass to the model",
-            placeholder='{"prompt": "a beautiful landscape", "num_outputs": 1}',
+            description=(
+                "Dictionary of inputs to pass to the model. Values may be "
+                "strings, integers, floats, or booleans — Replicate model "
+                "schemas commonly require booleans (e.g. ``generate_audio``, "
+                "``safety_checker``) and floats (e.g. ``temperature``, "
+                "``guidance_scale``)."
+            ),
+            placeholder='{"prompt": "a beautiful landscape", "num_outputs": 1, "generate_audio": false}',
             advanced=False,
         )
         version: Optional[str] = SchemaField(
@@ -83,7 +89,12 @@ class ReplicateModelBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "model_name": "meta/llama-2-7b-chat",
-                "model_inputs": {"prompt": "Hello, world!", "max_new_tokens": 50},
+                "model_inputs": {
+                    "prompt": "Hello, world!",
+                    "max_new_tokens": 50,
+                    "temperature": 0.7,
+                    "stream": False,
+                },
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
