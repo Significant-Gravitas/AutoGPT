@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import BackendAPI, { buildOAuthLoginQuery } from "../client";
 
 describe("BackendAPI.oAuthLogin", () => {
@@ -69,5 +69,52 @@ describe("buildOAuthLoginQuery", () => {
     expect(buildOAuthLoginQuery(["drive.file"], "")).toEqual({
       scopes: "drive.file",
     });
+  });
+});
+
+describe("BackendAPI._makeClientRequest 204 handling", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockFetch(response: Response) {
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+  }
+
+  it("returns null for 204 No Content without parsing body", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    mockFetch(new Response(null, { status: 204 }));
+
+    const result = await (api as any)._makeClientRequest(
+      "DELETE",
+      "/library/agents/abc",
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when Content-Length is 0", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    mockFetch(
+      new Response("", { status: 200, headers: { "Content-Length": "0" } }),
+    );
+
+    const result = await (api as any)._makeClientRequest("DELETE", "/x");
+
+    expect(result).toBeNull();
+  });
+
+  it("parses JSON body for non-empty 200 responses", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    mockFetch(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await (api as any)._makeClientRequest("GET", "/x");
+
+    expect(result).toEqual({ ok: true });
   });
 });
