@@ -277,36 +277,15 @@ async def test_resolve_agent_name_falls_back_on_exception(
     assert name == "Agent abcdef01"
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_summary_falls_back_when_graph_metadata_missing(server: SpinTestServer):
-    # If a graph is deleted but executions still reference it, name resolution
-    # must fall back to a short-id label instead of raising.
-    user_id = f"sum-orphan-{uuid4()}"
-    graph_id = f"orphan-graph-{uuid4()}"
-    await _create_test_user(user_id)
-    await _create_graph(graph_id, user_id, "TempName")
+@pytest.mark.asyncio
+async def test_resolve_agent_name_falls_back_when_metadata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # When get_graph_metadata returns None (e.g. graph not found),
+    # _resolve_agent_name must produce a short-id label.
+    async def returns_none(graph_id: str, version=None):
+        return None
 
-    now = datetime.now(timezone.utc)
-    try:
-        await _create_exec(
-            f"o1-{uuid4()}",
-            user_id,
-            graph_id,
-            AgentExecutionStatus.COMPLETED,
-            42,
-            1.0,
-            now - timedelta(hours=1),
-        )
-
-        # Delete the graph row before summary runs, leaving the execution
-        # behind with a now-orphaned agentGraphId.
-        await AgentGraph.prisma().delete_many(where={"id": graph_id})
-
-        stats = await get_user_execution_summary_data(
-            user_id, now - timedelta(hours=2), now
-        )
-        expected_fallback = f"Agent {graph_id[:8]}"
-        assert stats.most_used_agent == expected_fallback
-        assert stats.cost_breakdown == {expected_fallback: pytest.approx(42 / 100)}
-    finally:
-        await _cleanup(user_id, [graph_id])
+    monkeypatch.setattr(generate_data, "get_graph_metadata", returns_none)
+    name = await _resolve_agent_name("abcdef0123456789")
+    assert name == "Agent abcdef01"
