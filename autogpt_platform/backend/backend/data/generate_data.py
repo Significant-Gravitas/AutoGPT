@@ -133,5 +133,5 @@ async def _resolve_agent_name(graph_id: str) -> str:
         graph_meta = await get_graph_metadata(graph_id=graph_id)
         return graph_meta.name if graph_meta else f"Agent {graph_id[:8]}"
     except Exception:
-        logger.warning(f"Could not get metadata for graph {graph_id}")
+        logger.warning(f"Could not get metadata for graph {graph_id}", exc_info=True)
         return f"Agent {graph_id[:8]}"
