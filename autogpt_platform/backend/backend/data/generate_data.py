@@ -1,10 +1,7 @@
 import logging
-from collections import defaultdict
 from datetime import datetime
 
-from prisma.enums import AgentExecutionStatus
-
-from backend.data.execution import get_graph_executions
+from backend.data.db import query_raw_with_schema
 from backend.data.graph import get_graph_metadata
 from backend.data.model import UserExecutionSummaryStats
 from backend.util.exceptions import DatabaseError
@@ -16,90 +13,82 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[SummaryData]")
 async def get_user_execution_summary_data(
     user_id: str, start_time: datetime, end_time: datetime
 ) -> UserExecutionSummaryStats:
-    """Gather all summary data for a user in a time range.
+    """Aggregate per-graph execution stats for a user via grouped SQL.
 
-    This function fetches graph executions once and aggregates all required
-    statistics in a single pass for efficiency.
+    Pulls only one summary row per agentGraphId instead of every individual
+    AgentGraphExecution: heavy users had thousands of executions per call,
+    making this the dominant row-egress query in the prior implementation.
     """
     try:
-        # Fetch graph executions once
-        executions = await get_graph_executions(
-            user_id=user_id,
-            created_time_gte=start_time,
-            created_time_lte=end_time,
+        rows = await query_raw_with_schema(
+            """
+            SELECT
+                "agentGraphId" AS graph_id,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE "executionStatus" = 'COMPLETED') AS successful,
+                COUNT(*) FILTER (WHERE "executionStatus" IN ('FAILED', 'TERMINATED')) AS failed,
+                COALESCE(SUM(("stats"::jsonb->>'cost')::numeric), 0) AS total_cost_cents,
+                COALESCE(SUM(("stats"::jsonb->>'walltime')::numeric), 0) AS total_walltime,
+                COUNT(*) FILTER (WHERE ("stats"::jsonb->>'walltime') IS NOT NULL) AS walltime_count
+            FROM {schema_prefix}"AgentGraphExecution"
+            WHERE "userId" = $1
+              AND "isDeleted" = false
+              AND "createdAt" >= $2
+              AND "createdAt" <= $3
+            GROUP BY "agentGraphId"
+            """,
+            user_id,
+            start_time,
+            end_time,
         )
 
-        # Initialize aggregation variables
-        total_credits_used = 0.0
-        total_executions = len(executions)
+        total_executions = 0
         successful_runs = 0
         failed_runs = 0
-        terminated_runs = 0
-        execution_times = []
-        agent_usage = defaultdict(int)
-        cost_by_graph_id = defaultdict(float)
+        total_cost_cents = 0.0
+        total_walltime = 0.0
+        walltime_count = 0
+        cost_by_graph_id: dict[str, float] = {}
+        usage_by_graph_id: dict[str, int] = {}
 
-        # Single pass through executions to aggregate all stats
-        for execution in executions:
-            # Count execution statuses (including TERMINATED as failed)
-            if execution.status == AgentExecutionStatus.COMPLETED:
-                successful_runs += 1
-            elif execution.status == AgentExecutionStatus.FAILED:
-                failed_runs += 1
-            elif execution.status == AgentExecutionStatus.TERMINATED:
-                terminated_runs += 1
+        for row in rows:
+            graph_id = row["graph_id"]
+            count = int(row["total"])
+            cost_cents = float(row["total_cost_cents"])
 
-            # Aggregate costs from stats
-            if execution.stats and hasattr(execution.stats, "cost"):
-                cost_in_dollars = execution.stats.cost / 100
-                total_credits_used += cost_in_dollars
-                cost_by_graph_id[execution.graph_id] += cost_in_dollars
+            total_executions += count
+            successful_runs += int(row["successful"])
+            failed_runs += int(row["failed"])
+            total_cost_cents += cost_cents
+            total_walltime += float(row["total_walltime"])
+            walltime_count += int(row["walltime_count"])
 
-            # Collect execution times
-            if execution.stats and hasattr(execution.stats, "duration"):
-                execution_times.append(execution.stats.duration)
+            usage_by_graph_id[graph_id] = count
+            cost_by_graph_id[graph_id] = cost_cents / 100
 
-            # Count agent usage
-            agent_usage[execution.graph_id] += 1
-
-        # Calculate derived stats
-        total_execution_time = sum(execution_times)
+        total_credits_used = total_cost_cents / 100
         average_execution_time = (
-            total_execution_time / len(execution_times) if execution_times else 0
+            total_walltime / walltime_count if walltime_count else 0
         )
 
-        # Find most used agent
         most_used_agent = "No agents used"
-        if agent_usage:
-            most_used_agent_id = max(agent_usage, key=lambda k: agent_usage[k])
-            try:
-                graph_meta = await get_graph_metadata(graph_id=most_used_agent_id)
-                most_used_agent = (
-                    graph_meta.name if graph_meta else f"Agent {most_used_agent_id[:8]}"
-                )
-            except Exception:
-                logger.warning(f"Could not get metadata for graph {most_used_agent_id}")
-                most_used_agent = f"Agent {most_used_agent_id[:8]}"
+        if usage_by_graph_id:
+            most_used_agent_id = max(
+                usage_by_graph_id, key=lambda k: usage_by_graph_id[k]
+            )
+            most_used_agent = await _resolve_agent_name(most_used_agent_id)
 
-        # Convert graph_ids to agent names for cost breakdown
-        cost_breakdown = {}
+        cost_breakdown: dict[str, float] = {}
         for graph_id, cost in cost_by_graph_id.items():
-            try:
-                graph_meta = await get_graph_metadata(graph_id=graph_id)
-                agent_name = graph_meta.name if graph_meta else f"Agent {graph_id[:8]}"
-            except Exception:
-                logger.warning(f"Could not get metadata for graph {graph_id}")
-                agent_name = f"Agent {graph_id[:8]}"
-            cost_breakdown[agent_name] = cost
+            cost_breakdown[await _resolve_agent_name(graph_id)] = cost
 
-        # Build the summary stats object (include terminated runs as failed)
         return UserExecutionSummaryStats(
             total_credits_used=total_credits_used,
             total_executions=total_executions,
             successful_runs=successful_runs,
-            failed_runs=failed_runs + terminated_runs,
+            failed_runs=failed_runs,
             most_used_agent=most_used_agent,
-            total_execution_time=total_execution_time,
+            total_execution_time=total_walltime,
             average_execution_time=average_execution_time,
             cost_breakdown=cost_breakdown,
         )
@@ -107,3 +96,12 @@ async def get_user_execution_summary_data(
     except Exception as e:
         logger.error(f"Failed to get user summary data: {e}")
         raise DatabaseError(f"Failed to get user summary data: {e}") from e
+
+
+async def _resolve_agent_name(graph_id: str) -> str:
+    try:
+        graph_meta = await get_graph_metadata(graph_id=graph_id)
+        return graph_meta.name if graph_meta else f"Agent {graph_id[:8]}"
+    except Exception:
+        logger.warning(f"Could not get metadata for graph {graph_id}")
+        return f"Agent {graph_id[:8]}"

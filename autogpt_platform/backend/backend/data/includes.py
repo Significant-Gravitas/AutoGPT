@@ -21,9 +21,13 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
     {"addedTime": "desc"},
 ]
 
+# Cap per-execution Input/Output fanout so a node with thousands of I/O rows
+# can't drag the full set back on an include path that runs hot.
+MAX_NODE_INPUT_OUTPUT_FETCH = 100
+
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
-    "Input": {"order_by": {"time": "asc"}},
-    "Output": {"order_by": {"time": "asc"}},
+    "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
+    "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Node": True,
     "GraphExecution": True,
 }
