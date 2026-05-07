@@ -13,6 +13,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
 
@@ -248,8 +249,6 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
     test_user_id: str,
 ) -> None:
     """If spend_credits raises InsufficientBalanceError, endpoint returns 402."""
-    from backend.util.exceptions import InsufficientBalanceError
-
     mock_block = Mock()
     mock_block.disabled = False
     mock_block.name = "PaidBlock"
