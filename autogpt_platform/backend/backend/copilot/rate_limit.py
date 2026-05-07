@@ -337,7 +337,9 @@ class UsageWindow(BaseModel):
     used: int
     limit: int = Field(
         description="Maximum microdollars of spend allowed in this window. "
-        "0 means unlimited."
+        "0 means no spend allowed (the user is over-cap immediately); there "
+        "is no unlimited tier — the public model uses ``None`` for "
+        "no-cap-configured."
     )
     resets_at: datetime
 
@@ -464,8 +466,10 @@ async def get_usage_status(
 
     Args:
         user_id: The user's ID.
-        daily_cost_limit: Max microdollars of spend per day (0 = unlimited).
-        weekly_cost_limit: Max microdollars of spend per week (0 = unlimited).
+        daily_cost_limit: Max microdollars of spend per day. 0 means no spend
+            allowed (over-cap immediately).
+        weekly_cost_limit: Max microdollars of spend per week. 0 means no
+            spend allowed (over-cap immediately).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
         tier: The user's rate-limit tier (included in the response).
 
@@ -518,28 +522,27 @@ async def get_remaining_usd_budget(
     user is close to their actual cap, and to feed the baseline path's
     per-turn budget hint via :func:`build_budget_ctx`.
 
-    A limit of ``0`` is treated as unlimited.  Both limits unlimited →
-    ``float('inf')``.
+    A limit of ``0`` is treated as "no spend allowed" — remaining = 0
+    on that window. There is no real-world unlimited tier; callers
+    should not pass 0 expecting it to mean "no cap".
 
     Failure modes:
-        * Both limits unlimited → ``float('inf')`` (no Redis call).
         * Redis brown-out → ``floor_usd`` (so callers using the value
-          as a soft hint don't pretend the user has unlimited budget;
-          the pre-turn gate has already failed closed at 503 in this
-          case, so we only land here from observability paths).
+          as a soft hint don't pretend the user has full budget; the
+          pre-turn gate has already failed closed at 503 in this case,
+          so we only land here from observability paths).
 
     Args:
         user_id: The user's ID.
-        daily_cost_limit: Daily cap in microdollars (0 = unlimited).
-        weekly_cost_limit: Weekly cap in microdollars (0 = unlimited).
+        daily_cost_limit: Daily cap in microdollars. 0 = no spend allowed
+            on this window.
+        weekly_cost_limit: Weekly cap in microdollars. 0 = no spend allowed
+            on this window.
         floor_usd: Lower bound on the returned value (USD).  Avoids
             handing the SDK a degenerate ``$0`` budget that would refuse
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
     """
-    if daily_cost_limit <= 0 and weekly_cost_limit <= 0:
-        return float("inf")
-
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -553,12 +556,15 @@ async def get_remaining_usd_budget(
         logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
         return floor_usd
 
+    # ``>= 0`` (not ``> 0``): a limit of 0 is "no spend allowed", so the
+    # remaining is 0 on that window. Mirrors check_rate_limit's semantics
+    # — there is no unlimited tier, so we never short-circuit to float(inf).
     remaining_microdollars = float("inf")
-    if daily_cost_limit > 0:
+    if daily_cost_limit >= 0:
         remaining_microdollars = min(
             remaining_microdollars, max(0, daily_cost_limit - daily_used)
         )
-    if weekly_cost_limit > 0:
+    if weekly_cost_limit >= 0:
         remaining_microdollars = min(
             remaining_microdollars, max(0, weekly_cost_limit - weekly_used)
         )
@@ -585,7 +591,8 @@ async def build_budget_ctx(
 
     Returns ``""`` when:
         * no ``user_id`` is available,
-        * the user's tier limits are unlimited (no cap to surface),
+        * the user has 0 remaining budget (they shouldn't be here — the
+          paywall dep raises 402 first — but defend against drift),
         * Redis is unavailable (we'd rather emit nothing than a
           misleading ``$0.00`` hint — the pre-turn gate already fails
           closed at 503 in that case).
@@ -597,8 +604,6 @@ async def build_budget_ctx(
         default_daily_cost_limit,
         default_weekly_cost_limit,
     )
-    if daily_limit <= 0 and weekly_limit <= 0:
-        return ""
     remaining = await get_remaining_usd_budget(
         user_id=user_id,
         daily_cost_limit=daily_limit,

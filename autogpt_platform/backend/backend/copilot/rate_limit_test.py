@@ -2200,12 +2200,19 @@ class TestWarnIfStripeSubscriptionDriftsYearly:
 
 class TestGetRemainingUsdBudget:
     @pytest.mark.asyncio
-    async def test_returns_inf_when_both_limits_unlimited(self):
-        # No Redis call expected — the function short-circuits on 0/0.
-        result = await get_remaining_usd_budget(
-            _USER, daily_cost_limit=0, weekly_cost_limit=0
-        )
-        assert result == float("inf")
+    async def test_zero_limits_return_floor_not_unlimited(self):
+        """With no real-world unlimited tier, both limits at 0 means
+        "no spend allowed" — remaining is 0 → floor_usd is returned."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["0", "0"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=0, weekly_cost_limit=0, floor_usd=0.5
+            )
+        assert result == 0.5
 
     @pytest.mark.asyncio
     async def test_smaller_of_daily_and_weekly_remaining(self):
@@ -2226,7 +2233,8 @@ class TestGetRemainingUsdBudget:
 
     @pytest.mark.asyncio
     async def test_floor_applies_when_user_at_or_over_cap(self):
-        # daily=$5 used $5 → 0 remaining → floor returned.
+        # daily=$5 used $5 → 0 remaining → floor returned. Weekly cap kept
+        # well above usage so it doesn't drive the result.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["5000000", "0"])
         with patch(
@@ -2236,7 +2244,7 @@ class TestGetRemainingUsdBudget:
             result = await get_remaining_usd_budget(
                 _USER,
                 daily_cost_limit=5_000_000,
-                weekly_cost_limit=0,
+                weekly_cost_limit=50_000_000,
                 floor_usd=0.5,
             )
         assert result == pytest.approx(0.5)
@@ -2256,7 +2264,9 @@ class TestGetRemainingUsdBudget:
         assert result == 0.5
 
     @pytest.mark.asyncio
-    async def test_only_daily_cap_configured(self):
+    async def test_daily_drives_when_weekly_is_loose(self):
+        """Both limits constrain; whichever leaves less budget wins. Here a
+        tight daily ($10 - $1 = $9) wins over a loose weekly."""
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["1000000", None])
         with patch(
@@ -2266,7 +2276,7 @@ class TestGetRemainingUsdBudget:
             result = await get_remaining_usd_budget(
                 _USER,
                 daily_cost_limit=10_000_000,
-                weekly_cost_limit=0,
+                weekly_cost_limit=1_000_000_000,
             )
         assert result == pytest.approx(9.0)
 
@@ -2292,7 +2302,11 @@ class TestBuildBudgetCtx:
         assert result == ""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_unlimited(self):
+    async def test_returns_empty_when_remaining_is_zero(self):
+        """No real-world unlimited tier — when the multiplier-collapse path
+        returns (0, 0, NO_TIER) the user has $0 remaining → empty hint
+        (the paywall dep should already have rejected this turn at 402;
+        we just defend against drift)."""
         with patch(
             "backend.copilot.rate_limit.get_global_rate_limits",
             new=AsyncMock(return_value=(0, 0, DEFAULT_TIER)),
@@ -2306,13 +2320,14 @@ class TestBuildBudgetCtx:
 
     @pytest.mark.asyncio
     async def test_returns_inner_text_with_remaining_in_dollars(self):
-        # daily=$10 used $4.50 → $5.50 remaining.
+        # daily=$10 used $4.50 → $5.50 daily remaining; weekly cap kept
+        # well above usage so daily drives the result.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["4500000", "0"])
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2322,7 +2337,7 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         # No tag wrap — that's inject_user_context's job.
         assert "<budget_context>" not in block
@@ -2337,7 +2352,7 @@ class TestBuildBudgetCtx:
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2347,12 +2362,12 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_remaining_is_zero(self):
+    async def test_returns_empty_when_at_cap(self):
         """At-or-over cap → no hint (the pre-turn gate has already
         rejected this turn at 429; we only emit a hint when there's
         actual headroom to communicate)."""
@@ -2361,7 +2376,7 @@ class TestBuildBudgetCtx:
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2371,6 +2386,6 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
