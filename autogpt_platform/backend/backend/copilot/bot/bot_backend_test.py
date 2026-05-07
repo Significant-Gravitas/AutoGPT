@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.response_model import StreamError, StreamFinish, StreamTextDelta
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
 from backend.platform_linking.models import (
     ChatTurnHandle,
     LinkTokenResponse,
@@ -164,6 +169,55 @@ class TestStreamChat:
                 chunks.append(chunk)
 
         assert any("executor crashed" in c for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_notifies_setup_requirements_tool_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            StreamToolOutputAvailable(
+                toolCallId="tool-1",
+                toolName="connect_integration",
+                output='{"type":"setup_requirements","message":"Connect GitHub"}',
+            )
+        )
+        await queue.put(StreamTextDelta(id="1", delta="After setup"))
+        await queue.put(StreamFinish())
+
+        setup_calls: list[tuple[str, dict, str | None]] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append((session_id, output, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            chunks: list[str] = []
+            async for chunk in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_setup_required=on_setup,
+            ):
+                chunks.append(chunk)
+
+        assert chunks == ["After setup"]
+        assert setup_calls == [
+            (
+                "sess",
+                {"type": "setup_requirements", "message": "Connect GitHub"},
+                "connect_integration",
+            )
+        ]
 
     @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):

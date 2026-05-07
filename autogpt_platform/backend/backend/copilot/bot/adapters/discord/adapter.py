@@ -146,6 +146,18 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to create thread in channel %s", channel_id)
             return None
 
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        channel = await self._resolve_channel(thread_id)
+        if channel is None or not isinstance(channel, discord.Thread):
+            logger.warning("Cannot rename non-thread channel %s", thread_id)
+            return False
+        try:
+            await channel.edit(name=name[:100])
+            return True
+        except discord.HTTPException:
+            logger.exception("Failed to rename thread %s", thread_id)
+            return False
+
     # -- Internal --
 
     def _register_events(self) -> None:

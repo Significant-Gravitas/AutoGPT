@@ -8,6 +8,8 @@ persistent typing indicator.
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
+from urllib.parse import quote
 
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import (
@@ -15,6 +17,7 @@ from backend.util.exceptions import (
     LinkAlreadyExistsError,
     NotFoundError,
 )
+from backend.util.settings import Settings
 
 from . import threads
 from .adapters.base import MessageContext, PlatformAdapter
@@ -23,6 +26,11 @@ from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
+
+THREAD_NAME_MAX_LENGTH = 100
+THREAD_NAME_PREFIX = "AutoPilot: "
+TITLE_RENAME_ATTEMPTS = 5
+TITLE_RENAME_INTERVAL_SECONDS = 1.0
 
 
 @dataclass
@@ -87,7 +95,7 @@ class MessageHandler:
             return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
-        thread_name = f"{ctx.username} × AutoPilot"
+        thread_name = build_thread_name(ctx.text, ctx.username)
         thread_id = await adapter.create_thread(
             ctx.channel_id, ctx.message_id, thread_name
         )
@@ -155,8 +163,15 @@ class MessageHandler:
         redis = await get_redis_async()
         cache_key = f"copilot-bot:session:{ctx.platform}:{target_id}"
         cached_session_id = await redis.get(cache_key)
+        active_session_id = (
+            cached_session_id.decode()
+            if isinstance(cached_session_id, bytes)
+            else cached_session_id
+        )
 
         async def _on_session_id(sid: str) -> None:
+            nonlocal active_session_id
+            active_session_id = sid
             try:
                 await redis.set(cache_key, sid, ex=SESSION_TTL)
             except Exception:
@@ -165,6 +180,30 @@ class MessageHandler:
         flush_at = adapter.chunk_flush_at
         buffer = ""
         sent_any_content = False
+        setup_prompt_sent = False
+
+        async def _on_setup_required(
+            session_id: str,
+            setup_output: dict[str, Any],
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal buffer, sent_any_content, setup_prompt_sent
+            if setup_prompt_sent:
+                return
+            setup_prompt_sent = True
+            # Drain any pending text first so the link button doesn't render
+            # ahead of the message it belongs to.
+            if buffer.strip():
+                await adapter.send_message(target_id, buffer)
+                sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            await adapter.send_link(
+                target_id,
+                _setup_required_message(setup_output),
+                link_label="Open AutoGPT",
+                link_url=_copilot_session_url(session_id),
+            )
 
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
@@ -172,9 +211,10 @@ class MessageHandler:
                 platform=ctx.platform,
                 platform_user_id=ctx.user_id,
                 message=prefixed,
-                session_id=cached_session_id,
+                session_id=active_session_id,
                 platform_server_id=ctx.server_id,
                 on_session_id=_on_session_id,
+                on_setup_required=_on_setup_required,
             ):
                 buffer += chunk
                 if len(buffer) >= flush_at:
@@ -220,6 +260,33 @@ class MessageHandler:
                 target_id,
                 "AutoPilot didn't produce a response. Try rephrasing your question.",
             )
+
+        if (
+            ctx.channel_type == "channel"
+            and target_id != ctx.channel_id
+            and active_session_id
+        ):
+            await self._rename_thread_from_session_title(
+                adapter, target_id, active_session_id
+            )
+
+    async def _rename_thread_from_session_title(
+        self,
+        adapter: PlatformAdapter,
+        thread_id: str,
+        session_id: str,
+    ) -> None:
+        for attempt in range(TITLE_RENAME_ATTEMPTS):
+            try:
+                title = await self._api.get_session_title(session_id)
+            except Exception:
+                logger.warning("Failed to fetch generated title for %s", session_id)
+                return
+            if title:
+                await adapter.rename_thread(thread_id, clamp_thread_name(title))
+                return
+            if attempt < TITLE_RENAME_ATTEMPTS - 1:
+                await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
 
     # -- Linking --
 
@@ -308,3 +375,37 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         raise
     except Exception:
         logger.debug("Typing loop error", exc_info=True)
+
+
+def build_thread_name(text: str, username: str) -> str:
+    """Build a Discord-safe thread name from the user's first prompt."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        cleaned = f"{username} with AutoPilot"
+    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}")
+
+
+def clamp_thread_name(name: str) -> str:
+    cleaned = " ".join(name.split()) or "AutoPilot Chat"
+    if len(cleaned) > THREAD_NAME_MAX_LENGTH:
+        return cleaned[: THREAD_NAME_MAX_LENGTH - 3].rstrip() + "..."
+    return cleaned
+
+
+def _copilot_session_url(session_id: str) -> str:
+    config = Settings().config
+    base_url = (config.frontend_base_url or config.platform_base_url).rstrip("/")
+    path = f"/copilot?sessionId={quote(session_id, safe='')}"
+    return f"{base_url}{path}" if base_url else path
+
+
+def _setup_required_message(setup_output: dict[str, Any]) -> str:
+    message = str(setup_output.get("message") or "").strip()
+    if not message:
+        message = "AutoPilot needs one more setup step before it can continue."
+
+    return (
+        f"{message}\n\n"
+        "Open this AutoGPT chat, finish the setup step, then reply here "
+        "when you're done."
+    )

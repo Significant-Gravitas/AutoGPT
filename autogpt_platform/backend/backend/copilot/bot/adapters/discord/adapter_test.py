@@ -264,6 +264,30 @@ class TestSendMethods:
         channel.send.assert_awaited_once_with("hello", tts=False)
 
 
+class TestRenameThread:
+    @pytest.mark.asyncio
+    async def test_renames_resolved_thread(self):
+        adapter, client = _bare_adapter()
+        thread = MagicMock(spec=discord.Thread)
+        thread.edit = AsyncMock()
+        client.get_channel.return_value = thread
+
+        assert await adapter.rename_thread("123", "Generated Web Title") is True
+
+        thread.edit.assert_awaited_once_with(name="Generated Web Title")
+
+    @pytest.mark.asyncio
+    async def test_refuses_non_thread_channel(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.edit = AsyncMock()
+        client.get_channel.return_value = channel
+
+        assert await adapter.rename_thread("123", "Generated Web Title") is False
+
+        channel.edit.assert_not_awaited()
+
+
 # ── properties ─────────────────────────────────────────────────────────
 
 

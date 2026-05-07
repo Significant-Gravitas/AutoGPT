@@ -8,7 +8,7 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import MessageHandler, TargetState
+from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -46,6 +46,7 @@ def _adapter() -> MagicMock:
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
     adapter.create_thread = AsyncMock(return_value="thread-new")
+    adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
 
 
@@ -197,6 +198,7 @@ class TestResolveTarget:
             result = await handler._resolve_target(_ctx(), adapter)
         assert result == "thread-created"
         subscribe.assert_awaited_once_with("discord", "thread-created")
+        assert adapter.create_thread.await_args.args[2] == "AutoPilot: hello bot"
 
     @pytest.mark.asyncio
     async def test_channel_falls_back_to_parent_when_thread_creation_fails(self):
@@ -335,6 +337,116 @@ class TestBatching:
 
         adapter.send_message.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_setup_requirements_sends_web_handoff_link(self):
+        api = _api()
+
+        async def setup_stream(*args, **kwargs):
+            await kwargs["on_setup_required"](
+                "session-1",
+                {
+                    "type": "setup_requirements",
+                    "message": "Connect GitHub to continue.",
+                },
+                "connect_integration",
+            )
+            yield "Once connected, I can retry."
+
+        api.stream_chat = setup_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Open AutoGPT"
+        assert (
+            adapter.send_link.await_args.kwargs["link_url"]
+            == "https://app.example.com/copilot?sessionId=session-1"
+        )
+        assert "Connect GitHub" in adapter.send_link.await_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_setup_requirements_without_text_does_not_send_empty_fallback(self):
+        api = _api()
+
+        async def setup_stream(*args, **kwargs):
+            await kwargs["on_setup_required"](
+                "session-1",
+                {
+                    "type": "setup_requirements",
+                    "message": "Connect GitHub to continue.",
+                },
+                "connect_integration",
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = setup_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_channel_thread_renames_from_generated_chat_title(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-1")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        api.get_session_title = AsyncMock(return_value="Generated Web Title")
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with patch(
+            "backend.copilot.bot.handler.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-1",
+            )
+
+        api.get_session_title.assert_awaited_once_with("session-1")
+        adapter.rename_thread.assert_awaited_once_with(
+            "thread-1", "Generated Web Title"
+        )
+
 
 class TestStreamFallback:
     """Covers the empty-response fallback, including the boundary-flush bug
@@ -417,3 +529,23 @@ class TestStreamFallback:
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
         assert not any("didn't produce a response" in m for m in msgs)
         assert msgs == ["x" * 50]
+
+
+class TestThreadNames:
+    def test_build_thread_name_from_prompt(self):
+        assert (
+            build_thread_name("  tell me\nabout space  ", "Bently")
+            == "AutoPilot: tell me about space"
+        )
+
+    def test_build_thread_name_truncates_to_discord_limit(self):
+        name = build_thread_name("x" * 200, "Bently")
+        assert len(name) <= 100
+        assert name.startswith("AutoPilot: ")
+        assert name.endswith("...")
+
+    def test_clamp_thread_name_handles_generated_titles(self):
+        assert clamp_thread_name("  Generated\nWeb   Title  ") == "Generated Web Title"
+
+    def test_clamp_thread_name_falls_back_when_blank(self):
+        assert clamp_thread_name("   ") == "AutoPilot Chat"

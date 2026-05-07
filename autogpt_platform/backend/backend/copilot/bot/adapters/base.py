@@ -103,6 +103,11 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    @abstractmethod
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        """Rename a platform thread/conversation when supported."""
+        ...
+
     @property
     @abstractmethod
     def max_message_length(self) -> int:
