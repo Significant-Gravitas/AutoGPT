@@ -1,5 +1,6 @@
 """Tests for the platform-agnostic message handler."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -441,10 +442,92 @@ class TestBatching:
                 adapter,
                 "thread-1",
             )
+            # Rename runs as a fire-and-forget task — drain it before asserting.
+            await asyncio.gather(*list(handler._rename_tasks))
 
         api.get_session_title.assert_awaited_once_with("session-1")
         adapter.rename_thread.assert_awaited_once_with(
             "thread-1", "Generated Web Title"
+        )
+
+    @pytest.mark.asyncio
+    async def test_thread_rename_retries_when_title_not_ready_yet(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-2")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        # First two polls return None (title not generated yet), third
+        # returns the real title.
+        api.get_session_title = AsyncMock(
+            side_effect=[None, None, "Late Title"]
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),  # don't actually wait between retries
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-2",
+            )
+            await asyncio.gather(*list(handler._rename_tasks))
+
+        assert api.get_session_title.await_count == 3
+        adapter.rename_thread.assert_awaited_once_with("thread-2", "Late Title")
+
+    @pytest.mark.asyncio
+    async def test_thread_rename_keeps_retrying_after_transient_exception(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-3")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        # Simulate a transient backend error on the first attempt; the
+        # retry should still go through and pick up the title.
+        api.get_session_title = AsyncMock(
+            side_effect=[RuntimeError("transient"), "Recovered Title"]
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-3",
+            )
+            await asyncio.gather(*list(handler._rename_tasks))
+
+        assert api.get_session_title.await_count == 2
+        adapter.rename_thread.assert_awaited_once_with(
+            "thread-3", "Recovered Title"
         )
 
 

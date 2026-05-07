@@ -51,6 +51,10 @@ class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
+        # Fire-and-forget tasks for thread renames after a stream finishes.
+        # Held in a strong-ref set so the GC doesn't drop them mid-await; the
+        # done-callback discards them when finished. See `_stream_batch`.
+        self._rename_tasks: set[asyncio.Task[None]] = set()
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip():
@@ -287,9 +291,18 @@ class MessageHandler:
             and target_id != ctx.channel_id
             and active_session_id
         ):
-            await self._rename_thread_from_session_title(
-                adapter, target_id, active_session_id
+            # Fire-and-forget: the title may not be ready yet (the copilot
+            # generates it asynchronously), so we poll for several seconds.
+            # Awaiting here would stall the next batched turn for the same
+            # target by the full retry budget — fine for a one-shot user
+            # but punishing for anyone typing follow-ups quickly.
+            task = asyncio.create_task(
+                self._rename_thread_from_session_title(
+                    adapter, target_id, active_session_id
+                )
             )
+            self._rename_tasks.add(task)
+            task.add_done_callback(self._rename_tasks.discard)
 
     async def _rename_thread_from_session_title(
         self,
@@ -301,8 +314,17 @@ class MessageHandler:
             try:
                 title = await self._api.get_session_title(session_id)
             except Exception:
-                logger.warning("Failed to fetch generated title for %s", session_id)
-                return
+                # Transient backend hiccups are the usual cause here, so
+                # treat exceptions like a None result and keep retrying
+                # rather than bailing on the first miss.
+                logger.warning(
+                    "Failed to fetch generated title for %s (attempt %d/%d)",
+                    session_id,
+                    attempt + 1,
+                    TITLE_RENAME_ATTEMPTS,
+                    exc_info=True,
+                )
+                title = None
             if title:
                 await adapter.rename_thread(thread_id, clamp_thread_name(title))
                 return
