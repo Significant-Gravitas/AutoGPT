@@ -15,6 +15,7 @@ import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -1182,9 +1183,6 @@ async def llm_call(
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
-        response_format = (
-            {"type": "json_object"} if force_json_output else openai.NOT_GIVEN
-        )
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1207,7 +1205,11 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
-            response_format=response_format,  # type: ignore
+            response_format=(
+                ResponseFormatJSONObject(type="json_object")
+                if force_json_output
+                else openai.omit
+            ),
         )
 
         if not response.choices:
