@@ -837,20 +837,22 @@ def detect_gap(
     wm = download.message_count
 
     # Last entry is the current user turn; everything else is candidate context.
-    # ``sequence`` is NOT NULL in the schema, so DB-loaded messages always have it;
-    # the only None case is in-memory messages not yet persisted, which the caller
-    # has already excluded by passing the loaded session list.
-    candidates = [m for m in session_messages[:-1] if m.sequence is not None]
-    gap = [m for m in candidates if m.sequence is not None and m.sequence >= wm]
+    # ``sequence`` is NOT NULL in the schema, so DB-loaded messages always have
+    # it. Pre-pair (seq, msg) once so the type checker sees a concrete int and
+    # we don't repeat the None guard in every comprehension below.
+    candidates: list[tuple[int, ChatMessage]] = [
+        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
+    ]
+    gap = [m for seq, m in candidates if seq >= wm]
     if not gap:
         return []
 
     # Sanity: the message just before the gap (highest sequence < wm) should be
     # an assistant turn. If not, skip — the DB shifted under us (deletion or
     # similar) and applying the gap would feed bad context to the LLM.
-    pre_gap = [m for m in candidates if m.sequence is not None and m.sequence < wm]
+    pre_gap = [(seq, m) for seq, m in candidates if seq < wm]
     if pre_gap:
-        prev = max(pre_gap, key=lambda m: m.sequence)
+        _, prev = max(pre_gap, key=lambda item: item[0])
         if prev.role != "assistant":
             return []
     else:
@@ -862,7 +864,7 @@ def detect_gap(
         # is misaligned or the conversation shape is corrupt; skip the gap.
         if gap[0].role != "user":
             return []
-        window_start = min(m.sequence for m in gap if m.sequence is not None)
+        window_start = min(seq for seq, m in candidates if seq >= wm)
         if window_start > wm:
             logger.warning(
                 "detect_gap: window starts at seq=%d but watermark is %d — "
