@@ -702,17 +702,14 @@ class TestConsumerRetryWithBackoff:
         ) as mock_db_client, patch(
             "backend.notifications.notifications.generate_unsubscribe_link",
             return_value="unsub",
-        ), patch(
-            "backend.notifications.notifications._parse_message_to"
-        ) as mock_parse:
+        ):
             mock_db = MagicMock()
             mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
             mock_db_client.return_value = mock_db
             event = MagicMock()
             event.user_id = "u1"
             event.type = MagicMock()
-            mock_parse.return_value = event
-            # _process_immediate uses self._parse_message — patch on instance
+            # _process_immediate uses self._parse_message
             manager._parse_message = MagicMock(return_value=event)
 
             with pytest.raises(RuntimeError, match="postmark 502"):
