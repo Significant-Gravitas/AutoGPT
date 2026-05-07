@@ -1179,39 +1179,80 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Route-level paywall dependency
+# Paywall enforcement
 # ---------------------------------------------------------------------------
+#
+# All paywall enforcement flows through these three primitives so every
+# entry point — HTTP routes, deep enqueue paths, background jobs —
+# shares the same definition of "paywalled" and the same exception:
+#
+#   1. ``is_user_paywalled(user_id) -> bool``  — THE check (strict, raises
+#      lookup errors so callers decide).
+#   2. ``assert_not_paywalled(user_id)``       — raises ``UserPaywalledError``
+#      iff (1) is True; the call sites' shared core.
+#   3. ``enforce_payment_paywall(user_id)``    — FastAPI dep wrapper around
+#      (2) that adds 503 mapping on lookup failure and lets
+#      ``UserPaywalledError`` bubble to the app-level exception handler
+#      (which converts it to HTTP 402).
+#
+# Callers pick the primitive that matches their failure-mode posture:
+#   - JWT routes:          dep ``enforce_payment_paywall``  (503 on blip)
+#   - non-JWT routes:      ``assert_not_paywalled`` inline  (5xx on blip)
+#   - background jobs:     ``assert_not_paywalled`` inline + try/except
+#                          on lookup error (fail-open + log)
+#
+
+
+async def is_user_paywalled(user_id: str) -> bool:
+    """Return ``True`` if the user has no entitlement to paywalled features.
+
+    Strict tier lookup — propagates DB errors to the caller so each
+    caller can decide its own failure-mode posture (route → 503,
+    background job → fail-open). Centralised here so every gate uses
+    the same definition.
+    """
+    tier = await _fetch_user_tier(user_id)
+    if tier != SubscriptionTier.NO_TIER:
+        return False
+    return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
+
+
+async def assert_not_paywalled(user_id: str) -> None:
+    """Raise :class:`UserPaywalledError` if the user is paywalled.
+
+    The shared core used by every paywall gate — the route-level dep
+    (``enforce_payment_paywall``), the deep enqueue gate inside
+    ``add_graph_execution``, and inline checks on routes whose auth
+    model isn't compatible with the JWT-based dep (e.g. external API
+    block-execute).
+
+    Lookup errors propagate; callers wrap with their own try/except.
+    """
+    if await is_user_paywalled(user_id):
+        raise UserPaywalledError(
+            "A subscription is required to use this feature. Upgrade to continue."
+        )
 
 
 async def enforce_payment_paywall(
     user_id: str = fastapi.Security(get_user_id),
 ) -> None:
-    """FastAPI dependency: block ``NO_TIER`` users when
-    ``ENABLE_PLATFORM_PAYMENT`` is on for them, before the route handler
-    runs.
+    """FastAPI dependency: block paywalled users before the route handler runs.
 
-    Mirrors the ``requires_admin_user`` pattern. Apply via
-    ``dependencies=[fastapi.Depends(enforce_payment_paywall)]`` on every
-    route that should refuse access to users without a subscription —
-    chat / AutoPilot turns, graph executions, block executions, MCP
-    tool calls. Centralising the gate at the route boundary prevents
-    per-route callers from forgetting it and makes "is this route
-    paywalled?" answerable by grepping the dependency list, the way
-    ``requires_admin_user`` works today.
+    Apply via ``dependencies=[fastapi.Depends(enforce_payment_paywall)]``
+    on JWT-authenticated routes that need entitlement checking. Mirrors
+    the ``requires_admin_user`` pattern.
 
-    Beta-cohort users (``ENABLE_PLATFORM_PAYMENT`` off) and any paid tier
-    pass through unchanged. The dep does no Redis I/O — it's just a
-    Supabase + LD lookup, both already cached.
-
-    Failure mode: ``get_user_tier`` falls back to ``DEFAULT_TIER``
-    (= ``NO_TIER``) on DB error to keep observability paths fail-open,
-    but for entitlement checks that would silently 402 every paid user
-    during a transient blip. We bypass that fallback here by going
-    through ``_fetch_user_tier`` directly and converting failures to
-    HTTP 503 (transient) instead of 402 (permanent).
+    Wraps :func:`assert_not_paywalled` with a 503 on tier-lookup failure
+    so a transient Supabase blip doesn't 402 every paid user — the
+    client sees a retryable error instead of a permanent paywall. The
+    raised :class:`UserPaywalledError` propagates to the app-level
+    exception handler in ``rest_api.py`` which maps it to HTTP 402.
     """
     try:
-        paywalled = await is_user_paywalled(user_id)
+        await assert_not_paywalled(user_id)
+    except UserPaywalledError:
+        raise
     except Exception as exc:
         logger.warning(
             "enforce_payment_paywall: tier lookup failed for %s: %s",
@@ -1223,30 +1264,3 @@ async def enforce_payment_paywall(
             detail="Subscription state temporarily unavailable, retry shortly.",
             headers={"Retry-After": "30"},
         ) from exc
-    if paywalled:
-        raise fastapi.HTTPException(
-            status_code=402,
-            detail=(
-                "A subscription is required to use this feature. Upgrade to continue."
-            ),
-        )
-
-
-async def is_user_paywalled(user_id: str) -> bool:
-    """Return ``True`` if the user has no entitlement to paywalled features.
-
-    Strict tier lookup — propagates DB errors to the caller so the route
-    layer can map them to 503 (instead of swallowing into NO_TIER and
-    falsely 402'ing every paid user during a transient blip). Background
-    callers (e.g. ``add_graph_execution``) that prefer fail-open should
-    catch the lookup exception themselves and decide.
-
-    Centralised here so every paywalled entry point — HTTP routes via
-    ``enforce_payment_paywall``, deeper enqueue paths via direct call,
-    background jobs via try/except — uses the same definition of
-    "paywalled".
-    """
-    tier = await _fetch_user_tier(user_id)
-    if tier != SubscriptionTier.NO_TIER:
-        return False
-    return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)

@@ -11,7 +11,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
-from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
+from backend.copilot.rate_limit import UserPaywalledError, assert_not_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -1154,8 +1154,7 @@ async def add_graph_execution(
             than wedge a scheduled run during a transient blip.
     """
     try:
-        if await is_user_paywalled(user_id):
-            raise UserPaywalledError("A subscription is required to run agents.")
+        await assert_not_paywalled(user_id)
     except UserPaywalledError:
         raise
     except Exception as exc:

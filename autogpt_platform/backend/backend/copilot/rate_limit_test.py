@@ -375,8 +375,11 @@ class TestEnforcePaymentPaywall:
 
     @pytest.mark.asyncio
     async def test_blocks_no_tier_user_when_flag_on(self, mocker):
-        """The headline behaviour: NO_TIER + ENABLE_PLATFORM_PAYMENT on
-        raises HTTP 402 before the route handler runs."""
+        """Headline behaviour: NO_TIER + ENABLE_PLATFORM_PAYMENT on raises
+        :class:`UserPaywalledError`. The app-level exception handler in
+        ``rest_api.py`` (and the external API's ``fastapi_app.py``) maps
+        this to HTTP 402 — the dep itself doesn't construct an
+        HTTPException so all gates share the same exception type."""
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
@@ -385,14 +388,11 @@ class TestEnforcePaymentPaywall:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         )
-        from fastapi import HTTPException
+        from .rate_limit import UserPaywalledError, enforce_payment_paywall
 
-        from .rate_limit import enforce_payment_paywall
-
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UserPaywalledError) as exc_info:
             await enforce_payment_paywall(_USER)
-        assert exc_info.value.status_code == 402
-        assert "subscription" in exc_info.value.detail.lower()
+        assert "subscription" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_allows_no_tier_user_when_flag_off(self, mocker):
@@ -522,6 +522,47 @@ class TestUserPaywalledError:
         from .rate_limit import UserPaywalledError
 
         assert str(UserPaywalledError("custom")) == "custom"
+
+
+class TestAssertNotPaywalled:
+    """``assert_not_paywalled`` is the shared core that both the route
+    dep, the function-level enqueue gate, and inline checks call. Tests
+    here guarantee the contract: paywalled → raise, not paywalled → no
+    raise, lookup error → propagate to caller."""
+
+    @pytest.mark.asyncio
+    async def test_raises_when_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit.is_user_paywalled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import UserPaywalledError, assert_not_paywalled
+
+        with pytest.raises(UserPaywalledError):
+            await assert_not_paywalled(_USER)
+
+    @pytest.mark.asyncio
+    async def test_no_raise_when_not_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        )
+        from .rate_limit import assert_not_paywalled
+
+        await assert_not_paywalled(_USER)  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_propagates_lookup_failure(self, mocker):
+        """Lookup errors propagate so each caller can pick their own
+        failure-mode (route → 503, background → fail-open)."""
+        mocker.patch(
+            "backend.copilot.rate_limit.is_user_paywalled",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        from .rate_limit import assert_not_paywalled
+
+        with pytest.raises(RuntimeError):
+            await assert_not_paywalled(_USER)
 
 
 class TestEnforcePaymentPaywallContinued:
