@@ -225,7 +225,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
-| base_64 | Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks). | bool | No |
+| base_64 | Whether to produce output in base64 format (not recommended; you can pass the file reference across blocks). | bool | No |
 
 ### Outputs
 

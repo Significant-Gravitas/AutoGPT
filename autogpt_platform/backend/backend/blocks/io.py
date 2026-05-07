@@ -417,7 +417,10 @@ class AgentFileInputBlock(AgentInputBlock):
             title="Default Value",
         )
         base_64: bool = SchemaField(
-            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            description=(
+                "Whether to produce output in base64 format "
+                "(not recommended; you can pass the file reference across blocks)."
+            ),
             default=False,
             advanced=True,
             title="Produce Base64 Output",
