@@ -44,10 +44,13 @@ class PaginatedMessages(BaseModel):
     session: ChatSessionInfo
 
 
-# Cap on messages eagerly loaded with a session. The LLM context builder
-# layers older history in via the transcript (GCS) checkpoint, so loading
-# the entire conversation here is wasted egress on long sessions.
-MAX_LOADED_CHAT_MESSAGES = 200
+# Cap on messages eagerly loaded with a session. Set above the realistic p99
+# of any actual copilot conversation (typical: 10-100 msgs; power user: a few
+# hundred; cap engages only on pathological multi-thousand-message sessions).
+# Older history beyond the cap relies on the GCS transcript checkpoint via
+# ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
+# a transcript, the cap-hit warning below makes the case observable in logs.
+MAX_LOADED_CHAT_MESSAGES = 1000
 
 
 async def get_chat_session(
@@ -73,6 +76,13 @@ async def get_chat_session(
         return None
     # Reverse to ascending sequence — every caller expects oldest-first.
     if session.Messages:
+        if len(session.Messages) >= max_messages:
+            logger.warning(
+                "Session %s loaded with capped messages (%d) — older history "
+                "must come from transcript checkpoint or context will be lost",
+                session_id,
+                max_messages,
+            )
         session.Messages = list(reversed(session.Messages))
     return ChatSession.from_db(session)
 
