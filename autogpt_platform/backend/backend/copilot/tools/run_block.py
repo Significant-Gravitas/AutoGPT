@@ -200,6 +200,13 @@ class RunBlockTool(BaseTool):
             missing = sorted(
                 prep.required_non_credential_keys - prep.provided_input_keys
             )
+            # Hide credential fields from the schema sent to the LLM — the
+            # backend resolves them automatically from the user's connected
+            # integrations, and exposing the picker shape (id/provider/type)
+            # tempts the LLM to fabricate values it cannot construct.
+            llm_input_schema = _strip_credentials_from_schema(
+                prep.input_schema, prep.credentials_fields
+            )
             if validate_only and not missing:
                 detail_msg = (
                     f"Block '{prep.block.name}' — all required inputs "
@@ -213,7 +220,9 @@ class RunBlockTool(BaseTool):
             else:
                 detail_msg = (
                     f"Block '{prep.block.name}' details. Provide input_data "
-                    f"matching the inputs schema to execute the block."
+                    f"matching the inputs schema to execute the block. "
+                    f"Credentials are auto-resolved by the backend — do not "
+                    f"include them in input_data."
                 )
             return BlockDetailsResponse(
                 message=detail_msg,
@@ -222,7 +231,7 @@ class RunBlockTool(BaseTool):
                     id=block_id,
                     name=prep.block.name,
                     description=prep.block.description or "",
-                    inputs=prep.input_schema,
+                    inputs=llm_input_schema,
                     outputs=output_schema,
                     credentials=credentials_meta,
                 ),
@@ -244,3 +253,28 @@ class RunBlockTool(BaseTool):
             matched_credentials=prep.matched_credentials,
             dry_run=dry_run,
         )
+
+
+def _strip_credentials_from_schema(
+    input_schema: dict[str, Any], credentials_fields: set[str]
+) -> dict[str, Any]:
+    """Return a copy of *input_schema* without credential properties.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out when it can't (see the Replicate "Seed Dance 2.0" copilot session).
+    """
+    if not credentials_fields:
+        return input_schema
+    cleaned = dict(input_schema)
+    properties = dict(cleaned.get("properties", {}))
+    for field in credentials_fields:
+        properties.pop(field, None)
+    cleaned["properties"] = properties
+    required = [r for r in cleaned.get("required", []) if r not in credentials_fields]
+    if required:
+        cleaned["required"] = required
+    elif "required" in cleaned:
+        del cleaned["required"]
+    return cleaned
