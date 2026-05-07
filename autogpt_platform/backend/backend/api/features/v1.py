@@ -489,7 +489,7 @@ async def execute_graph_block(
                     block_id=block_id,
                     block=obj.name,
                     input=cost_filter,
-                    reason=f"Direct block execution of {obj.name}",
+                    reason=f"Direct internal block execution of {obj.name}",
                 ),
             )
         except InsufficientBalanceError as e:
