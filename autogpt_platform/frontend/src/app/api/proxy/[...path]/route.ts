@@ -28,9 +28,14 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "baggage",
 ];
 
-// Hop-by-hop headers must not be forwarded between client and origin.
-// See RFC 7230 §6.1.
-const HOP_BY_HOP_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
+// Headers that must not be forwarded from the backend to the client.
+// Hop-by-hop entries are listed in RFC 7230 §6.1; content-encoding and
+// content-length are stripped because Node's fetch auto-decompresses the
+// backend body when reading response.body, so the streamed payload's actual
+// byte length and encoding no longer match what the backend advertised.
+// Letting Node recompute framing (via Transfer-Encoding: chunked) keeps
+// HTTP parsing on the client side correct.
+const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "connection",
   "keep-alive",
   "proxy-authenticate",
@@ -39,8 +44,8 @@ const HOP_BY_HOP_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "trailer",
   "transfer-encoding",
   "upgrade",
-  // Next.js sets its own content-encoding when streaming the response back.
   "content-encoding",
+  "content-length",
 ]);
 
 function buildBackendUrl(path: string[], queryString: string): string {
@@ -62,7 +67,7 @@ function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
 function filterResponseHeaders(src: Headers): Headers {
   const out = new Headers();
   src.forEach((value, key) => {
-    if (!HOP_BY_HOP_RESPONSE_HEADERS.has(key.toLowerCase())) {
+    if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) {
       out.set(key, value);
     }
   });
