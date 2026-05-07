@@ -59,8 +59,8 @@ async def _fetch_execution_aggregate_rows(
         FROM {schema_prefix}"AgentGraphExecution"
         WHERE "userId" = $1
           AND "isDeleted" = false
-          AND "createdAt" >= $2
-          AND "createdAt" <= $3
+          AND "createdAt" >= $2::timestamp
+          AND "createdAt" <= $3::timestamp
         GROUP BY "agentGraphId"
         """,
         user_id,
