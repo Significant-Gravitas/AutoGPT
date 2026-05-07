@@ -13,7 +13,7 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
-from backend.copilot.rate_limit import assert_not_paywalled
+from backend.copilot.rate_limit import UserPaywalledError, assert_not_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
@@ -183,6 +183,10 @@ async def execute_graph(
             graph_version=graph_version,
         )
         return {"id": graph_exec.id}
+    except UserPaywalledError:
+        # Let the app-level handler map this to 402; the broad except below
+        # would otherwise swallow it into a 400.
+        raise
     except Exception as e:
         msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
