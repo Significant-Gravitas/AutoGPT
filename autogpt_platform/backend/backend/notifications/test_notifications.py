@@ -598,3 +598,86 @@ class TestNotificationErrorHandling:
             # Info message about successful sends should be logged
             info_calls = [call[0][0] for call in mock_logger.info.call_args_list]
             assert any("sent and removed" in call.lower() for call in info_calls)
+
+
+class TestConsumerRetryWithBackoff:
+    """Verify _process_message_with_retry retries transient failures and only DLQs after exhausting attempts."""
+
+    @pytest.fixture
+    def manager(self):
+        # Build a NotificationManager without invoking __init__ side effects
+        # (RabbitMQ connections, threads). We only exercise the
+        # _process_message_with_retry method.
+        m = NotificationManager.__new__(NotificationManager)
+        return m
+
+    def _make_message(self, body: bytes = b"{}"):
+        msg = MagicMock()
+        msg.body = body
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_acks_on_success(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=True)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 1
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_process_returns_false_no_retry(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(return_value=False)
+        await manager._process_message_with_retry(msg, process, "test_q")
+        # Explicit False = unrecoverable, do not retry
+        assert process.call_count == 1
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_retries_transient_then_succeeds(self, manager):
+        msg = self._make_message()
+        # Fail twice, succeed on 3rd attempt
+        process = AsyncMock(
+            side_effect=[RuntimeError("blip"), RuntimeError("blip"), True]
+        )
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            await manager._process_message_with_retry(msg, process, "test_q")
+        assert process.call_count == 3
+        assert sleep.await_count == 2  # backoff sleeps before attempts 2 and 3
+        msg.ack.assert_awaited_once()
+        msg.reject.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dlqs_after_exhausting_retries(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("permanent boom"))
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", new=AsyncMock()
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # Defaults: 3 attempts total
+        assert process.call_count == 3
+        msg.reject.assert_awaited_once_with(requeue=False)
+        msg.ack.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_backoff_doubles_per_attempt(self, manager):
+        msg = self._make_message()
+        process = AsyncMock(side_effect=RuntimeError("boom"))
+        sleeps = []
+
+        async def fake_sleep(s):
+            sleeps.append(s)
+
+        with patch(
+            "backend.notifications.notifications.asyncio.sleep", side_effect=fake_sleep
+        ):
+            await manager._process_message_with_retry(msg, process, "test_q")
+        # CONSUMER_RETRY_BACKOFF_SECONDS = 2, so delays are 2*(2**0)=2, 2*(2**1)=4
+        assert sleeps == [2, 4]

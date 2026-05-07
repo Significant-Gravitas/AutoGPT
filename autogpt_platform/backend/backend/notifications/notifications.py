@@ -47,6 +47,14 @@ from backend.util.settings import AppEnvironment, Settings
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
 
+# Retry settings for transient failures in queue consumers. With these defaults
+# total worst-case retry latency before reject-to-DLQ is 2 + 4 + 8 = 14s,
+# which is enough to ride out the most common transient failures (DB
+# connection blip, Postmark 5xx, brief network outage) without trapping
+# truly broken messages on the queue for long.
+MAX_CONSUMER_RETRY_ATTEMPTS = 3
+CONSUMER_RETRY_BACKOFF_SECONDS = 2
+
 
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
@@ -1007,7 +1015,13 @@ class NotificationManager(AppService):
         process_func: Callable[[str], Awaitable[bool]],
         queue_name: str,
     ):
-        """Continuously consume messages from a queue using async iteration"""
+        """Continuously consume messages from a queue using async iteration.
+
+        On transient failures (raised exceptions), retry in-process with
+        exponential backoff up to MAX_CONSUMER_RETRY_ATTEMPTS times before
+        rejecting to the DLQ. process_func returning False means
+        "unrecoverable, do not retry" — reject immediately.
+        """
         logger.info(f"Starting consumer for queue: {queue_name}")
 
         try:
@@ -1015,31 +1029,59 @@ class NotificationManager(AppService):
                 async for message in queue_iter:
                     if not self.running:
                         break
-
-                    try:
-                        async with message.process():
-                            result = await process_func(message.body.decode())
-                            if not result:
-                                # Message will be rejected when exiting context without exception
-                                raise aio_pika.exceptions.MessageProcessError(
-                                    "Processing failed"
-                                )
-                    except aio_pika.exceptions.MessageProcessError:
-                        # Let message.process() handle the rejection
-                        pass
-                    except Exception as e:
-                        logger.warning(
-                            f"Error processing message in {queue_name}: {e}",
-                            exc_info=True,
-                        )
-                        # Let message.process() handle the rejection
-                        raise
+                    await self._process_message_with_retry(
+                        message, process_func, queue_name
+                    )
         except asyncio.CancelledError:
             logger.info(f"Consumer for {queue_name} cancelled")
             raise
         except Exception as e:
             logger.exception(f"Fatal error in consumer for {queue_name}: {e}")
             raise
+
+    async def _process_message_with_retry(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        process_func: Callable[[str], Awaitable[bool]],
+        queue_name: str,
+    ):
+        """Run process_func against one message with retry-with-backoff.
+
+        Acks on success, rejects (no requeue → DLQ) on permanent failure or
+        after exhausting retry attempts.
+        """
+        last_error: Exception | None = None
+        body = message.body.decode()
+        for attempt in range(MAX_CONSUMER_RETRY_ATTEMPTS):
+            try:
+                if await process_func(body):
+                    await message.ack()
+                    return
+                # process_func returned False = explicit "do not retry"
+                logger.warning(
+                    f"Message in {queue_name} rejected (process_func returned False)"
+                )
+                await message.reject(requeue=False)
+                return
+            except Exception as e:
+                last_error = e
+                is_last_attempt = attempt == MAX_CONSUMER_RETRY_ATTEMPTS - 1
+                if is_last_attempt:
+                    break
+                delay = CONSUMER_RETRY_BACKOFF_SECONDS * (2**attempt)
+                logger.warning(
+                    f"Transient failure on attempt {attempt + 1}/"
+                    f"{MAX_CONSUMER_RETRY_ATTEMPTS} in {queue_name}: {e}. "
+                    f"Retrying in {delay}s.",
+                )
+                await asyncio.sleep(delay)
+        # All retries exhausted — log full context and send to DLQ.
+        logger.exception(
+            f"Sending message to DLQ from {queue_name} after "
+            f"{MAX_CONSUMER_RETRY_ATTEMPTS} attempts. Last error: {last_error}",
+            exc_info=last_error,
+        )
+        await message.reject(requeue=False)
 
     def run_service(self):
         # Queue the main _run_service task
