@@ -59,7 +59,6 @@ from backend.data.credit import (
     PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
-    UsageTransactionMetadata,
     UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
@@ -478,24 +477,12 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    cost, cost_filter = execution_utils.block_usage_cost(obj, data)
-    if cost > 0:
-        credit_model = await get_user_credit_model(user_id)
-        try:
-            await credit_model.spend_credits(
-                user_id=user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    block_id=block_id,
-                    block=obj.name,
-                    input=cost_filter,
-                    reason=f"Direct internal block execution of {obj.name}",
-                ),
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)
-            ) from e
+    try:
+        await execution_utils.charge_for_direct_block_execution(
+            user_id=user_id, block=obj, input_data=data, source="internal"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
     start_time = time.time()
     try:

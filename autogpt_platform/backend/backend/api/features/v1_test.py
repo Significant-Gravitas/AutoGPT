@@ -201,6 +201,7 @@ def test_execute_graph_block_charges_when_cost_positive(
     """Paid blocks must charge credits before executing."""
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
 
     async def mock_execute(*args, **kwargs):
@@ -221,12 +222,12 @@ def test_execute_graph_block_charges_when_cost_positive(
 
     cost_filter = {"model": "gpt-4"}
     mocker.patch(
-        "backend.api.features.v1.execution_utils.block_usage_cost",
+        "backend.executor.utils.block_usage_cost",
         return_value=(42, cost_filter),
     )
     mock_credit_model = mocker.AsyncMock()
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -251,6 +252,7 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
     """If spend_credits raises InsufficientBalanceError, endpoint returns 402."""
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
     mock_block.execute = AsyncMock()
 
@@ -265,7 +267,7 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
         return_value=mock_user,
     )
     mocker.patch(
-        "backend.api.features.v1.execution_utils.block_usage_cost",
+        "backend.executor.utils.block_usage_cost",
         return_value=(99, {}),
     )
 
@@ -277,7 +279,7 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
         amount=99,
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         return_value=mock_credit_model,
     )
 
