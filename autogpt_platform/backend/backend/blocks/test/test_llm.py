@@ -28,8 +28,14 @@ class TestLLMStatsTracking:
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response
-        with patch("openai.AsyncOpenAI") as mock_openai:
+        # Test with mocked OpenAI response. Suppress the OpenRouter key so the
+        # auto-reroute branch doesn't divert this test to the chat.completions
+        # path under a local .env that has open_router_api_key set.
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = ""
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = AsyncMock(return_value=mock_response)
@@ -149,6 +155,58 @@ class TestLLMStatsTracking:
         mock_openai.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["model"] == "anthropic/claude-3-haiku-20240307"
+
+    @pytest.mark.asyncio
+    async def test_openai_routes_through_openrouter_when_key_present(self):
+        """When open_router_api_key is set, OpenAI models route via OpenRouter."""
+        from pydantic import SecretStr
+
+        from backend.data.model import APIKeyCredentials
+
+        openai_creds = APIKeyCredentials(
+            id="test-openai-id",
+            provider="openai",
+            api_key=SecretStr("mock-openai-key"),
+            title="Mock OpenAI key",
+        )
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "routed response"
+        mock_choice.message.tool_calls = None
+
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 12
+        mock_usage.completion_tokens = 8
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = mock_usage
+
+        mock_create = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = "sk-or-test-key"
+            mock_client = MagicMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create = mock_create
+
+            await llm.llm_call(
+                credentials=openai_creds,
+                llm_model=llm.LlmModel.GPT4O_MINI,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+            )
+
+        # Verify OpenRouter base_url + key + prefixed model
+        mock_openai.assert_called_once()
+        client_kwargs = mock_openai.call_args.kwargs
+        assert client_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+        assert client_kwargs["api_key"] == "sk-or-test-key"
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["model"] == "openai/gpt-4o-mini"
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
@@ -523,7 +581,11 @@ class TestLLMStatsTracking:
             mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
-        with patch("openai.AsyncOpenAI") as mock_openai:
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = ""
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = mock_create
