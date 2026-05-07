@@ -3170,7 +3170,8 @@ async def _run_stream_attempt(
 
     Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
     heartbeat timeouts, dispatches adapter responses, and performs post-stream
-    cleanup (safety-net flush, stopped-by-user handling).
+    cleanup (safety-net flush, CLI-side end-of-stream notice when the
+    iterator drains without a ``ResultMessage``).
 
     Yields stream events.  On stream error the exception propagates to the
     caller so the retry loop can rollback and retry.
