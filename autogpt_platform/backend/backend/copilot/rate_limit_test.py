@@ -551,7 +551,7 @@ class TestGetTierMultipliers:
     async def test_defaults_when_flag_unset(self):
         """With no LD override, the resolver returns the default map."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -562,7 +562,7 @@ class TestGetTierMultipliers:
     async def test_ld_override(self):
         """LD override populates the targeted tiers; others inherit defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"PRO": 7.5, "BUSINESS": 25},
         ):
@@ -581,7 +581,7 @@ class TestGetTierMultipliers:
     async def test_invalid_json_falls_back(self):
         """A non-object LD value (string, list, bool) falls back to defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value="broken",
         ):
@@ -592,7 +592,7 @@ class TestGetTierMultipliers:
     async def test_unknown_tier_key_skipped(self):
         """Unknown tier keys and non-positive values are silently ignored."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"PRO": 3, "BOGUS": 99, "MAX": -1, "BUSINESS": "nope"},
         ):
@@ -609,7 +609,7 @@ class TestGetTierMultipliers:
     async def test_ld_failure_falls_back(self):
         """LD lookup raising propagates to defaults, not up the call stack."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
@@ -627,7 +627,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_defaults_when_flag_unset(self):
         """With no LD override, the resolver returns the default map."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -640,7 +640,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_ld_override(self):
         """LD override populates targeted tiers; others inherit defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"NO_TIER": 300, "PRO": 2048},
         ):
@@ -657,7 +657,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_invalid_json_falls_back(self):
         """A non-object LD value falls back to defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value="broken",
         ):
@@ -670,7 +670,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_unknown_tier_key_and_invalid_values_skipped(self):
         """Unknown tiers and invalid values degrade to defaults per key."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"NO_TIER": 300, "BOGUS": 999, "MAX": -1, "BUSINESS": "nope"},
         ):
@@ -686,7 +686,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_ld_failure_falls_back(self):
         """LD lookup raising propagates to defaults, not up the call stack."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
@@ -724,7 +724,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -749,7 +749,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -773,7 +773,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -797,7 +797,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
             caplog.at_level("WARNING"),
@@ -826,7 +826,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -852,7 +852,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -888,7 +888,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -1211,7 +1211,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -1236,7 +1236,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1258,7 +1258,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1280,7 +1280,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.MAX,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1302,7 +1302,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1324,7 +1324,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.ENTERPRISE,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1379,7 +1379,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1412,7 +1412,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1446,7 +1446,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.ENTERPRISE,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1593,7 +1593,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1623,7 +1623,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1657,7 +1657,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1688,7 +1688,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1716,7 +1716,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1756,7 +1756,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1799,7 +1799,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(

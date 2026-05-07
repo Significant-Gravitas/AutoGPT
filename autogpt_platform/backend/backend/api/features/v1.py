@@ -456,6 +456,9 @@ async def get_graph_blocks() -> Response:
     summary="Execute graph block",
     tags=["blocks"],
     dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+    },
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -1669,6 +1672,11 @@ async def update_graph_settings(
     summary="Execute graph agent",
     tags=["graphs"],
     dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+        },
+    },
 )
 async def execute_graph(
     graph_id: str,
