@@ -23,7 +23,7 @@ Calls the Slack `chat.postMessage` API with your bot token. The token must have 
 | username | Custom display name for the bot in this message. Requires chat:write.customize scope. | str | No |
 | icon_emoji | Emoji to use as the bot's icon (e.g. :robot_face:). Requires chat:write.customize scope. | str | No |
 | unfurl_links | Automatically expand URLs into rich previews. | bool | No |
-| mrkdwn | Enable Slack markdown formatting in the message text. | bool | No |
+| mrkdwn | Enable Slack Markdown formatting in the message text. | bool | No |
 
 ### Outputs
 

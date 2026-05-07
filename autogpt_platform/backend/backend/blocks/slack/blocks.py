@@ -105,21 +105,18 @@ class SendSlackMessageBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            result = await self._post_message(
-                credentials=credentials,
-                channel=input_data.channel,
-                text=input_data.text,
-                thread_ts=input_data.thread_ts,
-                username=input_data.username,
-                icon_emoji=input_data.icon_emoji,
-                unfurl_links=input_data.unfurl_links,
-                mrkdwn=input_data.mrkdwn,
-            )
-            yield "ts", result.ts
-            yield "channel", result.channel
-        except Exception as e:
-            raise ValueError(f"Failed to send Slack message: {e}") from e
+        result = await self._post_message(
+            credentials=credentials,
+            channel=input_data.channel,
+            text=input_data.text,
+            thread_ts=input_data.thread_ts,
+            username=input_data.username,
+            icon_emoji=input_data.icon_emoji,
+            unfurl_links=input_data.unfurl_links,
+            mrkdwn=input_data.mrkdwn,
+        )
+        yield "ts", result.ts
+        yield "channel", result.channel
 
     async def _post_message(
         self,
