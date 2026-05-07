@@ -140,8 +140,6 @@ class BotBackend:
         )
 
     async def get_session_title(self, session_id: str) -> str | None:
-        from backend.copilot.model import get_chat_session
-
         session = await get_chat_session(session_id)
         return session.title if session else None
 
