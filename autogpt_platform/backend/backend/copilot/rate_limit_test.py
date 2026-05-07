@@ -499,7 +499,7 @@ class TestIsUserPaywalled:
 
     @pytest.mark.asyncio
     async def test_propagates_lookup_failure(self, mocker):
-        """The helper does NOT swallow tier-lookup errors — callers
+        """The helper does NOT swallow generic tier-lookup errors — callers
         decide. The route-dep maps to 503; background callers
         (add_graph_execution) fail open."""
         mocker.patch(
@@ -510,6 +510,40 @@ class TestIsUserPaywalled:
 
         with pytest.raises(RuntimeError):
             await is_user_paywalled(_USER)
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_treated_as_no_tier_when_flag_on(self, mocker):
+        """``_UserNotFoundError`` (no DB row, or no ``subscription_tier``
+        set yet on a fresh signup) is treated as NO_TIER so callers without
+        a generic ``except`` (e.g. the external API ``execute_graph_block``
+        route) get a real 402 instead of a leaked 500."""
+        from .rate_limit import _UserNotFoundError, is_user_paywalled
+
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        assert await is_user_paywalled(_USER) is True
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_treated_as_no_tier_when_flag_off(self, mocker):
+        """Beta cohort: missing tier + flag off → not paywalled (same
+        passthrough as a real NO_TIER user with the flag off)."""
+        from .rate_limit import _UserNotFoundError, is_user_paywalled
+
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        )
+        assert await is_user_paywalled(_USER) is False
 
 
 class TestUserPaywalledError:

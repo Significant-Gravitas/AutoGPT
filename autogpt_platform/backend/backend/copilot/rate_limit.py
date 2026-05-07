@@ -1206,12 +1206,20 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 async def is_user_paywalled(user_id: str) -> bool:
     """Return ``True`` if the user has no entitlement to paywalled features.
 
-    Strict tier lookup — propagates DB errors to the caller so each
-    caller can decide its own failure-mode posture (route → 503,
-    background job → fail-open). Centralised here so every gate uses
-    the same definition.
+    A user with no DB tier record (``_UserNotFoundError`` — fresh signup
+    that hasn't been provisioned yet, or row missing) is treated as
+    ``NO_TIER`` here: paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
+    Without this branch the missing-tier case would propagate as a 500
+    in any caller that doesn't already have a generic ``except`` (e.g.
+    the external API ``execute_graph_block`` route).
+
+    Other tier-lookup errors propagate — callers decide (route → 503,
+    background job → fail-open).
     """
-    tier = await _fetch_user_tier(user_id)
+    try:
+        tier = await _fetch_user_tier(user_id)
+    except _UserNotFoundError:
+        tier = SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return False
     return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
