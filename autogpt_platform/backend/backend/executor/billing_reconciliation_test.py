@@ -159,6 +159,41 @@ async def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
 
 
 @pytest.mark.asyncio
+async def test_positive_delta_passes_fail_insufficient_credits_false(
+    tmp_block_costs_override,
+):
+    """Reconciliation must call spend_credits with
+    fail_insufficient_credits=False on a positive delta — the wallet is
+    allowed to go negative so the platform records debt instead of leaking
+    the cost."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    # Wallet went negative: the user had 1 credit, the delta is 5, the new
+    # balance is -4. spend_credits returns the post-spend balance.
+    db_client = _async_db_client(spend_credits_return=-4)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert delta == 5
+    assert remaining == -4
+    db_client.spend_credits.assert_awaited_once()
+    call_kwargs = db_client.spend_credits.await_args.kwargs
+    assert call_kwargs["cost"] == 5
+    assert call_kwargs["fail_insufficient_credits"] is False
+
+
+@pytest.mark.asyncio
 async def test_missing_block_returns_zero():
     exec_entry = _node_exec("deadbeef-0000-0000-0000-000000000000")
     stats = NodeExecutionStats(walltime=10)
