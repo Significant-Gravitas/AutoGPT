@@ -49,6 +49,11 @@ MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
 # "no tool blocks >= idle_timeout" holds by construction.
 STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
 
+# Redis key prefix for the SDK-stream-level lock that ensures only one
+# active SDK stream per session. Released by the SDK turn's finally block
+# and force-released by mark_session_completed on cancel/error.
+STREAM_LOCK_PREFIX = "copilot:stream:lock:"
+
 
 def is_copilot_synthetic_id(id_value: str) -> bool:
     """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""

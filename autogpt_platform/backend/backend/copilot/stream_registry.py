@@ -35,6 +35,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
+from .constants import STREAM_LOCK_PREFIX
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
@@ -873,6 +874,15 @@ async def mark_session_completed(
         await redis.delete(get_session_lock_key(session_id))
     except RedisError as e:
         logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
+
+    # Force-release the SDK-stream lock too. The SDK turn's finally block
+    # normally releases it, but on cancel/force-complete the next user turn
+    # can race ahead before that runs and hit stream_already_active. The
+    # delete is idempotent with the SDK's own release.
+    try:
+        await redis.delete(f"{STREAM_LOCK_PREFIX}{session_id}")
+    except RedisError as e:
+        logger.warning(f"Failed to release stream lock for session {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:

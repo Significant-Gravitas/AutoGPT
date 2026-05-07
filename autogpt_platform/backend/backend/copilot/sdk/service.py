@@ -51,6 +51,7 @@ from ..constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
     STOPPED_BY_USER_MARKER,
+    STREAM_LOCK_PREFIX,
     is_transient_api_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
@@ -1571,9 +1572,6 @@ _SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
-
-
-STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
 async def _safe_close_sdk_client(
