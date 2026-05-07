@@ -82,8 +82,8 @@ def _capture_handler_tasks():
     tasks: list[asyncio.Task[None]] = []
     real_create_task = asyncio.create_task
 
-    def _capturing(coro):
-        task = real_create_task(coro)
+    def _capturing(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
         tasks.append(task)
         return task
 
