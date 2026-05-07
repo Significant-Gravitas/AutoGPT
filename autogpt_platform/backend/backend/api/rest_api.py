@@ -52,6 +52,7 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -307,6 +308,12 @@ app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
+# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
+# maps to HTTP 402. log_error=False because it's not an error from the
+# server's perspective — the user just lacks entitlement.
+app.add_exception_handler(
+    UserPaywalledError, handle_internal_http_error(402, log_error=False)
+)
 app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 

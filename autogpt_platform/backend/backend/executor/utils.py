@@ -11,6 +11,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -462,9 +463,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_INVALID_PREFIX} {e}"
+                )
                 continue
 
             try:
@@ -475,15 +476,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                )
                 continue
 
             if not credentials:
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                )
                 continue
 
             if (
@@ -593,18 +594,18 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        )
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -1141,7 +1142,29 @@ async def add_graph_execution(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.
+        UserPaywalledError: If the user is on NO_TIER and ENABLE_PLATFORM_PAYMENT
+            is on for them. Raised here (rather than only at the route layer)
+            so every entry point — HTTP routes, scheduled cron, webhook
+            triggers, external API, internal copilot tools — gets the same
+            gate without each having to remember a route-level dependency.
+            Don't fail-closed on tier-lookup errors at this layer (background
+            jobs would abandon valid runs); the route-level
+            ``enforce_payment_paywall`` already maps lookup failures to 503,
+            and at this depth we'd rather let an indeterminate user through
+            than wedge a scheduled run during a transient blip.
     """
+    try:
+        if await is_user_paywalled(user_id):
+            raise UserPaywalledError("A subscription is required to run agents.")
+    except UserPaywalledError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "add_graph_execution: paywall check failed for %s, allowing run: %s",
+            user_id[:8],
+            exc,
+        )
+
     if prisma.is_connected():
         edb = execution_db
         udb = user_db

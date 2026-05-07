@@ -369,12 +369,16 @@ class TestCoPilotUsagePublicFromStatus:
 
 
 class TestEnforcePaymentPaywall:
+    """The dep bypasses ``get_user_tier``'s fail-open default and goes
+    through ``_fetch_user_tier`` directly so a transient DB blip raises
+    503 instead of silently 402-ing every paid user."""
+
     @pytest.mark.asyncio
     async def test_blocks_no_tier_user_when_flag_on(self, mocker):
         """The headline behaviour: NO_TIER + ENABLE_PLATFORM_PAYMENT on
         raises HTTP 402 before the route handler runs."""
         mocker.patch(
-            "backend.copilot.rate_limit.get_user_tier",
+            "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
         mocker.patch(
@@ -394,7 +398,7 @@ class TestEnforcePaymentPaywall:
     async def test_allows_no_tier_user_when_flag_off(self, mocker):
         """Beta cohort: flag off → NO_TIER user passes through (no exception)."""
         mocker.patch(
-            "backend.copilot.rate_limit.get_user_tier",
+            "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
         )
         mocker.patch(
@@ -419,7 +423,7 @@ class TestEnforcePaymentPaywall:
     async def test_allows_paid_tier_even_when_flag_on(self, mocker, tier):
         """Even with the flag on, paid tiers must never be blocked."""
         mocker.patch(
-            "backend.copilot.rate_limit.get_user_tier",
+            "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=tier),
         )
         is_feature_enabled_mock = mocker.patch(
@@ -431,6 +435,125 @@ class TestEnforcePaymentPaywall:
         await enforce_payment_paywall(_USER)  # must not raise
         # Short-circuits on tier check; flag lookup never happens for paid
         # tiers (avoids an unnecessary LD round-trip per paywalled route).
+        is_feature_enabled_mock.assert_not_called()
+
+
+class TestIsUserPaywalled:
+    """``is_user_paywalled`` is the shared core check used by both the
+    route-level dep and the function-level gate inside ``add_graph_execution``.
+    Strict: propagates lookup failures so the caller decides how to respond
+    (route → 503; background job → fail-open)."""
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_flag_on_is_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is True
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_flag_off_is_not_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier",
+        [
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+            SubscriptionTier.ENTERPRISE,
+        ],
+    )
+    async def test_paid_tier_short_circuits_without_flag_lookup(self, mocker, tier):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=tier),
+        )
+        flag_mock = mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is False
+        flag_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_propagates_lookup_failure(self, mocker):
+        """The helper does NOT swallow tier-lookup errors — callers
+        decide. The route-dep maps to 503; background callers
+        (add_graph_execution) fail open."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        from .rate_limit import is_user_paywalled
+
+        with pytest.raises(RuntimeError):
+            await is_user_paywalled(_USER)
+
+
+class TestUserPaywalledError:
+    def test_default_message(self):
+        from .rate_limit import UserPaywalledError
+
+        assert "subscription" in str(UserPaywalledError()).lower()
+
+    def test_custom_message(self):
+        from .rate_limit import UserPaywalledError
+
+        assert str(UserPaywalledError("custom")) == "custom"
+
+
+class TestEnforcePaymentPaywallContinued:
+    """Additional ``enforce_payment_paywall`` cases that depend on the
+    helpers above. Kept separate so the related ``TestIsUserPaywalled``
+    block stays compact above."""
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_503_not_402(self, mocker):
+        """Transient DB outage during tier lookup must NOT 402 every paid
+        user (the silent-bypass concern raised by sentry/CodeRabbit on
+        the previous round). It must surface as 503 with a Retry-After
+        header so the client retries shortly instead of treating the
+        outage as a permanent paywall."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        is_feature_enabled_mock = mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_payment_paywall
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers.get("Retry-After") == "30"
+        # Flag lookup never runs when tier is indeterminate — we don't
+        # know which cohort to apply.
         is_feature_enabled_mock.assert_not_called()
 
 
@@ -1387,6 +1510,44 @@ class TestGetGlobalRateLimitsWithTiers:
         assert daily == 150_000_000
         assert weekly == 750_000_000
         assert tier == SubscriptionTier.ENTERPRISE
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_payment_disabled_upgrades_to_basic(self):
+        """Beta cohort regression test: a NO_TIER user passing through
+        the route-level paywall (because ENABLE_PLATFORM_PAYMENT is off)
+        must NOT then hit (0, 0) at check_rate_limit. The fallback to
+        BASIC's multiplier (1.0) keeps daily/weekly intact so beta
+        testers retain access without bypassing usage caps."""
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 1_000_000, "weekly": 5_000_000}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+            patch(
+                "backend.copilot.rate_limit.is_feature_enabled",
+                new=AsyncMock(return_value=False),  # beta cohort
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 1_000_000, 5_000_000
+            )
+
+        # BASIC's multiplier is 1.0 → limits arrive non-zero, not the
+        # NO_TIER multiplier-collapsed (0, 0) that would slip past
+        # check_rate_limit's pre-PR `> 0` short-circuit.
+        assert daily == 1_000_000
+        assert weekly == 5_000_000
+        assert tier == SubscriptionTier.NO_TIER
 
 
 # ---------------------------------------------------------------------------

@@ -1671,7 +1671,12 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    dependencies=[Security(requires_user)],
+    # 402 is raised by ``add_graph_execution`` when the user is paywalled
+    # (NO_TIER + ENABLE_PLATFORM_PAYMENT on) — the app-level
+    # ``UserPaywalledError`` exception handler maps it. Same gate also
+    # covers scheduled / webhook / external-API runs that don't pass
+    # through this route, so no route-level paywall dep is needed here.
     responses={
         402: {
             "description": "Payment required: NO_TIER paywall, or insufficient credit balance"

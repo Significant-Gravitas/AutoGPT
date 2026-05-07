@@ -467,6 +467,25 @@ class RateLimitUnavailable(Exception):
     """
 
 
+class UserPaywalledError(Exception):
+    """User has no entitlement to run a paywalled feature (NO_TIER tier
+    + ``ENABLE_PLATFORM_PAYMENT`` on).
+
+    Raised by ``add_graph_execution`` and other deep enqueue paths so
+    that *every* execution entry point (HTTP route, scheduled cron,
+    webhook trigger, external API, internal copilot tool) gets the same
+    gate without each one having to remember a route-level dependency.
+    Routes wrap this into HTTP 402; background tasks log and abandon
+    the run.
+    """
+
+    def __init__(
+        self,
+        message: str = "A subscription is required to run this feature.",
+    ) -> None:
+        super().__init__(message)
+
+
 async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
@@ -1183,13 +1202,51 @@ async def enforce_payment_paywall(
     Beta-cohort users (``ENABLE_PLATFORM_PAYMENT`` off) and any paid tier
     pass through unchanged. The dep does no Redis I/O — it's just a
     Supabase + LD lookup, both already cached.
+
+    Failure mode: ``get_user_tier`` falls back to ``DEFAULT_TIER``
+    (= ``NO_TIER``) on DB error to keep observability paths fail-open,
+    but for entitlement checks that would silently 402 every paid user
+    during a transient blip. We bypass that fallback here by going
+    through ``_fetch_user_tier`` directly and converting failures to
+    HTTP 503 (transient) instead of 402 (permanent).
     """
-    tier = await get_user_tier(user_id)
+    try:
+        paywalled = await is_user_paywalled(user_id)
+    except Exception as exc:
+        logger.warning(
+            "enforce_payment_paywall: tier lookup failed for %s: %s",
+            user_id[:8],
+            exc,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Subscription state temporarily unavailable, retry shortly.",
+            headers={"Retry-After": "30"},
+        ) from exc
+    if paywalled:
+        raise fastapi.HTTPException(
+            status_code=402,
+            detail=(
+                "A subscription is required to use this feature. Upgrade to continue."
+            ),
+        )
+
+
+async def is_user_paywalled(user_id: str) -> bool:
+    """Return ``True`` if the user has no entitlement to paywalled features.
+
+    Strict tier lookup — propagates DB errors to the caller so the route
+    layer can map them to 503 (instead of swallowing into NO_TIER and
+    falsely 402'ing every paid user during a transient blip). Background
+    callers (e.g. ``add_graph_execution``) that prefer fail-open should
+    catch the lookup exception themselves and decide.
+
+    Centralised here so every paywalled entry point — HTTP routes via
+    ``enforce_payment_paywall``, deeper enqueue paths via direct call,
+    background jobs via try/except — uses the same definition of
+    "paywalled".
+    """
+    tier = await _fetch_user_tier(user_id)
     if tier != SubscriptionTier.NO_TIER:
-        return
-    if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
-        return
-    raise fastapi.HTTPException(
-        status_code=402,
-        detail="A subscription is required to use this feature. Upgrade to continue.",
-    )
+        return False
+    return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
