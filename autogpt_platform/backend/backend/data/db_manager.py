@@ -147,10 +147,15 @@ R = TypeVar("R")
 
 
 async def _spend_credits(
-    user_id: str, cost: int, metadata: UsageTransactionMetadata
+    user_id: str,
+    cost: int,
+    metadata: UsageTransactionMetadata,
+    fail_insufficient_credits: bool = True,
 ) -> int:
     user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.spend_credits(user_id, cost, metadata)
+    return await user_credit_model.spend_credits(
+        user_id, cost, metadata, fail_insufficient_credits=fail_insufficient_credits
+    )
 
 
 async def _get_credits(user_id: str) -> int:

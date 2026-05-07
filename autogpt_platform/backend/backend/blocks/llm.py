@@ -7,7 +7,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
 import ollama
@@ -15,6 +15,7 @@ import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
@@ -924,21 +925,6 @@ async def llm_call(
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
 
-    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter
-    # API key is configured, route direct-Anthropic models through OpenRouter
-    # instead. This gives us per-request USD cost for free, so provider_cost
-    # is populated without manual token-rate arithmetic.
-    or_key = settings.secrets.open_router_api_key
-    or_model_id: str | None = None
-    if provider == "anthropic" and or_key:
-        provider = "open_router"
-        credentials = APIKeyCredentials(
-            provider=ProviderName.OPEN_ROUTER,
-            title="OpenRouter (auto)",
-            api_key=SecretStr(or_key),
-        )
-        or_model_id = f"anthropic/{llm_model.value}"
-
     if compress_prompt_to_fit:
         result = await compress_context(
             messages=prompt,
@@ -1182,7 +1168,6 @@ async def llm_call(
             reasoning=None,
         )
     elif provider == "open_router":
-        tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1200,10 +1185,12 @@ async def llm_call(
             # Ask OpenRouter to include the per-request USD cost on the usage
             # object. Same shape used by simulator.py — keep aligned.
             extra_body={"usage": {"include": True}},
-            model=or_model_id or llm_model.value,
-            messages=prompt,  # type: ignore
+            model=llm_model.value,
+            messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
+            tools=(
+                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
+            ),
             parallel_tool_calls=parallel_tool_calls_param,
             response_format=(
                 ResponseFormatJSONObject(type="json_object")
