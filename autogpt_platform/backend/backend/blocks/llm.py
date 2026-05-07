@@ -14,11 +14,8 @@ import ollama
 import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
-from openai.types.chat import (
-    ChatCompletion as OpenAIChatCompletion,
-    ChatCompletionMessageParam,
-    ChatCompletionToolParam,
-)
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
