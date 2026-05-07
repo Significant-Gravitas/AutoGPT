@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   useGetSubscriptionStatus,
   useGetV1ManagePaymentMethods,
@@ -7,10 +9,12 @@ import {
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/models/getV1ManagePaymentMethods200";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
+import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated__/models/subscriptionTierRequestBillingCycle";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import { formatShortDate } from "../../../helpers";
+import { formatCents, formatShortDate } from "../../../helpers";
 
 const PLAN_LABEL: Record<string, string> = {
   NO_TIER: "No active subscription",
@@ -71,17 +75,62 @@ export function useYourPlanCard() {
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
 
+  const serverCycle: SubscriptionTierRequestBillingCycle =
+    subscription.data?.billing_cycle === "yearly" ? "yearly" : "monthly";
+  const [selectedCycle, setSelectedCycle] =
+    useState<SubscriptionTierRequestBillingCycle>(serverCycle);
+  const [pendingCycle, setPendingCycle] =
+    useState<SubscriptionTierRequestBillingCycle | null>(null);
+  // Tier upgrades on a paid plan run through always_invoice immediate billing
+  // — without a confirmation step the user is silently charged a large
+  // prorated amount on a single click. Stage the target tier here and only
+  // fire the mutation after the SwitchTierDialog confirms.
+  const [pendingTierUpgrade, setPendingTierUpgrade] =
+    useState<SubscriptionTierRequestTier | null>(null);
+  // Downgrade is end-of-period (no charge today) so the risk is lower than
+  // upgrade, but we still gate behind a confirm dialog so the user gets
+  // explicit feedback that the action took effect.
+  const [pendingTierDowngrade, setPendingTierDowngrade] =
+    useState<SubscriptionTierRequestTier | null>(null);
+
+  // Re-sync local toggle when the server response updates (e.g. after refetch
+  // post-mutation). Avoids stale "yearly" pill after a successful switch.
+  useEffect(() => {
+    setSelectedCycle(serverCycle);
+  }, [serverCycle]);
+
   const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
   const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
 
   const pendingTier = subscription.data?.pending_tier ?? null;
   const pendingEffectiveAt =
     subscription.data?.pending_tier_effective_at ?? null;
+  const pendingBillingCycle = subscription.data?.pending_billing_cycle ?? null;
   // Cancellation = pending change to the "no active subscription" state.
   const isPendingCancel = pendingTier === "NO_TIER";
-  // Paid→paid downgrade scheduled in Stripe (e.g. MAX → PRO at period end).
-  // Initiated from the Stripe billing portal — there's no in-app trigger.
-  const isPendingDowngrade = pendingTier !== null && pendingTier !== "NO_TIER";
+  // Same-tier yearly→monthly schedule: pending_tier matches current tier but
+  // pending_billing_cycle differs from serverCycle. Treat as a cycle-only
+  // switch so the badge + copy describe the change accurately rather than
+  // claiming a confusing "downgrade to <same tier>".
+  const isPendingCycleSwitch =
+    pendingTier !== null &&
+    pendingTier !== "NO_TIER" &&
+    pendingTier === effectiveTier &&
+    pendingBillingCycle !== null &&
+    pendingBillingCycle !== serverCycle;
+  // Paid→paid tier downgrade scheduled in Stripe (e.g. MAX → PRO at period
+  // end). The in-app trigger lives on the Downgrade button below; the Stripe
+  // billing portal can also originate one.
+  const isPendingDowngrade =
+    pendingTier !== null &&
+    pendingTier !== "NO_TIER" &&
+    pendingTier !== effectiveTier;
+
+  const tierCostsYearly = subscription.data?.tier_costs_yearly ?? {};
+  const tierCosts = subscription.data?.tier_costs ?? {};
+  const currentTierKey = effectiveTier ?? "NO_TIER";
+  const currentYearlyCents = tierCostsYearly[currentTierKey];
+  const currentMonthlyCents = tierCosts[currentTierKey];
 
   const plan = subscription.data
     ? {
@@ -109,12 +158,27 @@ export function useYourPlanCard() {
           ? (PLAN_LABEL[pendingTier] ?? pendingTier)
           : null,
         pendingEffectiveAt,
+        pendingCycle: pendingBillingCycle,
         isPendingCancel,
         isPendingDowngrade,
+        isPendingCycleSwitch,
+        billingCycle: serverCycle,
       }
     : undefined;
 
-  async function changeTier(tier: SubscriptionTierRequestTier) {
+  // ENTERPRISE seats are admin-managed; BASIC is a reserved internal slot;
+  // NO_TIER means no active subscription. None of those have a
+  // user-manageable cycle to switch — the toggle would be dead UI.
+  const isCycleToggleVisible =
+    effectiveTier !== null &&
+    effectiveTier !== "ENTERPRISE" &&
+    effectiveTier !== "BASIC" &&
+    effectiveTier !== "NO_TIER";
+
+  async function changeTier(
+    tier: SubscriptionTierRequestTier,
+    billingCycle?: SubscriptionTierRequestBillingCycle,
+  ) {
     const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
     try {
@@ -123,6 +187,7 @@ export function useYourPlanCard() {
           tier,
           success_url: successUrl,
           cancel_url: cancelUrl,
+          ...(billingCycle ? { billing_cycle: billingCycle } : {}),
         },
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
@@ -135,6 +200,23 @@ export function useYourPlanCard() {
       await subscription.refetch();
       return true;
     } catch (error) {
+      // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for
+      // this tier. Match billingCycle === "yearly" specifically — a 422 on a
+      // monthly request is a different failure (e.g. tier unconfigured) and
+      // should surface the generic "Couldn't update your plan" copy below
+      // instead of misleading the user about yearly availability.
+      if (
+        error instanceof ApiError &&
+        error.status === 422 &&
+        billingCycle === "yearly"
+      ) {
+        toast({
+          title: "Yearly billing is not yet available for your plan.",
+          description: "Please contact support.",
+          variant: "destructive",
+        });
+        return false;
+      }
       toast({
         title: "Couldn't update your plan",
         description:
@@ -147,13 +229,19 @@ export function useYourPlanCard() {
     }
   }
 
-  async function downgradeSubscription() {
+  async function downgradeSubscription(
+    targetTier: SubscriptionTierRequestTier,
+  ) {
     // End-of-period downgrade: backend's modify_stripe_subscription_for_tier
     // schedules a phase change at current_period_end. No proration today —
     // user keeps higher tier until period end, then drops to lower price.
-    if (!plan?.isPaidPlan || !plan?.previousTier) return;
-    const targetLabel = plan.previousTierLabel ?? plan.previousTier;
-    const ok = await changeTier(plan.previousTier);
+    if (!plan?.isPaidPlan) return;
+    const targetLabel = PLAN_LABEL[targetTier] ?? targetTier;
+    // Preserve the user's current cycle on downgrade — without forwarding
+    // serverCycle, the backend would default the missing billing_cycle to
+    // "monthly" and silently flip a yearly subscriber to monthly at period
+    // end (Sentry caught this; the same-tier release path also bites).
+    const ok = await changeTier(targetTier, serverCycle);
     if (!ok) return;
     const periodEnd = plan.currentPeriodEnd
       ? formatShortDate(plan.currentPeriodEnd * 1000)
@@ -167,24 +255,162 @@ export function useYourPlanCard() {
   }
 
   async function resumeSubscription() {
-    // POSTing the current tier back to the backend releases any pending
-    // schedule — both cancel_at_period_end (NO_TIER pending) and paid→paid
-    // downgrade phases. See release_pending_subscription_schedule + the
-    // same-tier branch of update_subscription_tier.
+    // POSTing the current tier+cycle back to the backend releases any pending
+    // schedule — cancel_at_period_end (NO_TIER pending), paid→paid downgrade,
+    // and same-tier yearly→monthly cycle switch all share the release path.
+    // See release_pending_subscription_schedule + the same-tier branch of
+    // update_subscription_tier.
     if (
       !plan?.isPaidPlan ||
-      (!plan?.isPendingCancel && !plan?.isPendingDowngrade)
+      (!plan?.isPendingCancel &&
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch)
     ) {
       return;
     }
-    const ok = await changeTier(plan.tierKey as SubscriptionTierRequestTier);
+    // Same-tier release also gates on cycle: omitting billing_cycle defaults
+    // the backend to "monthly", which on a yearly sub is treated as a
+    // cycle-switch instead of a release-pending — silent flip to monthly.
+    const ok = await changeTier(
+      plan.tierKey as SubscriptionTierRequestTier,
+      serverCycle,
+    );
     if (!ok) return;
     toast({
       title: plan.isPendingCancel
         ? "Subscription resumed"
-        : "Downgrade cancelled",
+        : plan.isPendingCycleSwitch
+          ? "Cycle switch cancelled"
+          : "Downgrade cancelled",
       description: `Your ${plan.label} plan will continue to renew as normal.`,
     });
+  }
+
+  function onCycleChange(nextCycle: SubscriptionTierRequestBillingCycle) {
+    if (nextCycle === selectedCycle) return;
+    if (!plan?.isPaidPlan) {
+      // NO_TIER — the upgrade flow forwards `selectedCycle` to changeTier.
+      setSelectedCycle(nextCycle);
+      return;
+    }
+    if (nextCycle === serverCycle) {
+      // User toggled back to their current server cycle while a switch
+      // dialog was open elsewhere — just clear the staged change.
+      setSelectedCycle(nextCycle);
+      setPendingCycle(null);
+      return;
+    }
+    setPendingCycle(nextCycle);
+  }
+
+  async function confirmCycleSwitch() {
+    if (!pendingCycle || !plan?.tierKey) return;
+    const ok = await changeTier(
+      plan.tierKey as SubscriptionTierRequestTier,
+      pendingCycle,
+    );
+    setPendingCycle(null);
+    if (!ok) return;
+    setSelectedCycle(pendingCycle);
+    toast({
+      title:
+        pendingCycle === "yearly"
+          ? "Switched to yearly billing"
+          : "Switching to monthly at period end",
+      description:
+        pendingCycle === "yearly"
+          ? "Stripe will charge the prorated difference today."
+          : "Your plan will switch to monthly at the end of the current period.",
+    });
+  }
+
+  function cancelCycleSwitch() {
+    setPendingCycle(null);
+  }
+
+  function getDialogBody(): string {
+    if (!pendingCycle) return "";
+    if (pendingCycle === "yearly") {
+      const yearly =
+        currentYearlyCents !== undefined ? formatCents(currentYearlyCents) : "";
+      return [
+        "You'll be charged the prorated difference immediately.",
+        yearly
+          ? `After this period, your plan renews yearly at ${yearly}.`
+          : "After this period, your plan renews on the new yearly cadence.",
+      ].join(" ");
+    }
+    const monthly =
+      currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
+    return [
+      "Your plan will switch to monthly billing at the end of your current yearly period; no charge today.",
+      monthly ? `New monthly price: ${monthly}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  function getTierUpgradeDialogBody(): string {
+    if (!pendingTierUpgrade) return "";
+    const targetCents =
+      serverCycle === "yearly"
+        ? tierCostsYearly[pendingTierUpgrade]
+        : tierCosts[pendingTierUpgrade];
+    const newPrice =
+      typeof targetCents === "number" ? formatCents(targetCents) : "";
+    const cycleNoun = serverCycle === "yearly" ? "yearly" : "monthly";
+    const cycleUnit = serverCycle === "yearly" ? "year" : "month";
+    const renewLine = newPrice
+      ? `After this period, your plan renews at ${newPrice} per ${cycleUnit}.`
+      : "";
+    return [
+      `You'll be charged the prorated difference immediately for the rest of your ${cycleNoun} period.`,
+      renewLine,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  async function confirmTierUpgrade() {
+    if (!pendingTierUpgrade) return;
+    const target = pendingTierUpgrade;
+    const ok = await changeTier(target, serverCycle);
+    setPendingTierUpgrade(null);
+    if (!ok) return;
+  }
+
+  function cancelTierUpgrade() {
+    setPendingTierUpgrade(null);
+  }
+
+  function getTierDowngradeDialogBody(): string {
+    if (!pendingTierDowngrade || !plan) return "";
+    const targetLabel =
+      PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade;
+    const cycleNoun = serverCycle === "yearly" ? "yearly" : "monthly";
+    const periodEnd = plan.currentPeriodEnd
+      ? formatShortDate(plan.currentPeriodEnd * 1000)
+      : null;
+    if (periodEnd) {
+      return `You'll keep ${plan.label} (${cycleNoun}) until ${periodEnd}, then switch to ${targetLabel}. No charge today.`;
+    }
+    return `Your plan will switch to ${targetLabel} at the close of the current billing period. No charge today.`;
+  }
+
+  async function confirmTierDowngrade() {
+    // Capture pendingTierDowngrade locally before the state-clear — passing
+    // the captured value to downgradeSubscription guarantees the request
+    // targets exactly the tier the user confirmed in the dialog, even if
+    // plan.previousTier shifts between dialog open and confirm (e.g. an
+    // unrelated subscription refetch lands).
+    const target = pendingTierDowngrade;
+    if (!target) return;
+    setPendingTierDowngrade(null);
+    await downgradeSubscription(target);
+  }
+
+  function cancelTierDowngrade() {
+    setPendingTierDowngrade(null);
   }
 
   return {
@@ -195,7 +421,10 @@ export function useYourPlanCard() {
     // Don't offer upgrade alongside Resume — pending cancel/downgrade should
     // be released first via resumeSubscription, not stacked with a new tier.
     canUpgrade: Boolean(
-      plan?.nextTier && !plan?.isPendingCancel && !plan?.isPendingDowngrade,
+      plan?.nextTier &&
+        !plan?.isPendingCancel &&
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch,
     ),
     // Downgrade only when an active paid sub has a tier below it AND no
     // pending change is already in flight — avoids stacking schedules.
@@ -203,9 +432,41 @@ export function useYourPlanCard() {
       plan?.isPaidPlan &&
         plan?.previousTier &&
         !plan?.isPendingCancel &&
-        !plan?.isPendingDowngrade,
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch,
     ),
-    canResume: Boolean(plan?.isPendingCancel || plan?.isPendingDowngrade),
+    canResume: Boolean(
+      plan?.isPendingCancel ||
+        plan?.isPendingDowngrade ||
+        plan?.isPendingCycleSwitch,
+    ),
+    selectedCycle,
+    pendingCycle,
+    pendingTierUpgrade,
+    pendingTierUpgradeLabel: pendingTierUpgrade
+      ? (PLAN_LABEL[pendingTierUpgrade] ?? pendingTierUpgrade)
+      : null,
+    pendingTierDowngrade,
+    pendingTierDowngradeLabel: pendingTierDowngrade
+      ? (PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade)
+      : null,
+    isCycleToggleVisible,
+    cycleDialogBody: getDialogBody(),
+    tierUpgradeDialogBody: getTierUpgradeDialogBody(),
+    tierDowngradeDialogBody: getTierDowngradeDialogBody(),
+    onCycleChange,
+    onConfirmCycleSwitch: () => {
+      void confirmCycleSwitch();
+    },
+    onCancelCycleSwitch: cancelCycleSwitch,
+    onConfirmTierUpgrade: () => {
+      void confirmTierUpgrade();
+    },
+    onCancelTierUpgrade: cancelTierUpgrade,
+    onConfirmTierDowngrade: () => {
+      void confirmTierDowngrade();
+    },
+    onCancelTierDowngrade: cancelTierDowngrade,
     onUpgrade: () => {
       if (!plan?.nextTier) return;
       // Team (BUSINESS) tier is contact-sales — divert to marketing page
@@ -214,10 +475,19 @@ export function useYourPlanCard() {
         window.open(TEAM_UPGRADE_URL, "_blank", "noopener,noreferrer");
         return;
       }
-      void changeTier(plan.nextTier);
+      // Free tier (NO_TIER) flow runs through Stripe Checkout via the
+      // success_url redirect — there's no immediate proration risk, so go
+      // straight to changeTier without a confirm step. Only paid→paid
+      // upgrades hit the always_invoice immediate-billing path.
+      if (!plan.isPaidPlan) {
+        void changeTier(plan.nextTier, selectedCycle);
+        return;
+      }
+      setPendingTierUpgrade(plan.nextTier);
     },
     onDowngrade: () => {
-      void downgradeSubscription();
+      if (!plan?.previousTier) return;
+      setPendingTierDowngrade(plan.previousTier);
     },
     onResume: () => {
       void resumeSubscription();

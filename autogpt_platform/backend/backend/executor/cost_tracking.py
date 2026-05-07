@@ -100,7 +100,7 @@ async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
             )
 
 
-def _schedule_log(
+def schedule_platform_cost_log(
     db_client: "DatabaseManagerAsyncClient", entry: PlatformCostEntry
 ) -> None:
     async def _safe_log() -> None:
@@ -263,7 +263,7 @@ async def log_system_credential_cost(
                 # type (USD for cost_usd, count for items/characters/per_run, etc.)
                 meta["provider_cost_raw"] = stats.provider_cost
 
-            _schedule_log(
+            schedule_platform_cost_log(
                 db_client,
                 PlatformCostEntry(
                     user_id=node_exec.user_id,

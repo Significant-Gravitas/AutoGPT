@@ -200,3 +200,8 @@ test-results/
 # Playwright MCP / local browser-testing artifacts
 .playwright-mcp/
 copilot-session-switch-qa/
+
+# Agent-generated scratch dirs (pr-test screenshots, agent-browser artifacts).
+tmp/
+screenshots/
+test-screenshots/

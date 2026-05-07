@@ -42,6 +42,13 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
 
+    # Schedules
+    SCHEDULE_LIST = "schedule_list"
+    SCHEDULE_DELETED = "schedule_deleted"
+
+    # Agent triggers
+    AGENT_TRIGGER_LIST = "agent_trigger_list"
+
     # MCP
     MCP_GUIDE = "mcp_guide"
     MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
@@ -90,6 +97,9 @@ class ResponseType(str, Enum):
 
     # Planning
     TODO_WRITE = "todo_write"
+
+    # Platform info
+    PLATFORM_INFO = "platform_info"
 
 
 # Base response model
@@ -877,3 +887,12 @@ class TodoWriteResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TODO_WRITE
     todos: list[TodoItem] = Field(default_factory=list)
+
+
+class PlatformInfoResponse(ToolResponseBase):
+    """Response from the ``get_platform_info`` tool."""
+
+    type: ResponseType = ResponseType.PLATFORM_INFO
+    topic: str
+    tier: str | None = None
+    billing_url: str | None = "/settings/billing"

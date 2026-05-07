@@ -30,6 +30,7 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
+from .list_agent_triggers import ListAgentTriggersTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -38,6 +39,8 @@ from .manage_folders import (
     MoveFolderTool,
     UpdateFolderTool,
 )
+from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -82,6 +85,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_folder": DeleteFolderTool(),
     "move_agents_to_folder": MoveAgentsToFolderTool(),
     "run_agent": RunAgentTool(),
+    # Schedule management
+    "list_schedules": ListSchedulesTool(),
+    "delete_schedule": DeleteScheduleTool(),
+    # Trigger discovery (parent agent → its triggers)
+    "list_agent_triggers": ListAgentTriggersTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
@@ -107,6 +115,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
+    # Platform info (subscription, billing)
+    "get_platform_info": PlatformInfoTool(),
     # Agent generation tools (local validation/fixing)
     "validate_agent_graph": ValidateAgentGraphTool(),
     "fix_agent_graph": FixAgentGraphTool(),

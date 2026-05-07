@@ -1,14 +1,16 @@
 """Tests for the platform-agnostic message handler."""
 
+import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import ChannelType, MessageContext
+from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import MessageHandler, TargetState
+from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -20,6 +22,8 @@ def _ctx(
     user_id: str = "user-1",
     username: str = "Bently",
     text: str = "hello bot",
+    bot_mentioned: bool = False,
+    thread_history: tuple[MessageHistoryEntry, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -30,6 +34,8 @@ def _ctx(
         user_id=user_id,
         username=username,
         text=text,
+        bot_mentioned=bot_mentioned,
+        thread_history=thread_history,
     )
 
 
@@ -42,6 +48,7 @@ def _adapter() -> MagicMock:
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
     adapter.create_thread = AsyncMock(return_value="thread-new")
+    adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
 
 
@@ -63,6 +70,28 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
 
     api.stream_chat = _empty_stream
     return api
+
+
+@contextlib.contextmanager
+def _capture_handler_tasks():
+    """Capture handler-spawned tasks at creation time.
+
+    Rename tasks self-discard from `handler._rename_tasks` via a done-
+    callback, so reading that set post-hoc is racy.
+    """
+    tasks: list[asyncio.Task[None]] = []
+    real_create_task = asyncio.create_task
+
+    def _capturing(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
+        tasks.append(task)
+        return task
+
+    with patch(
+        "backend.copilot.bot.handler.asyncio.create_task",
+        side_effect=_capturing,
+    ):
+        yield tasks
 
 
 class TestEmptyMessage:
@@ -92,6 +121,42 @@ class TestEnsureLinked:
         call_args = adapter.send_message.await_args.args
         assert "isn't linked" in call_args[1]
         assert "/setup" in call_args[1]
+
+    @pytest.mark.asyncio
+    async def test_unlinked_unsubscribed_thread_is_ignored(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(_ctx(channel_type="thread"), adapter)
+
+        api.resolve_server.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unlinked_mentioned_thread_tells_user_to_setup(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        with (
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(
+                _ctx(channel_type="thread", bot_mentioned=True), adapter
+            )
+
+        subscribe.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert "/setup" in adapter.send_message.await_args.args[1]
 
     @pytest.mark.asyncio
     async def test_unlinked_dm_prompts_link_flow(self):
@@ -133,26 +198,18 @@ class TestResolveTarget:
         assert result == "dm-42"
 
     @pytest.mark.asyncio
-    async def test_unsubscribed_thread_returns_none(self):
+    async def test_resolve_target_reuses_thread_after_subscription_gate(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
         ctx = _ctx(channel_type="thread", channel_id="thread-old")
-        with patch(
-            "backend.copilot.bot.handler.threads.is_subscribed",
-            new=AsyncMock(return_value=False),
-        ):
-            assert await handler._resolve_target(ctx, adapter) is None
+        assert await handler._resolve_target(ctx, adapter) == "thread-old"
 
     @pytest.mark.asyncio
     async def test_subscribed_thread_keeps_channel(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
         ctx = _ctx(channel_type="thread", channel_id="thread-ok")
-        with patch(
-            "backend.copilot.bot.handler.threads.is_subscribed",
-            new=AsyncMock(return_value=True),
-        ):
-            assert await handler._resolve_target(ctx, adapter) == "thread-ok"
+        assert await handler._resolve_target(ctx, adapter) == "thread-ok"
 
     @pytest.mark.asyncio
     async def test_channel_creates_and_subscribes_thread(self):
@@ -165,6 +222,7 @@ class TestResolveTarget:
             result = await handler._resolve_target(_ctx(), adapter)
         assert result == "thread-created"
         subscribe.assert_awaited_once_with("discord", "thread-created")
+        assert adapter.create_thread.await_args.args[2] == "AutoPilot: hello bot"
 
     @pytest.mark.asyncio
     async def test_channel_falls_back_to_parent_when_thread_creation_fails(self):
@@ -173,6 +231,55 @@ class TestResolveTarget:
         adapter.create_thread = AsyncMock(return_value=None)
         result = await handler._resolve_target(_ctx(channel_id="parent-chan"), adapter)
         assert result == "parent-chan"
+
+
+class TestThreadAdoption:
+    @pytest.mark.asyncio
+    async def test_mentioned_unsubscribed_thread_is_subscribed(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-existing",
+                    bot_mentioned=True,
+                ),
+                adapter,
+            )
+
+        subscribe.assert_awaited_once_with("discord", "thread-existing")
+        enqueue.assert_awaited_once()
+
+    def test_thread_history_is_included_in_message_text(self):
+        handler = MessageHandler(_api())
+        text = handler._message_text(
+            _ctx(
+                channel_type="thread",
+                text="what should we do?",
+                thread_history=(
+                    MessageHistoryEntry("Alice", "u-1", "I think option A"),
+                    MessageHistoryEntry("Bob", "u-2", "Option B is safer"),
+                ),
+            )
+        )
+
+        assert "Recent thread context" in text
+        assert "Alice (Discord user ID: u-1)" in text
+        assert "I think option A" in text
+        assert "Current message" in text
+        assert "what should we do?" in text
 
 
 class TestBatching:
@@ -253,6 +360,205 @@ class TestBatching:
             )
 
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_setup_requirements_sends_web_handoff_link(self):
+        api = _api()
+
+        async def setup_stream(*args, **kwargs):
+            await kwargs["on_setup_required"](
+                "session-1",
+                {
+                    "type": "setup_requirements",
+                    "message": "Connect GitHub to continue.",
+                },
+                "connect_integration",
+            )
+            yield "Once connected, I can retry."
+
+        api.stream_chat = setup_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.kwargs["link_label"] == "Open AutoGPT"
+        assert (
+            adapter.send_link.await_args.kwargs["link_url"]
+            == "https://app.example.com/copilot?sessionId=session-1"
+        )
+        assert "Connect GitHub" in adapter.send_link.await_args.args[1]
+        # Trailing yield after on_setup_required still flushes at end-of-stream.
+        adapter.send_message.assert_awaited_once()
+        assert "Once connected, I can retry." in adapter.send_message.await_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_setup_requirements_without_text_does_not_send_empty_fallback(self):
+        api = _api()
+
+        async def setup_stream(*args, **kwargs):
+            await kwargs["on_setup_required"](
+                "session-1",
+                {
+                    "type": "setup_requirements",
+                    "message": "Connect GitHub to continue.",
+                },
+                "connect_integration",
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = setup_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_channel_thread_renames_from_generated_chat_title(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-1")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        api.get_session_title = AsyncMock(return_value="Generated Web Title")
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),
+            ),
+            _capture_handler_tasks() as captured,
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-1",
+            )
+            await asyncio.gather(*captured, return_exceptions=True)
+
+        api.get_session_title.assert_awaited_once_with("session-1")
+        adapter.rename_thread.assert_awaited_once_with(
+            "thread-1", "Generated Web Title"
+        )
+
+    @pytest.mark.asyncio
+    async def test_thread_rename_retries_when_title_not_ready_yet(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-2")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        # First two polls return None (title not generated yet), third
+        # returns the real title.
+        api.get_session_title = AsyncMock(side_effect=[None, None, "Late Title"])
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),
+            ),
+            _capture_handler_tasks() as captured,
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-2",
+            )
+            await asyncio.gather(*captured, return_exceptions=True)
+
+        assert api.get_session_title.await_count == 3
+        adapter.rename_thread.assert_awaited_once_with("thread-2", "Late Title")
+
+    @pytest.mark.asyncio
+    async def test_thread_rename_keeps_retrying_after_transient_exception(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-3")
+            yield "Done"
+
+        api.stream_chat = title_stream
+        # Simulate a transient backend error on the first attempt; the
+        # retry should still go through and pick up the title.
+        api.get_session_title = AsyncMock(
+            side_effect=[RuntimeError("transient"), "Recovered Title"]
+        )
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),
+            ),
+            _capture_handler_tasks() as captured,
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-3",
+            )
+            await asyncio.gather(*captured, return_exceptions=True)
+
+        assert api.get_session_title.await_count == 2
+        adapter.rename_thread.assert_awaited_once_with("thread-3", "Recovered Title")
 
 
 class TestStreamFallback:
@@ -336,3 +642,23 @@ class TestStreamFallback:
         msgs = [c.args[1] for c in adapter.send_message.await_args_list]
         assert not any("didn't produce a response" in m for m in msgs)
         assert msgs == ["x" * 50]
+
+
+class TestThreadNames:
+    def test_build_thread_name_from_prompt(self):
+        assert (
+            build_thread_name("  tell me\nabout space  ", "Bently")
+            == "AutoPilot: tell me about space"
+        )
+
+    def test_build_thread_name_truncates_to_discord_limit(self):
+        name = build_thread_name("x" * 200, "Bently")
+        assert len(name) <= 100
+        assert name.startswith("AutoPilot: ")
+        assert name.endswith("...")
+
+    def test_clamp_thread_name_handles_generated_titles(self):
+        assert clamp_thread_name("  Generated\nWeb   Title  ") == "Generated Web Title"
+
+    def test_clamp_thread_name_falls_back_when_blank(self):
+        assert clamp_thread_name("   ") == "AutoPilot Chat"

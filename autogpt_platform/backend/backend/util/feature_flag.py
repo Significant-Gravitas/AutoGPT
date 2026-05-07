@@ -47,6 +47,7 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
     # per Checkout). When set to a real Stripe Product ID, line items reference
@@ -140,6 +141,10 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
+            if user.created_at:
+                # ISO-8601 string — LD supports RFC3339 date targeting on
+                # this attribute (e.g. cohort users by signup window).
+                builder.set("created_at", user.created_at.isoformat())
 
     except Exception as e:
         logger.warning(f"Failed to fetch user context for {user_id}: {e}")

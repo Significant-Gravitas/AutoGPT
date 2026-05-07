@@ -506,6 +506,60 @@ describe("DiagnosticsContent", () => {
     expect(screen.getByText(/from 4 schedules/)).toBeDefined();
   });
 
+  it("shows error state when only the agent query errors (coalesces error)", () => {
+    const err = { status: 500, message: "agent boom" };
+    mockExecQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAgentQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: err,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<DiagnosticsContent />);
+    expect(screen.getByText("Try Again")).toBeDefined();
+  });
+
+  it("shows error state when only the schedule query errors (coalesces error)", () => {
+    const err = { status: 503, message: "schedule boom" };
+    mockExecQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAgentQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: err,
+      refetch: vi.fn(),
+    });
+    render(<DiagnosticsContent />);
+    expect(screen.getByText("Try Again")).toBeDefined();
+  });
+
   it("clicking Refresh button calls all refetch functions", () => {
     const refetchExec = vi.fn();
     const refetchAgent = vi.fn();

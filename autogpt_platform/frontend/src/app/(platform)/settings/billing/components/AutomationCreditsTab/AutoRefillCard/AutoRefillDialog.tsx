@@ -63,9 +63,9 @@ export function AutoRefillDialog({
           <div className="flex items-start gap-2 rounded-[12px] bg-amber-50 px-3 py-2">
             <WarningIcon size={18} className="mt-0.5 shrink-0 text-amber-600" />
             <Text variant="small" as="span" className="text-amber-700">
-              A single agent run can only trigger one auto-refill. Set a refill
-              amount that covers your typical usage so agents don&apos;t pause
-              mid-run.
+              As a safety mechanism, auto-refill will only trigger once per
+              task. Keep this in mind when budgeting to ensure your balance does
+              not hit zero and your tasks don&apos;t pause mid-run.
             </Text>
           </div>
         </div>
