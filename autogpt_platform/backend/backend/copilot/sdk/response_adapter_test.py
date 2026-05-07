@@ -761,7 +761,7 @@ def test_result_empty_success_emits_error_and_finish():
     no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
     bug. The adapter surfaces it as a ``StreamError`` *paired with*
     ``StreamFinish`` so the service-layer post-stream flow flips
-    ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
+    ``acc.stream_completed`` and skips the ``STREAM_INCOMPLETE_MARKER``
     branch. ``SystemMessage(subtype="init")`` opened a step, so the
     empty-completion branch must close it before emitting the error."""
     adapter = _adapter()
