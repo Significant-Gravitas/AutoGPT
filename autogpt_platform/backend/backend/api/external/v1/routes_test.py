@@ -109,6 +109,7 @@ def test_paid_block_charges_then_runs(
     assert kwargs["metadata"].block_id == block.id
     assert kwargs["metadata"].block == "PaidBlock"
     assert kwargs["metadata"].input == {"matched": True}
+    assert kwargs["metadata"].reason == "Direct external block execution of PaidBlock"
 
 
 def test_free_block_runs_without_charging(monkeypatch: pytest.MonkeyPatch):

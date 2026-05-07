@@ -243,6 +243,7 @@ def test_execute_graph_block_charges_when_cost_positive(
     assert metadata.block_id == "paid-block"
     assert metadata.block == "PaidBlock"
     assert metadata.input == cost_filter
+    assert metadata.reason == "Direct internal block execution of PaidBlock"
 
 
 def test_execute_graph_block_returns_402_on_insufficient_balance(
@@ -687,10 +688,12 @@ async def test_upload_file_success(test_user_id: str):
     )
 
     # Mock dependencies
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = "gcs://test-bucket/uploads/123/test.txt"
@@ -737,10 +740,12 @@ async def test_upload_file_no_filename(test_user_id: str):
         ),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = (
@@ -818,10 +823,12 @@ async def test_upload_file_cloud_storage_failure(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.side_effect = RuntimeError("Storage error!")
@@ -865,10 +872,12 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
         headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
     )
 
-    with patch("backend.api.features.v1.scan_content_safe") as mock_scan, patch(
-        "backend.api.features.v1.get_cloud_storage_handler"
-    ) as mock_handler_getter:
-
+    with (
+        patch("backend.api.features.v1.scan_content_safe") as mock_scan,
+        patch(
+            "backend.api.features.v1.get_cloud_storage_handler"
+        ) as mock_handler_getter,
+    ):
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.config.gcs_bucket_name = ""  # Simulate no GCS bucket configured
