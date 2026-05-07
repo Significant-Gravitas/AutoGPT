@@ -578,10 +578,35 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
-    """Get a chat session from the database."""
-    session = await chat_db().get_chat_session(session_id)
-    if not session:
+    """Get a chat session from the database, capped at MAX_LOADED_CHAT_MESSAGES.
+
+    Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
+    no cursor) so the LLM-context path inherits the same tool-pair boundary
+    expansion and visibility guarantees the UI scroll-back path uses. The
+    cap-hit log surfaces here (the LLM-context use case) rather than inside the
+    generic paginated function.
+    """
+    # Local import to avoid the model→db→model cycle.
+    from .db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    if page is None:
         return None
+
+    if page.has_more:
+        logger.warning(
+            "Session %s loaded with capped messages (%d) — older history "
+            "must come from transcript checkpoint or context will be lost",
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+        )
+
+    session = ChatSession(
+        **page.session.model_dump(),
+        messages=page.messages,
+    )
 
     logger.info(
         f"Loaded session {session_id} from DB: "
@@ -674,8 +699,9 @@ async def _save_session_to_db(
     db = chat_db()
 
     if not skip_existence_check:
-        # Check if session exists in DB
-        existing = await db.get_chat_session(session.session_id)
+        # Existence check only — use the metadata-only fetch, no need to
+        # eager-load any messages here.
+        existing = await db.get_chat_session_metadata(session.session_id)
 
         if not existing:
             # Create new session

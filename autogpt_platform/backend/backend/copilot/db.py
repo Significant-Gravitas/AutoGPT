@@ -53,43 +53,14 @@ class PaginatedMessages(BaseModel):
 MAX_LOADED_CHAT_MESSAGES = 1000
 
 
-async def get_chat_session(
-    session_id: str,
-    max_messages: int = MAX_LOADED_CHAT_MESSAGES,
-) -> ChatSession | None:
-    """Get a chat session by ID, capping the eagerly-loaded message tail.
-
-    Returns at most the most-recent ``max_messages`` messages in ascending
-    sequence order. Older messages live in the GCS transcript and are
-    layered back in by ``extract_context_messages`` for LLM context.
-    """
-    # Probe with ``max_messages + 1`` so we can distinguish "exactly max" (no
-    # truncation) from "more exists" (truncated). The warning then only fires
-    # in the actually-bad case where older history is missing.
-    session = await PrismaChatSession.prisma().find_unique(
-        where={"id": session_id},
-        include={
-            "Messages": {
-                "order_by": {"sequence": "desc"},
-                "take": max_messages + 1,
-            }
-        },
-    )
-    if session is None:
-        return None
-    if session.Messages:
-        truncated = len(session.Messages) > max_messages
-        if truncated:
-            session.Messages = session.Messages[:max_messages]
-            logger.warning(
-                "Session %s loaded with capped messages (%d) — older history "
-                "must come from transcript checkpoint or context will be lost",
-                session_id,
-                max_messages,
-            )
-        # Reverse to ascending sequence — every caller expects oldest-first.
-        session.Messages = list(reversed(session.Messages))
-    return ChatSession.from_db(session)
+# NOTE: there is intentionally no eager-load ``get_chat_session`` here. Callers
+# that need the full session (LLM context, sub-session tools) call
+# :func:`get_chat_messages_paginated` directly with
+# ``limit=MAX_LOADED_CHAT_MESSAGES`` and assemble :class:`ChatSession` from the
+# returned ``session`` (full :class:`ChatSessionInfo` — credentials,
+# successful_agent_runs, usage, metadata) plus ``messages``.  Going through the
+# paginated path means tool-pair boundary expansion and the visibility
+# guarantee already apply, and the cap-hit signal lives in ``has_more``.
 
 
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:

@@ -11,12 +11,11 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
-    MAX_LOADED_CHAT_MESSAGES,
     PaginatedMessages,
     get_chat_messages_paginated,
+    set_turn_duration,
+    update_message_content_by_sequence,
 )
-from backend.copilot.db import get_chat_session as db_get_chat_session
-from backend.copilot.db import set_turn_duration, update_message_content_by_sequence
 from backend.copilot.model import ChatMessage as CopilotChatMessage
 from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
 
@@ -611,110 +610,8 @@ async def test_update_message_content_by_sequence_sanitizes_content():
     )
 
 
-# ---------- get_chat_session: windowed eager-load ----------
-
-
-@pytest.fixture()
-def mock_session_find_unique():
-    """Patch ChatSession.prisma().find_unique used by db.get_chat_session."""
-    with patch.object(PrismaChatSession, "prisma") as mock_session_prisma:
-        find_unique = AsyncMock()
-        mock_session_prisma.return_value.find_unique = find_unique
-        yield find_unique
-
-
-@pytest.mark.asyncio
-async def test_get_chat_session_caps_and_reverses_to_ascending(
-    mock_session_find_unique: AsyncMock,
-):
-    """The DB query probes for ``MAX_LOADED_CHAT_MESSAGES + 1`` rows in desc
-    order. When more than the cap exists, the loader trims to the cap and
-    reverses to ascending so callers see oldest-first."""
-    # Simulate Prisma returning cap+1 (newest first) — i.e. session is truncated.
-    descending = [_make_msg(seq) for seq in range(1500, 1500 - 1001, -1)]
-    mock_session_find_unique.return_value = _make_session(messages=descending)
-
-    session = await db_get_chat_session(SESSION_ID)
-    assert session is not None
-    # Trimmed back down to MAX_LOADED_CHAT_MESSAGES.
-    assert len(session.messages) == MAX_LOADED_CHAT_MESSAGES
-    # Most-recent kept, oldest dropped: sequence 500 was the oldest of cap+1
-    # (1500..500), so after trim → 1500..501, then reverse → 501..1500.
-    assert session.messages[0].sequence == 501
-    assert session.messages[-1].sequence == 1500
-
-    # Confirm the take/order_by Prisma args were passed correctly (cap + 1 probe).
-    args = mock_session_find_unique.call_args.kwargs
-    assert args["include"] == {
-        "Messages": {
-            "order_by": {"sequence": "desc"},
-            "take": MAX_LOADED_CHAT_MESSAGES + 1,
-        }
-    }
-
-
-@pytest.mark.asyncio
-async def test_get_chat_session_warns_only_when_truncated(
-    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
-):
-    """Cap-hit warning fires only when the probe returned > max_messages
-    (truncation observed). Loading exactly max_messages is *not* truncation —
-    the +1 probe slot is empty, so older history doesn't exist."""
-    # cap+1 returned → genuinely truncated.
-    descending = [_make_msg(seq) for seq in range(10, -1, -1)]  # 11 messages
-    mock_session_find_unique.return_value = _make_session(messages=descending)
-
-    with caplog.at_level("WARNING", logger="backend.copilot.db"):
-        session = await db_get_chat_session(SESSION_ID, max_messages=10)
-
-    assert session is not None and len(session.messages) == 10
-    cap_warnings = [
-        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
-    ]
-    assert len(cap_warnings) == 1
-
-
-@pytest.mark.asyncio
-async def test_get_chat_session_no_warn_when_exactly_at_cap(
-    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
-):
-    """A session with exactly ``max_messages`` rows is *not* truncated — the
-    warning must not fire (this was the false-positive Sentry flagged)."""
-    # Exactly cap returned → not truncated.
-    descending = [_make_msg(seq) for seq in range(9, -1, -1)]  # 10 messages
-    mock_session_find_unique.return_value = _make_session(messages=descending)
-
-    with caplog.at_level("WARNING", logger="backend.copilot.db"):
-        session = await db_get_chat_session(SESSION_ID, max_messages=10)
-
-    assert session is not None and len(session.messages) == 10
-    cap_warnings = [
-        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
-    ]
-    assert cap_warnings == []
-
-
-@pytest.mark.asyncio
-async def test_get_chat_session_does_not_warn_when_below_cap(
-    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
-):
-    """Sub-cap loads are the common path; the warning must not fire there."""
-    descending = [_make_msg(seq) for seq in range(4, -1, -1)]  # 5 messages
-    mock_session_find_unique.return_value = _make_session(messages=descending)
-
-    with caplog.at_level("WARNING", logger="backend.copilot.db"):
-        await db_get_chat_session(SESSION_ID, max_messages=10)
-
-    cap_warnings = [
-        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
-    ]
-    assert cap_warnings == []
-
-
-@pytest.mark.asyncio
-async def test_get_chat_session_returns_none_when_missing(
-    mock_session_find_unique: AsyncMock,
-):
-    """Missing session → None passthrough; no crash on the reverse step."""
-    mock_session_find_unique.return_value = None
-    assert await db_get_chat_session("missing") is None
+# NOTE: previously this file had a separate suite for ``db.get_chat_session``
+# (windowed eager-load). That function was removed in favour of going through
+# ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
+# Cap-hit + tool-pair boundary behaviour is now covered by the paginated tests
+# above and the integration coverage in ``model_test.py``.
