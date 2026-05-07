@@ -466,6 +466,7 @@ model LibraryAgent {
 
   isFavorite      Boolean @default(false)
   isCreatedByUser Boolean @default(false)
+  isHidden        Boolean @default(false)
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 

@@ -1577,6 +1577,7 @@ async def stream_chat_completion_baseline(
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
+            user_id=user_id,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not

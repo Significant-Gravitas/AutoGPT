@@ -3,7 +3,7 @@ import urllib.parse
 from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, HTTPException, Security
+from fastapi import APIRouter, Body, HTTPException, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -18,8 +18,12 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.executor.utils import add_graph_execution
+from backend.executor.utils import (
+    add_graph_execution,
+    charge_for_direct_block_execution,
+)
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
 
 from .integrations import integrations_router
@@ -90,6 +94,15 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+
+    try:
+        await charge_for_direct_block_execution(
+            user_id=auth.user_id, block=obj, input_data=data, source="external"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+        ) from e
 
     output = defaultdict(list)
     async for name, data in obj.execute(data):
