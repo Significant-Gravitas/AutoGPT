@@ -863,6 +863,23 @@ def detect_gap(
         prev = max(pre_gap, key=lambda m: m.sequence or 0)
         if prev.role != "assistant":
             return []
+    elif gap:
+        # No pre-watermark messages were loaded but the gap is non-empty:
+        # the window starts AFTER the watermark. Sequences [wm, window_start-1]
+        # exist in neither the transcript (covers 0..wm-1) nor the gap (starts
+        # at window_start), so they're silently absent from LLM context. Only
+        # happens when the conversation exceeded MAX_LOADED_CHAT_MESSAGES AND
+        # the transcript is equally stale.
+        window_start = min(m.sequence for m in gap if m.sequence is not None)
+        if window_start > wm:
+            logger.warning(
+                "detect_gap: window starts at seq=%d but watermark is %d — "
+                "sequences %d..%d absent from both transcript and gap",
+                window_start,
+                wm,
+                wm,
+                window_start - 1,
+            )
     return gap
 
 
