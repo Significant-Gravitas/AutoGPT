@@ -4182,6 +4182,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.messages,
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
+                user_id=user_id,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
