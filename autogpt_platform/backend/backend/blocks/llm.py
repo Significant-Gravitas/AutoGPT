@@ -134,6 +134,20 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
+    REGOLO_APERTUS_70B = "regolo/apertus-70b"
+    REGOLO_BRICK_ROUTER = "regolo/brick-v1-beta"
+    REGOLO_GEMMA4_31B = "regolo/gemma4-31b"
+    REGOLO_GPT_OSS_120B = "regolo/gpt-oss-120b"
+    REGOLO_GPT_OSS_20B = "regolo/gpt-oss-20b"
+    REGOLO_LLAMA3_1_8B = "regolo/Llama-3.1-8B-Instruct"
+    REGOLO_LLAMA3_3_70B = "regolo/Llama-3.3-70B-Instruct"
+    REGOLO_MINIMAX_M2_5 = "regolo/minimax-m2.5"
+    REGOLO_MISTRAL_SMALL_4 = "regolo/mistral-small-4-119b"
+    REGOLO_MISTRAL_SMALL3_2 = "regolo/mistral-small3.2"
+    REGOLO_QWEN3_CODER = "regolo/qwen3-coder-next"
+    REGOLO_QWEN3_5_122B = "regolo/qwen3.5-122b"
+    REGOLO_QWEN3_5_9B = "regolo/qwen3.5-9b"
+    REGOLO_QWEN3_6_27B = "regolo/qwen3.6-27b"
     # Anthropic models
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
@@ -318,7 +332,49 @@ MODEL_METADATA = {
     ),  # gpt-4o-2024-08-06
     LlmModel.GPT4_TURBO: ModelMetadata(
         "openai", 128000, 4096, "GPT-4 Turbo", "OpenAI", "OpenAI", 3
-    ),  # gpt-4-turbo-2024-04-09
+    ),
+    REGOLO_APERTUS_70B: ModelMetadata(
+        "regolo", 60000, 30000, "Apertus-70B", "Regolo.ai", "Apertus", 1
+    ),
+    LlmModel.REGOLO_BRICK_ROUTER: ModelMetadata(
+        "regolo", 120000, 15000, "Brick Router", "Regolo.ai", "Bricks", 2
+    ),
+    LlmModel.REGOLO_GEMMA4_31B: ModelMetadata(
+        "regolo", 200000, 100000, "Gemma4-31B", "Regolo.ai", "Google", 2
+    ),
+    LlmModel.REGOLO_GPT_OSS_120B: ModelMetadata(
+        "regolo", 120000, 90000, "GPT-OSS-120B", "Regolo.ai", "OpenAI", 2
+    ),
+    LlmModel.REGOLO_GPT_OSS_20B: ModelMetadata(
+        "regolo", 120000, 90000, "GPT-OSS-20B", "Regolo.ai", "OpenAI", 1
+    ),
+    LlmModel.REGOLO_LLAMA3_1_8B: ModelMetadata(
+        "regolo", 120000, 60000, "Llama-3.1-8B-Instruct", "Regolo.ai", "Meta", 1
+    ),
+    LlmModel.REGOLO_LLAMA3_3_70B: ModelMetadata(
+        "regolo", 60000, 60000, "Llama-3.3-70B-Instruct", "Regolo.ai", "Meta", 2
+    ),
+    LlmModel.REGOLO_MINIMAX_M2_5: ModelMetadata(
+        "regolo", 190000, 95000, "MiniMax-M2.5", "Regolo.ai", "MiniMax", 3
+    ),
+    LlmModel.REGOLO_MISTRAL_SMALL_4: ModelMetadata(
+        "regolo", 120000, 60000, "Mistral-Small-4", "Regolo.ai", "Mistral AI", 2
+    ),
+    LlmModel.REGOLO_MISTRAL_SMALL3_2: ModelMetadata(
+        "regolo", 120000, 60000, "Mistral-Small3.2", "Regolo.ai", "Mistral AI", 1
+    ),
+    LlmModel.REGOLO_QWEN3_CODER: ModelMetadata(
+        "regolo", 240000, 120000, "Qwen3-Coder-Next", "Regolo.ai", "Qwen", 2
+    ),
+    LlmModel.REGOLO_QWEN3_5_122B: ModelMetadata(
+        "regolo", 240000, 120000, "Qwen3.5-122B", "Regolo.ai", "Qwen", 2
+    ),
+    LlmModel.REGOLO_QWEN3_5_9B: ModelMetadata(
+        "regolo", 200000, 120000, "Qwen3.5-9B", "Regolo.ai", "Qwen", 1
+    ),
+    LlmModel.REGOLO_QWEN3_6_27B: ModelMetadata(
+        "regolo", 240000, 120000, "Qwen3.6-27B", "Regolo.ai", "Qwen", 2
+    ),
     # https://docs.anthropic.com/en/docs/about-claude/models
     LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
         "anthropic", 200000, 32000, "Claude Opus 4.1", "Anthropic", "Anthropic", 3
@@ -1247,6 +1303,45 @@ async def llm_call(
 
         if not response.choices:
             raise ValueError(f"Llama API returned empty choices: {response}")
+
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
+        )
+    elif provider == "regolo":
+        """Regolo.ai - OpenAI-compatible API at https://api.regolo.ai"""
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url="https://api.regolo.ai/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://agpt.co",
+                "X-Title": "AutoGPT",
+            },
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
+        )
+
+        if not response.choices:
+            raise ValueError(f"Regolo.ai returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
