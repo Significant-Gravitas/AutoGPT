@@ -3,7 +3,6 @@
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ServerLogoutOptions } from "../actions";
 import { useSupabaseStore } from "./useSupabaseStore";
@@ -14,11 +13,8 @@ export function useSupabase() {
   const searchParams = useSearchParams();
   const api = useBackendAPI();
 
-  // Combine pathname and search params to get full path for redirect preservation
-  const fullPath = useMemo(() => {
-    const search = searchParams.toString();
-    return search ? `${pathname}?${search}` : pathname;
-  }, [pathname, searchParams]);
+  const search = searchParams.toString();
+  const fullPath = search ? `${pathname}?${search}` : pathname;
 
   const {
     user,

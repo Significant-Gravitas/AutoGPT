@@ -114,10 +114,6 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
   const supabase = await getServerSupabase();
 
-  if (!supabase) {
-    throw new Error("Supabase client not available");
-  }
-
   try {
     const {
       data: { session },
