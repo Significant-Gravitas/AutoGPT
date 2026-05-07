@@ -32,8 +32,10 @@ export async function signupTestUser(
     const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
-    // Agree to terms and submit
-    await getRole("checkbox").click();
+    // Agree to terms and submit. Scope to the Terms checkbox by accessible
+    // name — in dev/local the AgentationDevtool renders extra checkboxes
+    // globally, so a bare getByRole("checkbox") trips Playwright strict mode.
+    await getRole("checkbox", /agree to the terms/i).click();
     const signupButton = getButton("Sign up");
     await signupButton.click();
 
