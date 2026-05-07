@@ -333,7 +333,7 @@ MODEL_METADATA = {
     LlmModel.GPT4_TURBO: ModelMetadata(
         "openai", 128000, 4096, "GPT-4 Turbo", "OpenAI", "OpenAI", 3
     ),
-    REGOLO_APERTUS_70B: ModelMetadata(
+    LlmModel.REGOLO_APERTUS_70B: ModelMetadata(
         "regolo", 60000, 30000, "Apertus-70B", "Regolo.ai", "Apertus", 1
     ),
     LlmModel.REGOLO_BRICK_ROUTER: ModelMetadata(
