@@ -28,14 +28,7 @@ class TestLLMStatsTracking:
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response. Suppress the OpenRouter key so the
-        # auto-reroute branch doesn't divert this test to the chat.completions
-        # path under a local .env that has open_router_api_key set.
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = AsyncMock(return_value=mock_response)
@@ -83,11 +76,7 @@ class TestLLMStatsTracking:
         mock_response.usage = mock_usage
         mock_response.stop_reason = "end_turn"
 
-        with (
-            patch("anthropic.AsyncAnthropic") as mock_anthropic,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic:
             mock_client = AsyncMock()
             mock_anthropic.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_response)
@@ -479,11 +468,7 @@ class TestLLMStatsTracking:
             mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = mock_create
@@ -1061,9 +1046,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -1092,9 +1077,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -1122,9 +1107,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
@@ -1259,16 +1244,6 @@ class TestAnthropicCacheControl:
     """Verify that llm_call attaches cache_control to the system prompt block
     and to the last tool definition when calling the Anthropic API."""
 
-    @pytest.fixture(autouse=True)
-    def disable_openrouter_routing(self):
-        """Ensure tests exercise the direct-Anthropic path by suppressing the
-        OpenRouter API key. Without this, a local .env with OPEN_ROUTER_API_KEY
-        set would silently reroute all Anthropic calls through OpenRouter,
-        bypassing the cache_control code under test."""
-        with patch("backend.blocks.llm.settings") as mock_settings:
-            mock_settings.secrets.open_router_api_key = ""
-            yield mock_settings
-
     def _make_anthropic_credentials(self) -> llm.APIKeyCredentials:
         from pydantic import SecretStr
 
@@ -1368,9 +1343,9 @@ class TestAnthropicCacheControl:
         an_tools = captured_kwargs.get("tools")
         assert isinstance(an_tools, list)
         assert len(an_tools) == 2
-        assert (
-            an_tools[0].get("cache_control") is None
-        ), "Only last tool gets cache_control"
+        assert an_tools[0].get("cache_control") is None, (
+            "Only last tool gets cache_control"
+        )
         assert an_tools[-1].get("cache_control") == {"type": "ephemeral"}
 
     @pytest.mark.asyncio
@@ -1406,9 +1381,9 @@ class TestAnthropicCacheControl:
         import anthropic
 
         tools_arg = captured_kwargs.get("tools")
-        assert (
-            tools_arg is anthropic.NOT_GIVEN
-        ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        assert tools_arg is anthropic.NOT_GIVEN, (
+            "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_system_prompt_omits_system_key(self):
@@ -1440,9 +1415,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        )
 
     @pytest.mark.asyncio
     async def test_whitespace_only_system_prompt_omits_system_key(self):
@@ -1478,6 +1453,6 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        )
