@@ -818,18 +818,18 @@ def convert_openai_tool_fmt_to_anthropic(
 def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
     """Extract OpenRouter's per-request USD cost from a chat-completion response.
 
-    OpenRouter populates a `cost` field on the standard ``usage`` object (a
-    USD float). It is present on every response — no special request flag is
-    needed. We tolerate a missing or non-finite value by returning ``None``
-    so the caller can fall back to token-rate accounting.
+    OpenRouter populates a ``cost`` field on the standard ``usage`` object (a
+    USD float) when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we read
+    it off ``model_extra`` (pydantic v2's typed extras container) — no
+    ``getattr``. Mirrors backend/executor/simulator.py::_extract_cost_usd —
+    keep the two aligned.
     """
-    usage = getattr(response, "usage", None)
+    usage = response.usage
     if usage is None:
         return None
-    cost = getattr(usage, "cost", None)
-    if cost is None:
-        # Some SDK versions expose unknown fields only via model_extra.
-        cost = (getattr(usage, "model_extra", None) or {}).get("cost")
+    extras = usage.model_extra or {}
+    cost = extras.get("cost")
     if cost is None:
         return None
     try:
@@ -923,20 +923,20 @@ async def llm_call(
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
 
-    # Transparent OpenRouter routing for Anthropic and OpenAI models: when an
-    # OpenRouter API key is configured, route direct-provider calls through
-    # OpenRouter instead. This gives us the x-total-cost header for free, so
-    # provider_cost is always populated without manual token-rate arithmetic.
+    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter
+    # API key is configured, route direct-Anthropic models through OpenRouter
+    # instead. This gives us per-request USD cost for free, so provider_cost
+    # is populated without manual token-rate arithmetic.
     or_key = settings.secrets.open_router_api_key
     or_model_id: str | None = None
-    if provider in ("anthropic", "openai") and or_key:
-        or_model_id = f"{provider}/{llm_model.value}"
+    if provider == "anthropic" and or_key:
         provider = "open_router"
         credentials = APIKeyCredentials(
             provider=ProviderName.OPEN_ROUTER,
             title="OpenRouter (auto)",
             api_key=SecretStr(or_key),
         )
+        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
