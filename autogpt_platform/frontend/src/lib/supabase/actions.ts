@@ -164,8 +164,6 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
           scope: options.globalLogout ? "global" : "local",
         });
 
-        revalidatePath("/");
-
         if (error) {
           console.error("Error logging out:", error);
           return { success: false, error: error.message };
@@ -178,7 +176,10 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
         };
       }
 
-      revalidatePath("/", "layout");
+      // Narrow path-only revalidation. The cross-tab storage listener calls
+      // router.refresh() and the React Query cache is cleared client-side,
+      // so layout-level revalidation is redundant.
+      revalidatePath("/");
       return { success: true };
     },
   );
@@ -210,9 +211,6 @@ export async function refreshSession() {
             error: error.message,
           };
         }
-
-        // Revalidate the layout to update server components
-        revalidatePath("/", "layout");
 
         return { user };
       } catch (error) {

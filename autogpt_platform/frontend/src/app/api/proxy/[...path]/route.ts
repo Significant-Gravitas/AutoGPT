@@ -58,7 +58,7 @@ function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
-  if (token && token !== "no-token-found") {
+  if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
   return headers;
@@ -86,7 +86,7 @@ async function handleWorkspaceDownload(
   token: string | null,
 ): Promise<NextResponse> {
   const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
+  if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 

@@ -1,8 +1,9 @@
 "use client";
 
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ServerLogoutOptions } from "../actions";
 import { useSupabaseStore } from "./useSupabaseStore";
@@ -24,6 +25,7 @@ export function useSupabase() {
     supabase,
     isUserLoading,
     initialize,
+    setCurrentRequestContext,
     logOut,
     validateSession,
     refreshSession,
@@ -33,19 +35,21 @@ export function useSupabase() {
       supabase: state.supabase,
       isUserLoading: state.isUserLoading,
       initialize: state.initialize,
+      setCurrentRequestContext: state.setCurrentRequestContext,
       logOut: state.logOut,
       validateSession: state.validateSession,
       refreshSession: state.refreshSession,
     })),
   );
 
-  useEffect(() => {
-    void initialize({
-      api,
-      router,
-      path: fullPath,
-    });
-  }, [api, initialize, fullPath, router]);
+  useMountEffect(() => {
+    void initialize({ api, router, path: fullPath });
+  });
+
+  // Keep the store's request context in sync with navigation. Safe to call
+  // during render because `useSupabase` doesn't subscribe to the fields that
+  // `setCurrentRequestContext` writes (routerRef / apiRef / currentPath).
+  setCurrentRequestContext({ api, router, path: fullPath });
 
   function handleLogout(options: ServerLogoutOptions = {}) {
     return logOut({
