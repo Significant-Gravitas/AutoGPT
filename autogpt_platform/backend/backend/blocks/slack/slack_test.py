@@ -85,7 +85,8 @@ class TestSlackMessageResult:
 
     def test_extra_fields_allowed(self):
         r = SlackMessageResult(ts="1", channel="C1", extra_field="hi")
-        assert r.extra_field == "hi"  # type: ignore[attr-defined]
+        assert r.model_extra is not None
+        assert r.model_extra["extra_field"] == "hi"
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +316,8 @@ class TestSendSlackMessageBlock:
             )
 
     @pytest.mark.asyncio
-    async def test_run_wraps_api_error_as_value_error(self):
+    async def test_run_propagates_api_error(self):
+        """SlackAPIException (a ValueError subclass) propagates directly from run()."""
         input_data = SendSlackMessageBlock.Input(
             credentials=TEST_CREDENTIALS_INPUT,
             channel="C1",
@@ -327,13 +329,15 @@ class TestSendSlackMessageBlock:
             new_callable=AsyncMock,
             side_effect=SlackAPIException("invalid_auth"),
         ):
-            with pytest.raises(ValueError, match="Failed to send Slack message"):
+            with pytest.raises(SlackAPIException, match="invalid_auth"):
                 await _collect_outputs(
                     self.block, input_data, credentials=TEST_CREDENTIALS
                 )
 
     @pytest.mark.asyncio
-    async def test_run_generic_exception_wrapped(self):
+    async def test_run_propagates_generic_exception(self):
+        """Non-ValueError exceptions propagate without wrapping — the executor
+        framework handles them at a higher level."""
         input_data = SendSlackMessageBlock.Input(
             credentials=TEST_CREDENTIALS_INPUT,
             channel="C1",
@@ -345,7 +349,7 @@ class TestSendSlackMessageBlock:
             new_callable=AsyncMock,
             side_effect=RuntimeError("connection lost"),
         ):
-            with pytest.raises(ValueError, match="Failed to send Slack message"):
+            with pytest.raises(RuntimeError, match="connection lost"):
                 await _collect_outputs(
                     self.block, input_data, credentials=TEST_CREDENTIALS
                 )

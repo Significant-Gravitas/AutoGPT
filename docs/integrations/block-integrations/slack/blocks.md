@@ -11,6 +11,8 @@ Send a text message to any Slack channel, DM, or thread. Required bot token scop
 ### How it works
 <!-- MANUAL: how_it_works -->
 Calls the Slack `chat.postMessage` API with your bot token. The token must have the `chat:write` scope. Optionally uses `chat:write.customize` to set a custom username or icon emoji. Returns the message timestamp (`ts`), which can be passed back as `thread_ts` to reply in the same thread.
+
+If the Slack API returns a non-`ok` response (e.g. `invalid_auth`, `channel_not_found`, `not_in_channel`, or missing scopes), the block raises a user-facing error with the Slack error code so you can diagnose and fix the issue. Network failures and unexpected exceptions are also surfaced as errors through the block's `error` output.
 <!-- END MANUAL -->
 
 ### Inputs
