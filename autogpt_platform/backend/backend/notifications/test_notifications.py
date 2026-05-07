@@ -681,3 +681,39 @@ class TestConsumerRetryWithBackoff:
             await manager._process_message_with_retry(msg, process, "test_q")
         # CONSUMER_RETRY_BACKOFF_SECONDS = 2, so delays are 2*(2**0)=2, 2*(2**1)=4
         assert sleeps == [2, 4]
+
+    @pytest.mark.asyncio
+    async def test_inner_process_raises_so_retry_triggers(self, manager):
+        """Regression: the four `_process_*` methods must let transient
+        exceptions propagate so `_process_message_with_retry` can retry them.
+        If they swallow exceptions and return False instead, the retry loop
+        treats it as a permanent failure and DLQs on the first attempt.
+        """
+        # Stand up just enough state for _process_immediate to reach the
+        # email_sender call (mocked) and raise.
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client, patch(
+            "backend.notifications.notifications.generate_unsubscribe_link",
+            return_value="unsub",
+        ), patch(
+            "backend.notifications.notifications._parse_message_to"
+        ) as mock_parse:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            event = MagicMock()
+            event.user_id = "u1"
+            event.type = MagicMock()
+            mock_parse.return_value = event
+            # _process_immediate uses self._parse_message — patch on instance
+            manager._parse_message = MagicMock(return_value=event)
+
+            with pytest.raises(RuntimeError, match="postmark 502"):
+                await manager._process_immediate("{}")
