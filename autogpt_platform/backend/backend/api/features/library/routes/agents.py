@@ -49,6 +49,13 @@ async def list_library_agents(
         False,
         description="Only return agents without a folder (root-level agents)",
     ),
+    is_hidden: Optional[bool] = Query(
+        None,
+        description=(
+            "Filter by hidden status. True = only hidden, "
+            "False = only non-hidden, omit = all agents."
+        ),
+    ),
 ) -> library_model.LibraryAgentResponse:
     """
     Get all agents in the user's library (both created and saved).
@@ -61,6 +68,7 @@ async def list_library_agents(
         page_size=page_size,
         folder_id=folder_id,
         include_root_only=include_root_only,
+        is_hidden=is_hidden,
     )
 
 
@@ -177,6 +185,7 @@ async def update_library_agent(
         graph_version=payload.graph_version,
         is_favorite=payload.is_favorite,
         is_archived=payload.is_archived,
+        is_hidden=payload.is_hidden,
         settings=payload.settings,
         folder_id=payload.folder_id,
     )
@@ -207,4 +216,22 @@ async def fork_library_agent(
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
+    )
+
+
+# ── Trigger agent endpoints ─────────────────────────────────────────
+
+
+@router.get(
+    "/{library_agent_id}/triggers",
+    summary="List Trigger Agents",
+)
+async def list_trigger_agents(
+    library_agent_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[library_model.LibraryAgent]:
+    """List trigger agents linked to the given parent agent."""
+    return await library_db.list_trigger_agents(
+        user_id=user_id,
+        library_agent_id=library_agent_id,
     )

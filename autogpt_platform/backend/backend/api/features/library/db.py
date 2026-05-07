@@ -2,7 +2,7 @@ import asyncio
 import itertools
 import logging
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -112,6 +112,7 @@ async def list_library_agents(
     include_executions: bool = False,
     folder_id: Optional[str] = None,
     include_root_only: bool = False,
+    is_hidden: Optional[bool] = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -159,6 +160,10 @@ async def list_library_agents(
         where_clause["folderId"] = folder_id
     elif include_root_only and not search_term:
         where_clause["folderId"] = None
+
+    # Apply isHidden filter
+    if is_hidden is not None:
+        where_clause["isHidden"] = is_hidden
 
     # Build search filter if applicable
     if search_term:
@@ -494,6 +499,7 @@ async def create_library_agent(
     sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
     folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -540,6 +546,7 @@ async def create_library_agent(
                     data={
                         "create": prisma.types.LibraryAgentCreateInput(
                             isCreatedByUser=(user_id == graph.user_id),
+                            isHidden=is_hidden,
                             useGraphIsActiveVersion=True,
                             User={"connect": {"id": user_id}},
                             AgentGraph={
@@ -566,6 +573,7 @@ async def create_library_agent(
                         "update": {
                             "isDeleted": False,
                             "isArchived": False,
+                            "isHidden": is_hidden,
                             "useGraphIsActiveVersion": True,
                             "settings": SafeJson(
                                 GraphSettings.from_graph(
@@ -667,6 +675,7 @@ async def create_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
     folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new graph and add it to the user's library."""
     graph.version = 1
@@ -681,6 +690,7 @@ async def create_graph_in_library(
         sensitive_action_safe_mode=True,
         create_library_agents_for_sub_graphs=False,
         folder_id=folder_id,
+        is_hidden=is_hidden,
     )
 
     if created_graph.is_active:
@@ -761,6 +771,7 @@ async def update_library_agent(
     graph_version: Optional[int] = None,
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
+    is_hidden: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
     folder_id: Optional[str] = None,
@@ -797,6 +808,8 @@ async def update_library_agent(
         update_fields["isFavorite"] = is_favorite
     if is_archived is not None:
         update_fields["isArchived"] = is_archived
+    if is_hidden is not None:
+        update_fields["isHidden"] = is_hidden
     if is_deleted is not None:
         if is_deleted is True:
             raise RuntimeError(
@@ -1990,3 +2003,64 @@ async def fork_library_agent(
             sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
         )
     )[0]
+
+
+# ── Trigger agents ──────────────────────────────────────────────────
+
+_AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
+
+
+async def list_trigger_agents(
+    user_id: str,
+    library_agent_id: str,
+    *,
+    parent_graph_id: Optional[str] = None,
+) -> list[library_model.LibraryAgent]:
+    """List trigger agents for the given parent library agent.
+
+    Trigger agents are hidden LibraryAgents whose graph contains an
+    AgentExecutorBlock node referencing the parent's graph_id. The
+    relationship is derived from graph contents — no separate link
+    table — so it stays consistent when triggers are edited.
+
+    Pass ``parent_graph_id`` if the caller already has the parent
+    loaded — skips the redundant ``get_library_agent`` lookup.
+    """
+    if parent_graph_id is None:
+        parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        parent_graph_id = parent.graph_id
+
+    triggers, schedule_info = await asyncio.gather(
+        prisma.models.LibraryAgent.prisma().find_many(
+            where={
+                "userId": user_id,
+                "isHidden": True,
+                "isDeleted": False,
+                "isArchived": False,
+                "AgentGraph": {
+                    "is": {
+                        "Nodes": {
+                            "some": {
+                                "agentBlockId": _AGENT_EXECUTOR_BLOCK_ID,
+                                "constantInput": cast(
+                                    prisma.types.JsonFilter,
+                                    {
+                                        "path": ["graph_id"],
+                                        "equals": prisma.Json(parent_graph_id),
+                                    },
+                                ),
+                            }
+                        }
+                    }
+                },
+            },
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        ),
+        _fetch_schedule_info(user_id),
+    )
+    return [
+        library_model.LibraryAgent.from_db(t, schedule_info=schedule_info)
+        for t in triggers
+    ]
