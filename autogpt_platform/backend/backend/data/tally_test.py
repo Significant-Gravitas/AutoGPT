@@ -524,10 +524,13 @@ async def test_extract_business_understanding_timeout():
 async def test_extract_business_understanding_missing_openrouter_key():
     """When OpenRouter is not configured, raise a clear RuntimeError."""
     with (
-        patch("backend.data.tally.get_openai_client", return_value=None),
+        patch(
+            "backend.data.tally.get_openai_client", return_value=None
+        ) as mock_get_client,
         pytest.raises(RuntimeError, match="open_router_api_key not set"),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────
