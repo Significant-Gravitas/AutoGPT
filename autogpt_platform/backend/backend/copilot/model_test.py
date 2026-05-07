@@ -115,9 +115,9 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     )
 
     assert s2 is not None, "Session not found after loading from DB"
-    assert len(s2.messages) == len(
-        s.messages
-    ), f"Message count mismatch: expected {len(s.messages)}, got {len(s2.messages)}"
+    assert len(s2.messages) == len(s.messages), (
+        f"Message count mismatch: expected {len(s.messages)}, got {len(s2.messages)}"
+    )
 
     # Verify all roles are present
     roles = [m.role for m in s2.messages]
@@ -128,13 +128,13 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     # Verify message content
     for orig, loaded in zip(s.messages, s2.messages):
         assert orig.role == loaded.role, f"Role mismatch: {orig.role} != {loaded.role}"
-        assert (
-            orig.content == loaded.content
-        ), f"Content mismatch for {orig.role}: {orig.content} != {loaded.content}"
+        assert orig.content == loaded.content, (
+            f"Content mismatch for {orig.role}: {orig.content} != {loaded.content}"
+        )
         if orig.tool_calls:
-            assert (
-                loaded.tool_calls is not None
-            ), f"Tool calls missing for {orig.role} message"
+            assert loaded.tool_calls is not None, (
+                f"Tool calls missing for {orig.role} message"
+            )
             assert len(orig.tool_calls) == len(loaded.tool_calls)
 
 
@@ -941,6 +941,43 @@ async def test_append_and_save_message_lock_release_failure_is_ignored(
     new_msg = ChatMessage(role="user", content="new msg")
     result = await append_and_save_message(session.session_id, new_msg)
     assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_new_messages_when_windowed(
+    mocker: MockerFixture,
+) -> None:
+    """Regression: when session.messages is the windowed tail (cap-limited),
+    new messages must still be persisted.  The earlier index-based slice
+    ``session.messages[existing_message_count:]`` silently dropped them."""
+    from .model import _save_session_to_db
+
+    # Simulate a session loaded with the cap: DB has 1500 messages, only the
+    # last 3 are in memory (sequences 1497..1499), plus one freshly appended
+    # message that has no sequence yet.
+    loaded = [
+        ChatMessage(role="user", content=f"old-{seq}", sequence=seq)
+        for seq in (1497, 1498, 1499)
+    ]
+    new_msg = ChatMessage(role="assistant", content="brand-new")
+    session = _make_session_with_messages(*loaded, new_msg)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock()
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=1500, skip_existence_check=True
+    )
+
+    mock_db.add_chat_messages_batch.assert_awaited_once()
+    kwargs = mock_db.add_chat_messages_batch.call_args.kwargs
+    assert kwargs["start_sequence"] == 1500
+    assert len(kwargs["messages"]) == 1
+    assert kwargs["messages"][0]["content"] == "brand-new"
+    # And the in-memory new message receives its sequence back-fill.
+    assert new_msg.sequence == 1500
 
 
 # ─── get_or_create_builder_session ─────────────────────────────────────

@@ -700,8 +700,13 @@ async def _save_session_to_db(
         total_completion_tokens=total_completion,
     )
 
-    # Add new messages (only those after existing count)
-    new_messages = session.messages[existing_message_count:]
+    # Identify unsaved messages by ``sequence is None`` rather than slicing
+    # by ``existing_message_count``.  When ``get_chat_session`` returns a
+    # windowed tail (cap of MAX_LOADED_CHAT_MESSAGES), ``session.messages``
+    # is no longer indexed by sequence: a session with 1500 saved messages
+    # comes back with 1000 entries, and ``session.messages[1500:]`` would
+    # silently drop every newly-appended message.
+    new_messages = [m for m in session.messages if m.sequence is None]
     if new_messages:
         messages_data = []
         for msg in new_messages:
