@@ -183,3 +183,83 @@ describe("customMutator — Sentry trace propagation", () => {
     (Sentry as { getTraceData?: unknown }).getTraceData = mockGetTraceData;
   });
 });
+
+describe("customMutator — empty body handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+  });
+
+  it("returns null data for 204 No Content even when Content-Type is application/json", async () => {
+    // FastAPI sets Content-Type: application/json on 204 by default; the proxy
+    // forwards it. Calling .json() on the empty body would throw — verify we
+    // short-circuit and return null instead.
+    const jsonSpy = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: jsonSpy,
+      }),
+    );
+
+    const result = await customMutator<{
+      data: unknown;
+      status: number;
+      headers: Headers;
+    }>("/api/executions/abc", { method: "DELETE" });
+
+    expect(result.status).toBe(204);
+    expect(result.data).toBeNull();
+    expect(jsonSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null data when Content-Length is 0", async () => {
+    const jsonSpy = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+          "content-length": "0",
+        }),
+        json: jsonSpy,
+      }),
+    );
+
+    const result = await customMutator<{
+      data: unknown;
+      status: number;
+      headers: Headers;
+    }>("/api/foo", { method: "DELETE" });
+
+    expect(result.data).toBeNull();
+    expect(jsonSpy).not.toHaveBeenCalled();
+  });
+
+  it("still parses JSON body for non-empty 200 responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve({ ok: true }),
+      }),
+    );
+
+    const result = await customMutator<{
+      data: unknown;
+      status: number;
+      headers: Headers;
+    }>("/api/foo", { method: "GET" });
+
+    expect(result.data).toEqual({ ok: true });
+  });
+});
