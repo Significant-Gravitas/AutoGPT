@@ -627,43 +627,71 @@ def mock_session_find_unique():
 async def test_get_chat_session_caps_and_reverses_to_ascending(
     mock_session_find_unique: AsyncMock,
 ):
-    """The DB query asks Prisma for the most-recent ``MAX_LOADED_CHAT_MESSAGES``
-    in descending sequence order; the loader then reverses to ascending so
-    callers see oldest-first."""
-    # Simulate Prisma returning the descending tail (newest first).
-    descending = [_make_msg(seq) for seq in range(1499, 1499 - 1000, -1)]
+    """The DB query probes for ``MAX_LOADED_CHAT_MESSAGES + 1`` rows in desc
+    order. When more than the cap exists, the loader trims to the cap and
+    reverses to ascending so callers see oldest-first."""
+    # Simulate Prisma returning cap+1 (newest first) — i.e. session is truncated.
+    descending = [_make_msg(seq) for seq in range(1500, 1500 - 1001, -1)]
     mock_session_find_unique.return_value = _make_session(messages=descending)
 
     session = await db_get_chat_session(SESSION_ID)
     assert session is not None
-    assert len(session.messages) == 1000
-    # Ascending: lowest sequence first.
-    assert session.messages[0].sequence == 500
-    assert session.messages[-1].sequence == 1499
+    # Trimmed back down to MAX_LOADED_CHAT_MESSAGES.
+    assert len(session.messages) == MAX_LOADED_CHAT_MESSAGES
+    # Most-recent kept, oldest dropped: sequence 500 was the oldest of cap+1
+    # (1500..500), so after trim → 1500..501, then reverse → 501..1500.
+    assert session.messages[0].sequence == 501
+    assert session.messages[-1].sequence == 1500
 
-    # Confirm the take/order_by Prisma args were passed correctly.
+    # Confirm the take/order_by Prisma args were passed correctly (cap + 1 probe).
     args = mock_session_find_unique.call_args.kwargs
     assert args["include"] == {
-        "Messages": {"order_by": {"sequence": "desc"}, "take": MAX_LOADED_CHAT_MESSAGES}
+        "Messages": {
+            "order_by": {"sequence": "desc"},
+            "take": MAX_LOADED_CHAT_MESSAGES + 1,
+        }
     }
 
 
 @pytest.mark.asyncio
-async def test_get_chat_session_warns_when_cap_engages(
+async def test_get_chat_session_warns_only_when_truncated(
     mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
 ):
-    """Loading exactly ``max_messages`` rows logs the cap-hit warning so a
-    silently-windowed session is observable in production logs."""
-    descending = [_make_msg(seq) for seq in range(9, -1, -1)]  # 10 messages
+    """Cap-hit warning fires only when the probe returned > max_messages
+    (truncation observed). Loading exactly max_messages is *not* truncation —
+    the +1 probe slot is empty, so older history doesn't exist."""
+    # cap+1 returned → genuinely truncated.
+    descending = [_make_msg(seq) for seq in range(10, -1, -1)]  # 11 messages
     mock_session_find_unique.return_value = _make_session(messages=descending)
 
     with caplog.at_level("WARNING", logger="backend.copilot.db"):
-        await db_get_chat_session(SESSION_ID, max_messages=10)
+        session = await db_get_chat_session(SESSION_ID, max_messages=10)
 
+    assert session is not None and len(session.messages) == 10
     cap_warnings = [
         r for r in caplog.records if "loaded with capped messages" in r.getMessage()
     ]
     assert len(cap_warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_chat_session_no_warn_when_exactly_at_cap(
+    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
+):
+    """A session with exactly ``max_messages`` rows is *not* truncated — the
+    warning must not fire (this was the false-positive Sentry flagged)."""
+    # Exactly cap returned → not truncated.
+    descending = [_make_msg(seq) for seq in range(9, -1, -1)]  # 10 messages
+    mock_session_find_unique.return_value = _make_session(messages=descending)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.db"):
+        session = await db_get_chat_session(SESSION_ID, max_messages=10)
+
+    assert session is not None and len(session.messages) == 10
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert cap_warnings == []
 
 
 @pytest.mark.asyncio

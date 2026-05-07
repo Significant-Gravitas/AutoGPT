@@ -1567,6 +1567,46 @@ class TestDetectGap:
         # Current turn (seq 999) not included.
         assert all(m.sequence != 999 for m in gap)
 
+    def test_window_above_watermark_returns_gap_when_starts_with_user(self):
+        """When the window starts above the watermark and the first gap
+        message is ``user`` (well-formed boundary), the gap is returned."""
+        from .model import ChatMessage
+
+        # Window covers seq 1000..1199. Watermark at 800 (well below window).
+        # gap[0] is at seq 1000, role 'user' (the next turn after the
+        # assistant at wm-1=799).
+        windowed: list[ChatMessage] = []
+        for seq in range(1000, 1200):
+            role = "user" if seq % 2 == 0 else "assistant"  # 1000 → 'user'
+            windowed.append(
+                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
+            )
+        dl = self._dl(800)
+        gap = detect_gap(dl, windowed)
+        # Returns 199 messages (1000..1198, excluding current turn at 1199).
+        assert len(gap) == 199
+        assert gap[0].sequence == 1000
+        assert gap[0].role == "user"
+
+    def test_window_above_watermark_skipped_when_starts_with_assistant(self):
+        """When the window starts above the watermark and the first gap
+        message is ``assistant``, the watermark is misaligned and we cannot
+        verify pre-gap role — skip the gap to avoid feeding malformed
+        ordering into the LLM."""
+        from .model import ChatMessage
+
+        # Window starts at seq 1001 with 'assistant' first — wrong shape if
+        # the message at wm-1=799 is also 'assistant' (would produce two
+        # consecutive assistant turns when concatenated with the transcript).
+        windowed: list[ChatMessage] = []
+        for seq in range(1001, 1200):
+            role = "assistant" if seq % 2 == 1 else "user"  # 1001 → 'assistant'
+            windowed.append(
+                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
+            )
+        dl = self._dl(800)
+        assert detect_gap(dl, windowed) == []
+
 
 # ---------------------------------------------------------------------------
 # extract_context_messages

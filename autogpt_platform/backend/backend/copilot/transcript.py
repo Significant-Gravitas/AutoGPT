@@ -854,12 +854,14 @@ def detect_gap(
         if prev.role != "assistant":
             return []
     else:
-        # No pre-watermark messages were loaded but the gap is non-empty:
-        # the window starts AFTER the watermark. Sequences [wm, window_start-1]
-        # exist in neither the transcript (covers 0..wm-1) nor the gap (starts
-        # at window_start), so they're silently absent from LLM context. Only
-        # happens when the conversation exceeded MAX_LOADED_CHAT_MESSAGES AND
-        # the transcript is equally stale.
+        # No pre-watermark messages loaded but the gap is non-empty: the window
+        # starts AFTER the watermark, so we cannot directly check whether the
+        # message immediately before the gap is assistant. Fall back to checking
+        # gap[0] — a well-formed gap always starts with a user turn (the next
+        # turn after the assistant at wm-1). Anything else means the watermark
+        # is misaligned or the conversation shape is corrupt; skip the gap.
+        if gap[0].role != "user":
+            return []
         window_start = min(m.sequence for m in gap if m.sequence is not None)
         if window_start > wm:
             logger.warning(

@@ -63,26 +63,31 @@ async def get_chat_session(
     sequence order. Older messages live in the GCS transcript and are
     layered back in by ``extract_context_messages`` for LLM context.
     """
+    # Probe with ``max_messages + 1`` so we can distinguish "exactly max" (no
+    # truncation) from "more exists" (truncated). The warning then only fires
+    # in the actually-bad case where older history is missing.
     session = await PrismaChatSession.prisma().find_unique(
         where={"id": session_id},
         include={
             "Messages": {
                 "order_by": {"sequence": "desc"},
-                "take": max_messages,
+                "take": max_messages + 1,
             }
         },
     )
     if session is None:
         return None
-    # Reverse to ascending sequence — every caller expects oldest-first.
     if session.Messages:
-        if len(session.Messages) >= max_messages:
+        truncated = len(session.Messages) > max_messages
+        if truncated:
+            session.Messages = session.Messages[:max_messages]
             logger.warning(
                 "Session %s loaded with capped messages (%d) — older history "
                 "must come from transcript checkpoint or context will be lost",
                 session_id,
                 max_messages,
             )
+        # Reverse to ascending sequence — every caller expects oldest-first.
         session.Messages = list(reversed(session.Messages))
     return ChatSession.from_db(session)
 
