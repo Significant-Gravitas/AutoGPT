@@ -744,7 +744,8 @@ class TestGenerateActivityStatusForExecution:
         self, mock_node_executions, mock_execution_stats, mock_blocks
     ):
         """If every retry returns invalid JSON, the function swallows the
-        RuntimeError raised internally and returns ``None``."""
+        RuntimeError raised internally and returns ``None`` — but the cost of
+        the failed attempts must still be persisted to PlatformCostLog."""
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.return_value = mock_node_executions
         mock_graph_metadata = MagicMock()
@@ -755,8 +756,81 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        bad_resp = _make_completion(content="still-not-json", usage=_make_usage())
+        bad_resp = _make_completion(
+            content="still-not-json",
+            usage=_make_usage(prompt_tokens=120, completion_tokens=40, cost=0.0042),
+        )
         client, create_mock = _make_client(bad_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.schedule_platform_cost_log"
+            ) as mock_schedule_log,
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            assert result is None
+            # All 3 retries should have been exhausted before raising.
+            assert create_mock.await_count == 3
+            # Cost from the last billed attempt must still be logged so admin
+            # attribution doesn't undercount failed-parse spend.
+            mock_schedule_log.assert_called_once()
+            _, entry = mock_schedule_log.call_args.args
+            assert entry.tracking_type == "cost_usd"
+            assert entry.tracking_amount == pytest.approx(0.0042)
+            assert entry.input_tokens == 120
+            assert entry.output_tokens == 40
+
+    @pytest.mark.asyncio
+    async def test_generate_status_retries_on_non_numeric_score(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        """A response that parses as JSON with the right keys but a
+        non-numeric ``correctness_score`` should trigger a retry, not bypass
+        the loop and fall through to the outer exception handler."""
+        mock_db_client = AsyncMock()
+        mock_db_client.get_node_executions.return_value = mock_node_executions
+        mock_graph_metadata = MagicMock()
+        mock_graph_metadata.name = "Test Agent"
+        mock_graph_metadata.description = "A test agent"
+        mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
+        mock_graph = MagicMock()
+        mock_graph.links = []
+        mock_db_client.get_graph.return_value = mock_graph
+
+        bad_resp = _make_completion(
+            content=json.dumps(
+                {"activity_status": "Done.", "correctness_score": "high"}
+            ),
+            usage=_make_usage(),
+        )
+        good_resp = _make_completion(
+            content=json.dumps(
+                {"activity_status": "Recovered.", "correctness_score": 0.6}
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(bad_resp, good_resp)
 
         with (
             patch(
@@ -782,9 +856,9 @@ class TestGenerateActivityStatusForExecution:
                 user_id="test_user",
             )
 
-            assert result is None
-            # All 3 retries should have been exhausted before raising.
-            assert create_mock.await_count == 3
+            assert result is not None
+            assert result["correctness_score"] == 0.6
+            assert create_mock.await_count == 2
 
     @pytest.mark.asyncio
     async def test_generate_status_feature_disabled(self, mock_execution_stats):

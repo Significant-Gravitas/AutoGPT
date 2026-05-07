@@ -13,6 +13,7 @@ except ImportError:
     from typing_extensions import NotRequired
 
 from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam
 
 from backend.blocks import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
@@ -303,7 +304,7 @@ async def generate_activity_status_for_execution(
             "{{EXECUTION_DATA}}", execution_data_json
         )
 
-        messages: list[dict[str, str]] = [
+        messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system_prompt_with_format},
             {"role": "user", "content": user_prompt_content},
         ]
@@ -316,18 +317,22 @@ async def generate_activity_status_for_execution(
         # values (e.g. "openai/gpt-4o-mini", "anthropic/claude-...") pass through.
         or_model = model_name if "/" in model_name else f"openai/{model_name}"
 
+        # Track the most recent attempt's usage so we can persist cost even
+        # when every retry fails — the API calls were billed regardless of
+        # whether parsing succeeded.
         last_error: Exception | None = None
-        parsed: dict[str, Any] | None = None
-        usage: CompletionUsage | None = None
+        last_usage: CompletionUsage | None = None
+        activity_response: ActivityStatusResponse | None = None
         for attempt in range(_MAX_JSON_RETRIES):
             try:
                 response = await client.chat.completions.create(
                     model=or_model,
-                    messages=messages,  # type: ignore[arg-type]
+                    messages=messages,
                     max_tokens=_MAX_OUTPUT_TOKENS,
                     response_format={"type": "json_object"},
                     extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
                 )
+                last_usage = response.usage
                 if not response.choices:
                     raise ValueError("OpenRouter returned empty choices array")
                 raw = response.choices[0].message.content or ""
@@ -336,14 +341,20 @@ async def generate_activity_status_for_execution(
                     raise ValueError(
                         f"OpenRouter returned non-object JSON: {raw[:200]}"
                     )
-                if "activity_status" not in candidate or "correctness_score" not in candidate:
+                if (
+                    "activity_status" not in candidate
+                    or "correctness_score" not in candidate
+                ):
                     raise ValueError(
                         f"OpenRouter response missing required keys: {raw[:200]}"
                     )
-                parsed = candidate
-                usage = response.usage
+                score = max(0.0, min(1.0, float(candidate["correctness_score"])))
+                activity_response = {
+                    "activity_status": str(candidate["activity_status"]),
+                    "correctness_score": score,
+                }
                 break
-            except (json.JSONDecodeError, ValueError) as e:
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
                 last_error = e
                 logger.warning(
                     "activity_status: JSON parse error on attempt %d/%d: %s",
@@ -352,28 +363,13 @@ async def generate_activity_status_for_execution(
                     e,
                 )
 
-        if parsed is None:
-            raise RuntimeError(
-                f"Failed to parse OpenRouter response after {_MAX_JSON_RETRIES} attempts: {last_error}"
-            )
-
-        # Validate + clamp the structured fields.
-        correctness_score = max(0.0, min(1.0, float(parsed["correctness_score"])))
-        activity_response: ActivityStatusResponse = {
-            "activity_status": str(parsed["activity_status"]),
-            "correctness_score": correctness_score,
-        }
-        logger.debug(
-            f"Generated activity status for {graph_exec_id}: {activity_response}"
-        )
-
-        # Persist this LLM call's cost to PlatformCostLog so the admin
-        # dashboard attributes the spend per-user / per-graph_exec.
-        # Platform-side overhead (not user-billed and not user rate-limited).
+        # Persist whatever usage the API actually billed us for, even on full
+        # retry-exhaustion — the spend happened either way and must show up
+        # in PlatformCostLog for admin attribution.
         _persist_activity_status_cost(
-            cost_usd=_extract_cost_usd(usage),
-            input_tokens=usage.prompt_tokens if usage is not None else 0,
-            output_tokens=usage.completion_tokens if usage is not None else 0,
+            cost_usd=_extract_cost_usd(last_usage),
+            input_tokens=last_usage.prompt_tokens if last_usage is not None else 0,
+            output_tokens=last_usage.completion_tokens if last_usage is not None else 0,
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
@@ -381,6 +377,14 @@ async def generate_activity_status_for_execution(
             db_client=db_client,
         )
 
+        if activity_response is None:
+            raise RuntimeError(
+                f"Failed to parse OpenRouter response after {_MAX_JSON_RETRIES} attempts: {last_error}"
+            )
+
+        logger.debug(
+            f"Generated activity status for {graph_exec_id}: {activity_response}"
+        )
         return activity_response
 
     except Exception as e:
