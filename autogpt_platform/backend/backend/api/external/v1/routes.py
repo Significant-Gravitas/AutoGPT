@@ -13,6 +13,7 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
+from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
@@ -87,6 +88,14 @@ async def execute_graph_block(
         require_permission(APIKeyPermission.EXECUTE_BLOCK)
     ),
 ) -> CompletedBlockOutput:
+    # Sync block exec doesn't pass through ``add_graph_execution`` so the
+    # function-level paywall gate doesn't catch this entry point. External
+    # API routes use API-key auth (not JWT), so the route-level
+    # ``enforce_payment_paywall`` dep — which expects ``get_user_id`` from
+    # JWT — can't be applied here either. Inline check it is.
+    if await is_user_paywalled(auth.user_id):
+        raise UserPaywalledError("A subscription is required to use this feature.")
+
     obj = backend.blocks.get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
