@@ -1185,6 +1185,9 @@ async def llm_call(
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
+        response_format = (
+            {"type": "json_object"} if force_json_output else openai.NOT_GIVEN
+        )
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1204,6 +1207,7 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
+            response_format=response_format,  # type: ignore
         )
 
         if not response.choices:

@@ -198,15 +198,18 @@ class TestLLMStatsTracking:
                 llm_model=llm.LlmModel.GPT4O_MINI,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                force_json_output=True,
             )
 
-        # Verify OpenRouter base_url + key + prefixed model
+        # Verify OpenRouter base_url + key + prefixed model, and that
+        # force_json_output is propagated as response_format.
         mock_openai.assert_called_once()
         client_kwargs = mock_openai.call_args.kwargs
         assert client_kwargs["base_url"] == "https://openrouter.ai/api/v1"
         assert client_kwargs["api_key"] == "sk-or-test-key"
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["model"] == "openai/gpt-4o-mini"
+        assert call_kwargs["response_format"] == {"type": "json_object"}
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
