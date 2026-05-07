@@ -75,6 +75,7 @@ export function useLibraryAgentList({
       sort_by: librarySort,
       folder_id: selectedFolderId ?? undefined,
       include_root_only: selectedFolderId === null ? true : undefined,
+      is_hidden: false,
     },
     {
       query: {

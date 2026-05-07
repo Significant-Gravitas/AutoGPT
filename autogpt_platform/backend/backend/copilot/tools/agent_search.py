@@ -141,6 +141,10 @@ async def _search_library(
                 user_id=user_id,
                 search_term=query or None,
                 page_size=50 if not query else 10,
+                # Hide trigger agents — they aren't reusable as sub-agents
+                # (parent-coupled, single-purpose). AutoPilot accesses
+                # them via list_agent_triggers instead.
+                is_hidden=False,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))
