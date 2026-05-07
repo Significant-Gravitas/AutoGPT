@@ -14,13 +14,8 @@ import ollama
 import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
-from openai.types.chat import (
-    ChatCompletion as OpenAIChatCompletion,
-)
-from openai.types.chat import (
-    ChatCompletionMessageParam,
-    ChatCompletionToolParam,
-)
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
@@ -1209,9 +1204,7 @@ async def llm_call(
             messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
             tools=(
-                cast(list[ChatCompletionToolParam], tools)
-                if tools
-                else openai.omit
+                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
             ),
             parallel_tool_calls=parallel_tool_calls_param,
             response_format=(
