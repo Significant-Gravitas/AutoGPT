@@ -1199,6 +1199,9 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
+            # Ask OpenRouter to include the per-request USD cost on the usage
+            # object. Same shape used by simulator.py — keep aligned.
+            extra_body={"usage": {"include": True}},
             model=or_model_id or llm_model.value,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
