@@ -1219,6 +1219,14 @@ async def is_user_paywalled(user_id: str) -> bool:
     try:
         tier = await _fetch_user_tier(user_id)
     except _UserNotFoundError:
+        # No DB row / no subscription_tier set — fresh signup that hasn't
+        # been provisioned yet, or row missing entirely. Logged at debug
+        # so ops can correlate "402s on fresh signups" with provisioning
+        # gaps without spamming the warning level.
+        logger.debug(
+            "is_user_paywalled: tier lookup empty for %s, treating as NO_TIER",
+            user_id[:8],
+        )
         tier = SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return False
