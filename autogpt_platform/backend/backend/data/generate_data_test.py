@@ -9,7 +9,11 @@ from prisma.enums import AgentExecutionStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import AgentGraph, AgentGraphExecution, User
 
-from backend.data.generate_data import get_user_execution_summary_data
+from backend.data import generate_data
+from backend.data.generate_data import (
+    _resolve_agent_name,
+    get_user_execution_summary_data,
+)
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -257,6 +261,20 @@ async def test_summary_excludes_out_of_window(server: SpinTestServer):
         assert stats.total_credits_used == pytest.approx(100 / 100)
     finally:
         await _cleanup(user_id, [graph_a])
+
+
+@pytest.mark.asyncio
+async def test_resolve_agent_name_falls_back_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Direct unit test: when get_graph_metadata raises, _resolve_agent_name
+    # logs and returns the short-id fallback.
+    async def boom(graph_id: str, version=None):
+        raise RuntimeError("simulated DB blip")
+
+    monkeypatch.setattr(generate_data, "get_graph_metadata", boom)
+    name = await _resolve_agent_name("abcdef0123456789")
+    assert name == "Agent abcdef01"
 
 
 @pytest.mark.asyncio(loop_scope="session")
