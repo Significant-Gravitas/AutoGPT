@@ -38,6 +38,7 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
+    PaywallRequired,
     RateLimitExceeded,
     RateLimitUnavailable,
     acquire_reset_lock,
@@ -1002,7 +1003,7 @@ async def stream_chat_post(
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
-            daily_limit, weekly_limit, _ = await get_global_rate_limits(
+            daily_limit, weekly_limit, tier = await get_global_rate_limits(
                 user_id,
                 config.daily_cost_limit_microdollars,
                 config.weekly_cost_limit_microdollars,
@@ -1011,7 +1012,13 @@ async def stream_chat_post(
                 user_id=user_id,
                 daily_cost_limit=daily_limit,
                 weekly_cost_limit=weekly_limit,
+                tier=tier,
             )
+        except PaywallRequired as e:
+            # NO_TIER + ENABLE_PLATFORM_PAYMENT on: the user has no entitlement
+            # to autopilot. 402 lets the frontend route to the existing paywall
+            # modal instead of treating this like a transient quota.
+            raise HTTPException(status_code=402, detail=str(e)) from e
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
         except RateLimitUnavailable as e:

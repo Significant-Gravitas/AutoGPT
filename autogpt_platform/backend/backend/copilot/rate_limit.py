@@ -459,6 +459,26 @@ class RateLimitUnavailable(Exception):
     """
 
 
+class PaywallRequired(Exception):
+    """Raised when a NO_TIER user tries to use a paywalled feature while
+    ``ENABLE_PLATFORM_PAYMENT`` is on. Maps to HTTP 402 in the API layer.
+
+    Distinct from :class:`RateLimitExceeded` (the user is not over a
+    *quota* — they have no entitlement to begin with) and from
+    :class:`RateLimitUnavailable` (Redis is fine; the answer is just
+    "no"). Without this gate, the multiplier-collapse path in
+    :func:`get_global_rate_limits` returns ``(0, 0, NO_TIER)`` and
+    :func:`check_rate_limit`'s legacy ``<=0 means unlimited`` short-circuit
+    lets the request through — i.e. the frontend ``PaywallModal`` shows
+    but the backend still services the autopilot turn.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "A subscription is required to run AutoPilot. Upgrade to continue."
+        )
+
+
 async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
@@ -627,10 +647,13 @@ async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
+    tier: SubscriptionTier | None = None,
 ) -> None:
     """Check if user is within rate limits.
 
-    Raises :class:`RateLimitExceeded` when the user is over their cap, and
+    Raises :class:`RateLimitExceeded` when the user is over their cap,
+    :class:`PaywallRequired` when the user has no entitlement (NO_TIER
+    with ``ENABLE_PLATFORM_PAYMENT`` on), and
     :class:`RateLimitUnavailable` when Redis is unreachable so the caller
     must fail closed (HTTP 503) — the daily/weekly USD caps are real money
     and cannot be bypassed by a Redis brown-out.
@@ -641,6 +664,16 @@ async def check_rate_limit(
     This is acceptable because cost-based limits are approximate by nature
     (the exact cost is unknown until after generation).
     """
+    # Paywall gate: NO_TIER + ENABLE_PLATFORM_PAYMENT means no entitlement.
+    # Must run BEFORE the ``<=0 means unlimited`` short-circuit below — the
+    # multiplier-collapse path in get_global_rate_limits returns (0, 0) for
+    # this case and we'd otherwise let the request through.
+    if tier == SubscriptionTier.NO_TIER:
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+            raise PaywallRequired()
+
     # Short-circuit: when both limits are 0 (unlimited) skip the Redis
     # round-trip entirely.
     if daily_cost_limit <= 0 and weekly_cost_limit <= 0:

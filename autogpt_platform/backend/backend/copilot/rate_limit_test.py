@@ -12,6 +12,7 @@ from .rate_limit import (
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
+    PaywallRequired,
     RateLimitExceeded,
     RateLimitUnavailable,
     SubscriptionTier,
@@ -321,6 +322,91 @@ class TestCheckRateLimit:
         ):
             # Should not raise — limits of 0 mean unlimited
             await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+
+    @pytest.mark.asyncio
+    async def test_paywall_blocks_no_tier_user_when_payment_flag_on(self):
+        """NO_TIER + ENABLE_PLATFORM_PAYMENT=on must raise PaywallRequired
+        BEFORE the (0,0)-means-unlimited short-circuit lets the request slip
+        through. This is the bug behind the autopilot leak: the
+        multiplier-collapse path returns (0, 0, NO_TIER) and without the
+        explicit gate the paywall is purely cosmetic."""
+        with patch(
+            "backend.util.feature_flag.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ):
+            with pytest.raises(PaywallRequired):
+                await check_rate_limit(
+                    _USER,
+                    daily_cost_limit=0,
+                    weekly_cost_limit=0,
+                    tier=SubscriptionTier.NO_TIER,
+                )
+
+    @pytest.mark.asyncio
+    async def test_paywall_does_not_block_no_tier_user_when_flag_off(self):
+        """Beta cohort: flag off → NO_TIER inherits BASIC limits via
+        get_global_rate_limits (multiplier 1.0). Limits arrive non-zero, so
+        check_rate_limit should NOT raise PaywallRequired here."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["100", "200"])
+        with patch(
+            "backend.util.feature_flag.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ):
+            with patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ):
+                await check_rate_limit(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    tier=SubscriptionTier.NO_TIER,
+                )
+
+    @pytest.mark.asyncio
+    async def test_paywall_does_not_block_paid_tier(self):
+        """Even with the flag on, paid tiers (PRO, MAX, BUSINESS) must never
+        hit the paywall gate — they have entitlement."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["100", "200"])
+        with patch(
+            "backend.util.feature_flag.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ):
+            with patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ):
+                await check_rate_limit(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    tier=SubscriptionTier.PRO,
+                )
+
+    @pytest.mark.asyncio
+    async def test_paywall_does_not_block_when_tier_unknown(self):
+        """Backward compat: callers that don't pass a tier (e.g. legacy code
+        paths) should retain the existing semantics — unlimited (0, 0) stays
+        unlimited."""
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("must not be called"),
+        ) as mock_get:
+            await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+            mock_get.assert_not_called()
+
+
+class TestPaywallRequired:
+    def test_message_mentions_subscription(self):
+        exc = PaywallRequired()
+        assert "subscription" in str(exc).lower()
+
+    def test_distinct_from_rate_limit_exceeded(self):
+        # Distinct exception type so HTTP layer can map to 402 vs 429.
+        assert not isinstance(PaywallRequired(), RateLimitExceeded)
+        assert not isinstance(PaywallRequired(), RateLimitUnavailable)
 
 
 # ---------------------------------------------------------------------------
