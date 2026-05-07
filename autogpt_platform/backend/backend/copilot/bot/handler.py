@@ -194,7 +194,9 @@ class MessageHandler:
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
-                await adapter.send_message(target_id, buffer)
+                await adapter.send_message(
+                    target_id, buffer, mentionable_users=ctx.mentionable_users
+                )
                 sent_any_content = True
                 buffer = ""
             sent_any_content = True
@@ -220,7 +222,11 @@ class MessageHandler:
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
                     if post:
-                        await adapter.send_message(target_id, post)
+                        await adapter.send_message(
+                            target_id,
+                            post,
+                            mentionable_users=ctx.mentionable_users,
+                        )
                         if post.strip():
                             sent_any_content = True
         except DuplicateChatMessageError:
@@ -252,7 +258,9 @@ class MessageHandler:
             await adapter.stop_typing(target_id)
 
         if buffer.strip():
-            await adapter.send_message(target_id, buffer)
+            await adapter.send_message(
+                target_id, buffer, mentionable_users=ctx.mentionable_users
+            )
             sent_any_content = True
 
         if not sent_any_content:
@@ -402,10 +410,13 @@ def _copilot_session_url(session_id: str) -> str:
 def _setup_required_message(setup_output: dict[str, Any]) -> str:
     message = str(setup_output.get("message") or "").strip()
     if not message:
-        message = "AutoPilot needs one more setup step before it can continue."
+        message = (
+            "AutoPilot needs you to sign in or authorize an integration "
+            "before it can continue."
+        )
 
     return (
         f"{message}\n\n"
-        "Open this AutoGPT chat, finish the setup step, then reply here "
-        "when you're done."
+        "Click the button below to open your AutoGPT chat and finish setup "
+        "there. Reply here when you're done."
     )
