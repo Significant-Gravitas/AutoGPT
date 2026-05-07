@@ -38,6 +38,7 @@ from .manage_folders import (
     MoveFolderTool,
     UpdateFolderTool,
 )
+from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -107,6 +108,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
+    # Platform info (subscription, billing)
+    "get_platform_info": PlatformInfoTool(),
     # Agent generation tools (local validation/fixing)
     "validate_agent_graph": ValidateAgentGraphTool(),
     "fix_agent_graph": FixAgentGraphTool(),

@@ -15239,7 +15239,8 @@
           "memory_search",
           "memory_forget_candidates",
           "memory_forget_confirm",
-          "todo_write"
+          "todo_write",
+          "platform_info"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

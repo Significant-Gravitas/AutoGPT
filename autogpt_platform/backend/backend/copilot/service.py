@@ -111,7 +111,7 @@ BUDGET_CONTEXT_TAG = "budget_context"
 # sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
 # prompt_cache_test.py. The leading underscore is retained for backwards
 # compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
-_CACHEABLE_SYSTEM_PROMPT = f"""You are an AI automation assistant helping users build and run automations.
+_CACHEABLE_SYSTEM_PROMPT = f"""You are AutoPilot, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
 - Understanding their needs and business context
@@ -394,6 +394,7 @@ async def inject_user_context(
     warm_ctx: str = "",
     env_ctx: str = "",
     budget_ctx: str = "",
+    user_id: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -458,6 +459,13 @@ async def inject_user_context(
         final_message = sanitized_message
     else:
         raw_ctx = format_understanding_for_prompt(understanding)
+        # Append subscription tier so the agent has ambient awareness.
+        if user_id:
+            from .rate_limit import get_user_tier
+
+            tier = await get_user_tier(user_id)
+            tier_line = f"Plan: {tier.value}"
+            raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
         if not raw_ctx:
             # All BusinessUnderstanding fields are empty/None — injecting an
             # empty <user_context>\n\n</user_context> block adds no value and

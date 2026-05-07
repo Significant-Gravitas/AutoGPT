@@ -91,6 +91,9 @@ class ResponseType(str, Enum):
     # Planning
     TODO_WRITE = "todo_write"
 
+    # Platform info
+    PLATFORM_INFO = "platform_info"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -877,3 +880,12 @@ class TodoWriteResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TODO_WRITE
     todos: list[TodoItem] = Field(default_factory=list)
+
+
+class PlatformInfoResponse(ToolResponseBase):
+    """Response from the ``get_platform_info`` tool."""
+
+    type: ResponseType = ResponseType.PLATFORM_INFO
+    topic: str
+    tier: str | None = None
+    billing_url: str | None = "/settings/billing"
