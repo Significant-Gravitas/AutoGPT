@@ -926,20 +926,20 @@ async def llm_call(
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
 
-    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter API key
-    # is configured, route direct-Anthropic models through OpenRouter instead. This
-    # gives us the x-total-cost header for free, so provider_cost is always populated
-    # without manual token-rate arithmetic.
+    # Transparent OpenRouter routing for Anthropic and OpenAI models: when an
+    # OpenRouter API key is configured, route direct-provider calls through
+    # OpenRouter instead. This gives us the x-total-cost header for free, so
+    # provider_cost is always populated without manual token-rate arithmetic.
     or_key = settings.secrets.open_router_api_key
     or_model_id: str | None = None
-    if provider == "anthropic" and or_key:
+    if provider in ("anthropic", "openai") and or_key:
+        or_model_id = f"{provider}/{llm_model.value}"
         provider = "open_router"
         credentials = APIKeyCredentials(
             provider=ProviderName.OPEN_ROUTER,
             title="OpenRouter (auto)",
             api_key=SecretStr(or_key),
         )
-        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
