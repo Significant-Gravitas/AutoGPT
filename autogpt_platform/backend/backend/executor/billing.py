@@ -229,11 +229,12 @@ async def charge_reconciled_usage(
         # USAGE type so the refund is attributable to the same graph
         # execution in credit history.
         #
-        # For positive deltas (additional charge), pass
-        # `fail_insufficient_credits=False`: the SQL guard is bypassed so the
-        # spend always lands. The wallet may go negative; that's the point —
-        # we'd rather record real debt than leak the cost. Refunds (negative
-        # delta) keep the default since they only ever credit.
+        # `fail_insufficient_credits=False` is passed for every reconciliation
+        # spend. For positive deltas this bypasses the balance guard so the
+        # spend always lands — the wallet may go negative; that's the point,
+        # we'd rather record real debt than leak the cost. For negative deltas
+        # (refunds) the flag is moot: `amount = -cost > 0`, so the SQL guard's
+        # `$2 >= 0` short-circuit holds regardless.
         remaining_balance = await db_client.spend_credits(
             user_id=node_exec.user_id,
             cost=delta,
