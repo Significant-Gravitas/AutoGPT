@@ -257,3 +257,38 @@ async def test_summary_excludes_out_of_window(server: SpinTestServer):
         assert stats.total_credits_used == pytest.approx(100 / 100)
     finally:
         await _cleanup(user_id, [graph_a])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_summary_falls_back_when_graph_metadata_missing(server: SpinTestServer):
+    # If a graph is deleted but executions still reference it, name resolution
+    # must fall back to a short-id label instead of raising.
+    user_id = f"sum-orphan-{uuid4()}"
+    graph_id = f"orphan-graph-{uuid4()}"
+    await _create_test_user(user_id)
+    await _create_graph(graph_id, user_id, "TempName")
+
+    now = datetime.now(timezone.utc)
+    try:
+        await _create_exec(
+            f"o1-{uuid4()}",
+            user_id,
+            graph_id,
+            AgentExecutionStatus.COMPLETED,
+            42,
+            1.0,
+            now - timedelta(hours=1),
+        )
+
+        # Delete the graph row before summary runs, leaving the execution
+        # behind with a now-orphaned agentGraphId.
+        await AgentGraph.prisma().delete_many(where={"id": graph_id})
+
+        stats = await get_user_execution_summary_data(
+            user_id, now - timedelta(hours=2), now
+        )
+        expected_fallback = f"Agent {graph_id[:8]}"
+        assert stats.most_used_agent == expected_fallback
+        assert stats.cost_breakdown == {expected_fallback: pytest.approx(42 / 100)}
+    finally:
+        await _cleanup(user_id, [graph_id])
