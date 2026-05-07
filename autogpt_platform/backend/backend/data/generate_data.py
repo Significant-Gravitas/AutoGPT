@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -71,16 +72,25 @@ async def get_user_execution_summary_data(
             total_walltime / walltime_count if walltime_count else 0
         )
 
+        graph_ids = list(cost_by_graph_id.keys())
+        resolved_names = await asyncio.gather(
+            *(_resolve_agent_name(gid) for gid in graph_ids)
+        )
+        name_by_graph_id = dict(zip(graph_ids, resolved_names))
+
         most_used_agent = "No agents used"
         if usage_by_graph_id:
             most_used_agent_id = max(
                 usage_by_graph_id, key=lambda k: usage_by_graph_id[k]
             )
-            most_used_agent = await _resolve_agent_name(most_used_agent_id)
+            most_used_agent = name_by_graph_id[most_used_agent_id]
 
+        # Sum on name collisions (two distinct graphs can resolve to the same
+        # display name); a plain assign would silently drop one bucket.
         cost_breakdown: dict[str, float] = {}
         for graph_id, cost in cost_by_graph_id.items():
-            cost_breakdown[await _resolve_agent_name(graph_id)] = cost
+            name = name_by_graph_id[graph_id]
+            cost_breakdown[name] = cost_breakdown.get(name, 0.0) + cost
 
         return UserExecutionSummaryStats(
             total_credits_used=total_credits_used,

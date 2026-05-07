@@ -174,6 +174,52 @@ async def test_summary_aggregates_by_status_and_graph(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_summary_sums_costs_on_agent_name_collision(server: SpinTestServer):
+    # Two distinct agentGraphIds resolving to the same display name must sum
+    # into the same cost_breakdown bucket, not overwrite each other.
+    user_id = f"sum-collide-{uuid4()}"
+    graph_a = f"graph-c1-{uuid4()}"
+    graph_b = f"graph-c2-{uuid4()}"
+    await _create_test_user(user_id)
+    await _create_graph(graph_a, user_id, "Scraper")
+    await _create_graph(graph_b, user_id, "Scraper")
+
+    now = datetime.now(timezone.utc)
+    in_window = now - timedelta(hours=1)
+
+    try:
+        await _create_exec(
+            f"c1-{uuid4()}",
+            user_id,
+            graph_a,
+            AgentExecutionStatus.COMPLETED,
+            30,
+            1.0,
+            in_window,
+        )
+        await _create_exec(
+            f"c2-{uuid4()}",
+            user_id,
+            graph_b,
+            AgentExecutionStatus.COMPLETED,
+            70,
+            2.0,
+            in_window,
+        )
+
+        stats = await get_user_execution_summary_data(
+            user_id, now - timedelta(hours=2), now
+        )
+
+        assert stats.cost_breakdown == {
+            "Scraper": pytest.approx((30 + 70) / 100),
+        }
+        assert stats.total_credits_used == pytest.approx(100 / 100)
+    finally:
+        await _cleanup(user_id, [graph_a, graph_b])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_summary_excludes_out_of_window(server: SpinTestServer):
     user_id = f"sum-window-{uuid4()}"
     graph_a = f"graph-w-{uuid4()}"
