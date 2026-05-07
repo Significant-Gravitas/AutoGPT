@@ -837,33 +837,23 @@ def detect_gap(
     wm = download.message_count
 
     # Last entry is the current user turn; everything else is candidate context.
-    candidates = session_messages[:-1]
-
-    # Filter by sequence — ``sequence`` is 0-indexed and equals position in the
-    # full conversation, so messages with sequence >= wm are post-watermark gap.
-    # Messages without a sequence (legacy rows) fall back to list-position
-    # against the FULL history, which only matches when the list isn't windowed.
+    # ``sequence`` is NOT NULL in the schema, so DB-loaded messages always have it;
+    # the only None case is in-memory messages not yet persisted, which the caller
+    # has already excluded by passing the loaded session list.
+    candidates = [m for m in session_messages[:-1] if m.sequence is not None]
     gap = [m for m in candidates if m.sequence is not None and m.sequence >= wm]
     if not gap:
-        # Legacy fallback: messages with no sequence column (older rows).
-        # The original index-based slice still applies when messages haven't
-        # been windowed.
-        total = len(session_messages)
-        if wm >= total - 1:
-            return []
-        if session_messages[wm - 1].role != "assistant":
-            return []
-        return list(session_messages[wm : total - 1])
+        return []
 
     # Sanity: the message just before the gap (highest sequence < wm) should be
     # an assistant turn. If not, skip — the DB shifted under us (deletion or
     # similar) and applying the gap would feed bad context to the LLM.
     pre_gap = [m for m in candidates if m.sequence is not None and m.sequence < wm]
     if pre_gap:
-        prev = max(pre_gap, key=lambda m: m.sequence or 0)
+        prev = max(pre_gap, key=lambda m: m.sequence)
         if prev.role != "assistant":
             return []
-    elif gap:
+    else:
         # No pre-watermark messages were loaded but the gap is non-empty:
         # the window starts AFTER the watermark. Sequences [wm, window_start-1]
         # exist in neither the transcript (covers 0..wm-1) nor the gap (starts

@@ -11,11 +11,12 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
+    MAX_LOADED_CHAT_MESSAGES,
     PaginatedMessages,
     get_chat_messages_paginated,
-    set_turn_duration,
-    update_message_content_by_sequence,
 )
+from backend.copilot.db import get_chat_session as db_get_chat_session
+from backend.copilot.db import set_turn_duration, update_message_content_by_sequence
 from backend.copilot.model import ChatMessage as CopilotChatMessage
 from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
 
@@ -608,3 +609,84 @@ async def test_update_message_content_by_sequence_sanitizes_content():
         where={"sessionId": "sess-1", "sequence": 0},
         data={"content": "sanitized"},
     )
+
+
+# ---------- get_chat_session: windowed eager-load ----------
+
+
+@pytest.fixture()
+def mock_session_find_unique():
+    """Patch ChatSession.prisma().find_unique used by db.get_chat_session."""
+    with patch.object(PrismaChatSession, "prisma") as mock_session_prisma:
+        find_unique = AsyncMock()
+        mock_session_prisma.return_value.find_unique = find_unique
+        yield find_unique
+
+
+@pytest.mark.asyncio
+async def test_get_chat_session_caps_and_reverses_to_ascending(
+    mock_session_find_unique: AsyncMock,
+):
+    """The DB query asks Prisma for the most-recent ``MAX_LOADED_CHAT_MESSAGES``
+    in descending sequence order; the loader then reverses to ascending so
+    callers see oldest-first."""
+    # Simulate Prisma returning the descending tail (newest first).
+    descending = [_make_msg(seq) for seq in range(1499, 1499 - 1000, -1)]
+    mock_session_find_unique.return_value = _make_session(messages=descending)
+
+    session = await db_get_chat_session(SESSION_ID)
+    assert session is not None
+    assert len(session.messages) == 1000
+    # Ascending: lowest sequence first.
+    assert session.messages[0].sequence == 500
+    assert session.messages[-1].sequence == 1499
+
+    # Confirm the take/order_by Prisma args were passed correctly.
+    args = mock_session_find_unique.call_args.kwargs
+    assert args["include"] == {
+        "Messages": {"order_by": {"sequence": "desc"}, "take": MAX_LOADED_CHAT_MESSAGES}
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_chat_session_warns_when_cap_engages(
+    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
+):
+    """Loading exactly ``max_messages`` rows logs the cap-hit warning so a
+    silently-windowed session is observable in production logs."""
+    descending = [_make_msg(seq) for seq in range(9, -1, -1)]  # 10 messages
+    mock_session_find_unique.return_value = _make_session(messages=descending)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.db"):
+        await db_get_chat_session(SESSION_ID, max_messages=10)
+
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert len(cap_warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_chat_session_does_not_warn_when_below_cap(
+    mock_session_find_unique: AsyncMock, caplog: pytest.LogCaptureFixture
+):
+    """Sub-cap loads are the common path; the warning must not fire there."""
+    descending = [_make_msg(seq) for seq in range(4, -1, -1)]  # 5 messages
+    mock_session_find_unique.return_value = _make_session(messages=descending)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.db"):
+        await db_get_chat_session(SESSION_ID, max_messages=10)
+
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert cap_warnings == []
+
+
+@pytest.mark.asyncio
+async def test_get_chat_session_returns_none_when_missing(
+    mock_session_find_unique: AsyncMock,
+):
+    """Missing session → None passthrough; no crash on the reverse step."""
+    mock_session_find_unique.return_value = None
+    assert await db_get_chat_session("missing") is None
