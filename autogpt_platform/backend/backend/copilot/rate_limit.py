@@ -56,6 +56,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+import fastapi
+from autogpt_libs.auth.dependencies import get_user_id
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
@@ -64,6 +66,7 @@ from backend.data.db_accessors import user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
+from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +155,6 @@ async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None
     non-numeric / non-positive values are skipped; callers merge whatever
     survives into :data:`_DEFAULT_TIER_MULTIPLIERS`.
     """
-    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
     raw = await get_feature_flag_value(
         Flag.COPILOT_TIER_MULTIPLIERS.value, "system", None
     )
@@ -197,9 +197,6 @@ async def _fetch_cost_limits_flag() -> dict[str, int] | None:
     are skipped so a broken key degrades to the config default instead of
     wiping out the limit.
     """
-    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
     raw = await get_feature_flag_value(Flag.COPILOT_COST_LIMITS.value, "system", None)
     if raw is None:
         return None
@@ -273,9 +270,6 @@ async def _fetch_workspace_storage_limits_flag() -> dict[SubscriptionTier, int] 
     negative values are skipped so a broken key degrades to the code default
     instead of wiping out the limit.
     """
-    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
     raw = await get_feature_flag_value(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value, "system", None
     )
@@ -459,26 +453,6 @@ class RateLimitUnavailable(Exception):
     """
 
 
-class PaywallRequired(Exception):
-    """Raised when a NO_TIER user tries to use a paywalled feature while
-    ``ENABLE_PLATFORM_PAYMENT`` is on. Maps to HTTP 402 in the API layer.
-
-    Distinct from :class:`RateLimitExceeded` (the user is not over a
-    *quota* — they have no entitlement to begin with) and from
-    :class:`RateLimitUnavailable` (Redis is fine; the answer is just
-    "no"). Without this gate, the multiplier-collapse path in
-    :func:`get_global_rate_limits` returns ``(0, 0, NO_TIER)`` and
-    :func:`check_rate_limit`'s legacy ``<=0 means unlimited`` short-circuit
-    lets the request through — i.e. the frontend ``PaywallModal`` shows
-    but the backend still services the autopilot turn.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            "A subscription is required to run AutoPilot. Upgrade to continue."
-        )
-
-
 async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
@@ -647,16 +621,20 @@ async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
-    tier: SubscriptionTier | None = None,
 ) -> None:
     """Check if user is within rate limits.
 
-    Raises :class:`RateLimitExceeded` when the user is over their cap,
-    :class:`PaywallRequired` when the user has no entitlement (NO_TIER
-    with ``ENABLE_PLATFORM_PAYMENT`` on), and
-    :class:`RateLimitUnavailable` when Redis is unreachable so the caller
-    must fail closed (HTTP 503) — the daily/weekly USD caps are real money
-    and cannot be bypassed by a Redis brown-out.
+    Raises :class:`RateLimitExceeded` when the user is at-or-over their cap
+    and :class:`RateLimitUnavailable` when Redis is unreachable so the
+    caller must fail closed (HTTP 503) — the daily/weekly USD caps are
+    real money and cannot be bypassed by a Redis brown-out.
+
+    A limit of ``0`` means "no spend allowed", not "unlimited" — there is
+    no real-world unlimited tier. Routes that want to skip rate-limiting
+    entirely should not call this function. Entitlement (``NO_TIER`` +
+    ``ENABLE_PLATFORM_PAYMENT``) is enforced upstream by the route
+    dependency :func:`enforce_payment_paywall`, so this function is
+    purely about per-window USD usage.
 
     This is a pre-turn soft check. The authoritative usage counter is updated
     by ``record_cost_usage()`` after the turn completes. Under concurrency,
@@ -664,21 +642,6 @@ async def check_rate_limit(
     This is acceptable because cost-based limits are approximate by nature
     (the exact cost is unknown until after generation).
     """
-    # Paywall gate: NO_TIER + ENABLE_PLATFORM_PAYMENT means no entitlement.
-    # Must run BEFORE the ``<=0 means unlimited`` short-circuit below — the
-    # multiplier-collapse path in get_global_rate_limits returns (0, 0) for
-    # this case and we'd otherwise let the request through.
-    if tier == SubscriptionTier.NO_TIER:
-        from backend.util.feature_flag import Flag, is_feature_enabled
-
-        if await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
-            raise PaywallRequired()
-
-    # Short-circuit: when both limits are 0 (unlimited) skip the Redis
-    # round-trip entirely.
-    if daily_cost_limit <= 0 and weekly_cost_limit <= 0:
-        return
-
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -705,10 +668,15 @@ async def check_rate_limit(
         logger.warning("Rate limit state unreadable, rejecting request: %s", exc)
         raise RateLimitUnavailable() from exc
 
-    if daily_cost_limit > 0 and daily_used >= daily_cost_limit:
+    # ``>= 0`` (not ``> 0``): a limit of 0 means "no spend allowed", and
+    # any usage at or above 0 is over-cap. The previous ``> 0`` check
+    # silently treated 0 as unlimited, which collided with the multiplier-
+    # collapse semantics of :func:`get_global_rate_limits` and produced
+    # the autopilot paywall bypass.
+    if daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
-    if weekly_cost_limit > 0 and weekly_used >= weekly_cost_limit:
+    if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
 
 
@@ -1092,20 +1060,17 @@ async def get_global_rate_limits(
 
     # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
     # so multipliers can be tuned without a deploy. Falls back to the defaults
-    # when LD is unavailable.
+    # when LD is unavailable. NO_TIER+paywall is gated upstream by
+    # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
+    # only NO_TIER path that gets here is the beta cohort (flag off), which
+    # falls back to BASIC limits so testers retain access.
     tier = await get_user_tier(user_id)
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
-    # NO_TIER's 0.0 multiplier is the backend half of the paywall — it
-    # collapses limits to zero so unsubscribed users can't run the chat.
-    # Only enforce that gate when the platform-payment flag is on for this
-    # user; in the beta cohort (flag off) NO_TIER falls back to BASIC's
-    # baseline so the e2e suite and beta testers retain access.
-    if tier == SubscriptionTier.NO_TIER:
-        from backend.util.feature_flag import Flag, is_feature_enabled
-
-        if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
-            multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
+    if tier == SubscriptionTier.NO_TIER and not await is_feature_enabled(
+        Flag.ENABLE_PLATFORM_PAYMENT, user_id
+    ):
+        multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
@@ -1174,4 +1139,40 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
     days_until_monday = (7 - now.weekday()) % 7 or 7
     return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
         days=days_until_monday
+    )
+
+
+# ---------------------------------------------------------------------------
+# Route-level paywall dependency
+# ---------------------------------------------------------------------------
+
+
+async def enforce_payment_paywall(
+    user_id: str = fastapi.Security(get_user_id),
+) -> None:
+    """FastAPI dependency: block ``NO_TIER`` users when
+    ``ENABLE_PLATFORM_PAYMENT`` is on for them, before the route handler
+    runs.
+
+    Mirrors the ``requires_admin_user`` pattern. Apply via
+    ``dependencies=[fastapi.Depends(enforce_payment_paywall)]`` on every
+    route that should refuse access to users without a subscription —
+    chat / AutoPilot turns, graph executions, block executions, MCP
+    tool calls. Centralising the gate at the route boundary prevents
+    per-route callers from forgetting it and makes "is this route
+    paywalled?" answerable by grepping the dependency list, the way
+    ``requires_admin_user`` works today.
+
+    Beta-cohort users (``ENABLE_PLATFORM_PAYMENT`` off) and any paid tier
+    pass through unchanged. The dep does no Redis I/O — it's just a
+    Supabase + LD lookup, both already cached.
+    """
+    tier = await get_user_tier(user_id)
+    if tier != SubscriptionTier.NO_TIER:
+        return
+    if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+        return
+    raise fastapi.HTTPException(
+        status_code=402,
+        detail="A subscription is required to use this feature. Upgrade to continue.",
     )

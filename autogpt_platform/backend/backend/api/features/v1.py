@@ -15,6 +15,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     File,
     HTTPException,
     Path,
@@ -44,7 +45,7 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
-from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -454,7 +455,7 @@ async def get_graph_blocks() -> Response:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -1667,7 +1668,7 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
 )
 async def execute_graph(
     graph_id: str,
