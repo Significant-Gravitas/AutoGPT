@@ -51,9 +51,7 @@ class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
-        # Fire-and-forget tasks for thread renames after a stream finishes.
-        # Held in a strong-ref set so the GC doesn't drop them mid-await; the
-        # done-callback discards them when finished. See `_stream_batch`.
+        # Strong-ref set so the GC doesn't drop fire-and-forget rename tasks.
         self._rename_tasks: set[asyncio.Task[None]] = set()
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
@@ -206,9 +204,8 @@ class MessageHandler:
             session_url = _copilot_session_url(session_id)
             message = _setup_required_message(setup_output)
             if session_url is None:
-                # frontend_base_url + platform_base_url both unset — Discord
-                # rejects relative URLs in link buttons, so fall back to a
-                # plain text message instead of crashing the send path.
+                # No base URL configured — fall back to plain text since
+                # Discord rejects relative URLs on link buttons.
                 logger.warning(
                     "No frontend/platform base URL configured; "
                     "sending setup-required prompt without a button"
@@ -291,11 +288,7 @@ class MessageHandler:
             and target_id != ctx.channel_id
             and active_session_id
         ):
-            # Fire-and-forget: the title may not be ready yet (the copilot
-            # generates it asynchronously), so we poll for several seconds.
-            # Awaiting here would stall the next batched turn for the same
-            # target by the full retry budget — fine for a one-shot user
-            # but punishing for anyone typing follow-ups quickly.
+            # Fire-and-forget so the rename poll doesn't stall follow-up turns.
             task = asyncio.create_task(
                 self._rename_thread_from_session_title(
                     adapter, target_id, active_session_id
@@ -314,9 +307,6 @@ class MessageHandler:
             try:
                 title = await self._api.get_session_title(session_id)
             except Exception:
-                # Transient backend hiccups are the usual cause here, so
-                # treat exceptions like a None result and keep retrying
-                # rather than bailing on the first miss.
                 logger.warning(
                     "Failed to fetch generated title for %s (attempt %d/%d)",
                     session_id,
@@ -436,10 +426,7 @@ def clamp_thread_name(name: str) -> str:
 
 
 def _copilot_session_url(session_id: str) -> str | None:
-    """Absolute URL to the live copilot session, or None if no base URL is
-    configured (Discord rejects relative URLs in link buttons, so callers
-    must fall back to a plain message in that case).
-    """
+    """Absolute URL to the live copilot session, or None if no base URL set."""
     config = Settings().config
     base_url = (config.frontend_base_url or config.platform_base_url).rstrip("/")
     if not base_url:
