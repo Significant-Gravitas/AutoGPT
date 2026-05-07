@@ -59,6 +59,10 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_schedules import (
+    ScheduleDeletedResponse,
+    ScheduleListResponse,
+)
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -1144,6 +1148,11 @@ async def stream_chat_post(
                 yield StreamFinish().to_sse()
                 return
 
+            # Flush a heartbeat immediately so the client knows the
+            # connection is live — without this the first event arrives
+            # only after the _stream_listener's first xread (up to 5 s).
+            yield StreamHeartbeat().to_sse()
+
             # Read from the subscriber queue and yield to SSE
             logger.info(
                 "[TIMING] Starting to read from subscriber_queue",
@@ -1562,6 +1571,8 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | ScheduleListResponse
+    | ScheduleDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

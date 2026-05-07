@@ -1,6 +1,6 @@
 """Tests for CreateAgentTool."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -129,6 +129,48 @@ async def test_local_mode_validation_failure(tool, session):
     assert result.error == "validation_failed"
     assert result.details is not None
     assert "Block 'bad-block' not found" in result.details["errors"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_hidden", [True, False])
+async def test_is_hidden_passes_through_to_pipeline(tool, session, is_hidden):
+    """The is_hidden param on create_agent must reach
+    fix_validate_and_save unchanged so trigger agents land in the DB
+    hidden. Regression for an earlier review finding that the kwarg
+    plumbing was untested."""
+    agent_json = {
+        "name": "Trigger Watcher",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+    mock_fix = MagicMock(name="fix_validate_and_save_result")
+    with (
+        patch(
+            "backend.copilot.tools.create_agent.fetch_library_agents",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.create_agent.fix_validate_and_save",
+            new=AsyncMock(return_value=mock_fix),
+        ) as mock_fix_validate,
+    ):
+        await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json=agent_json,
+            is_hidden=is_hidden,
+        )
+
+    mock_fix_validate.assert_awaited_once()
+    assert mock_fix_validate.call_args.kwargs["is_hidden"] is is_hidden
 
 
 @pytest.mark.asyncio

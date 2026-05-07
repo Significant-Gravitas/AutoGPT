@@ -5,6 +5,7 @@
 import asyncio
 import base64
 import functools
+from copy import copy
 import json
 import logging
 import os
@@ -3618,8 +3619,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user LaunchDarkly targeting.
     """
-    _ = mode  # SDK path ignores the requested mode.
-
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -3806,9 +3805,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             return
         # --- Run independent async I/O operations in parallel ---
-        # E2B sandbox setup, system prompt build (Langfuse + DB), and transcript
-        # download are independent network calls.  Running them concurrently
-        # saves ~200-500ms compared to sequential execution.
+        # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
+        # warm-context, and CLI session restore are all independent network
+        # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
@@ -3839,15 +3838,30 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
             return sandbox
 
-        e2b_sandbox, (base_system_prompt, understanding) = await asyncio.gather(
+        (
+            e2b_sandbox,
+            (base_system_prompt, understanding),
+            (graphiti_enabled, warm_ctx),
+            _restore,
+        ) = await asyncio.gather(
             _setup_e2b(),
             _build_system_prompt(user_id if not has_history else None),
+            _fetch_graphiti_context(user_id, session, message),
+            # Restore CLI session — single GCS round-trip covers both
+            # --resume and builder state.  message_count watermark lives
+            # in the companion .meta.json alongside the session file.
+            _restore_cli_session_for_turn(
+                user_id,
+                session_id,
+                session,
+                sdk_cwd,
+                transcript_builder,
+                log_prefix,
+            ),
         )
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
-
-        graphiti_enabled = await is_enabled_for_user(user_id)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         # Append the builder-session block (graph id+name + full building
@@ -3863,21 +3877,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + builder_session_suffix
         )
 
-        # Warm context: pre-load relevant facts from Graphiti on first turn.
-        # Stored here and injected into the first user message (not the system
-        # prompt) so the system prompt stays identical across all users and
-        # sessions, enabling cross-session Anthropic prompt-cache hits.
-        warm_ctx = ""
-        if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from ..graphiti.context import fetch_warm_context
-
-            warm_ctx = await fetch_warm_context(user_id, message or "") or ""
-
-        # Restore CLI session — single GCS round-trip covers both --resume and builder state.
-        # message_count watermark lives in the companion .meta.json alongside the session file.
-        _restore = await _restore_cli_session_for_turn(
-            user_id, session_id, session, sdk_cwd, transcript_builder, log_prefix
-        )
         transcript_content = _restore.transcript_content
         transcript_covers_prefix = _restore.transcript_covers_prefix
         use_resume = _restore.use_resume
@@ -3974,47 +3973,52 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
-        sdk_options_kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt_value,
-            "mcp_servers": {"copilot": mcp_server},
-            "allowed_tools": allowed,
-            "disallowed_tools": disallowed,
-            "hooks": security_hooks,
-            "cwd": sdk_cwd,
-            "max_buffer_size": config.claude_agent_max_buffer_size,
-            "stderr": _on_stderr,
+        sdk_options = ClaudeAgentOptions(
+            system_prompt=system_prompt_value,
+            mcp_servers={"copilot": mcp_server},
+            allowed_tools=allowed,
+            disallowed_tools=disallowed,
+            hooks=security_hooks,
+            cwd=sdk_cwd,
+            max_buffer_size=config.claude_agent_max_buffer_size,
+            stderr=_on_stderr,
             # --- P0 guardrails ---
             # fallback_model: SDK auto-retries with this cheaper model on
             # 529 (overloaded) errors, avoiding user-visible failures.
-            "fallback_model": fallback_model,
+            fallback_model=fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
-            "max_turns": config.agent_max_turns,
+            max_turns=config.agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             # Sized to the smaller of the configured per-query default and
             # the user's *actual* remaining daily/weekly USD cap so the
             # CLI's "wrap up gracefully" reminder fires when they're close
             # to the real limit, not the static $10 default.
-            "max_budget_usd": await _resolve_dynamic_max_budget_usd(user_id),
-        }
-        # max_thinking_tokens: cap extended thinking output per LLM call.
-        # Thinking tokens are billed at output rate ($75/M for Opus) and
-        # account for ~54% of total cost.  8192 is the default.
-        # Intentionally sent for all models including Sonnet — the CLI
-        # silently ignores this field for non-Opus models (those without
-        # native extended thinking), so it is safe to pass unconditionally.
-        # Setting to 0 acts as the kill switch (same as baseline): omit the
-        # kwarg so the CLI falls back to its default (extended thinking off).
+            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
+            # thinking: specify extended thinking mode. Thinking tokens are
+            # billed at output rate ($75/M for Opus) and account for ~54%
+            # of total cost.  The CLI silently ignores this field for
+            # models without native extended thinking, so it is safe to
+            # pass unconditionally.
+            # NOTE: Claude 4.7+ does not support capped thinking token
+            # budget: use `effort` instead to steer thinking effort.
+            thinking={"type": "adaptive"},
+            # effort: applies to models with extended thinking (Sonnet,
+            # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
+            # extension (#12871).
+            effort=(
+                "medium"
+                if mode == "fast"
+                else (config.claude_agent_thinking_effort or "high")
+            ),
+        )
+        # max_thinking_tokens: legacy cost cap retained for non-4.7 models
+        # and Kimi K2.6.  Setting to 0 acts as the kill switch (same as
+        # baseline): omit the kwarg so the CLI falls back to its default.
         if config.claude_agent_max_thinking_tokens > 0:
-            sdk_options_kwargs["max_thinking_tokens"] = (
-                config.claude_agent_max_thinking_tokens
-            )
-        # effort: only set for models with extended thinking (Opus).
-        # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
-        if config.claude_agent_thinking_effort:
-            sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
+            sdk_options.max_thinking_tokens = config.claude_agent_max_thinking_tokens
         if sdk_model:
-            sdk_options_kwargs["model"] = sdk_model
+            sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
             # Opt into per-token streaming — the CLI emits raw Anthropic
             # ``content_block_delta`` events as ``StreamEvent`` messages
@@ -4025,15 +4029,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # only the tail diff from the subsequent summary, so content
             # never double-emits and a summary-only short block still
             # reaches the UI.
-            sdk_options_kwargs["include_partial_messages"] = True
+            sdk_options.include_partial_messages = True
 
         if sdk_env:
-            sdk_options_kwargs["env"] = sdk_env
+            sdk_options.env = sdk_env
         if use_resume and resume_file:
             # --resume {uuid} implies the session UUID — do NOT also pass
             # --session-id here.  CLI >=2.1.97 rejects the combination of
             # --session-id + --resume unless --fork-session is also given.
-            sdk_options_kwargs["resume"] = resume_file
+            sdk_options.resume = resume_file
         else:
             # Set session_id whenever NOT resuming so the CLI writes the
             # native session file to a predictable path for
@@ -4047,15 +4051,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             #     None), so no conflict with an existing file.
             # When --resume is active the session_id is already implied by
             # the resume file; passing it again would be rejected by the CLI.
-            sdk_options_kwargs["session_id"] = session_id
+            sdk_options.session_id = session_id
         # Optional explicit Claude Code CLI binary path (decouples the
         # bundled SDK version from the CLI version we run — needed because
         # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
         # back to the bundled binary when unset.
         if config.claude_agent_cli_path:
-            sdk_options_kwargs["cli_path"] = config.claude_agent_cli_path
-
-        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
+            sdk_options.cli_path = config.claude_agent_cli_path
 
         adapter = SDKResponseAdapter(
             message_id=message_id,
@@ -4309,7 +4311,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         fallback_notified_per_attempt = False
 
         state = _RetryState(
-            options=options,
+            options=sdk_options,
             query_message=query_message,
             was_compacted=was_compacted,
             use_resume=use_resume,
@@ -4369,10 +4371,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     skip_transcript_upload = True
 
                 # Rebuild SDK options and query for the reduced context
-                sdk_options_kwargs_retry = dict(sdk_options_kwargs)
+                sdk_options_retry = copy(sdk_options)
                 if ctx.use_resume and ctx.resume_file:
-                    sdk_options_kwargs_retry["resume"] = ctx.resume_file
-                    sdk_options_kwargs_retry.pop("session_id", None)
+                    sdk_options_retry.resume = ctx.resume_file
+                    sdk_options_retry.session_id = None
                 else:
                     # No --resume on this retry. Whether we entered with
                     # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
@@ -4386,16 +4388,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # guaranteeing the next turn re-trips prompt-too-long.
                     if sdk_cwd:
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
-                    sdk_options_kwargs_retry.pop("resume", None)
-                    sdk_options_kwargs_retry["session_id"] = session_id
+                    sdk_options_retry.resume = None
+                    sdk_options_retry.session_id = session_id
                 # Recompute system_prompt for retry — the preset is safe on
-                # every turn (requires CLI ≥ 2.1.98, installed in the Docker
-                # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).
-                sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
+                # every turn (requires CLI ≥ 2.1.98, bundled in
+                # claude-agent-sdk >= 0.1.64).
+                sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
                     cross_user_cache=config.claude_agent_cross_user_prompt_cache,
                 )
-                state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
+                state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
@@ -5141,3 +5143,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 raise
             if _auto_requeued:
                 return
+
+
+async def _fetch_graphiti_context(
+    user_id: str | None,
+    session: ChatSession,
+    message: str | None,
+) -> tuple[bool, str]:
+    """Check Graphiti flag and fetch warm context in one shot.
+
+    Returns ``(graphiti_enabled, warm_ctx)`` where ``warm_ctx`` is a
+    pre-loaded fact bundle injected into the first user message (not the
+    system prompt) so the system prompt stays identical across users and
+    sessions, enabling cross-session Anthropic prompt-cache hits.  Skips
+    the fetch on follow-up turns (history > 1 message) and when the user
+    is anonymous.
+    """
+    enabled = await is_enabled_for_user(user_id)
+    if not enabled:
+        return False, ""
+    if not (user_id and len(session.messages) <= 1):
+        return True, ""
+
+    from ..graphiti.context import fetch_warm_context
+
+    ctx = await fetch_warm_context(user_id, message or "") or ""
+    return True, ctx
