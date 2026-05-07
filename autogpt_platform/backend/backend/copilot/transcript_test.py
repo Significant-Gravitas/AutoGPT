@@ -1536,6 +1536,31 @@ class TestDetectGap:
         assert len(gap) == 1
         assert gap[0].role == "assistant"
 
+    def test_windowed_messages_use_sequence_filter(self):
+        """When the loaded list is a window (not full history), the gap is
+        derived from each message's own ``sequence`` field — not list-index.
+
+        Simulates a session with 1000 total messages but only the most-recent
+        200 loaded; transcript watermark is 950 (transcript covers 0..949).
+        Gap = sequences 950..998 (excluding the current user turn at 999).
+        """
+        from .model import ChatMessage
+
+        # 200 messages with sequences 800..999. Last is current user turn.
+        windowed: list[ChatMessage] = []
+        for seq in range(800, 1000):
+            role = "user" if seq % 2 == 0 else "assistant"
+            windowed.append(
+                ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
+            )
+        dl = self._dl(950)
+        gap = detect_gap(dl, windowed)
+        assert len(gap) == 49  # 950..998
+        assert gap[0].sequence == 950
+        assert gap[-1].sequence == 998
+        # Current turn (seq 999) not included.
+        assert all(m.sequence != 999 for m in gap)
+
 
 # ---------------------------------------------------------------------------
 # extract_context_messages

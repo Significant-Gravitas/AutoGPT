@@ -825,21 +825,45 @@ def detect_gap(
 
     Returns [] if transcript is current, watermark is zero, or the watermark
     position doesn't end on an assistant turn (misaligned watermark).
+
+    ``session_messages`` may be a window (most-recent N) rather than the full
+    history, so this filters by each message's own ``sequence`` field rather
+    than relying on list-index = absolute-sequence equivalence.
     """
     if download.message_count == 0:
         return []
+    if len(session_messages) < 2:
+        return []
     wm = download.message_count
-    total = len(session_messages)
-    if wm >= total - 1:
-        return []
-    # Sanity: position wm-1 should be an assistant turn; misaligned watermark
-    # means the DB messages shifted (e.g. deletion) — skip gap to avoid wrong context.
-    # In normal operation ``message_count`` is always written after a complete
-    # user→assistant exchange (never mid-turn), so the last covered position is
-    # always assistant.  This guard fires only on data corruption or message deletion.
-    if session_messages[wm - 1].role != "assistant":
-        return []
-    return list(session_messages[wm : total - 1])
+
+    # Last entry is the current user turn; everything else is candidate context.
+    candidates = session_messages[:-1]
+
+    # Filter by sequence — ``sequence`` is 0-indexed and equals position in the
+    # full conversation, so messages with sequence >= wm are post-watermark gap.
+    # Messages without a sequence (legacy rows) fall back to list-position
+    # against the FULL history, which only matches when the list isn't windowed.
+    gap = [m for m in candidates if m.sequence is not None and m.sequence >= wm]
+    if not gap:
+        # Legacy fallback: messages with no sequence column (older rows).
+        # The original index-based slice still applies when messages haven't
+        # been windowed.
+        total = len(session_messages)
+        if wm >= total - 1:
+            return []
+        if session_messages[wm - 1].role != "assistant":
+            return []
+        return list(session_messages[wm : total - 1])
+
+    # Sanity: the message just before the gap (highest sequence < wm) should be
+    # an assistant turn. If not, skip — the DB shifted under us (deletion or
+    # similar) and applying the gap would feed bad context to the LLM.
+    pre_gap = [m for m in candidates if m.sequence is not None and m.sequence < wm]
+    if pre_gap:
+        prev = max(pre_gap, key=lambda m: m.sequence or 0)
+        if prev.role != "assistant":
+            return []
+    return gap
 
 
 def extract_context_messages(

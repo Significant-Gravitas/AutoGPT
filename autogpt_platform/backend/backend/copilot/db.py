@@ -44,13 +44,37 @@ class PaginatedMessages(BaseModel):
     session: ChatSessionInfo
 
 
-async def get_chat_session(session_id: str) -> ChatSession | None:
-    """Get a chat session by ID from the database."""
+# Cap on messages eagerly loaded with a session. The LLM context builder
+# layers older history in via the transcript (GCS) checkpoint, so loading
+# the entire conversation here is wasted egress on long sessions.
+MAX_LOADED_CHAT_MESSAGES = 200
+
+
+async def get_chat_session(
+    session_id: str,
+    max_messages: int = MAX_LOADED_CHAT_MESSAGES,
+) -> ChatSession | None:
+    """Get a chat session by ID, capping the eagerly-loaded message tail.
+
+    Returns at most the most-recent ``max_messages`` messages in ascending
+    sequence order. Older messages live in the GCS transcript and are
+    layered back in by ``extract_context_messages`` for LLM context.
+    """
     session = await PrismaChatSession.prisma().find_unique(
         where={"id": session_id},
-        include={"Messages": {"order_by": {"sequence": "asc"}}},
+        include={
+            "Messages": {
+                "order_by": {"sequence": "desc"},
+                "take": max_messages,
+            }
+        },
     )
-    return ChatSession.from_db(session) if session else None
+    if session is None:
+        return None
+    # Reverse to ascending sequence — every caller expects oldest-first.
+    if session.Messages:
+        session.Messages = list(reversed(session.Messages))
+    return ChatSession.from_db(session)
 
 
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
