@@ -980,6 +980,97 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
     assert new_msg.sequence == 1500
 
 
+# ─── _get_session_from_db cap-hit warning ──────────────────────────────
+
+
+def _make_paginated_response(*, has_more: bool, message_count: int):
+    """Build a PaginatedMessages stub for _get_session_from_db tests."""
+    from datetime import UTC, datetime
+
+    from .db import PaginatedMessages
+    from .model import ChatSessionInfo
+
+    info = ChatSessionInfo(
+        session_id="sess-cap",
+        user_id="u1",
+        usage=[],
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    messages = [
+        ChatMessage(role="user", content=f"m-{i}", sequence=i)
+        for i in range(message_count)
+    ]
+    return PaginatedMessages(
+        messages=messages,
+        has_more=has_more,
+        oldest_sequence=messages[0].sequence if messages else None,
+        session=info,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_warns_when_cap_engages(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When ``get_chat_messages_paginated`` reports ``has_more=True`` (the
+    cap engaged on the LLM-context path), ``_get_session_from_db`` must
+    forward the cap-hit warning so observers can see context loss."""
+    from .model import _get_session_from_db
+
+    page = _make_paginated_response(has_more=True, message_count=3)
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=page)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.model"):
+        session = await _get_session_from_db("sess-cap")
+
+    assert session is not None and len(session.messages) == 3
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert len(cap_warnings) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_silent_when_below_cap(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``has_more=False`` is the common path — the cap-hit warning must not
+    fire there, otherwise every normal session load would log a false
+    positive."""
+    from .model import _get_session_from_db
+
+    page = _make_paginated_response(has_more=False, message_count=3)
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=page)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.model"):
+        await _get_session_from_db("sess-cap")
+
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert cap_warnings == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_returns_none_when_missing(
+    mocker: MockerFixture,
+) -> None:
+    """Missing session → ``get_chat_messages_paginated`` returns ``None`` →
+    forwarder returns ``None`` (no crash on the .has_more access)."""
+    from .model import _get_session_from_db
+
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=None)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    assert await _get_session_from_db("missing") is None
+
+
 # ─── get_or_create_builder_session ─────────────────────────────────────
 
 
