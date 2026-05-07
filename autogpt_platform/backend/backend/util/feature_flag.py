@@ -140,6 +140,13 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
+            if user.created_at:
+                # ISO-8601 string — LD supports RFC3339 date targeting on
+                # this attribute (e.g. cohort users by signup window).
+                created_at = user.created_at
+                if hasattr(created_at, "isoformat"):
+                    created_at = created_at.isoformat()
+                builder.set("created_at", str(created_at))
 
     except Exception as e:
         logger.warning(f"Failed to fetch user context for {user_id}: {e}")

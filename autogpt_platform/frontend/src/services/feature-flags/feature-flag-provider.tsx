@@ -38,6 +38,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
         email_domain: user.email.split("@").at(-1),
       }),
       ...(user.role && { role: user.role }),
+      ...(user.created_at && { created_at: user.created_at }),
       custom: {
         ...(user.role && { role: user.role }),
       },
