@@ -384,15 +384,37 @@ class TestResolveMentions:
         assert any(getattr(u, "id", None) == 222 for u in allowed.users)
 
     def test_does_not_ping_everyone_or_here(self):
-        _, allowed = _resolve_mentions(
+        rendered, allowed = _resolve_mentions(
             "Heads up @everyone and @here",
             (("everyone", "9"),),  # even if a user is named "everyone"…
         )
-        # "@everyone" still gets substituted because it's on the allowlist,
-        # but AllowedMentions.everyone stays False, so Discord won't ping
-        # the @everyone role.
+        # "@everyone" gets substituted to <@9> because the user is on the
+        # allowlist, but AllowedMentions.everyone is False so Discord
+        # won't ping the @everyone role. "@here" stays plain text.
+        assert "<@9>" in rendered
+        assert "@here" in rendered
         assert allowed.everyone is False
         assert allowed.roles is False
+
+    def test_does_not_match_inside_emails_or_urls(self):
+        # The whole point of word boundaries: a stray "@Sue" inside an
+        # email address must stay an email, not a ping.
+        rendered, allowed = _resolve_mentions(
+            "Email me at hello@Sue.example.com or visit https://Sue.dev",
+            (("Sue", "12345"),),
+        )
+        assert rendered == (
+            "Email me at hello@Sue.example.com or visit https://Sue.dev"
+        )
+        assert allowed.everyone is False
+
+    def test_resolves_standalone_mention_alongside_email_in_same_message(self):
+        rendered, _ = _resolve_mentions(
+            "@Sue, can you check sue@Sue.com?",
+            (("Sue", "12345"),),
+        )
+        # Leading "@Sue" resolves; the one inside the email survives intact.
+        assert rendered == "<@12345>, can you check sue@Sue.com?"
 
 
 class TestCollectMentionableUsers:

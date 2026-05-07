@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from backend.copilot import stream_registry
+from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,

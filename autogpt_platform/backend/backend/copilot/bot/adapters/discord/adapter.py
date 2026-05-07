@@ -322,10 +322,19 @@ def _resolve_mentions(
     for display_name, user_id in sorted(
         mentionable_users, key=lambda pair: -len(pair[0])
     ):
-        pattern = re.compile(re.escape(f"@{display_name}"), re.IGNORECASE)
+        # Word boundaries: don't mangle "@Name" inside emails / URLs / paths
+        # ("hello@Sue.com" must not become "hello<@id>.com"). The leading
+        # lookbehind also rejects "@@Name" so we don't double-resolve.
+        pattern = re.compile(
+            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
+            re.IGNORECASE,
+        )
         if not pattern.search(rendered):
             continue
-        rendered = pattern.sub(f"<@{user_id}>", rendered)
+        # Use a callable replacement so a backslash in user_id (shouldn't
+        # happen with Discord snowflakes, but the type allows any str) can't
+        # be misinterpreted as a regex backref and crash sending.
+        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
         try:
             pinged_ids.append(int(user_id))
         except ValueError:

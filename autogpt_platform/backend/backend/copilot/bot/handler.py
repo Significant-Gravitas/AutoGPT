@@ -197,14 +197,27 @@ class MessageHandler:
                 await adapter.send_message(
                     target_id, buffer, mentionable_users=ctx.mentionable_users
                 )
-                sent_any_content = True
                 buffer = ""
             sent_any_content = True
+            session_url = _copilot_session_url(session_id)
+            message = _setup_required_message(setup_output)
+            if session_url is None:
+                # frontend_base_url + platform_base_url both unset — Discord
+                # rejects relative URLs in link buttons, so fall back to a
+                # plain text message instead of crashing the send path.
+                logger.warning(
+                    "No frontend/platform base URL configured; "
+                    "sending setup-required prompt without a button"
+                )
+                await adapter.send_message(
+                    target_id, message, mentionable_users=ctx.mentionable_users
+                )
+                return
             await adapter.send_link(
                 target_id,
-                _setup_required_message(setup_output),
+                message,
                 link_label="Open AutoGPT",
-                link_url=_copilot_session_url(session_id),
+                link_url=session_url,
             )
 
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
@@ -400,11 +413,16 @@ def clamp_thread_name(name: str) -> str:
     return cleaned
 
 
-def _copilot_session_url(session_id: str) -> str:
+def _copilot_session_url(session_id: str) -> str | None:
+    """Absolute URL to the live copilot session, or None if no base URL is
+    configured (Discord rejects relative URLs in link buttons, so callers
+    must fall back to a plain message in that case).
+    """
     config = Settings().config
     base_url = (config.frontend_base_url or config.platform_base_url).rstrip("/")
-    path = f"/copilot?sessionId={quote(session_id, safe='')}"
-    return f"{base_url}{path}" if base_url else path
+    if not base_url:
+        return None
+    return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
 
 
 def _setup_required_message(setup_output: dict[str, Any]) -> str:
