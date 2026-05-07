@@ -1,6 +1,7 @@
 """Tests for the platform-agnostic message handler."""
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -69,6 +70,28 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
 
     api.stream_chat = _empty_stream
     return api
+
+
+@contextlib.contextmanager
+def _capture_handler_tasks():
+    """Capture handler-spawned tasks at creation time.
+
+    Rename tasks self-discard from `handler._rename_tasks` via a done-
+    callback, so reading that set post-hoc is racy.
+    """
+    tasks: list[asyncio.Task[None]] = []
+    real_create_task = asyncio.create_task
+
+    def _capturing(coro):
+        task = real_create_task(coro)
+        tasks.append(task)
+        return task
+
+    with patch(
+        "backend.copilot.bot.handler.asyncio.create_task",
+        side_effect=_capturing,
+    ):
+        yield tasks
 
 
 class TestEmptyMessage:
@@ -379,6 +402,9 @@ class TestBatching:
             == "https://app.example.com/copilot?sessionId=session-1"
         )
         assert "Connect GitHub" in adapter.send_link.await_args.args[1]
+        # Trailing yield after on_setup_required still flushes at end-of-stream.
+        adapter.send_message.assert_awaited_once()
+        assert "Once connected, I can retry." in adapter.send_message.await_args.args[1]
 
     @pytest.mark.asyncio
     async def test_setup_requirements_without_text_does_not_send_empty_fallback(self):
@@ -432,9 +458,16 @@ class TestBatching:
         adapter = _adapter()
         redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
 
-        with patch(
-            "backend.copilot.bot.handler.get_redis_async",
-            new=AsyncMock(return_value=redis),
+        with (
+            patch(
+                "backend.copilot.bot.handler.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.handler.asyncio.sleep",
+                new=AsyncMock(),
+            ),
+            _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")],
@@ -442,8 +475,7 @@ class TestBatching:
                 adapter,
                 "thread-1",
             )
-            # Rename runs as a fire-and-forget task — drain it before asserting.
-            await asyncio.gather(*list(handler._rename_tasks))
+            await asyncio.gather(*captured, return_exceptions=True)
 
         api.get_session_title.assert_awaited_once_with("session-1")
         adapter.rename_thread.assert_awaited_once_with(
@@ -473,8 +505,9 @@ class TestBatching:
             ),
             patch(
                 "backend.copilot.bot.handler.asyncio.sleep",
-                new=AsyncMock(),  # don't actually wait between retries
+                new=AsyncMock(),
             ),
+            _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")],
@@ -482,7 +515,7 @@ class TestBatching:
                 adapter,
                 "thread-2",
             )
-            await asyncio.gather(*list(handler._rename_tasks))
+            await asyncio.gather(*captured, return_exceptions=True)
 
         assert api.get_session_title.await_count == 3
         adapter.rename_thread.assert_awaited_once_with("thread-2", "Late Title")
@@ -514,6 +547,7 @@ class TestBatching:
                 "backend.copilot.bot.handler.asyncio.sleep",
                 new=AsyncMock(),
             ),
+            _capture_handler_tasks() as captured,
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")],
@@ -521,7 +555,7 @@ class TestBatching:
                 adapter,
                 "thread-3",
             )
-            await asyncio.gather(*list(handler._rename_tasks))
+            await asyncio.gather(*captured, return_exceptions=True)
 
         assert api.get_session_title.await_count == 2
         adapter.rename_thread.assert_awaited_once_with("thread-3", "Recovered Title")
