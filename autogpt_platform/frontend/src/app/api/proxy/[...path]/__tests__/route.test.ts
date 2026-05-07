@@ -65,6 +65,7 @@ describe("proxy route — handler pass-through", () => {
     const res = await GET(req, makeParams(["api", "v1", "missing"]));
 
     expect(res.status).toBe(404);
+    expect(res.statusText).toBe("Not Found");
     expect(await res.json()).toEqual({ detail: "not found" });
   });
 
@@ -105,6 +106,7 @@ describe("proxy route — handler pass-through", () => {
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("content-length")).toBeNull();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("x-custom-header")).toBe("preserved");
     expect(res.headers.get("content-type")).toBe("application/json");
