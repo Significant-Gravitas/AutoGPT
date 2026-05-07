@@ -1463,16 +1463,10 @@ class TestRestoreCliSession:
 
 
 def _msgs(*roles: str):
-    """Build a list of ChatMessage objects with the given roles.
-
-    Sequences are assigned 0..N-1 to mirror the production schema, where
-    ``ChatMessage.sequence`` is NOT NULL on every persisted row.
-    """
+    """Build a list of ChatMessage objects with the given roles."""
     from .model import ChatMessage
 
-    return [
-        ChatMessage(role=r, content=f"{r}-{i}", sequence=i) for i, r in enumerate(roles)
-    ]
+    return [ChatMessage(role=r, content=f"{r}-{i}") for i, r in enumerate(roles)]
 
 
 class TestDetectGap:

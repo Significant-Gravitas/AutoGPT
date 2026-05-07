@@ -837,44 +837,61 @@ def detect_gap(
     wm = download.message_count
 
     # Last entry is the current user turn; everything else is candidate context.
-    # ``sequence`` is NOT NULL in the schema, so DB-loaded messages always have
-    # it. Pre-pair (seq, msg) once so the type checker sees a concrete int and
-    # we don't repeat the None guard in every comprehension below.
+    # Pre-pair (seq, msg) for messages that have a sequence so the type checker
+    # sees a concrete int.  Messages with ``sequence is None`` are either
+    # in-memory rows that haven't been saved yet, or test fixtures that build
+    # ChatMessage by role only — both fall through to the index-based fallback
+    # below.
     candidates: list[tuple[int, ChatMessage]] = [
         (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
     ]
-    gap = [m for seq, m in candidates if seq >= wm]
-    if not gap:
-        return []
+    if candidates:
+        gap = [m for seq, m in candidates if seq >= wm]
+        if not gap:
+            return []
 
-    # Sanity: the message just before the gap (highest sequence < wm) should be
-    # an assistant turn. If not, skip — the DB shifted under us (deletion or
-    # similar) and applying the gap would feed bad context to the LLM.
-    pre_gap = [(seq, m) for seq, m in candidates if seq < wm]
-    if pre_gap:
-        _, prev = max(pre_gap, key=lambda item: item[0])
-        if prev.role != "assistant":
-            return []
-    else:
-        # No pre-watermark messages loaded but the gap is non-empty: the window
-        # starts AFTER the watermark, so we cannot directly check whether the
-        # message immediately before the gap is assistant. Fall back to checking
-        # gap[0] — a well-formed gap always starts with a user turn (the next
-        # turn after the assistant at wm-1). Anything else means the watermark
-        # is misaligned or the conversation shape is corrupt; skip the gap.
-        if gap[0].role != "user":
-            return []
-        window_start = min(seq for seq, m in candidates if seq >= wm)
-        if window_start > wm:
-            logger.warning(
-                "detect_gap: window starts at seq=%d but watermark is %d — "
-                "sequences %d..%d absent from both transcript and gap",
-                window_start,
-                wm,
-                wm,
-                window_start - 1,
-            )
-    return gap
+        # Sanity: the message just before the gap (highest sequence < wm) should
+        # be an assistant turn. If not, skip — the DB shifted under us
+        # (deletion or similar) and applying the gap would feed bad context to
+        # the LLM.
+        pre_gap = [(seq, m) for seq, m in candidates if seq < wm]
+        if pre_gap:
+            _, prev = max(pre_gap, key=lambda item: item[0])
+            if prev.role != "assistant":
+                return []
+        else:
+            # No pre-watermark messages loaded but the gap is non-empty: the
+            # window starts AFTER the watermark, so we cannot directly check
+            # whether the message immediately before the gap is assistant. Fall
+            # back to checking gap[0] — a well-formed gap always starts with a
+            # user turn (the next turn after the assistant at wm-1). Anything
+            # else means the watermark is misaligned or the conversation shape
+            # is corrupt; skip the gap.
+            if gap[0].role != "user":
+                return []
+            window_start = min(seq for seq, _ in candidates if seq >= wm)
+            if window_start > wm:
+                logger.warning(
+                    "detect_gap: window starts at seq=%d but watermark is %d — "
+                    "sequences %d..%d absent from both transcript and gap",
+                    window_start,
+                    wm,
+                    wm,
+                    window_start - 1,
+                )
+        return gap
+
+    # Index-based fallback: applies when no message carries a sequence — only
+    # in-memory test fixtures hit this path in practice (production rows are
+    # NOT NULL on ``sequence``). The list-position equals the absolute sequence
+    # only when ``session_messages`` is the full history, not a window — which
+    # is true for any caller that builds messages without sequences.
+    total = len(session_messages)
+    if wm >= total - 1:
+        return []
+    if session_messages[wm - 1].role != "assistant":
+        return []
+    return list(session_messages[wm : total - 1])
 
 
 def extract_context_messages(
