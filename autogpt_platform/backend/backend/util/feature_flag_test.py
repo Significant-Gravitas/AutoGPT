@@ -182,22 +182,27 @@ class TestUserContext:
         supabase = mocker.MagicMock()
         supabase.auth.admin.get_user_by_id.return_value = response
         mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
+        return supabase
 
     @pytest.mark.asyncio
     async def test_context_includes_created_at_iso_string(self, mocker):
         created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        self._stub_supabase(mocker, created_at=created)
+        supabase = self._stub_supabase(mocker, created_at=created)
+        user_id = str(uuid.uuid4())
 
-        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+        ctx = await _fetch_user_context_data(user_id)
 
         assert ctx.get("created_at") == created.isoformat()
         assert ctx.get("email") == "x@y.com"
+        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_context_skips_created_at_when_missing(self, mocker):
-        self._stub_supabase(mocker, created_at=None)
+        supabase = self._stub_supabase(mocker, created_at=None)
+        user_id = str(uuid.uuid4())
 
-        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+        ctx = await _fetch_user_context_data(user_id)
 
-        assert ctx.get("created_at") is None
+        assert "created_at" not in ctx.custom_attributes
         assert ctx.get("email") == "x@y.com"
+        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
