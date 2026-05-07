@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -1245,7 +1245,7 @@ class TestExtractOpenRouterCost:
     typed-access path — no duck typing.
     """
 
-    def _mk_response(self, *, cost=...):
+    def _mk_response(self, *, cost: Any = ...):
         """Build a response with ``usage.model_extra['cost']`` set to ``cost``.
 
         Pass ``cost=...`` (the default) to omit the cost key entirely.
