@@ -21,12 +21,19 @@ const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
   "content-length",
   "accept",
   "accept-language",
-  "accept-encoding",
   IMPERSONATION_HEADER_NAME.toLowerCase(),
   API_KEY_HEADER_NAME.toLowerCase(),
   "sentry-trace",
   "baggage",
 ];
+
+// Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)
+// only auto-decompresses gzip/deflate/br. If we forwarded the browser value,
+// Cloudflare in front of the backend would pick zstd, Node would hand us raw
+// zstd bytes, the response handler would strip Content-Encoding, and Vercel's
+// edge would then brotli-wrap those bytes — leaving the browser to decode br
+// over zstd and fail JSON.parse on a 200 response.
+const BACKEND_ACCEPT_ENCODING = "gzip, deflate, br";
 
 // Headers that must not be forwarded from the backend to the client.
 // Hop-by-hop entries are listed in RFC 7230 §6.1; content-encoding and
@@ -58,6 +65,7 @@ function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
+  headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }

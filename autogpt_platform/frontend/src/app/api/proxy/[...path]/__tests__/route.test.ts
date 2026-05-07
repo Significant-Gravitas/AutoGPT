@@ -209,6 +209,24 @@ describe("proxy route — handler pass-through", () => {
     consoleErr.mockRestore();
   });
 
+  it("sends accept-encoding restricted to encodings undici (Node 22) can decompress — must NOT include zstd", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    const acceptEncoding = sentHeaders.get("accept-encoding") ?? "";
+    expect(acceptEncoding).not.toBe("");
+    expect(acceptEncoding.toLowerCase()).not.toContain("zstd");
+    expect(acceptEncoding.toLowerCase()).toMatch(/gzip|br|deflate/);
+  });
+
   it("forwards query string to the backend URL", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {
