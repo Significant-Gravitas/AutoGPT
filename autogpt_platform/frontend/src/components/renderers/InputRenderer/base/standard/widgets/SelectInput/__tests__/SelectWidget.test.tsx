@@ -72,7 +72,7 @@ function createProps(overrides: Partial<WidgetProps> = {}): WidgetProps {
 }
 
 describe("SelectWidget", () => {
-  it("passes undefined to Select when the current value is an empty string", () => {
+  it("passes an empty selected value to Select when the current value is an empty string", () => {
     render(
       <SelectWidget
         {...createProps({
@@ -86,8 +86,8 @@ describe("SelectWidget", () => {
 
     expect(selectSpy).toHaveBeenCalledOnce();
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
-      value: undefined,
-      options: [{ value: "red", label: "Red" }],
+      value: "",
+      options: [{ value: "0", label: "Red" }],
     });
   });
 
@@ -108,11 +108,26 @@ describe("SelectWidget", () => {
 
     expect(selectSpy).toHaveBeenCalledOnce();
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
-      value: 0,
+      value: "0",
       options: [
-        { value: 0, label: "Zero" },
-        { value: 1, label: "One" },
+        { value: "0", label: "Zero" },
+        { value: "1", label: "One" },
       ],
+    });
+  });
+
+  it("falls back to an empty option list when enumOptions are missing", () => {
+    render(
+      <SelectWidget
+        {...createProps({
+          options: {} as WidgetProps["options"],
+        })}
+      />,
+    );
+
+    expect(selectSpy).toHaveBeenCalledOnce();
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      options: [],
     });
   });
 
@@ -140,7 +155,7 @@ describe("SelectWidget", () => {
 
     const items = screen.getAllByTestId("multi-selector-item");
     expect(items).toHaveLength(1);
-    expect(items[0].getAttribute("data-value")).toBe("red");
+    expect(items[0].getAttribute("data-value")).toBe("Red");
     expect(items[0].textContent).toContain("Red");
   });
 });
