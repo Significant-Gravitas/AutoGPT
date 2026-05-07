@@ -816,32 +816,29 @@ def convert_openai_tool_fmt_to_anthropic(
 
 
 def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
-    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+    """Extract OpenRouter's per-request USD cost from a chat-completion response.
 
-    OpenRouter returns the per-request USD cost in a response header. The
-    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
-    attribute. We use try/except AttributeError so that if the SDK ever drops
-    or renames that attribute, the warning is visible in logs rather than
-    silently degrading to no cost tracking.
+    OpenRouter populates a `cost` field on the standard ``usage`` object (a
+    USD float). It is present on every response — no special request flag is
+    needed. We tolerate a missing or non-finite value by returning ``None``
+    so the caller can fall back to token-rate accounting.
     """
-    try:
-        raw_resp = response._response  # type: ignore[attr-defined]
-    except AttributeError:
-        logger.warning(
-            "OpenAI SDK response missing _response attribute"
-            " — OpenRouter cost tracking unavailable"
-        )
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    cost = getattr(usage, "cost", None)
+    if cost is None:
+        # Some SDK versions expose unknown fields only via model_extra.
+        cost = (getattr(usage, "model_extra", None) or {}).get("cost")
+    if cost is None:
         return None
     try:
-        cost_header = raw_resp.headers.get("x-total-cost")
-        if not cost_header:
-            return None
-        cost = float(cost_header)
-        if not math.isfinite(cost) or cost < 0:
-            return None
-        return cost
-    except (ValueError, TypeError, AttributeError):
+        cost_f = float(cost)
+    except (TypeError, ValueError):
         return None
+    if not math.isfinite(cost_f) or cost_f < 0:
+        return None
+    return cost_f
 
 
 def extract_openai_reasoning(response) -> str | None:

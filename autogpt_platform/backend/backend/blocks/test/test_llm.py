@@ -1292,66 +1292,76 @@ class TestLlmModelMissing:
 
 
 class TestExtractOpenRouterCost:
-    """Tests for extract_openrouter_cost — the x-total-cost header parser."""
+    """Tests for extract_openrouter_cost — reads ``response.usage.cost``."""
 
-    def _mk_response(self, headers: dict | None):
+    def _mk_response(self, cost):
+        """Build a response with `usage.cost` set to ``cost``.
+
+        Pass ``...`` (Ellipsis) to omit the ``cost`` attribute entirely.
+        """
         response = MagicMock()
-        if headers is None:
-            response._response = None
+        if cost is ...:
+            response.usage = MagicMock(spec=[])  # no `cost` attribute
         else:
-            raw = MagicMock()
-            raw.headers = headers
-            response._response = raw
+            response.usage = MagicMock()
+            response.usage.cost = cost
+            response.usage.model_extra = None
         return response
 
     def test_extracts_numeric_cost(self):
-        response = self._mk_response({"x-total-cost": "0.0042"})
+        response = self._mk_response(0.0042)
         assert llm.extract_openrouter_cost(response) == 0.0042
 
-    def test_returns_none_when_header_missing(self):
-        response = self._mk_response({})
+    def test_extracts_string_cost(self):
+        response = self._mk_response("0.0042")
+        assert llm.extract_openrouter_cost(response) == 0.0042
+
+    def test_returns_none_when_cost_missing(self):
+        response = self._mk_response(...)
         assert llm.extract_openrouter_cost(response) is None
 
-    def test_returns_none_when_header_empty_string(self):
-        response = self._mk_response({"x-total-cost": ""})
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_header_non_numeric(self):
-        response = self._mk_response({"x-total-cost": "not-a-number"})
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_no_response_attr(self):
-        response = MagicMock(spec=[])  # no _response attr
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_raw_is_none(self):
+    def test_returns_none_when_cost_is_none(self):
         response = self._mk_response(None)
         assert llm.extract_openrouter_cost(response) is None
 
-    def test_returns_none_when_raw_has_no_headers(self):
+    def test_returns_none_when_usage_missing(self):
         response = MagicMock()
-        response._response = MagicMock(spec=[])  # no headers attr
+        response.usage = None
         assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_no_usage_attr(self):
+        response = MagicMock(spec=[])
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_falls_back_to_model_extra(self):
+        response = MagicMock()
+        response.usage = MagicMock(spec=["model_extra"])
+        response.usage.model_extra = {"cost": 0.0007}
+        assert llm.extract_openrouter_cost(response) == 0.0007
 
     def test_returns_zero_for_zero_cost(self):
         """Zero-cost is a valid value (free tier) and must not become None."""
-        response = self._mk_response({"x-total-cost": "0"})
+        response = self._mk_response(0)
         assert llm.extract_openrouter_cost(response) == 0.0
 
+    def test_returns_none_for_non_numeric(self):
+        response = self._mk_response("not-a-number")
+        assert llm.extract_openrouter_cost(response) is None
+
     def test_returns_none_for_inf(self):
-        response = self._mk_response({"x-total-cost": "inf"})
+        response = self._mk_response(float("inf"))
         assert llm.extract_openrouter_cost(response) is None
 
     def test_returns_none_for_negative_inf(self):
-        response = self._mk_response({"x-total-cost": "-inf"})
+        response = self._mk_response(float("-inf"))
         assert llm.extract_openrouter_cost(response) is None
 
     def test_returns_none_for_nan(self):
-        response = self._mk_response({"x-total-cost": "nan"})
+        response = self._mk_response(float("nan"))
         assert llm.extract_openrouter_cost(response) is None
 
     def test_returns_none_for_negative_cost(self):
-        response = self._mk_response({"x-total-cost": "-0.005"})
+        response = self._mk_response(-0.005)
         assert llm.extract_openrouter_cost(response) is None
 
 
