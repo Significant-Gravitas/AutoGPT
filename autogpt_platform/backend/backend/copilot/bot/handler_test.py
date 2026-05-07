@@ -461,9 +461,7 @@ class TestBatching:
         api.stream_chat = title_stream
         # First two polls return None (title not generated yet), third
         # returns the real title.
-        api.get_session_title = AsyncMock(
-            side_effect=[None, None, "Late Title"]
-        )
+        api.get_session_title = AsyncMock(side_effect=[None, None, "Late Title"])
         handler = MessageHandler(api)
         adapter = _adapter()
         redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
@@ -526,9 +524,7 @@ class TestBatching:
             await asyncio.gather(*list(handler._rename_tasks))
 
         assert api.get_session_title.await_count == 2
-        adapter.rename_thread.assert_awaited_once_with(
-            "thread-3", "Recovered Title"
-        )
+        adapter.rename_thread.assert_awaited_once_with("thread-3", "Recovered Title")
 
 
 class TestStreamFallback:
