@@ -933,26 +933,33 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
     """Gate a lazy Stripe subscription check to at most once per 5 min per user.
 
     Sets a Redis NX key before calling Stripe so concurrent requests don't
-    all fan out simultaneously. Returns True when a subscription was found
+    all fan out simultaneously. The key is deleted on transient Stripe errors
+    so the next request can retry. Returns True when a subscription was found
     and synced (tier was updated in DB + cache cleared).
     """
+    redis = None
+    gate_key = f"{_STRIPE_RECONCILE_PREFIX}{user_id}"
     try:
         redis = await get_redis_async()
         already_checked = not await redis.set(
-            f"{_STRIPE_RECONCILE_PREFIX}{user_id}",
-            "1",
-            nx=True,
-            ex=_STRIPE_RECONCILE_TTL,
+            gate_key, "1", nx=True, ex=_STRIPE_RECONCILE_TTL
         )
         if already_checked:
             return False
         from backend.data.credit import reconcile_stripe_tier_for_user  # avoid circular
 
         return await reconcile_stripe_tier_for_user(user_id)
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            "stripe_reconcile: check failed for user %s, skipping", user_id[:8]
+            "stripe_reconcile: check failed for user %s, skipping: %s",
+            user_id[:8],
+            exc,
         )
+        if redis is not None:
+            try:
+                await redis.delete(gate_key)
+            except Exception:
+                pass
         return False
 
 
