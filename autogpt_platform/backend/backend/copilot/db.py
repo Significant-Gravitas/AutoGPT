@@ -255,7 +255,7 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
-) -> ChatSession | None:
+) -> ChatSessionInfo | None:
     """Update a chat session's mutable fields.
 
     Note: ``metadata`` (which includes ``dry_run``) is intentionally omitted —
@@ -277,12 +277,14 @@ async def update_chat_session(
     if title is not None:
         data["title"] = title
 
+    # Returns the bare session row (no eager Messages include): pulling the
+    # full message history per update was a top-egress query, and the only
+    # caller ignores the return value.
     session = await PrismaChatSession.prisma().update(
         where={"id": session_id},
         data=data,
-        include={"Messages": {"order_by": {"sequence": "asc"}}},
     )
-    return ChatSession.from_db(session) if session else None
+    return ChatSessionInfo.from_db(session) if session else None
 
 
 async def update_chat_session_title(

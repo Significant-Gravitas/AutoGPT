@@ -19,12 +19,12 @@ from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
-    ChatSession,
+    ChatSessionInfo,
     ChatSessionMetadata,
     append_and_save_message,
     create_chat_session,
     delete_chat_session,
-    get_chat_session,
+    get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
     update_session_title,
@@ -60,6 +60,10 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_schedules import (
+    ScheduleDeletedResponse,
+    ScheduleListResponse,
+)
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -106,9 +110,14 @@ config = ChatConfig()
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
-) -> ChatSession:
-    """Validate session exists and belongs to user."""
-    session = await get_chat_session(session_id, user_id)
+) -> ChatSessionInfo:
+    """Validate session exists and belongs to user.
+
+    Returns metadata-only — callers needing the message history must use
+    ``get_chat_session`` directly. Bypassing the message-loading path
+    avoids a multi-KB cache deserialisation per ownership check.
+    """
+    session = await get_chat_session_metadata(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
@@ -488,12 +497,7 @@ async def disconnect_session_stream(
     backend releases XREAD listeners immediately rather than waiting for
     the 5-10 s timeout.
     """
-    session = await get_chat_session(session_id, user_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session {session_id} not found or access denied",
-        )
+    await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
 
@@ -1149,6 +1153,11 @@ async def stream_chat_post(
                 yield StreamFinish().to_sse()
                 return
 
+            # Flush a heartbeat immediately so the client knows the
+            # connection is live — without this the first event arrives
+            # only after the _stream_listener's first xread (up to 5 s).
+            yield StreamHeartbeat().to_sse()
+
             # Read from the subscriber queue and yield to SSE
             logger.info(
                 "[TIMING] Starting to read from subscriber_queue",
@@ -1534,7 +1543,12 @@ async def health_check() -> dict:
 
     # Create and retrieve session to verify full data layer
     session = await create_chat_session(health_check_user_id, dry_run=False)
-    await get_chat_session(session.session_id, health_check_user_id)
+    fetched = await get_chat_session_metadata(session.session_id, health_check_user_id)
+    if fetched is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat read path unhealthy: session not found after create",
+        )
 
     return {
         "status": "healthy",
@@ -1567,6 +1581,8 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | ScheduleListResponse
+    | ScheduleDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

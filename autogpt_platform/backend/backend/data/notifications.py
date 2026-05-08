@@ -521,21 +521,15 @@ async def get_user_notification_oldest_message_in_batch(
     notification_type: NotificationType,
 ) -> UserNotificationEventDTO | None:
     try:
-        batch = await UserNotificationBatch.prisma().find_first(
-            where={"userId": user_id, "type": notification_type},
-            include={"Notifications": True},
+        oldest = await NotificationEvent.prisma().find_first(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            },
+            order={"createdAt": "asc"},
         )
-        if not batch:
-            return None
-        if not batch.Notifications:
-            return None
-        sorted_notifications = sorted(batch.Notifications, key=lambda x: x.createdAt)
-
-        return (
-            UserNotificationEventDTO.from_db(sorted_notifications[0])
-            if sorted_notifications
-            else None
-        )
+        return UserNotificationEventDTO.from_db(oldest) if oldest else None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -659,6 +653,7 @@ async def get_user_notification_batch(
 async def get_all_batches_by_type(
     notification_type: NotificationType,
 ) -> list[UserNotificationBatchDTO]:
+    # Caller re-fetches events per batch when actually sending; no eager include here.
     try:
         batches = await UserNotificationBatch.prisma().find_many(
             where={
@@ -667,7 +662,6 @@ async def get_all_batches_by_type(
                     "some": {}  # Only return batches with at least one notification
                 },
             },
-            include={"Notifications": True},
         )
         return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:

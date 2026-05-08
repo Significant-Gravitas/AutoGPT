@@ -4,6 +4,7 @@ Module for generating AI-based activity status for graph executions.
 
 import json
 import logging
+import math
 from typing import TYPE_CHECKING, Any, TypedDict
 
 try:
@@ -11,26 +12,31 @@ try:
 except ImportError:
     from typing_extensions import NotRequired
 
-from pydantic import SecretStr
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletionMessageParam
 
 from backend.blocks import get_block
-from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
-from backend.data.model import (
-    APIKeyCredentials,
-    GraphExecutionStats,
-    NodeExecutionStats,
-)
+from backend.data.model import GraphExecutionStats
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
+from backend.util.clients import get_openai_client
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
+
+
+# OpenRouter `extra_body` flag that embeds the real generation cost on
+# `response.usage.cost`. Same shape as backend/executor/simulator.py — keep
+# the two in sync.
+_OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
+
+_MAX_JSON_RETRIES = 3
+_MAX_OUTPUT_TOKENS = 150
 
 
 # Default system prompt template for activity status generation
@@ -243,15 +249,19 @@ async def generate_activity_status_for_execution(
             "correctness_score": execution_stats.correctness_score,
         }
 
-    # Check if we have OpenAI API key
-    try:
-        settings = Settings()
-        if not settings.secrets.openai_internal_api_key:
-            logger.debug(
-                "OpenAI API key not configured, skipping activity status generation"
-            )
-            return None
+    # Acquire an OpenRouter-backed OpenAI client. Activity-status generation is
+    # only meaningful when we can record real USD cost in PlatformCostLog;
+    # without OpenRouter the upstream platform cost would be tokens-only, so
+    # we skip rather than fall back to direct-OpenAI which produces no
+    # provider_cost. Same gating pattern as backend/executor/simulator.py.
+    client = get_openai_client(prefer_openrouter=True)
+    if client is None:
+        logger.debug(
+            "OpenRouter API key not configured, skipping activity status generation"
+        )
+        return None
 
+    try:
         # Get all node executions for this graph execution
         node_executions = await db_client.get_node_executions(
             graph_exec_id, include_exec_data=True
@@ -280,102 +290,101 @@ async def generate_activity_status_for_execution(
             execution_status,
         )
 
-        # Prepare execution data as JSON for template substitution
-        execution_data_json = json.dumps(execution_data, indent=2)
+        # Append the JSON-shape contract to the system prompt so the model
+        # returns object-shaped JSON we can parse without bracketed wrappers.
+        system_prompt_with_format = (
+            f"{system_prompt}\n\n"
+            "Return a JSON object with exactly these two keys and nothing else:\n"
+            "  - activity_status: string (1-3 sentences)\n"
+            "  - correctness_score: number between 0.0 and 1.0\n"
+        )
 
-        # Perform template substitution for user prompt
+        execution_data_json = json.dumps(execution_data, indent=2)
         user_prompt_content = user_prompt.replace("{{GRAPH_NAME}}", graph_name).replace(
             "{{EXECUTION_DATA}}", execution_data_json
         )
 
-        # Prepare prompt for AI with structured output requirements
-        prompt = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt_content,
-            },
+        messages: list[ChatCompletionMessageParam] = [
+            {"role": "system", "content": system_prompt_with_format},
+            {"role": "user", "content": user_prompt_content},
         ]
-
-        # Log the prompt for debugging purposes
         logger.debug(
-            f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(prompt, indent=2)}"
+            f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(messages, indent=2)}"
         )
 
-        # Create credentials for LLM call
-        credentials = APIKeyCredentials(
-            id="openai",
-            provider="openai",
-            api_key=SecretStr(settings.secrets.openai_internal_api_key),
-            title="System OpenAI",
-        )
+        # Model values arriving without a provider prefix (e.g. "gpt-4o-mini")
+        # need to be remapped to OpenRouter's namespaced form. Already-prefixed
+        # values (e.g. "openai/gpt-4o-mini", "anthropic/claude-...") pass through.
+        or_model = model_name if "/" in model_name else f"openai/{model_name}"
 
-        # Define expected response format
-        expected_format = {
-            "activity_status": "A user-friendly 1-3 sentence summary of what was accomplished",
-            "correctness_score": "Float score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose",
-        }
-
-        # Use existing AIStructuredResponseGeneratorBlock for structured LLM call
-        structured_block = AIStructuredResponseGeneratorBlock()
-
-        # Convert credentials to the format expected by AIStructuredResponseGeneratorBlock
-        credentials_input = {
-            "provider": credentials.provider,
-            "id": credentials.id,
-            "type": credentials.type,
-            "title": credentials.title,
-        }
-
-        structured_input = AIStructuredResponseGeneratorBlock.Input(
-            prompt=prompt[1]["content"],  # User prompt content
-            sys_prompt=prompt[0]["content"],  # System prompt content
-            expected_format=expected_format,
-            model=LlmModel(model_name),
-            credentials=credentials_input,  # type: ignore
-            max_tokens=150,
-            retry=3,
-        )
-
-        # Execute the structured LLM call
-        async for output_name, output_data in structured_block.run(
-            structured_input, credentials=credentials
-        ):
-            if output_name == "response":
-                response = output_data
+        # Track the most recent attempt's usage so we can persist cost even
+        # when every retry fails — the API calls were billed regardless of
+        # whether parsing succeeded.
+        last_error: Exception | None = None
+        last_usage: CompletionUsage | None = None
+        activity_response: ActivityStatusResponse | None = None
+        for attempt in range(_MAX_JSON_RETRIES):
+            try:
+                response = await client.chat.completions.create(
+                    model=or_model,
+                    messages=messages,
+                    max_tokens=_MAX_OUTPUT_TOKENS,
+                    response_format={"type": "json_object"},
+                    extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
+                )
+                last_usage = response.usage
+                if not response.choices:
+                    raise ValueError("OpenRouter returned empty choices array")
+                raw = response.choices[0].message.content or ""
+                candidate = json.loads(raw)
+                if not isinstance(candidate, dict):
+                    raise ValueError(
+                        f"OpenRouter returned non-object JSON: {raw[:200]}"
+                    )
+                if (
+                    "activity_status" not in candidate
+                    or "correctness_score" not in candidate
+                ):
+                    raise ValueError(
+                        f"OpenRouter response missing required keys: {raw[:200]}"
+                    )
+                score = max(0.0, min(1.0, float(candidate["correctness_score"])))
+                activity_response = {
+                    "activity_status": str(candidate["activity_status"]),
+                    "correctness_score": score,
+                }
                 break
-        else:
-            raise RuntimeError("Failed to get response from structured LLM call")
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                last_error = e
+                logger.warning(
+                    "activity_status: JSON parse error on attempt %d/%d: %s",
+                    attempt + 1,
+                    _MAX_JSON_RETRIES,
+                    e,
+                )
 
-        # Create typed response with validation
-        correctness_score = float(response["correctness_score"])
-        # Clamp score to valid range
-        correctness_score = max(0.0, min(1.0, correctness_score))
+        # Persist whatever usage the API actually billed us for, even on full
+        # retry-exhaustion — the spend happened either way and must show up
+        # in PlatformCostLog for admin attribution.
+        _persist_activity_status_cost(
+            cost_usd=_extract_cost_usd(last_usage),
+            input_tokens=last_usage.prompt_tokens if last_usage is not None else 0,
+            output_tokens=last_usage.completion_tokens if last_usage is not None else 0,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            model_name=or_model,
+            db_client=db_client,
+        )
 
-        activity_response: ActivityStatusResponse = {
-            "activity_status": response["activity_status"],
-            "correctness_score": correctness_score,
-        }
+        if activity_response is None:
+            raise RuntimeError(
+                f"Failed to parse OpenRouter response after {_MAX_JSON_RETRIES} attempts: {last_error}"
+            )
 
         logger.debug(
             f"Generated activity status for {graph_exec_id}: {activity_response}"
         )
-
-        # Persist this LLM call's cost to PlatformCostLog so the admin
-        # dashboard attributes the spend per-user / per-graph_exec.
-        # Platform-side overhead (not user-billed and not user rate-limited).
-        _persist_activity_status_cost(
-            stats=structured_block.execution_stats,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            model_name=model_name,
-            db_client=db_client,
-        )
-
         return activity_response
 
     except Exception as e:
@@ -385,9 +394,39 @@ async def generate_activity_status_for_execution(
         return None
 
 
+def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
+    """Return the provider-reported USD cost on the response usage object.
+
+    OpenRouter attaches a ``cost`` field to the OpenAI-compatible usage object
+    when the request body includes ``usage: {"include": True}``. The typed
+    ``CompletionUsage`` does not declare it, so we read it off ``model_extra``.
+    Mirrors backend/executor/simulator.py::_extract_cost_usd — keep aligned.
+    """
+    if usage is None:
+        return None
+    extras = usage.model_extra or {}
+    if "cost" not in extras:
+        return None
+    raw = extras["cost"]
+    if raw is None:
+        logger.error("[activity_status] usage.cost is present but null")
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        logger.error("[activity_status] usage.cost is not numeric: %r", raw)
+        return None
+    if not math.isfinite(val) or val < 0:
+        logger.error("[activity_status] usage.cost is non-finite or negative: %r", val)
+        return None
+    return val
+
+
 def _persist_activity_status_cost(
     *,
-    stats: NodeExecutionStats,
+    cost_usd: float | None,
+    input_tokens: int,
+    output_tokens: int,
     user_id: str,
     graph_exec_id: str,
     graph_id: str,
@@ -397,8 +436,8 @@ def _persist_activity_status_cost(
     """Schedule a PlatformCostLog entry for the activity-status LLM call.
 
     Mirrors ``backend.copilot.token_tracking._schedule_cost_log``: the platform
-    pays for this call (system OpenAI key) but the user is not billed and not
-    rate-limited, so we skip ``record_cost_usage`` and only write to
+    pays for this call (platform OpenRouter key) but the user is not billed
+    and not rate-limited, so we skip ``record_cost_usage`` and only write to
     ``PlatformCostLog`` for admin attribution.
 
     Cost-logging is best-effort: any failure here is swallowed so a transient
@@ -406,9 +445,6 @@ def _persist_activity_status_cost(
     from the user.
     """
     try:
-        cost_usd = stats.provider_cost
-        input_tokens = stats.input_token_count or 0
-        output_tokens = stats.output_token_count or 0
         # Skip when there is genuinely nothing to log. ``not cost_usd`` covers
         # both ``None`` and ``0.0`` so a zero-cost zero-token call doesn't
         # write an empty row that just dilutes dashboard averages.
@@ -432,7 +468,7 @@ def _persist_activity_status_cost(
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
                 block_name="activity_status_generator",
-                provider="openai",
+                provider="open_router",
                 cost_microdollars=cost_microdollars,
                 input_tokens=input_tokens or None,
                 output_tokens=output_tokens or None,

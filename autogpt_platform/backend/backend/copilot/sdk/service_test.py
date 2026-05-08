@@ -1920,3 +1920,134 @@ class TestResolveDynamicMaxBudgetUsd:
         ):
             result = await _resolve_dynamic_max_budget_usd("u-1")
         assert result == 10.0
+
+
+class TestStreamEndedWithoutResultMessage:
+    """When the SDK CLI hangs up without a ResultMessage (per-query budget
+    exhausted, max_turns hit, OOM, crash) the post-stream branch must
+    surface a visible user-facing notice and append the notice as the
+    assistant ChatMessage — *not* the legacy ``STOPPED_BY_USER_MARKER``
+    which mis-classified the event as a user cancel."""
+
+    def _ctx(self, session_id="s1"):
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatSession
+        from backend.copilot.sdk.compaction import CompactionTracker
+        from backend.copilot.sdk.service import _StreamContext
+
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id=session_id,
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        lock = MagicMock()
+        lock.refresh = AsyncMock()
+        attachments = MagicMock()
+        attachments.image_blocks = []
+        return _StreamContext(
+            session=session,
+            session_id=session_id,
+            log_prefix=f"[SDK] [{session_id[:8]}]",
+            sdk_cwd="/tmp/test",
+            current_message="hello",
+            file_ids=None,
+            message_id="m-1",
+            attachments=attachments,
+            compaction=CompactionTracker(),
+            lock=lock,
+        )
+
+    def _state(self, session_id="s1"):
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+        from backend.copilot.sdk.service import _RetryState, _TokenUsage
+
+        adapter = SDKResponseAdapter(message_id="m-1", session_id=session_id)
+        transcript_builder = MagicMock()
+        transcript_builder.append_user = MagicMock()
+        transcript_builder.append_assistant = MagicMock()
+        transcript_builder.append_tool_result = MagicMock()
+        return _RetryState(
+            options=MagicMock(),
+            query_message="hello",
+            was_compacted=False,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=adapter,
+            transcript_builder=transcript_builder,
+            usage=_TokenUsage(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_drain_without_resultmessage_surfaces_visible_notice(self):
+        """``_iter_sdk_messages`` exhausting without a ResultMessage is the
+        CLI-side-kill path. The branch must (a) yield visible
+        StreamTextStart/Delta/End carrying the notice text and (b) append
+        an assistant ChatMessage holding the notice — not the legacy
+        ``STOPPED_BY_USER_MARKER``."""
+        from backend.copilot.constants import (
+            STOPPED_BY_USER_MARKER,
+            STREAM_INCOMPLETE_MARKER,
+        )
+        from backend.copilot.response_model import (
+            StreamTextDelta,
+            StreamTextEnd,
+            StreamTextStart,
+        )
+        from backend.copilot.sdk.service import _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def empty_iter(_client):
+            # Drain immediately — no ResultMessage ever arrives. Mirrors
+            # the CLI exiting on per-query ``max_budget_usd`` exhaustion
+            # mid-tool-call.
+            if False:
+                yield None  # pragma: no cover  (make this an async generator)
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._iter_sdk_messages",
+                new=empty_iter,
+            ),
+        ):
+            events = []
+            async for ev in _run_stream_attempt(ctx, state):
+                events.append(ev)
+
+        # (a) A visible Start/Delta/End trio carrying the notice text.
+        starts = [e for e in events if isinstance(e, StreamTextStart)]
+        deltas = [e for e in events if isinstance(e, StreamTextDelta)]
+        ends = [e for e in events if isinstance(e, StreamTextEnd)]
+        notice_deltas = [d for d in deltas if d.delta == STREAM_INCOMPLETE_MARKER]
+        assert notice_deltas, (
+            "post-stream branch must emit a StreamTextDelta carrying "
+            "STREAM_INCOMPLETE_MARKER so the user sees the notice"
+        )
+        notice_id = notice_deltas[0].id
+        assert any(s.id == notice_id for s in starts)
+        assert any(e.id == notice_id for e in ends)
+
+        # (b) Appended assistant ChatMessage carries the new notice — not
+        # the legacy stopped-by-user marker.
+        assistant_msgs = [m for m in ctx.session.messages if m.role == "assistant"]
+        assert assistant_msgs, "branch must append an assistant message"
+        contents = [m.content for m in assistant_msgs]
+        assert STREAM_INCOMPLETE_MARKER in contents
+        assert STOPPED_BY_USER_MARKER not in contents
