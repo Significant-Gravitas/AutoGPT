@@ -1,6 +1,5 @@
 """Unit tests for Stripe webhook handler and subscription checkout helpers."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -170,7 +169,6 @@ def test_expire_open_subscription_sessions_expires_subscription_sessions(
     mock_expire.assert_called_once_with("cs_sub_open")
 
 
-@pytest.mark.asyncio
 async def test_reconcile_stripe_tier_no_customer_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -189,7 +187,6 @@ async def test_reconcile_stripe_tier_no_customer_returns_false(
     mock_get_sub.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_reconcile_stripe_tier_no_active_sub_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -213,7 +210,6 @@ async def test_reconcile_stripe_tier_no_active_sub_returns_false(
     mock_sync.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
     mocker: pytest_mock.MockFixture,
 ) -> None:
