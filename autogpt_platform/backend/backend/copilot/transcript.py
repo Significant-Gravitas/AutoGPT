@@ -890,11 +890,22 @@ def detect_gap(
       only test fixtures and the post-DB-failure cache state. Treats the list
       as the full history and slices by index.
 
+    ``role="reasoning"`` rows are dropped up-front: they are persisted for
+    frontend replay but never re-sent to the LLM, and they aren't counted in
+    the transcript watermark either.  Filtering here (not just at
+    ``extract_context_messages``) keeps direct callers like
+    ``baseline._restore_cli_session_for_turn`` safe — the index-based fallback
+    would otherwise mis-align by however many reasoning rows precede the
+    watermark.
+
     Hole-fill (sequences in DB but neither in transcript nor window) is
     performed by ``extract_context_messages``, not here — this function stays
     pure / sync.
     """
-    if download.message_count == 0 or len(session_messages) < 2:
+    if download.message_count == 0:
+        return []
+    session_messages = [m for m in session_messages if m.role != "reasoning"]
+    if len(session_messages) < 2:
         return []
     watermark = download.message_count
 
