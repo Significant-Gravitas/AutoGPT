@@ -975,6 +975,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     record, a lazy reconciliation check is attempted (gated to once per 5
     minutes via a Redis key) to recover from missed webhooks.
     """
+    tier_from_db = True
     try:
         tier = await _fetch_user_tier(user_id)
     except Exception as exc:
@@ -985,11 +986,12 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
             exc,
         )
         tier = DEFAULT_TIER
+        tier_from_db = False
 
     if tier != SubscriptionTier.NO_TIER:
         return tier
 
-    if await _maybe_reconcile_stripe_tier(user_id):
+    if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
         try:
             return await _fetch_user_tier(user_id)
         except Exception as exc:
