@@ -373,6 +373,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   clearCopilotLocalData: () => {
     clearContentCache();
+    _autoOpenKnownIds.clear();
+    _autoOpenReady = false;
+    _autoOpenUserClosed = false;
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
