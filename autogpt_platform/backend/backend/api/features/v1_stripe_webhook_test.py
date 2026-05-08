@@ -145,7 +145,7 @@ def test_expire_open_subscription_sessions_called_on_checkout(
     _list_and_expire_open_subscription_sessions("cus_test")
 
     stripe.checkout.Session.list.assert_called_once_with(
-        customer="cus_test", status="open", limit=100, starting_after=None
+        customer="cus_test", status="open", limit=100
     )
     mock_expire.assert_not_called()
 
@@ -196,9 +196,7 @@ def test_expire_open_subscription_sessions_paginates(
     _list_and_expire_open_subscription_sessions("cus_test")
 
     assert mock_list.call_count == 2
-    mock_list.assert_any_call(
-        customer="cus_test", status="open", limit=100, starting_after=None
-    )
+    mock_list.assert_any_call(customer="cus_test", status="open", limit=100)
     mock_list.assert_any_call(
         customer="cus_test", status="open", limit=100, starting_after="cs_page1"
     )

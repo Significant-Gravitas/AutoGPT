@@ -2268,12 +2268,14 @@ def _list_and_expire_open_subscription_sessions(customer_id: str) -> None:
     """
     starting_after: str | None = None
     while True:
-        sessions = stripe.checkout.Session.list(
-            customer=customer_id,
-            status="open",
-            limit=100,
-            starting_after=starting_after,
-        )
+        list_kwargs: dict = {
+            "customer": customer_id,
+            "status": "open",
+            "limit": 100,
+        }
+        if starting_after:
+            list_kwargs["starting_after"] = starting_after
+        sessions = stripe.checkout.Session.list(**list_kwargs)
         for s in sessions.data:
             if s.mode == "subscription":
                 try:
