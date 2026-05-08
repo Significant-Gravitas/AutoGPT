@@ -558,45 +558,61 @@ class TestUserPaywalledError:
         assert str(UserPaywalledError("custom")) == "custom"
 
 
-class TestAssertNotPaywalled:
-    """``assert_not_paywalled`` is the shared core that both the route
-    dep, the function-level enqueue gate, and inline checks call. Tests
-    here guarantee the contract: paywalled → raise, not paywalled → no
-    raise, lookup error → propagate to caller."""
+class TestFetchUserTierErrorPropagation:
+    """``_fetch_user_tier`` must distinguish "row missing" (raises
+    ``ValueError`` via ``get_user_by_id``) from "transient DB error"
+    (Prisma connection failure etc). Without this distinction a
+    Supabase blip would silently degrade every paying user to NO_TIER
+    and ``enforce_payment_paywall`` would 402 them — contradicting its
+    503-on-blip contract. Regression locked here."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from .rate_limit import _fetch_user_tier
+
+        _fetch_user_tier.cache_clear()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
-    async def test_raises_when_paywalled(self, mocker):
-        mocker.patch(
-            "backend.copilot.rate_limit.is_user_paywalled",
-            new=AsyncMock(return_value=True),
-        )
-        from .rate_limit import UserPaywalledError, assert_not_paywalled
+    async def test_value_error_collapses_to_user_not_found(self, mocker):
+        """ValueError from get_user_by_id is the documented "missing user"
+        signal — it's correct to map this to NO_TIER (via
+        _UserNotFoundError → caught in is_user_paywalled)."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from .rate_limit import _UserNotFoundError, _fetch_user_tier
 
-        with pytest.raises(UserPaywalledError):
-            await assert_not_paywalled(_USER)
-
-    @pytest.mark.asyncio
-    async def test_no_raise_when_not_paywalled(self, mocker):
-        mocker.patch(
-            "backend.copilot.rate_limit.is_user_paywalled",
-            new=AsyncMock(return_value=False),
-        )
-        from .rate_limit import assert_not_paywalled
-
-        await assert_not_paywalled(_USER)  # must not raise
+        with pytest.raises(_UserNotFoundError):
+            await _fetch_user_tier(_USER)
 
     @pytest.mark.asyncio
-    async def test_propagates_lookup_failure(self, mocker):
-        """Lookup errors propagate so each caller can pick their own
-        failure-mode (route → 503, background → fail-open)."""
-        mocker.patch(
-            "backend.copilot.rate_limit.is_user_paywalled",
-            new=AsyncMock(side_effect=RuntimeError("boom")),
-        )
-        from .rate_limit import assert_not_paywalled
+    async def test_db_outage_propagates(self, mocker):
+        """Non-ValueError exceptions (Prisma connection failure, generic
+        RuntimeError) propagate as-is so route layer can map to 503."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=RuntimeError("Prisma down"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from .rate_limit import _fetch_user_tier
 
-        with pytest.raises(RuntimeError):
-            await assert_not_paywalled(_USER)
+        with pytest.raises(RuntimeError, match="Prisma down"):
+            await _fetch_user_tier(_USER)
+
+    @pytest.mark.asyncio
+    async def test_db_outage_does_not_collapse_to_402_for_paying_user(self, mocker):
+        """End-to-end: a Supabase blip during enforce_payment_paywall
+        for any user (paying or not) maps to 503, NOT 402. Locks the
+        contract advertised in enforce_payment_paywall's docstring."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=RuntimeError("Supabase blip"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_payment_paywall
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert exc_info.value.status_code == 503  # not 402
+        assert exc_info.value.headers.get("Retry-After") == "30"
 
 
 class TestEnforcePaymentPaywallInline:

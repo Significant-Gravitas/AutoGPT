@@ -11,7 +11,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
-from backend.copilot.rate_limit import assert_not_paywalled
+from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -1156,7 +1156,8 @@ async def add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
-    await assert_not_paywalled(user_id)
+    if await is_user_paywalled(user_id):
+        raise UserPaywalledError("A subscription is required to run agents.")
 
     if prisma.is_connected():
         edb = execution_db

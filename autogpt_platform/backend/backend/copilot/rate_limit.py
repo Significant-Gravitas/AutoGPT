@@ -907,10 +907,18 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
 
     Only successful lookups are cached. Missing users raise
     ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
+
+    Distinguishes "row genuinely missing" (``user_db().get_user_by_id``
+    raises ``ValueError``) from "transient DB / Prisma error" (other
+    exceptions propagate as-is). Without this distinction a Supabase
+    blip would silently degrade every paying user to NO_TIER and
+    ``enforce_payment_paywall`` would 402 them — contradicting its
+    503-on-blip contract.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
-    except Exception:
+    except ValueError:
+        # ValueError = "User not found" per get_user_by_id's contract.
         raise _UserNotFoundError(user_id)
     if user.subscription_tier:
         return SubscriptionTier(user.subscription_tier)
@@ -1182,24 +1190,21 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 # Paywall enforcement
 # ---------------------------------------------------------------------------
 #
-# All paywall enforcement flows through these three primitives so every
-# entry point — HTTP routes, deep enqueue paths, background jobs —
-# shares the same definition of "paywalled" and the same exception:
+# Two primitives. Every gate uses one or the other:
 #
-#   1. ``is_user_paywalled(user_id) -> bool``  — THE check (strict, raises
-#      lookup errors so callers decide).
-#   2. ``assert_not_paywalled(user_id)``       — raises ``UserPaywalledError``
-#      iff (1) is True; the call sites' shared core.
-#   3. ``enforce_payment_paywall(user_id)``    — FastAPI dep wrapper around
-#      (2) that adds 503 mapping on lookup failure and lets
-#      ``UserPaywalledError`` bubble to the app-level exception handler
-#      (which converts it to HTTP 402).
+#   1. ``is_user_paywalled(user_id) -> bool``  — the check. Lookup errors
+#      propagate so callers decide their own failure-mode.
+#   2. ``enforce_payment_paywall(user_id)``    — HTTP gate. Wraps (1) and
+#      raises ``UserPaywalledError`` (handler → 402) when paywalled, or
+#      ``HTTPException(503)`` + Retry-After on lookup error. Doubles as
+#      JWT route dep AND inline call from non-JWT routes (the explicit
+#      ``user_id`` arg overrides the ``Security`` default).
 #
-# Callers pick the primitive that matches their failure-mode posture:
-#   - JWT routes:          dep ``enforce_payment_paywall``  (503 on blip)
-#   - non-JWT routes:      ``assert_not_paywalled`` inline  (5xx on blip)
-#   - background jobs:     ``assert_not_paywalled`` inline + try/except
-#                          on lookup error (fail-open + log)
+# Background callers (scheduled cron, webhook handlers, copilot internal
+# tools, ``add_graph_execution``) skip (2) and use (1) directly + raise
+# ``UserPaywalledError`` inline, so the framework's own retry layer
+# catches lookup errors — synthesising an ``HTTPException`` would be
+# wrong shape for non-HTTP contexts.
 #
 
 
@@ -1233,27 +1238,10 @@ async def is_user_paywalled(user_id: str) -> bool:
     return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
 
 
-async def assert_not_paywalled(user_id: str) -> None:
-    """Raise :class:`UserPaywalledError` if the user is paywalled.
-
-    The shared core used by every paywall gate — the route-level dep
-    (``enforce_payment_paywall``), the deep enqueue gate inside
-    ``add_graph_execution``, and inline checks on routes whose auth
-    model isn't compatible with the JWT-based dep (e.g. external API
-    block-execute).
-
-    Lookup errors propagate; callers wrap with their own try/except.
-    """
-    if await is_user_paywalled(user_id):
-        raise UserPaywalledError(
-            "A subscription is required to use this feature. Upgrade to continue."
-        )
-
-
 async def enforce_payment_paywall(
     user_id: str = fastapi.Security(get_user_id),
 ) -> None:
-    """Strict paywall gate for HTTP routes — fail-closed on lookup error.
+    """HTTP paywall gate — fail-closed on lookup error.
 
     Two call shapes, same behaviour:
 
@@ -1267,22 +1255,20 @@ async def enforce_payment_paywall(
        the JWT-based ``Security`` default doesn't apply; the explicit
        positional argument wins.
 
-    Wraps :func:`assert_not_paywalled` so :class:`UserPaywalledError`
-    propagates to the app-level handler (HTTP 402); a tier-lookup
-    failure is mapped to **HTTP 503 + Retry-After** so the client
-    retries instead of treating a transient Supabase / LD blip as a
-    permanent paywall.
+    Raises :class:`UserPaywalledError` (handled by the app-level
+    exception handler → HTTP 402) if the user is on NO_TIER with
+    ``ENABLE_PLATFORM_PAYMENT`` on. Tier-lookup failures map to
+    **HTTP 503 + Retry-After** so the client retries instead of
+    treating a transient Supabase / LD blip as a permanent paywall.
 
     Background callers (scheduled cron, webhook handlers, copilot
-    internal tools) call :func:`assert_not_paywalled` directly so the
-    background framework's own error handling can decide what to do
-    (typically: log + retry on next tick) instead of synthesising an
-    HTTP-shaped exception.
+    internal tools) skip this function and call :func:`is_user_paywalled`
+    directly + raise inline, so the background framework's own error
+    handling decides what to do on lookup failure (typically: retry
+    on next tick) instead of synthesising an HTTP-shaped exception.
     """
     try:
-        await assert_not_paywalled(user_id)
-    except UserPaywalledError:
-        raise
+        paywalled = await is_user_paywalled(user_id)
     except Exception as exc:
         logger.warning(
             "enforce_payment_paywall: tier lookup failed for %s: %s",
@@ -1294,3 +1280,7 @@ async def enforce_payment_paywall(
             detail="Subscription state temporarily unavailable, retry shortly.",
             headers={"Retry-After": "30"},
         ) from exc
+    if paywalled:
+        raise UserPaywalledError(
+            "A subscription is required to use this feature. Upgrade to continue."
+        )
