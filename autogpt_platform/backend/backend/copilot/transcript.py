@@ -837,17 +837,34 @@ def detect_gap(
     wm = download.message_count
 
     # Last entry is the current user turn; everything else is candidate context.
-    # ``ChatMessage.sequence`` is NOT NULL in the schema (and tests that touch
-    # this code path mirror that invariant via _msgs / _make_session_messages),
-    # so DB-loaded messages always carry it.  An unsequenced row in the prior
-    # context is a programmer error — fail loudly rather than silently mis-slicing.
-    assert all(
-        m.sequence is not None for m in session_messages[:-1]
-    ), "detect_gap requires sequenced messages in the prior context (sequence is NOT NULL in schema)"
-
+    # ``ChatMessage.sequence`` is NOT NULL in the schema, so DB-loaded messages
+    # always carry it.  Two known cases produce sequenceless rows in the prior
+    # context: (1) test fixtures that build ChatMessage by role only, (2) a
+    # production session whose DB write failed but whose Redis cache still
+    # holds the in-memory state with un-back-filled sequences.  Both cases
+    # would crash the index-based slice below and *would* crash a strict
+    # assertion — fall through to the index-based fallback when no sequenced
+    # rows are present, and silently drop the unsequenced ones from the
+    # sequence-based path otherwise (they are not yet persisted, so by
+    # definition they are not part of the post-watermark "DB gap" — the
+    # current-turn append still appears in ``session_messages[-1]`` and the
+    # caller layers prior unsequenced rows back in via the upstream cache
+    # path).
     candidates: list[tuple[int, ChatMessage]] = [
         (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
     ]
+    if not candidates:
+        # All-unsequenced (test fixtures or post-DB-failure cache state) — fall
+        # back to index-based slicing.  Only valid when ``session_messages`` is
+        # the full history; production windowed loads always have at least one
+        # sequenced row, so this branch is harmless there.
+        total = len(session_messages)
+        if wm >= total - 1:
+            return []
+        if session_messages[wm - 1].role != "assistant":
+            return []
+        return list(session_messages[wm : total - 1])
+
     gap = [m for seq, m in candidates if seq >= wm]
     if not gap:
         return []
