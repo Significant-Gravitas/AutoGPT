@@ -781,3 +781,46 @@ class TestConsumerRetryWithBackoff:
             result = await manager._process_immediate("{}")
             # Opted-out = "delivered" from queue's POV, no retry needed
             assert result is True
+
+    @pytest.mark.asyncio
+    async def test_undecodable_body_dlqs_without_retry(self, manager):
+        """Decode failure must reject-to-DLQ, not crash the consumer task."""
+        msg = MagicMock()
+        # Lone continuation byte — not valid UTF-8.
+        msg.body = b"\xff\xfe\x00"
+        msg.ack = AsyncMock()
+        msg.reject = AsyncMock()
+        process = AsyncMock()
+        await manager._process_message_with_retry(msg, process, "test_q")
+        process.assert_not_called()
+        msg.ack.assert_not_called()
+        msg.reject.assert_awaited_once_with(requeue=False)
+
+    @pytest.mark.asyncio
+    async def test_summary_unparseable_returns_false_not_raise(self, manager):
+        """_process_summary must return False (DLQ) on parse failure,
+        not raise a ValidationError that triggers retry-with-backoff.
+        """
+        result = await manager._process_summary("{not json")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_batch_not_old_enough_acks(self, manager):
+        """When the batch isn't ready to flush, the trigger message must be
+        acked — the notification is already persisted. Returning False would
+        DLQ the trigger and silently drop a future delivery.
+        """
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=True)
+        manager._should_batch = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_batch("{}")
+            assert result is True

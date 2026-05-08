@@ -698,8 +698,12 @@ class NotificationManager(AppService):
         should_send = await self._should_batch(event.user_id, event.type, event)
 
         if not should_send:
-            logger.info("Batch not old enough to send")
-            return False
+            # The notification has already been persisted into the batch in
+            # _should_batch. Ack the queue message — the next message for
+            # this user/type, or the periodic flush, will deliver the batch
+            # once it matures. Returning False here would DLQ the trigger.
+            logger.info("Batch not old enough to send (notification persisted)")
+            return True
         batch = await get_database_manager_async_client(
             should_retry=False
         ).get_user_notification_batch(event.user_id, event.type)
@@ -959,10 +963,14 @@ class NotificationManager(AppService):
         See `_process_admin_message` for the False vs. raise contract.
         """
         logger.info(f"Processing summary notification: {message}")
-        event = BaseEventModel.model_validate_json(message)
-        model = SummaryParamsEventModel[
-            get_summary_params_type(event.type)
-        ].model_validate_json(message)
+        try:
+            event = BaseEventModel.model_validate_json(message)
+            model = SummaryParamsEventModel[
+                get_summary_params_type(event.type)
+            ].model_validate_json(message)
+        except ValueError as e:
+            logger.warning(f"Unparseable summary notification (sending to DLQ): {e}")
+            return False
 
         logger.info(f"Processing summary notification: {model}")
 
@@ -1051,15 +1059,24 @@ class NotificationManager(AppService):
         contract or risk duplicate sends.
         """
         last_error: Exception | None = None
-        body = message.body.decode()
         for attempt in range(MAX_CONSUMER_RETRY_ATTEMPTS):
             try:
+                # Decoding inside the try so a UnicodeDecodeError on a
+                # malformed body is treated as a permanent failure and goes
+                # to the DLQ instead of crashing the consumer task.
+                body = message.body.decode()
                 if await process_func(body):
                     await message.ack()
                     return
                 # process_func returned False = explicit "do not retry"
                 logger.warning(
                     f"Message in {queue_name} rejected (process_func returned False)"
+                )
+                await message.reject(requeue=False)
+                return
+            except UnicodeDecodeError as e:
+                logger.warning(
+                    f"Undecodable message in {queue_name}, sending to DLQ: {e}"
                 )
                 await message.reject(requeue=False)
                 return
