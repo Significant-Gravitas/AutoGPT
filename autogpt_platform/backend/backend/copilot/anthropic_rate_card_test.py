@@ -98,7 +98,7 @@ class TestComputeAnthropicCostUsd:
         # 1M × $15 + 1M × $75 = $90 (opus-4-1 fallback rates)
         assert cost == 90.0
         assert any(
-            "no LiteLLM entry" in record.message
+            "no entry for model=" in record.message
             and "claude-future-7-5" in record.message
             for record in caplog.records
         )
