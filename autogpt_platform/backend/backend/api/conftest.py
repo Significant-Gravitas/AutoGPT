@@ -55,7 +55,14 @@ def _bypass_paywall(mocker):
     in ``rate_limit_test.py`` and patch ``_fetch_user_tier`` directly,
     bypassing this helper.
     """
-    mocker.patch(
-        "backend.copilot.rate_limit.is_user_paywalled",
-        new=mocker.AsyncMock(return_value=False),
-    )
+    # Patch BOTH bindings: ``rate_limit.is_user_paywalled`` covers the
+    # call inside ``enforce_payment_paywall`` (HTTP route dep); the
+    # bound name in ``executor.utils.is_user_paywalled`` covers the
+    # deep gate inside ``add_graph_execution`` for routes that go all
+    # the way through (e.g. graph-execute). Patching only the source
+    # module would miss the deep gate because ``utils.py`` does
+    # ``from backend.copilot.rate_limit import is_user_paywalled`` at
+    # import time.
+    paywall_off = mocker.AsyncMock(return_value=False)
+    mocker.patch("backend.copilot.rate_limit.is_user_paywalled", new=paywall_off)
+    mocker.patch("backend.executor.utils.is_user_paywalled", new=paywall_off)
