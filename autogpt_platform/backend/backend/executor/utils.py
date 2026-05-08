@@ -1118,6 +1118,7 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    *,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1147,10 +1148,10 @@ async def add_graph_execution(
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.
         UserPaywalledError: If the user is on NO_TIER and ``ENABLE_PLATFORM_PAYMENT``
-            is on for them. Raised here so every entry point — HTTP routes,
-            scheduled cron, webhook triggers, external API, internal copilot
-            tools — gets the same gate without each having to remember a
-            route-level dependency.
+            is on for them, **unless** ``bypass_paywall=True``. Raised here
+            so every entry point — HTTP routes, scheduled cron, webhook
+            triggers, external API, internal copilot tools — gets the same
+            gate without each having to remember a route-level dependency.
         Exception: Tier-lookup errors propagate as-is. The HTTP routes that
             call into ``add_graph_execution`` already wrap with
             ``enforce_payment_paywall`` upstream (which maps lookup failure
