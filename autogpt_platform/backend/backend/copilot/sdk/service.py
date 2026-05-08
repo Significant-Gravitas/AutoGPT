@@ -41,6 +41,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -134,6 +135,7 @@ from ..transcript import (
     compact_transcript,
     download_transcript,
     extract_context_messages,
+    next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
     strip_for_upload,
@@ -796,8 +798,7 @@ async def _consume_sdk_until_done(
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
-                    "%s Intermediate flush: %d messages "
-                    "(msgs_since=%d, elapsed=%.1fs)",
+                    "%s Intermediate flush: %d messages (msgs_since=%d, elapsed=%.1fs)",
                     ctx.log_prefix,
                     len(ctx.session.messages),
                     loop_state.msgs_since_flush,
@@ -2602,6 +2603,76 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
+        # Cap-engaged: the windowed ``prior`` doesn't start at absolute sequence
+        # 0, so any index-based slice ``prior[transcript_msg_count:]`` is wrong
+        # regardless of whether the watermark fits inside ``len(prior)``.  Two
+        # signals indicate cap engagement:
+        # 1. transcript_msg_count >= len(prior) — watermark beyond the window
+        # 2. prior[0].sequence > 0 — window starts above absolute sequence 0
+        # Either condition means the index-based path silently mis-slices
+        # (or returns []), so route through the sequence-based gap detection.
+        # ``transcript_msg_count`` IS the next uncovered DB sequence, so
+        # filtering ``sequence >= transcript_msg_count`` reads it directly.
+        cap_engaged = transcript_msg_count >= len(prior) or (
+            bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+        )
+        if cap_engaged and prior and prior[0].sequence is not None:
+            window_gap = [
+                m
+                for m in prior
+                if m.sequence is not None and m.sequence >= transcript_msg_count
+            ]
+            window_start_seq = (
+                min(m.sequence for m in window_gap if m.sequence is not None)
+                if window_gap
+                else None
+            )
+            hole: list[ChatMessage] = []
+            if window_start_seq is not None and window_start_seq > transcript_msg_count:
+                try:
+                    hole_page = await chat_db().get_chat_messages_paginated(
+                        session_id,
+                        limit=window_start_seq - transcript_msg_count,
+                        after_sequence=transcript_msg_count,
+                        before_sequence=window_start_seq,
+                    )
+                    if hole_page:
+                        hole = [m for m in hole_page.messages if m.role != "reasoning"]
+                except Exception as e:
+                    logger.warning(
+                        "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
+                        " %s — sending gap without hole",
+                        session_id[:8],
+                        transcript_msg_count,
+                        window_start_seq,
+                        e,
+                    )
+            gap = hole + window_gap
+            compressed, was_compressed = await _compress_messages(gap, target_tokens)
+            gap_context = _format_conversation_context(compressed)
+            if gap_context:
+                logger.info(
+                    "[SDK] [%s] Cap-engaged stale watermark (%d) — sequence-"
+                    "based gap=%d msgs from windowed view (compressed=%s, "
+                    "context_bytes=%d)",
+                    session_id[:8],
+                    transcript_msg_count,
+                    len(gap),
+                    was_compressed,
+                    len(gap_context),
+                )
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    was_compressed,
+                )
+            logger.warning(
+                "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
+                " not contain post-watermark rows (transcript=%d, db=%d)",
+                session_id[:8],
+                transcript_msg_count,
+                msg_count,
+            )
+            return current_message, False
         if transcript_msg_count < effective_count - 1:
             # Sanity-check the watermark: the last covered position should be
             # an assistant turn.  A user-role message here means the count is
@@ -3567,7 +3638,11 @@ async def _restore_cli_session_for_turn(
     # Build context from transcript content + gap, falling back to full DB.
     # extract_context_messages handles both: non-None baseline_download uses
     # the compacted transcript + gap; None falls back to all prior DB messages.
-    context_msgs = extract_context_messages(result.baseline_download, session.messages)
+    context_msgs = await extract_context_messages(
+        result.baseline_download,
+        session.messages,
+        session_id=session.session_id,
+    )
     result.context_messages = context_msgs
     result.transcript_msg_count = (
         result.baseline_download.message_count
@@ -5060,27 +5135,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
                     #
-                    # Mid-turn follow-up user rows (persisted via the
-                    # StreamToolOutputAvailable handler) are NOT part of the CLI
-                    # JSONL — the CLI only knows them as embedded text inside a
-                    # tool_result, and even that embedding can be stripped by
-                    # the CLI's internal tool_result size cap.  Deduct them
-                    # from the watermark so detect_gap on the next turn
-                    # treats them as gap-fill entries and the model sees them
-                    # as real user messages instead of missing text.
+                    # Watermark = next uncovered DB sequence.  Mid-turn
+                    # follow-up user rows (StreamToolOutputAvailable) are
+                    # persisted to DB but not to the CLI's JSONL, so we step
+                    # the watermark back by their count — detect_gap on the
+                    # next turn re-injects them as the model would otherwise
+                    # only see them embedded in the tool_result (and the CLI's
+                    # internal tool_result size cap can strip that embedding).
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    # ``role="reasoning"`` rows are persisted to session.messages
-                    # for frontend replay but never appear in the CLI JSONL
-                    # (extended_thinking lives embedded in assistant entries, not
-                    # as standalone rows).  Exclude them from the watermark so
-                    # ``detect_gap`` on the next turn doesn't skip real
-                    # user/assistant rows.  See sentry comment 3106186683.
-                    _non_reasoning_count = sum(
-                        1 for m in session.messages if m.role != "reasoning"
+                    _jsonl_covered = max(
+                        0,
+                        next_uncovered_sequence(session.messages) - _midturn_offset,
                     )
-                    _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

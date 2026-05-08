@@ -56,9 +56,14 @@ def _make_transcript_content(*roles: str) -> str:
 
 
 def _make_session_messages(*roles: str) -> list[ChatMessage]:
-    """Build a list of ChatMessage objects matching the given roles."""
+    """Build a list of ChatMessage objects matching the given roles.
+
+    Sequences are assigned 0..N-1 to mirror the production schema, where
+    ``ChatMessage.sequence`` is NOT NULL on every persisted row.
+    """
     return [
-        ChatMessage(role=r, content=f"{r} message {i}") for i, r in enumerate(roles)
+        ChatMessage(role=r, content=f"{r} message {i}", sequence=i)
+        for i, r in enumerate(roles)
     ]
 
 

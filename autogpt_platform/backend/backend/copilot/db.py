@@ -21,13 +21,7 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import (
-    ChatMessage,
-    ChatSession,
-    ChatSessionInfo,
-    ChatSessionMetadata,
-    cache_chat_session,
-)
+from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -44,13 +38,23 @@ class PaginatedMessages(BaseModel):
     session: ChatSessionInfo
 
 
-async def get_chat_session(session_id: str) -> ChatSession | None:
-    """Get a chat session by ID from the database."""
-    session = await PrismaChatSession.prisma().find_unique(
-        where={"id": session_id},
-        include={"Messages": {"order_by": {"sequence": "asc"}}},
-    )
-    return ChatSession.from_db(session) if session else None
+# Cap on messages eagerly loaded with a session. Set above the realistic p99
+# of any actual copilot conversation (typical: 10-100 msgs; power user: a few
+# hundred; cap engages only on pathological multi-thousand-message sessions).
+# Older history beyond the cap relies on the GCS transcript checkpoint via
+# ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
+# a transcript, the cap-hit warning below makes the case observable in logs.
+MAX_LOADED_CHAT_MESSAGES = 1000
+
+
+# NOTE: there is intentionally no eager-load ``get_chat_session`` here. Callers
+# that need the full session (LLM context, sub-session tools) call
+# :func:`get_chat_messages_paginated` directly with
+# ``limit=MAX_LOADED_CHAT_MESSAGES`` and assemble :class:`ChatSession` from the
+# returned ``session`` (full :class:`ChatSessionInfo` — credentials,
+# successful_agent_runs, usage, metadata) plus ``messages``.  Going through the
+# paginated path means tool-pair boundary expansion and the visibility
+# guarantee already apply, and the cap-hit signal lives in ``has_more``.
 
 
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
@@ -66,73 +70,81 @@ async def get_chat_messages_paginated(
     limit: int = 50,
     before_sequence: int | None = None,
     user_id: str | None = None,
+    *,
+    after_sequence: int | None = None,
 ) -> PaginatedMessages | None:
-    """Get paginated messages for a session, newest first.
+    """Get a window of messages for a session in ascending sequence order.
 
     Verifies session existence (and ownership when ``user_id`` is provided)
     in parallel with the message query.  Returns ``None`` when the session
     is not found or does not belong to the user.
 
-    After fetching, a visibility guarantee ensures the page contains at least
-    one user or assistant message.  If the entire page is tool messages (which
-    are hidden in the UI), it expands backward until a visible message is found
-    so the chat never appears blank.
+    Three access patterns share this function:
+
+    - **Cursor pagination (UI scroll-back)**: pass ``before_sequence`` to fetch
+      ``limit`` messages older than the cursor.  Tool-pair boundary expansion
+      and visibility expansion fire so the rendered chat is never malformed.
+    - **Tail load (LLM-context eager-load)**: pass neither bound to fetch the
+      most-recent ``limit`` messages.  Same boundary/visibility fixes apply.
+    - **Range fetch (hole-fill)**: pass both ``after_sequence`` and
+      ``before_sequence`` to fetch the inclusive-exclusive range
+      ``[after_sequence, before_sequence)``.  Boundary/visibility expansion is
+      skipped — the caller asked for an exact range, not a "best-effort window".
+
+    ``has_more`` is ``True`` iff the underlying query found more rows than
+    ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
+    harmlessly populated.
     """
-    # Build session-existence / ownership check
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
         session_where["userId"] = user_id
 
-    # Build message include — fetch paginated messages in the same query
+    msg_filter: dict = {}
+    if before_sequence is not None:
+        msg_filter["lt"] = before_sequence
+    if after_sequence is not None:
+        msg_filter["gte"] = after_sequence
+
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
         "take": limit + 1,
     }
-    if before_sequence is not None:
-        msg_include["where"] = {"sequence": {"lt": before_sequence}}
+    if msg_filter:
+        msg_include["where"] = {"sequence": msg_filter}
 
-    # Single query: session existence/ownership + paginated messages
     session = await PrismaChatSession.prisma().find_first(
         where=session_where,
         include={"Messages": msg_include},
     )
-
     if session is None:
         return None
 
     session_info = ChatSessionInfo.from_db(session)
     results = list(session.Messages) if session.Messages else []
-
     has_more = len(results) > limit
     results = results[:limit]
-
-    # Reverse to ascending order
+    # Reverse DESC → ASC so callers see oldest-first.
     results.reverse()
 
-    # Tool-call boundary fix: if the oldest message is a tool message,
-    # expand backward to include the preceding assistant message that
-    # owns the tool_calls, so convertChatSessionMessagesToUiMessages
-    # can pair them correctly.
-    if results and results[0].role == "tool":
-        results, has_more = await _expand_tool_boundary(
-            session_id, results, has_more, user_id
-        )
-
-    # Visibility guarantee: if the entire page has no user/assistant messages
-    # (all tool messages), the chat would appear blank.  Expand backward
-    # until we find at least one visible message.
-    if results and not any(m.role in ("user", "assistant") for m in results):
-        results, has_more = await _expand_for_visibility(
-            session_id, results, has_more, user_id
-        )
+    # Range fetches (after_sequence set) ask for an exact window — never expand
+    # outside it. Cursor / tail loads get the boundary + visibility fixes so
+    # the UI render and LLM-context build are well-formed.
+    is_range_fetch = after_sequence is not None
+    if not is_range_fetch:
+        if results and results[0].role == "tool":
+            results, has_more = await _expand_tool_boundary(
+                session_id, results, has_more, user_id
+            )
+        if results and not any(m.role in ("user", "assistant") for m in results):
+            results, has_more = await _expand_for_visibility(
+                session_id, results, has_more, user_id
+            )
 
     messages = [ChatMessage.from_db(m) for m in results]
-    oldest_sequence = messages[0].sequence if messages else None
-
     return PaginatedMessages(
         messages=messages,
         has_more=has_more,
-        oldest_sequence=oldest_sequence,
+        oldest_sequence=messages[0].sequence if messages else None,
         session=session_info,
     )
 

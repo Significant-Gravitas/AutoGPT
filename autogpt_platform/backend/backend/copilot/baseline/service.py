@@ -94,6 +94,8 @@ from backend.copilot.transcript import (
     detect_gap,
     download_transcript,
     extract_context_messages,
+    fill_hole_between_transcript_and_gap,
+    next_uncovered_sequence,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
@@ -1251,11 +1253,23 @@ async def _load_prior_transcript(
     )
 
     gap = detect_gap(restore, session_messages)
-    if gap:
-        _append_gap_to_builder(gap, transcript_builder)
+    # Hole-fill: when the cap engaged AND the windowed view starts above the
+    # transcript watermark, the sequences in between live in DB but neither
+    # the transcript nor the loaded gap.  Persisting them to the builder here
+    # (so the next-turn upload includes them) closes the loop — without this,
+    # detect_gap on every subsequent turn would re-discover the same hole.
+    hole: list[ChatMessage] = []
+    if restore.message_count > 0:
+        hole = await fill_hole_between_transcript_and_gap(
+            session_id, restore.message_count, gap
+        )
+    if hole or gap:
+        _append_gap_to_builder(hole + gap, transcript_builder)
         logger.info(
-            "[Baseline] Filled gap: loaded %d transcript msgs + %d gap msgs from DB",
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
+            "+ %d gap msgs from DB",
             restore.message_count,
+            len(hole),
             len(gap),
         )
 
@@ -1523,7 +1537,9 @@ async def stream_chat_completion_baseline(
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
-    prior_context = extract_context_messages(transcript_download, session.messages)
+    prior_context = await extract_context_messages(
+        transcript_download, session.messages, session_id=session.session_id
+    )
     messages_for_context = await _compress_session_messages(
         prior_context + ([session.messages[-1]] if session.messages else []),
         model=active_model,
@@ -2179,11 +2195,15 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
+            # Watermark = the next uncovered DB sequence (= max non-reasoning
+            # sequence + 1).  Stays accurate on cap-engaged sessions because
+            # the loaded window always includes the most-recent rows; the
+            # max(sequence) is the last assistant just appended this turn.
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=len(session.messages),
+                session_msg_count=next_uncovered_sequence(session.messages),
             )
 
         # Clean up the ephemeral working directory used for file attachments.

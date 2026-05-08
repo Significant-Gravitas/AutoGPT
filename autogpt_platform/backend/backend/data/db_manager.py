@@ -379,8 +379,12 @@ class DatabaseManager(AppService):
     delete_user_link = _(platform_linking_db.delete_user_link)
 
     # ============ CoPilot Chat Sessions ============ #
-    get_chat_session = _(chat_db.get_chat_session)
+    # NOTE: no eager-load `get_chat_session` here — callers go through
+    # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
+    # tool-pair boundary expansion + visibility guarantees apply uniformly
+    # across the LLM-context and UI scroll paths.
     get_chat_session_metadata = _(chat_db.get_chat_session_metadata)
+    get_chat_messages_paginated = _(chat_db.get_chat_messages_paginated)
     create_chat_session = _(chat_db.create_chat_session)
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
@@ -605,8 +609,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_user_link = d.delete_user_link
 
     # ============ CoPilot Chat Sessions ============ #
-    get_chat_session = d.get_chat_session
     get_chat_session_metadata = d.get_chat_session_metadata
+    get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
