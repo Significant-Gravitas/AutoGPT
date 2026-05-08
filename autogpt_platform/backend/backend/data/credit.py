@@ -2266,19 +2266,26 @@ def _list_and_expire_open_subscription_sessions(customer_id: str) -> None:
     in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
     invoice, so the user is not shown phantom charges on their billing page.
     """
-    sessions = stripe.checkout.Session.list(
-        customer=customer_id,
-        status="open",
-        limit=20,
-    )
-    for s in sessions.data:
-        if s.mode == "subscription":
-            try:
-                stripe.checkout.Session.expire(s.id)
-            except stripe.StripeError:
-                logger.warning(
-                    "create_subscription_checkout: could not expire session %s", s.id
-                )
+    starting_after: str | None = None
+    while True:
+        sessions = stripe.checkout.Session.list(
+            customer=customer_id,
+            status="open",
+            limit=100,
+            **({"starting_after": starting_after} if starting_after else {}),
+        )
+        for s in sessions.data:
+            if s.mode == "subscription":
+                try:
+                    stripe.checkout.Session.expire(s.id)
+                except stripe.StripeError:
+                    logger.warning(
+                        "create_subscription_checkout: could not expire session %s",
+                        s.id,
+                    )
+        if not sessions.has_more or not sessions.data:
+            break
+        starting_after = sessions.data[-1].id
 
 
 async def _expire_open_subscription_sessions(customer_id: str) -> None:
@@ -2286,7 +2293,7 @@ async def _expire_open_subscription_sessions(customer_id: str) -> None:
         await run_in_threadpool(
             _list_and_expire_open_subscription_sessions, customer_id
         )
-    except stripe.StripeError:
+    except Exception:
         logger.warning(
             "create_subscription_checkout: could not list open sessions for %s",
             customer_id,
@@ -2303,7 +2310,14 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
-    sub = await _get_active_subscription(user.stripe_customer_id)
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except Exception:
+        logger.warning(
+            "reconcile_stripe_tier_for_user: Stripe lookup failed for user %s",
+            user_id[:8],
+        )
+        return False
     if sub is None:
         return False
     await sync_subscription_from_stripe(cast(dict, sub))

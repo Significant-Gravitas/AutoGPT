@@ -138,13 +138,14 @@ def test_expire_open_subscription_sessions_called_on_checkout(
 ) -> None:
     mock_sessions = MagicMock()
     mock_sessions.data = []
+    mock_sessions.has_more = False
     mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
     mock_expire = mocker.patch("stripe.checkout.Session.expire")
 
     _list_and_expire_open_subscription_sessions("cus_test")
 
     stripe.checkout.Session.list.assert_called_once_with(
-        customer="cus_test", status="open", limit=20
+        customer="cus_test", status="open", limit=100
     )
     mock_expire.assert_not_called()
 
@@ -161,12 +162,45 @@ def test_expire_open_subscription_sessions_expires_subscription_sessions(
 
     mock_sessions = MagicMock()
     mock_sessions.data = [sub_session, payment_session]
+    mock_sessions.has_more = False
     mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
     mock_expire = mocker.patch("stripe.checkout.Session.expire")
 
     _list_and_expire_open_subscription_sessions("cus_test")
 
     mock_expire.assert_called_once_with("cs_sub_open")
+
+
+def test_expire_open_subscription_sessions_paginates(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    page1_session = MagicMock()
+    page1_session.id = "cs_page1"
+    page1_session.mode = "subscription"
+    page2_session = MagicMock()
+    page2_session.id = "cs_page2"
+    page2_session.mode = "subscription"
+
+    page1 = MagicMock()
+    page1.data = [page1_session]
+    page1.has_more = True
+    page2 = MagicMock()
+    page2.data = [page2_session]
+    page2.has_more = False
+
+    mock_list = mocker.patch(
+        "stripe.checkout.Session.list", side_effect=[page1, page2]
+    )
+    mock_expire = mocker.patch("stripe.checkout.Session.expire")
+
+    _list_and_expire_open_subscription_sessions("cus_test")
+
+    assert mock_list.call_count == 2
+    mock_list.assert_any_call(customer="cus_test", status="open", limit=100)
+    mock_list.assert_any_call(
+        customer="cus_test", status="open", limit=100, starting_after="cs_page1"
+    )
+    assert mock_expire.call_count == 2
 
 
 async def test_reconcile_stripe_tier_no_customer_returns_false(
