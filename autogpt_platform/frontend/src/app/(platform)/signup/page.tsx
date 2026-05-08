@@ -135,7 +135,7 @@ export default function SignupPage() {
                           I agree to the
                         </Text>
                         <Link
-                          href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                          href="https://agpt.co/legal/platform-terms-of-use"
                           variant="secondary"
                         >
                           Terms of Use
@@ -147,7 +147,7 @@ export default function SignupPage() {
                           and
                         </Text>
                         <Link
-                          href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                          href="https://agpt.co/legal/platform-privacy-policy"
                           variant="secondary"
                         >
                           Privacy Policy
