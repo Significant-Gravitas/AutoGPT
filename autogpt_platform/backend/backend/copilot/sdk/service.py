@@ -2578,13 +2578,17 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
-        # Cap-engaged + watermark beyond the windowed view: the index-based
-        # slice ``prior[transcript_msg_count:]`` would silently produce ``[]``
-        # because the window contains the most-recent rows but ``prior`` is
-        # zero-indexed from the window start, not from absolute sequence 0.
-        # Fall back to a sequence-based gap so the LLM still sees the messages
-        # past the watermark.
-        cap_engaged = transcript_msg_count >= len(prior)
+        # Cap-engaged: the windowed ``prior`` doesn't start at absolute sequence
+        # 0, so any index-based slice ``prior[transcript_msg_count:]`` is wrong
+        # regardless of whether the watermark fits inside ``len(prior)``.
+        # Two signals indicate cap engagement:
+        # 1. transcript_msg_count >= len(prior) — watermark beyond the window
+        # 2. prior[0].sequence > 0 — window starts above absolute sequence 0
+        # Either condition means the index-based path silently mis-slices
+        # (or returns []), so route through the sequence-based gap detection.
+        cap_engaged = transcript_msg_count >= len(prior) or (
+            bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+        )
         if cap_engaged and prior and prior[0].sequence is not None:
             # The watermark is a *count* of non-reasoning rows over the full
             # history, not a DB sequence — translate it via the same helper
