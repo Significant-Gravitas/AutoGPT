@@ -80,16 +80,27 @@ class TestComputeAnthropicCostUsd:
         # Unknown TTL → 1h multiplier (over-bills rather than mis-bills).
         assert cost == 6.0
 
-    def test_unknown_model_returns_none(self):
-        # Caller decides between recording 0 or skipping; None signals
-        # the misconfiguration upstream.
-        assert (
-            compute_anthropic_cost_usd(
+    def test_unknown_model_falls_back_to_opus_4_1_rates(self, caplog):
+        # Billing integrity: an unknown slug must **over-bill** at opus
+        # rates rather than silently drop cost.  The error log surfaces
+        # the misconfiguration to the operator without breaking the
+        # already-completed API spend's accounting.
+        import logging
+
+        with caplog.at_level(
+            logging.ERROR, logger="backend.copilot.anthropic_rate_card"
+        ):
+            cost = compute_anthropic_cost_usd(
                 model="claude-future-7-5",
-                prompt_tokens=1000,
-                completion_tokens=1000,
+                prompt_tokens=1_000_000,
+                completion_tokens=1_000_000,
             )
-            is None
+        # 1M × $15 + 1M × $75 = $90 (opus-4-1 fallback rates)
+        assert cost == 90.0
+        assert any(
+            "no LiteLLM entry" in record.message
+            and "claude-future-7-5" in record.message
+            for record in caplog.records
         )
 
     def test_zero_tokens_zero_cost(self):

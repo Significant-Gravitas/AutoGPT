@@ -39,6 +39,16 @@ _DEFAULT_CACHE_WRITE_1H_MULTIPLIER = 2.0
 # Default 5m cache-write multiplier — Anthropic's documented 1.25× input.
 _DEFAULT_CACHE_WRITE_5M_MULTIPLIER = 1.25
 
+# Conservative fallback rates used when LiteLLM has no entry for the
+# configured model (a fresh Claude release before a litellm version bump,
+# a typo'd slug, or a finetune).  Set to claude-opus-4-1's published
+# pricing — the most expensive Claude generally available — so an
+# unknown slug **over-bills** rather than silently dropping cost.
+# Billing integrity matters more than rate accuracy in the unknown-model
+# tail; an alarming bill is recoverable, a missing one is not.
+_FALLBACK_INPUT_PER_TOKEN = 15.0 / 1_000_000  # opus-4-1: $15/Mtok
+_FALLBACK_OUTPUT_PER_TOKEN = 75.0 / 1_000_000  # opus-4-1: $75/Mtok
+
 
 def _resolve_info(model: str) -> dict[str, Any] | None:
     """Return the LiteLLM model_info entry, trying the bare slug first then
@@ -67,7 +77,7 @@ def compute_anthropic_cost_usd(
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
     cache_ttl: str = "1h",
-) -> float | None:
+) -> float:
     """Return the USD cost for an Anthropic-direct chat completion.
 
     ``prompt_tokens`` is the OpenAI-compat top-level total — on
@@ -86,19 +96,31 @@ def compute_anthropic_cost_usd(
     entirely, we fall back to Anthropic's documented multiplier
     (1.25× input for 5m, 2.0× input for 1h, 0.1× input for cache reads).
 
-    Returns ``None`` for unknown models so the caller can decide
-    between recording 0 (under-bills) or skipping the row (silent
-    miss).  We pick None to surface the misconfiguration upstream.
+    When LiteLLM has no entry for the model (or the entry is missing
+    the input/output rates), an ERROR is logged and the fallback opus
+    pricing applies so cost continues to flow downstream — billing
+    must never silently drop on a configuration drift.
     """
     info = _resolve_info(model)
-    if info is None:
-        return None
-    input_per_tok = info.get("input_cost_per_token")
-    output_per_tok = info.get("output_cost_per_token")
-    if not isinstance(input_per_tok, (int, float)) or not isinstance(
-        output_per_tok, (int, float)
-    ):
-        return None
+    rates_known = info is not None
+    if rates_known:
+        input_per_tok = info.get("input_cost_per_token") if info else None
+        output_per_tok = info.get("output_cost_per_token") if info else None
+        if not isinstance(input_per_tok, (int, float)) or not isinstance(
+            output_per_tok, (int, float)
+        ):
+            rates_known = False
+
+    if not rates_known:
+        logger.error(
+            "[rate_card] no LiteLLM entry for model=%s — falling back "
+            "to opus-4-1 rates ($15/$75 per Mtok) so cost still records. "
+            "Bump litellm in pyproject.toml to add this model.",
+            model,
+        )
+        input_per_tok = _FALLBACK_INPUT_PER_TOKEN
+        output_per_tok = _FALLBACK_OUTPUT_PER_TOKEN
+        info = {}  # treat as empty so cache fields fall through to multipliers
 
     prompt_tokens = max(0, prompt_tokens)
     completion_tokens = max(0, completion_tokens)

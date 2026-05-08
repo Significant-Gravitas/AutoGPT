@@ -751,23 +751,10 @@ async def _baseline_llm_caller(
                             ),
                             cache_ttl=config.baseline_prompt_cache_ttl,
                         )
-                        if cost is None and not state.cost_missing_logged:
-                            # Rate-card lookup whiffed on this model —
-                            # warn once per stream so a new model slug
-                            # introduced via env var doesn't silently
-                            # lose cost tracking.  The OR-extension
-                            # branch below is suppressed because
-                            # ``model_extra`` legitimately lacks ``cost``
-                            # in direct mode, so this is the only place
-                            # the operator gets a signal.
-                            logger.warning(
-                                "[Baseline] direct-mode rate lookup "
-                                "(litellm) has no entry for model=%s — "
-                                "bump litellm in pyproject.toml or this "
-                                "turn's cost is dropped",
-                                state.model,
-                            )
-                            state.cost_missing_logged = True
+                        # ``compute_anthropic_cost_usd`` always returns a
+                        # number — unknown models fall back to opus rates
+                        # and log ERROR, so cost flow is never silently
+                        # dropped on a litellm-version drift.
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
                     elif (

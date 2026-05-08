@@ -784,6 +784,10 @@ async def _record_title_generation_cost(
     # Pass cache buckets so cached title turns bill at the cache-read rate
     # (~10% of input) instead of the full input rate.
     if cost_usd is None and provider == "anthropic":
+        # ``compute_anthropic_cost_usd`` always returns a number — unknown
+        # models fall back to opus-4-1 rates and log ERROR inside the
+        # rate-card module, so the title row never lands with cost=NULL on
+        # a litellm-version drift.
         cost_usd = compute_anthropic_cost_usd(
             model=model,
             prompt_tokens=prompt_tokens,
@@ -792,18 +796,6 @@ async def _record_title_generation_cost(
             cache_creation_tokens=cache_creation_tokens,
             cache_ttl=config.baseline_prompt_cache_ttl,
         )
-        if cost_usd is None:
-            # Rate-card lookup whiffed.  Mirror the baseline streaming path's
-            # warning so a model slug introduced via env var doesn't silently
-            # drop title-cost tracking — the row will still be recorded
-            # below (tokens > 0 keeps the guard from short-circuiting), but
-            # operators get a signal to extend the rate card.
-            logger.warning(
-                "[title] direct-Anthropic rate lookup (litellm) has no "
-                "entry for model=%s — cost field will be NULL on this "
-                "PlatformCostLog row; bump litellm in pyproject.toml",
-                model,
-            )
 
     # Nothing meaningful to record — skip the DB roundtrip entirely
     # rather than writing a zero-valued row.  Covers the non-OR / non-
@@ -826,9 +818,7 @@ async def _record_title_generation_cost(
     # the persisted ``Usage.prompt_tokens`` reflects fresh-input only and
     # the three buckets stay disjoint — moonshot.py:125 sums them to
     # recover total, and an overlap there double-counts cache writes.
-    uncached_prompt = max(
-        0, prompt_tokens - cache_read_tokens - cache_creation_tokens
-    )
+    uncached_prompt = max(0, prompt_tokens - cache_read_tokens - cache_creation_tokens)
     await persist_and_record_usage(
         session=None,
         user_id=user_id,
