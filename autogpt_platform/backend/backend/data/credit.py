@@ -1087,6 +1087,9 @@ class UserCredit(UserCreditBase):
             success_url=base_url + "/settings/billing?topup=success",
             cancel_url=base_url + "/settings/billing?topup=cancel",
             allow_promotion_codes=True,
+            automatic_tax={"enabled": True},
+            billing_address_collection="auto",
+            customer_update={"address": "auto"},
         )
 
         await self._add_transaction(
@@ -2274,6 +2277,9 @@ async def create_subscription_checkout(
             }
         },
         allow_promotion_codes=True,
+        automatic_tax={"enabled": True},
+        billing_address_collection="auto",
+        customer_update={"address": "auto"},
     )
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
