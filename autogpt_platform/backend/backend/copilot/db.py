@@ -393,12 +393,15 @@ async def add_chat_messages_batch(
     upserts and DB queries in the common case (no collision).
 
     Returns:
-        Next sequence number for the next message to be inserted. This equals
-        start_sequence + len(messages) and allows callers to update their
-        counters even when collision detection adjusts start_sequence.
+        The actual ``start_sequence`` used for the (successful) insert.
+        Equals the input on the no-collision common path; differs after a
+        retry when ``get_next_sequence`` returned a higher offset.  Callers
+        must use this value to back-fill in-memory ``ChatMessage.sequence``
+        — using the original ``start_sequence`` after a retry would point
+        the in-memory rows at sequences a peer process already wrote.
     """
     if not messages:
-        # No messages to add - return current count
+        # No messages to add - the caller's offset is unchanged.
         return start_sequence
 
     max_retries = 5
@@ -459,8 +462,9 @@ async def add_chat_messages_batch(
                     ),
                 )
 
-            # Return next sequence number for counter sync
-            return start_sequence + len(messages)
+            # Return the offset actually used so callers can back-fill
+            # in-memory sequences (matters after a retry).
+            return start_sequence
 
         except UniqueViolationError as e:
             # Two distinct unique constraints on ``ChatMessage`` can fire here:

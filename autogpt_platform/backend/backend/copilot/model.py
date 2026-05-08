@@ -752,17 +752,19 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-        # Back-fill sequence numbers on the in-memory ChatMessage objects so
-        # that downstream callers (inject_user_context) can persist updates
-        # by sequence rather than falling back to index-based writes.
         for i, msg in enumerate(new_messages):
-            msg.sequence = existing_message_count + i
+            msg.sequence = actual_start + i
 
 
 async def append_and_save_message(

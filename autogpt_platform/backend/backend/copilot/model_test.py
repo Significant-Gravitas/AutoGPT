@@ -1116,3 +1116,35 @@ def test_chat_message_from_db_round_trips_created_at() -> None:
     assert msg.sequence == 3
     assert msg.duration_ms == 4200
     assert msg.created_at == created_at
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_uses_actual_start_after_collision(
+    mocker: MockerFixture,
+) -> None:
+    """When ``add_chat_messages_batch`` retries from ``get_next_sequence``
+    after a unique-constraint collision, it returns the offset actually
+    used.  ``_save_session_to_db`` must back-fill in-memory sequences from
+    that returned value — using the original ``existing_message_count``
+    desyncs in-memory rows from DB and breaks later
+    ``update_message_content_by_sequence`` calls."""
+    from .model import _save_session_to_db
+
+    msg_a = ChatMessage(role="assistant", content="msg-a")
+    msg_b = ChatMessage(role="user", content="msg-b")
+    session = ChatSession.new(user_id="u1", dry_run=False)
+    session.messages = [msg_a, msg_b]
+
+    # Caller said start at 0 (brand-new session) but the helper retried
+    # after a peer race and the rows actually landed at sequence 5.
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=5)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=0, skip_existence_check=True
+    )
+
+    assert msg_a.sequence == 5
+    assert msg_b.sequence == 6
