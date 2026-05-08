@@ -2468,9 +2468,7 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
         no_usage_stream = _make_stream_mock()  # empty = no chunks at all
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(
-            return_value=no_usage_stream
-        )
+        mock_client.chat.completions.create = AsyncMock(return_value=no_usage_stream)
 
         with (
             patch(
