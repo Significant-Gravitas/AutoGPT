@@ -6,8 +6,10 @@ import fastapi.testclient
 import pytest
 from prisma.enums import APIKeyPermission
 
+import backend.api.external.v1.routes as routes_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -157,8 +159,6 @@ def test_execute_graph_paywall_error_propagates_not_400(
     ``external_api`` never fires and a paywalled user gets a confusing
     400 instead of 402. Locks the explicit re-raise added for this gap.
     """
-    from backend.copilot.rate_limit import UserPaywalledError
-
     monkeypatch.setattr(
         routes_mod,
         "add_graph_execution",
@@ -193,8 +193,6 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
     """``execute_graph_block`` must let ``UserPaywalledError`` propagate
     out so the external app's 402 handler fires. There's no surrounding
     catch-all on this route, so we just lock the propagation."""
-    from backend.copilot.rate_limit import UserPaywalledError
-
     monkeypatch.setattr(
         routes_mod,
         "enforce_payment_paywall",
