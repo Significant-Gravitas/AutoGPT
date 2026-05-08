@@ -2259,42 +2259,36 @@ async def get_subscription_price_id(
     return price_id if isinstance(price_id, str) and price_id else None
 
 
-def _list_and_expire_open_subscription_sessions(customer_id: str) -> None:
-    """Expire open subscription checkout sessions synchronously (runs in threadpool).
+async def _expire_open_subscription_sessions(customer_id: str) -> None:
+    """Expire open subscription checkout sessions for the customer.
 
     An abandoned subscription session leaves an incomplete subscription + open invoice
     in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
     invoice, so the user is not shown phantom charges on their billing page.
     """
-    starting_after: str | None = None
-    while True:
-        list_kwargs: dict = {
-            "customer": customer_id,
-            "status": "open",
-            "limit": 100,
-        }
-        if starting_after:
-            list_kwargs["starting_after"] = starting_after
-        sessions = stripe.checkout.Session.list(**list_kwargs)
-        for s in sessions.data:
-            if s.mode == "subscription":
-                try:
-                    stripe.checkout.Session.expire(s.id)
-                except stripe.StripeError:
-                    logger.warning(
-                        "create_subscription_checkout: could not expire session %s",
-                        s.id,
-                    )
-        if not sessions.has_more or not sessions.data:
-            break
-        starting_after = sessions.data[-1].id
-
-
-async def _expire_open_subscription_sessions(customer_id: str) -> None:
     try:
-        await run_in_threadpool(
-            _list_and_expire_open_subscription_sessions, customer_id
-        )
+        starting_after: str | None = None
+        while True:
+            list_kwargs: dict = {
+                "customer": customer_id,
+                "status": "open",
+                "limit": 100,
+            }
+            if starting_after:
+                list_kwargs["starting_after"] = starting_after
+            sessions = await stripe.checkout.Session.list_async(**list_kwargs)
+            for s in sessions.data:
+                if s.mode == "subscription":
+                    try:
+                        await stripe.checkout.Session.expire_async(s.id)
+                    except stripe.StripeError:
+                        logger.warning(
+                            "create_subscription_checkout: could not expire session %s",
+                            s.id,
+                        )
+            if not sessions.has_more or not sessions.data:
+                break
+            starting_after = sessions.data[-1].id
     except Exception:
         logger.warning(
             "create_subscription_checkout: could not list open sessions for %s",
@@ -2324,6 +2318,23 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         return False
     await sync_subscription_from_stripe(dict(sub))
     return True
+
+
+async def sync_tier_from_checkout_session(data_object: dict) -> None:
+    """Sync subscription tier from a checkout.session.completed event payload.
+
+    Retrieves the Stripe subscription and calls sync_subscription_from_stripe so
+    the tier is set immediately without waiting for customer.subscription.created.
+    No-op when mode != "subscription" or subscription ID is absent.
+    Raises stripe.StripeError if the subscription cannot be retrieved.
+    """
+    if data_object.get("mode") != "subscription":
+        return
+    sub_id = data_object.get("subscription")
+    if not sub_id:
+        return
+    sub = await stripe.Subscription.retrieve_async(sub_id)
+    await sync_subscription_from_stripe(dict(sub))
 
 
 async def create_subscription_checkout(

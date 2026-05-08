@@ -8,8 +8,9 @@ import pytest_mock
 import stripe
 
 from backend.data.credit import (
-    _list_and_expire_open_subscription_sessions,
+    _expire_open_subscription_sessions,
     reconcile_stripe_tier_for_user,
+    sync_tier_from_checkout_session,
 )
 
 from .v1 import v1_router
@@ -32,16 +33,14 @@ def _make_checkout_event(mode: str, sub_id: str | None = None) -> dict:
     }
 
 
-def test_stripe_webhook_checkout_subscription_syncs_tier(
+# ---------------------------------------------------------------------------
+# Webhook endpoint tests — verify the handler calls the right helpers
+# ---------------------------------------------------------------------------
+
+
+def test_stripe_webhook_checkout_calls_sync_tier_helper(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    fake_sub = {
-        "id": "sub_123",
-        "customer": "cus_abc",
-        "status": "active",
-        "items": {"data": []},
-        "metadata": {},
-    }
     mocker.patch(
         "stripe.Webhook.construct_event",
         return_value=_make_checkout_event("subscription", "sub_123"),
@@ -53,13 +52,9 @@ def test_stripe_webhook_checkout_subscription_syncs_tier(
     mocker.patch(
         "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
     )
-    mocker.patch(
-        "backend.api.features.v1.run_in_threadpool",
+    mock_sync = mocker.patch(
+        "backend.api.features.v1.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
-        return_value=fake_sub,
-    )
-    mock_sync = mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
     )
 
     response = client.post(
@@ -69,38 +64,10 @@ def test_stripe_webhook_checkout_subscription_syncs_tier(
     )
 
     assert response.status_code == 200
-    mock_sync.assert_called_once_with(fake_sub)
+    mock_sync.assert_called_once()
 
 
-def test_stripe_webhook_checkout_payment_mode_does_not_sync_tier(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    mocker.patch(
-        "stripe.Webhook.construct_event",
-        return_value=_make_checkout_event("payment"),
-    )
-    mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
-        new="whsec_test",
-    )
-    mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
-    )
-    mock_sync = mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
-    )
-
-    response = client.post(
-        "/credits/stripe_webhook",
-        content=b"{}",
-        headers={"stripe-signature": "t=1,v1=sig"},
-    )
-
-    assert response.status_code == 200
-    mock_sync.assert_not_called()
-
-
-def test_stripe_webhook_checkout_subscription_stripe_error_does_not_break_webhook(
+def test_stripe_webhook_checkout_stripe_error_does_not_break_webhook(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mocker.patch(
@@ -115,12 +82,9 @@ def test_stripe_webhook_checkout_subscription_stripe_error_does_not_break_webhoo
         "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
     )
     mocker.patch(
-        "backend.api.features.v1.run_in_threadpool",
+        "backend.api.features.v1.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
         side_effect=stripe.StripeError("network error"),
-    )
-    mock_sync = mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
     )
 
     response = client.post(
@@ -130,70 +94,130 @@ def test_stripe_webhook_checkout_subscription_stripe_error_does_not_break_webhoo
     )
 
     assert response.status_code == 200
-    mock_sync.assert_not_called()
 
 
-def test_expire_open_subscription_sessions_called_on_checkout(
+# ---------------------------------------------------------------------------
+# sync_tier_from_checkout_session unit tests
+# ---------------------------------------------------------------------------
+
+
+async def test_sync_tier_subscription_mode_retrieves_and_syncs(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    fake_sub = MagicMock()
+    mocker.patch(
+        "backend.data.credit.stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=fake_sub,
+    )
+    mock_sync = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+
+    await sync_tier_from_checkout_session(
+        {"mode": "subscription", "subscription": "sub_123"}
+    )
+
+    mock_sync.assert_called_once_with(dict(fake_sub))
+
+
+async def test_sync_tier_payment_mode_is_noop(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_retrieve = mocker.patch(
+        "backend.data.credit.stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+    )
+
+    await sync_tier_from_checkout_session({"mode": "payment"})
+
+    mock_retrieve.assert_not_called()
+
+
+async def test_sync_tier_missing_sub_id_is_noop(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_retrieve = mocker.patch(
+        "backend.data.credit.stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
+    )
+
+    await sync_tier_from_checkout_session({"mode": "subscription", "subscription": None})
+
+    mock_retrieve.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _expire_open_subscription_sessions tests
+# ---------------------------------------------------------------------------
+
+
+async def test_expire_open_subscription_sessions_empty_list(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mock_sessions = MagicMock()
     mock_sessions.data = []
     mock_sessions.has_more = False
-    mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
-    mock_expire = mocker.patch("stripe.checkout.Session.expire")
+    mocker.patch(
+        "stripe.checkout.Session.list_async",
+        new_callable=AsyncMock,
+        return_value=mock_sessions,
+    )
+    mock_expire = mocker.patch(
+        "stripe.checkout.Session.expire_async", new_callable=AsyncMock
+    )
 
-    _list_and_expire_open_subscription_sessions("cus_test")
+    await _expire_open_subscription_sessions("cus_test")
 
-    stripe.checkout.Session.list.assert_called_once_with(
+    stripe.checkout.Session.list_async.assert_called_once_with(
         customer="cus_test", status="open", limit=100
     )
     mock_expire.assert_not_called()
 
 
-def test_expire_open_subscription_sessions_expires_subscription_sessions(
+async def test_expire_open_subscription_sessions_expires_only_subscription_sessions(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    sub_session = MagicMock()
-    sub_session.id = "cs_sub_open"
-    sub_session.mode = "subscription"
-    payment_session = MagicMock()
-    payment_session.id = "cs_pay_open"
-    payment_session.mode = "payment"
+    sub_session = MagicMock(id="cs_sub_open", mode="subscription")
+    payment_session = MagicMock(id="cs_pay_open", mode="payment")
 
     mock_sessions = MagicMock()
     mock_sessions.data = [sub_session, payment_session]
     mock_sessions.has_more = False
-    mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
-    mock_expire = mocker.patch("stripe.checkout.Session.expire")
+    mocker.patch(
+        "stripe.checkout.Session.list_async",
+        new_callable=AsyncMock,
+        return_value=mock_sessions,
+    )
+    mock_expire = mocker.patch(
+        "stripe.checkout.Session.expire_async", new_callable=AsyncMock
+    )
 
-    _list_and_expire_open_subscription_sessions("cus_test")
+    await _expire_open_subscription_sessions("cus_test")
 
     mock_expire.assert_called_once_with("cs_sub_open")
 
 
-def test_expire_open_subscription_sessions_paginates(
+async def test_expire_open_subscription_sessions_paginates(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    page1_session = MagicMock()
-    page1_session.id = "cs_page1"
-    page1_session.mode = "subscription"
-    page2_session = MagicMock()
-    page2_session.id = "cs_page2"
-    page2_session.mode = "subscription"
-
     page1 = MagicMock()
-    page1.data = [page1_session]
+    page1.data = [MagicMock(id="cs_page1", mode="subscription")]
     page1.has_more = True
     page2 = MagicMock()
-    page2.data = [page2_session]
+    page2.data = [MagicMock(id="cs_page2", mode="subscription")]
     page2.has_more = False
 
     mock_list = mocker.patch(
-        "stripe.checkout.Session.list", side_effect=[page1, page2]
+        "stripe.checkout.Session.list_async",
+        new_callable=AsyncMock,
+        side_effect=[page1, page2],
     )
-    mock_expire = mocker.patch("stripe.checkout.Session.expire")
+    mock_expire = mocker.patch(
+        "stripe.checkout.Session.expire_async", new_callable=AsyncMock
+    )
 
-    _list_and_expire_open_subscription_sessions("cus_test")
+    await _expire_open_subscription_sessions("cus_test")
 
     assert mock_list.call_count == 2
     mock_list.assert_any_call(customer="cus_test", status="open", limit=100)
@@ -203,11 +227,15 @@ def test_expire_open_subscription_sessions_paginates(
     assert mock_expire.call_count == 2
 
 
+# ---------------------------------------------------------------------------
+# reconcile_stripe_tier_for_user tests
+# ---------------------------------------------------------------------------
+
+
 async def test_reconcile_stripe_tier_no_customer_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock()
-    user.stripe_customer_id = None
+    user = MagicMock(stripe_customer_id=None)
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
     )
@@ -215,17 +243,14 @@ async def test_reconcile_stripe_tier_no_customer_returns_false(
         "backend.data.credit._get_active_subscription", new_callable=AsyncMock
     )
 
-    result = await reconcile_stripe_tier_for_user("user_abc")
-
-    assert result is False
+    assert await reconcile_stripe_tier_for_user("user_abc") is False
     mock_get_sub.assert_not_called()
 
 
 async def test_reconcile_stripe_tier_no_active_sub_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock()
-    user.stripe_customer_id = "cus_abc"
+    user = MagicMock(stripe_customer_id="cus_abc")
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
     )
@@ -238,17 +263,14 @@ async def test_reconcile_stripe_tier_no_active_sub_returns_false(
         "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
     )
 
-    result = await reconcile_stripe_tier_for_user("user_abc")
-
-    assert result is False
+    assert await reconcile_stripe_tier_for_user("user_abc") is False
     mock_sync.assert_not_called()
 
 
 async def test_reconcile_stripe_tier_stripe_error_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock()
-    user.stripe_customer_id = "cus_abc"
+    user = MagicMock(stripe_customer_id="cus_abc")
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
     )
@@ -261,18 +283,15 @@ async def test_reconcile_stripe_tier_stripe_error_returns_false(
         "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
     )
 
-    result = await reconcile_stripe_tier_for_user("user_abc")
-
-    assert result is False
+    assert await reconcile_stripe_tier_for_user("user_abc") is False
     mock_sync.assert_not_called()
 
 
 async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock()
-    user.stripe_customer_id = "cus_abc"
-    fake_sub = {"id": "sub_123", "customer": "cus_abc", "status": "active"}
+    user = MagicMock(stripe_customer_id="cus_abc")
+    fake_sub = MagicMock()
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
     )
@@ -285,7 +304,5 @@ async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
         "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
     )
 
-    result = await reconcile_stripe_tier_for_user("user_abc")
-
-    assert result is True
-    mock_sync.assert_called_once_with(fake_sub)
+    assert await reconcile_stripe_tier_for_user("user_abc") is True
+    mock_sync.assert_called_once_with(dict(fake_sub))
