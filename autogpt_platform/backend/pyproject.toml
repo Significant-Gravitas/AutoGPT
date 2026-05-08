@@ -42,7 +42,7 @@ jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
-litellm = "^1.80.0"  # used for direct-Anthropic per-turn cost lookup (litellm.get_model_info); refresh = bump this version
+litellm = "1.80.0"  # pinned exact: 1.80.5+ requires openai>=2.8 (breaking bump from openai^1.97). Snyk findings on 1.80.0 are in litellm's proxy-server code (auth bypass, password-hash exposure) which we do NOT import — only litellm.get_model_info / cost_per_token. Re-evaluate when openai 2.x bump lands.
 mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
 ollama = "^0.6.1"
