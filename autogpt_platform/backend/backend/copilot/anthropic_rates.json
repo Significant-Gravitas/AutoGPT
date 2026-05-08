@@ -33,7 +33,7 @@
     },
     "claude-3-haiku-20240307": {
       "cache_creation_input_token_cost": 3e-07,
-      "cache_creation_input_token_cost_above_1hr": 6e-06,
+      "cache_creation_input_token_cost_above_1hr": 5e-07,
       "cache_read_input_token_cost": 3e-08,
       "input_cost_per_token": 2.5e-07,
       "litellm_provider": "anthropic",
@@ -52,7 +52,7 @@
     },
     "claude-3-opus-20240229": {
       "cache_creation_input_token_cost": 1.875e-05,
-      "cache_creation_input_token_cost_above_1hr": 6e-06,
+      "cache_creation_input_token_cost_above_1hr": 3e-05,
       "cache_read_input_token_cost": 1.5e-06,
       "deprecation_date": "2026-05-01",
       "input_cost_per_token": 1.5e-05,
