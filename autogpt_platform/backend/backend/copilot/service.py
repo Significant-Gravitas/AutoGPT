@@ -784,10 +784,11 @@ async def _record_title_generation_cost(
     # Pass cache buckets so cached title turns bill at the cache-read rate
     # (~10% of input) instead of the full input rate.
     if cost_usd is None and provider == "anthropic":
-        # ``compute_anthropic_cost_usd`` always returns a number — unknown
-        # models fall back to opus-4-1 rates and log ERROR inside the
-        # rate-card module, so the title row never lands with cost=NULL on
-        # a litellm-version drift.
+        # Unknown *Anthropic* slugs fall back to opus-4-1 rates and log
+        # ERROR inside the rate-card module so the title row never lands
+        # with cost=NULL on a litellm-version drift.  Non-Anthropic
+        # slugs return None — caller (provider check above) excludes
+        # them from this branch already.
         cost_usd = compute_anthropic_cost_usd(
             model=model,
             prompt_tokens=prompt_tokens,

@@ -739,7 +739,7 @@ async def _baseline_llm_caller(
                         # OpenAI-compat endpoint at api.anthropic.com
                         # does not return ``usage.cost`` (OpenRouter
                         # extension), so compute from token counts
-                        # against the static Anthropic rate card.
+                        # against the LiteLLM rate card.
                         ptd = chunk.usage.prompt_tokens_details
                         cost = compute_anthropic_cost_usd(
                             model=state.model,
@@ -751,10 +751,11 @@ async def _baseline_llm_caller(
                             ),
                             cache_ttl=config.baseline_prompt_cache_ttl,
                         )
-                        # ``compute_anthropic_cost_usd`` always returns a
-                        # number — unknown models fall back to opus rates
-                        # and log ERROR, so cost flow is never silently
-                        # dropped on a litellm-version drift.
+                        # ``compute_anthropic_cost_usd`` returns ``None`` for
+                        # non-Anthropic slugs (gpt-4o-mini, ...) — those
+                        # fall through to the elif below.  Unknown
+                        # *Anthropic* slugs use opus fallback + log ERROR
+                        # so direct-mode cost flow never silently drops.
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
                     elif (

@@ -746,8 +746,11 @@ class TestBaselineCostExtraction:
         assert state.cost_usd == pytest.approx(0.005)
 
     @pytest.mark.asyncio
-    async def test_cost_usd_none_when_usage_cost_missing(self):
-        """state.cost_usd stays None when the usage chunk lacks a cost field."""
+    async def test_direct_mode_falls_back_to_rate_card_when_cost_missing(self):
+        """In direct-Anthropic mode the OAI-compat chunk has no ``cost`` field
+        (OpenRouter extension), so cost is computed locally from tokens ×
+        rates via ``compute_anthropic_cost_usd``.  state.cost_usd ends up
+        with a positive number rather than None."""
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
         chunk = _make_usage_chunk(prompt_tokens=1000, completion_tokens=500)
 
@@ -766,7 +769,8 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        assert state.cost_usd is None
+        assert state.cost_usd is not None
+        assert state.cost_usd > 0
         # Token accumulators are still populated so the caller can log them.
         assert state.turn_prompt_tokens == 1000
         assert state.turn_completion_tokens == 500
@@ -994,8 +998,10 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # No usage.cost on either chunk → cost stays None, tokens still accumulate.
-        assert state.cost_usd is None
+        # In direct mode, missing usage.cost falls through to the rate-card
+        # path so cost is computed locally and accumulates across both calls.
+        assert state.cost_usd is not None
+        assert state.cost_usd > 0
         assert state.turn_prompt_tokens == 2100
         assert state.turn_completion_tokens == 500
 
@@ -2040,9 +2046,9 @@ class TestBaselineReasoningStreaming:
         # only) block — assert on that shape.
         sys_msg = call_kwargs["messages"][0]
         sys_content = sys_msg.get("content")
-        assert isinstance(
-            sys_content, list
-        ), "Cached system message should be a list-shape content block"
+        assert isinstance(sys_content, list), (
+            "Cached system message should be a list-shape content block"
+        )
         assert any(
             "cache_control" in block for block in sys_content if isinstance(block, dict)
         ), "Kimi system message should now carry cache_control markers"
