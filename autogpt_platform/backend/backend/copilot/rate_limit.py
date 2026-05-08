@@ -988,10 +988,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         return tier
 
     if await _maybe_reconcile_stripe_tier(user_id):
-        try:
-            return await _fetch_user_tier(user_id)
-        except Exception:
-            pass
+        return await _fetch_user_tier(user_id)
 
     return tier
 
