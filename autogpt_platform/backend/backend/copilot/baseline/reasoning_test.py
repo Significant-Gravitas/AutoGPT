@@ -261,6 +261,31 @@ class TestAnthropicThinkingExtraBody:
         assert anthropic_thinking_extra_body("claude-sonnet-4-6", 0) is None
         assert anthropic_thinking_extra_body("claude-sonnet-4-6", -1) is None
 
+    def test_legacy_claude_3_models_excluded(self):
+        # claude-3-haiku / 3-opus / 3-sonnet / 3-5-* 400 on direct Anthropic
+        # when ``thinking`` is sent (and ``max_tokens`` inflation can also
+        # exceed Haiku's 4096 output cap).  Only Claude 3.7 + Claude 4.x
+        # families opt in.
+        for model in (
+            "claude-3-haiku-20240307",
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "anthropic/claude-3-haiku-20240307",
+        ):
+            assert anthropic_thinking_extra_body(model, 4096) is None, model
+
+    def test_claude_3_7_and_claude_4_families_included(self):
+        for model in (
+            "claude-3-7-sonnet-20250219",
+            "claude-opus-4-7",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "anthropic/claude-opus-4-7",
+        ):
+            assert anthropic_thinking_extra_body(model, 4096) is not None, model
+
 
 class TestBaselineReasoningEmitter:
     def test_first_text_delta_emits_start_then_delta(self):

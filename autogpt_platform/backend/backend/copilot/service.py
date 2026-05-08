@@ -101,6 +101,13 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
 _get_openai_client = _get_main_client
 
 
+def reset_clients() -> None:
+    """Test-only: drop the cached OpenAI clients so the next call re-reads config."""
+    global _main_client, _aux_client
+    _main_client = None
+    _aux_client = None
+
+
 def _get_langfuse():
     global _langfuse
     if _langfuse is None:
