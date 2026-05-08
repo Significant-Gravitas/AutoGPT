@@ -45,11 +45,17 @@ def _resolve_info(model: str) -> dict[str, Any] | None:
     the ``anthropic/`` prefixed variant — LiteLLM keys both shapes
     inconsistently across model generations.
     """
+    # ``litellm.get_model_info`` is re-exported from a private submodule and
+    # returns a TypedDict; cast to the common ``dict[str, Any]`` shape so call
+    # sites can treat absent fields uniformly via ``.get()``.
+    get_info = getattr(litellm, "get_model_info")
     for candidate in (model, f"anthropic/{model}"):
         try:
-            return litellm.get_model_info(candidate)
+            info = get_info(candidate)
         except Exception:
             continue
+        if info is not None:
+            return dict(info)
     return None
 
 
