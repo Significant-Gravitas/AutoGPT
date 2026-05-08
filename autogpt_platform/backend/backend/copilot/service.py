@@ -822,10 +822,13 @@ async def _record_title_generation_cost(
     # recorded into ``PlatformCostLog`` (admin dashboard) and the
     # microdollar rate-limit counter — those are the two places that
     # actually matter for this call.
-    # Subtract cached tokens from prompt_tokens so the persisted
-    # ``Usage.prompt_tokens`` reflects fresh-input only, mirroring the
-    # baseline path's uncached_prompt computation at ~service.py:2196.
-    uncached_prompt = max(0, prompt_tokens - cache_read_tokens)
+    # Subtract BOTH cache_read and cache_creation from prompt_tokens so
+    # the persisted ``Usage.prompt_tokens`` reflects fresh-input only and
+    # the three buckets stay disjoint — moonshot.py:125 sums them to
+    # recover total, and an overlap there double-counts cache writes.
+    uncached_prompt = max(
+        0, prompt_tokens - cache_read_tokens - cache_creation_tokens
+    )
     await persist_and_record_usage(
         session=None,
         user_id=user_id,

@@ -2222,14 +2222,17 @@ async def stream_chat_completion_baseline(
                 state.cost_usd = recovered
 
         # Persist token usage to session and record for rate limiting.
-        # When prompt_tokens_details.cached_tokens is reported, subtract
-        # them from prompt_tokens to get the uncached count so the cost
-        # breakdown stays accurate.
-        uncached_prompt = state.turn_prompt_tokens
-        if state.turn_cache_read_tokens > 0:
-            uncached_prompt = max(
-                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
-            )
+        # OAI-compat returns prompt_tokens as the total input — including
+        # both cached reads and cache writes.  Subtract both so the three
+        # buckets passed to ``persist_and_record_usage`` stay disjoint
+        # and downstream consumers (moonshot.py:125) can sum them to
+        # recover total without double-counting cache writes.
+        uncached_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
@@ -2323,9 +2326,16 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
-        # Report uncached prompt tokens to match what was billed — cached tokens
-        # are excluded so the frontend display is consistent with cost_usd.
-        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
+        # Report uncached prompt tokens to match what was billed — both
+        # cache_read and cache_creation are excluded so the three
+        # buckets emitted on ``StreamUsage`` are disjoint and the
+        # frontend can sum them without double-counting cache writes.
+        billed_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         yield StreamUsage(
             prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
