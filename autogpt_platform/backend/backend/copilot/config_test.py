@@ -257,16 +257,18 @@ class TestSdkModelVendorCompatibility:
     def test_subscription_mode_skips_check(self):
         """Subscription path resolves the model to None and bypasses
         ``_normalize_model_name``, so the slug check is skipped."""
-        # ``direct_anthropic_api_key`` is provided so the separate aux-client
-        # validator (``_validate_aux_client_for_direct_main``) is satisfied —
-        # without it, subscription mode + use_openrouter=False would trip
-        # the aux-401 trap before the SDK check we're targeting here runs.
+        # ``direct_anthropic_api_key`` + Anthropic ``title_model`` keep the
+        # separate aux-client validator (``_validate_aux_client_for_direct_main``)
+        # happy — without those, subscription mode + use_openrouter=False
+        # would trip the aux-401 / non-Anthropic-title trap before the SDK
+        # check we're targeting here runs.
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
             base_url=None,
             direct_anthropic_api_key="sk-ant-test",
             use_claude_code_subscription=True,
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.use_claude_code_subscription is True
 
@@ -669,6 +671,7 @@ class TestAuxClientForDirectMainValidator:
             aux_base_url=None,
             direct_anthropic_api_key="sk-ant-test",
             use_claude_code_subscription=True,
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.use_claude_code_subscription is True
 
