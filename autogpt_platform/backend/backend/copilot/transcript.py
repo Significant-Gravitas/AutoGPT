@@ -851,8 +851,9 @@ def _gap_by_sequence(
     - No post-watermark candidates (transcript is current).
     - The pre-watermark message immediately before the gap isn't an assistant
       turn (data shift / deletion).
-    - The window starts above the watermark and the first gap message isn't
-      ``user`` (misaligned watermark / corrupt shape).
+    - The window starts above the watermark and the first gap message is a
+      tool row that boundary expansion failed to pair with its owner
+      (malformed window — would emit an orphan tool_result).
     """
     if inclusive:
         gap = [m for seq, m in candidates if seq >= boundary]
@@ -870,9 +871,14 @@ def _gap_by_sequence(
         return gap
 
     # Window starts above the watermark — can't see the pre-gap row to verify
-    # its role. Require the first gap message to be a user turn (clean turn
-    # boundary) and log when there's a sequence range only DB can fill.
-    if gap[0].role != "user":
+    # its role. ``get_chat_messages_paginated`` already does tool-pair boundary
+    # expansion so ``gap[0]`` is normally user (fresh turn) or assistant (turn
+    # that began before the cap).  Reject only when it's still a tool row
+    # (boundary expansion couldn't find the owner) — leaving that in would
+    # emit an unmatched tool_result.  The DB-side hole-fill in
+    # ``extract_context_messages`` / SDK ``_build_query_message`` prepends the
+    # missing user turn that bridges the transcript and ``gap[0]``.
+    if gap[0].role == "tool":
         return []
     window_start = (
         min(seq for seq, _ in candidates if seq >= boundary)

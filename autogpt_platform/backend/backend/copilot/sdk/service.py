@@ -5139,18 +5139,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    # ``role="reasoning"`` rows are persisted to session.messages
-                    # for frontend replay but never appear in the CLI JSONL
-                    # (extended_thinking lives embedded in assistant entries, not
-                    # as standalone rows). Exclude them so the count matches the
-                    # JSONL row count. ``extract_context_messages`` translates
-                    # this count back to a DB sequence at read time via
-                    # ``get_sequence_at_non_reasoning_index`` so the next turn's
-                    # hole-fill range is disjoint from the transcript even when
-                    # reasoning rows interleave the DB sequence.
-                    _non_reasoning_count = sum(
-                        1 for m in session.messages if m.role != "reasoning"
-                    )
+                    # Read the absolute non-reasoning count from DB; the
+                    # in-memory ``session.messages`` is capped at
+                    # ``MAX_LOADED_CHAT_MESSAGES`` and would under-report on
+                    # long sessions, leading detect_gap on the next turn to
+                    # treat already-uploaded rows as gap and re-inject them.
+                    # Reasoning rows are excluded because they never enter the
+                    # JSONL; extract_context_messages translates the resulting
+                    # count back to a DB sequence via
+                    # ``get_sequence_at_non_reasoning_index``.
+                    try:
+                        _non_reasoning_count = (
+                            await chat_db().count_session_non_reasoning_messages(
+                                session_id
+                            )
+                        )
+                    except Exception as cnt_err:
+                        logger.warning(
+                            "%s non-reasoning count query failed for "
+                            "session=%s: %s — falling back to in-memory count",
+                            log_prefix,
+                            session_id,
+                            cnt_err,
+                        )
+                        _non_reasoning_count = sum(
+                            1 for m in session.messages if m.role != "reasoning"
+                        )
                     _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(

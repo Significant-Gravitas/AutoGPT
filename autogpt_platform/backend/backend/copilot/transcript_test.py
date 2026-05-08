@@ -1590,22 +1590,38 @@ class TestDetectGap:
         assert gap[0].sequence == 1000
         assert gap[0].role == "user"
 
-    def test_window_above_watermark_skipped_when_starts_with_assistant(self):
+    def test_window_above_watermark_returned_when_starts_with_assistant(self):
         """When the window starts above the watermark and the first gap
-        message is ``assistant``, the watermark is misaligned and we cannot
-        verify pre-gap role — skip the gap to avoid feeding malformed
-        ordering into the LLM."""
+        message is ``assistant``, the gap is still returned — boundary
+        expansion in ``get_chat_messages_paginated`` may legitimately leave an
+        assistant at position 0 (window started mid-turn), and the DB-side
+        hole-fill prepends the user turn that bridges the transcript."""
         from .model import ChatMessage
 
-        # Window starts at seq 1001 with 'assistant' first — wrong shape if
-        # the message at wm-1=799 is also 'assistant' (would produce two
-        # consecutive assistant turns when concatenated with the transcript).
+        # Window starts at seq 1001 with 'assistant' first.
         windowed: list[ChatMessage] = []
         for seq in range(1001, 1200):
             role = "assistant" if seq % 2 == 1 else "user"  # 1001 → 'assistant'
             windowed.append(
                 ChatMessage(role=role, content=f"{role}-{seq}", sequence=seq)
             )
+        dl = self._dl(800)
+        gap = detect_gap(dl, windowed)
+        # Returns 198 messages (1001..1198, excluding current turn at 1199).
+        assert len(gap) == 198
+        assert gap[0].sequence == 1001
+        assert gap[0].role == "assistant"
+
+    def test_window_above_watermark_skipped_when_starts_with_tool(self):
+        """An unmatched tool row at gap[0] is malformed (boundary expansion
+        couldn't find the owner) — reject the gap to avoid an orphan
+        tool_result reaching the LLM."""
+        from .model import ChatMessage
+
+        windowed: list[ChatMessage] = [
+            ChatMessage(role="tool", content="tool-1001", sequence=1001),
+            ChatMessage(role="user", content="user-1002", sequence=1002),
+        ]
         dl = self._dl(800)
         assert detect_gap(dl, windowed) == []
 

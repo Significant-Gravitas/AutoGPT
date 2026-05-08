@@ -2220,19 +2220,31 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
-            # Watermark is a count of non-reasoning JSONL rows — reasoning rows
-            # never appear in the transcript (they're persisted for frontend
-            # replay only). Including them would inflate the watermark and
-            # cause detect_gap to skip the corresponding non-reasoning rows
-            # on the next turn (silent context loss). Mirrors the SDK upload
-            # path in sdk/service.py.
+            # Read the absolute non-reasoning count from DB rather than from
+            # ``session.messages`` — the eager load is capped at
+            # ``MAX_LOADED_CHAT_MESSAGES``, so on long sessions counting the
+            # in-memory list under-reports total rows and re-injects already-
+            # uploaded history on the next turn. Reasoning rows are excluded
+            # because they never enter the JSONL (frontend replay only).
+            try:
+                _absolute_count = await chat_db().count_session_non_reasoning_messages(
+                    session_id
+                )
+            except Exception as e:
+                logger.warning(
+                    "[Baseline] non-reasoning count query failed for "
+                    "session=%s: %s — falling back to in-memory count",
+                    session_id,
+                    e,
+                )
+                _absolute_count = sum(
+                    1 for m in session.messages if m.role != "reasoning"
+                )
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=sum(
-                    1 for m in session.messages if m.role != "reasoning"
-                ),
+                session_msg_count=_absolute_count,
             )
 
         # Clean up the ephemeral working directory used for file attachments.

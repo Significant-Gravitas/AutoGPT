@@ -21,13 +21,7 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import (
-    ChatMessage,
-    ChatSession,
-    ChatSessionInfo,
-    ChatSessionMetadata,
-    cache_chat_session,
-)
+from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -593,6 +587,23 @@ async def get_sequence_at_non_reasoning_index(session_id: str, n: int) -> int | 
         n - 1,
     )
     return results[0]["sequence"] if results else None
+
+
+async def count_session_non_reasoning_messages(session_id: str) -> int:
+    """Return the total count of non-reasoning rows for a session.
+
+    The eager-loaded ``session.messages`` is capped at
+    ``MAX_LOADED_CHAT_MESSAGES``; deriving the transcript watermark from that
+    list undercounts on long sessions and causes the next turn to re-fill
+    rows already in the transcript. Callers uploading the watermark use this
+    to read the absolute count from DB instead.
+    """
+    results = await db.query_raw_with_schema(
+        'SELECT COUNT(*)::bigint AS count FROM {schema_prefix}"ChatMessage" '
+        'WHERE "sessionId" = $1 AND "role" <> \'reasoning\'',
+        session_id,
+    )
+    return int(results[0]["count"]) if results else 0
 
 
 async def update_tool_message_content(
