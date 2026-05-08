@@ -608,3 +608,10 @@ async def test_update_message_content_by_sequence_sanitizes_content():
         where={"sessionId": "sess-1", "sequence": 0},
         data={"content": "sanitized"},
     )
+
+
+# NOTE: previously this file had a separate suite for ``db.get_chat_session``
+# (windowed eager-load). That function was removed in favour of going through
+# ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
+# Cap-hit + tool-pair boundary behaviour is now covered by the paginated tests
+# above and the integration coverage in ``model_test.py``.

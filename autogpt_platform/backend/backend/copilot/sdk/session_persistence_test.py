@@ -19,7 +19,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from backend.copilot.constants import STOPPED_BY_USER_MARKER, STREAM_INCOMPLETE_MARKER
+from backend.copilot.constants import (
+    STOPPED_BY_USER_MARKER,
+    STREAM_ERROR_MARKER,
+    STREAM_INCOMPLETE_MARKER,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
@@ -290,6 +294,43 @@ class TestPruneOrphanToolCalls:
         removed = prune_orphan_tool_calls(messages)
 
         assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_stop_strips_stream_error_marker_and_orphan(self) -> None:
+        """SECRT-2333: ``STREAM_ERROR_MARKER`` is the post-stream marker
+        appended when ``ended_with_stream_error=True``.  Like the other
+        synthetic notices, it must be stripped on the next turn so it
+        doesn't leak into the ``--resume`` transcript and confuse the
+        model."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(role="assistant", content=STREAM_ERROR_MARKER),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_stream_error_marker_alone_is_stripped(self) -> None:
+        """A trailing STREAM_ERROR_MARKER without an orphan tool_use is
+        still stripped — the marker is a one-shot user-facing notice, not
+        history the next turn should resume from."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(role="assistant", content=STREAM_ERROR_MARKER),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 1
         assert len(messages) == 1
         assert messages[-1].role == "user"
 

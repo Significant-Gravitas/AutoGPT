@@ -122,7 +122,7 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
-  it("openArtifact ignores non-previewable artifacts", () => {
+  it("openArtifact opens even non-previewable artifacts", () => {
     const binary = {
       ...makeArtifact("bin", "artifact.bin"),
       mimeType: "application/octet-stream",
@@ -131,9 +131,8 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().openArtifact(binary);
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
-    expect(s.activeArtifact).toBeNull();
-    expect(s.history).toEqual([]);
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe("bin");
   });
 
   it("resetArtifactPanel clears active artifact and history", () => {

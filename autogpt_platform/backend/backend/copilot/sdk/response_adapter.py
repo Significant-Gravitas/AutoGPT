@@ -108,6 +108,18 @@ class SDKResponseAdapter:
         # answer into thinking, so we promote it to text rather than show
         # the bare placeholder.
         self._last_thinking_content = ""
+        # SECRT-2333: True when the most recent ``AssistantMessage`` carried
+        # zero content blocks (``content == []``).  Combined with the
+        # orphan-tool_use snapshot at ResultMessage time, lets the empty-
+        # completion guard fire when the model planned a tool call, the tool
+        # never executed, and the model then returned no further content.
+        self._last_assistant_had_empty_content = False
+        # SECRT-2333: True if the turn ever invoked ``flush_unresolved_tool_calls``
+        # against a non-empty pending-tool set (i.e. a ``tool_use`` block was
+        # registered without a matching ``UserMessage`` tool_result, and we
+        # had to synthesise the result).  Distinct from ``_any_tool_results_seen``
+        # which also flips on real UserMessage tool_results.
+        self._any_orphan_flush_seen = False
         # --- Partial-message streaming state (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
         # When ``include_partial_messages=True`` is set on
         # ``ClaudeAgentOptions``, the CLI emits raw Anthropic streaming
@@ -173,6 +185,10 @@ class SDKResponseAdapter:
             self._handle_stream_event(sdk_message, responses)
 
         elif isinstance(sdk_message, AssistantMessage):
+            # Track empty-content AssistantMessages separately from the
+            # tool-only check below — ``all([])`` is True so an empty
+            # ``content`` list reads as "tool-only" but produced no events.
+            self._last_assistant_had_empty_content = not sdk_message.content
             # Flush any SDK built-in tool calls that didn't get a UserMessage
             # result (e.g. WebSearch, Read handled internally by the CLI).
             # BUT skip flush when this AssistantMessage is a parallel tool
@@ -404,11 +420,22 @@ class SDKResponseAdapter:
                 responses.append(StreamStatus(message="Analyzing result\u2026"))
 
         elif isinstance(sdk_message, ResultMessage):
+            # Snapshot orphan-tool_use state BEFORE flush — flush adds those
+            # tool_use IDs to ``resolved_tool_calls`` (with empty/stashed
+            # output), so by the time ``_is_empty_completion`` runs the
+            # "tool_use without tool_result" signal is gone.
+            had_orphan_tool_use = self.has_unresolved_tool_calls
             self.flush_unresolved_tool_calls(responses)
-            # SECRT-2252: surface ghost-finished sessions as errors instead of silent finishes.
-            if sdk_message.subtype == "success" and self._is_empty_completion(
-                sdk_message
-            ):
+            # SECRT-2252 / SECRT-2333: surface ghost-finished sessions as
+            # errors instead of silent finishes.  Two failure modes:
+            # 1) success ResultMessage with empty result and zero output_tokens
+            #    (the original SECRT-2252 ghost-finish case)
+            # 2) AssistantMessage emitted ``content: []`` after a ``tool_use``
+            #    whose tool never executed (SECRT-2333 — model planned a tool
+            #    call, the tool failed to run, then the model returned empty
+            #    content; with subtype=error the service layer never persists
+            #    a marker so the chat history just stops mid-task).
+            if self._should_surface_empty_completion(sdk_message, had_orphan_tool_use):
                 if self.step_open:
                     responses.append(StreamFinishStep())
                     self.step_open = False
@@ -425,9 +452,12 @@ class SDKResponseAdapter:
                 # marker.
                 responses.append(StreamFinish())
                 logger.warning(
-                    "[SDK] [%s] Empty-success ResultMessage detected — "
-                    "emitting stream error instead of silent finish",
+                    "[SDK] [%s] Empty completion detected (subtype=%s, "
+                    "orphan_tool_use=%s) — emitting stream error instead "
+                    "of silent finish",
                     (self.session_id or "?")[:12],
+                    sdk_message.subtype,
+                    had_orphan_tool_use,
                 )
                 return responses
             # Thinking-only final turn guard: when the model's last LLM
@@ -515,6 +545,46 @@ class SDKResponseAdapter:
             logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
 
         return responses
+
+    def _should_surface_empty_completion(
+        self,
+        msg: ResultMessage,
+        had_orphan_tool_use_at_result: bool,
+    ) -> bool:
+        """True when the turn ended with no user-visible content the wire
+        can render.
+
+        Two failure modes:
+
+        * **Ghost-finished success** (SECRT-2252): a ``subtype="success"``
+          ResultMessage whose ``result`` is empty, ``output_tokens == 0``,
+          and nothing was emitted this turn — the SDK silently ended a turn
+          with no answer.  ``_is_empty_completion`` covers this.
+        * **Orphan tool_use + empty AssistantMessage** (SECRT-2333): the
+          model emitted a ``tool_use`` block whose tool never produced a
+          ``tool_result`` (tool failed to execute, or the SDK skipped it),
+          then returned an AssistantMessage with ``content: []`` and a
+          ResultMessage with ``subtype="error"``.  Without surfacing this as
+          a stream error, ``_dispatch_response`` never appends an error
+          marker (the StreamFinish from the success branch flips
+          ``acc.stream_completed=True``) and the chat history just stops
+          mid-task on reload.
+
+          ``had_orphan_tool_use_at_result`` is the snapshot taken just
+          before the ResultMessage's pre-flush call; ``_any_orphan_flush_seen``
+          covers the equivalent case where an interleaving AssistantMessage
+          (with non-tool content) triggered an earlier orphan flush — so by
+          the time the ResultMessage lands, ``current_tool_calls`` looks
+          fully resolved even though the actual tool_results were synthetic.
+        """
+        if msg.subtype == "success" and self._is_empty_completion(msg):
+            return True
+        had_orphan_tool_use = (
+            had_orphan_tool_use_at_result or self._any_orphan_flush_seen
+        )
+        if had_orphan_tool_use and self._last_assistant_had_empty_content:
+            return True
+        return False
 
     def _is_empty_completion(self, msg: ResultMessage) -> bool:
         """True when a success ResultMessage carries no content at all.
@@ -835,6 +905,7 @@ class SDKResponseAdapter:
             len(unresolved),
             ", ".join(f"{name}({tid[:12]})" for tid, name in unresolved),
         )
+        self._any_orphan_flush_seen = True
 
         flushed = False
         for tool_id, tool_name in unresolved:
