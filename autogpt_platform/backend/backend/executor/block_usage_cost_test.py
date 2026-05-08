@@ -21,6 +21,7 @@ from backend.data.block_cost_config import (
     TokenRate,
 )
 from backend.data.model import NodeExecutionStats
+from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     anthropic_credentials,
@@ -29,6 +30,18 @@ from backend.integrations.credentials_store import (
     fal_credentials,
     openai_credentials,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_preflight_estimate(monkeypatch):
+    """Force `get_preflight_estimate` to return 0 in this module's tests so
+    they don't accidentally couple to a populated
+    `block_preflight_estimates.json` once the admin export tool seeds it.
+    Tests that want a non-zero estimate (e.g.
+    `test_preflight_uses_historical_estimate_for_dynamic_cost_types`) override
+    this themselves on `executor_utils.get_preflight_estimate`.
+    """
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
 
 
 @pytest.fixture
@@ -121,6 +134,52 @@ def test_cost_usd_zero_when_no_stats(tmp_block_costs_override):
     block = SearchTheWebBlock()
     cost, _ = block_usage_cost(block, {})
     assert cost == 0
+
+
+def test_preflight_estimate_disabled_for_no_reconciliation_callers(
+    tmp_block_costs_override, monkeypatch
+):
+    """The direct block-execute API endpoints bypass the executor manager
+    and have no post-flight reconciliation. They MUST pass
+    `use_preflight_estimate=False` so dynamic-cost blocks return 0 instead
+    of locking in an unreconciled estimate as the final charge.
+    """
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=10)]
+    )
+    block = SearchTheWebBlock()
+
+    # Even with a registered estimate, the flag wins.
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 999)
+
+    cost, _ = block_usage_cost(block, {}, use_preflight_estimate=False)
+    assert cost == 0
+
+    # Sanity: with the flag default-True, the same call returns the estimate.
+    cost_with_estimate, _ = block_usage_cost(block, {})
+    assert cost_with_estimate == 999
+
+
+def test_preflight_uses_historical_estimate_for_dynamic_cost_types(
+    tmp_block_costs_override, monkeypatch
+):
+    """When stats is None and run_time=0, dynamic-cost branches return the
+    registered historical-average estimate instead of 0 — so the post-flight
+    reconciliation only settles a small delta and a billing leak is bounded
+    by that delta rather than the full execution cost."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=10)]
+    )
+    block = SearchTheWebBlock()
+
+    monkeypatch.setattr(
+        executor_utils,
+        "get_preflight_estimate",
+        lambda block_id: 5 if block_id == block.id else 0,
+    )
+
+    cost, _ = block_usage_cost(block, {})
+    assert cost == 5
 
 
 def test_cost_usd_ignores_non_usd_provider_cost(tmp_block_costs_override):

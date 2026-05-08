@@ -60,6 +60,7 @@ from .includes import (
     EXECUTION_RESULT_INCLUDE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     graph_execution_include,
 )
 from .model import (
@@ -457,7 +458,14 @@ class NodeExecutionResult(BaseModel):
             input_data = type_utils.convert(_node_exec.executionData, BlockInput)
         else:
             input_data: BlockInput = defaultdict()
-            for data in _node_exec.Input or []:
+            inputs = _node_exec.Input or []
+            if len(inputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Input rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in inputs:
                 input_data[data.name] = type_utils.convert(data.data, JsonValue)
 
         output_data: CompletedBlockOutput = defaultdict(list)
@@ -466,7 +474,14 @@ class NodeExecutionResult(BaseModel):
             for name, messages in stats.cleared_outputs.items():
                 output_data[name].extend(messages)
         else:
-            for data in _node_exec.Output or []:
+            outputs = _node_exec.Output or []
+            if len(outputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Output rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
@@ -1267,6 +1282,13 @@ class NodeExecutionEntry(BaseModel):
     block_id: str
     inputs: BlockInput
     execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
+    # Block-only pre-flight credits actually billed by `charge_usage`. Set by
+    # the dispatcher right after the charge so reconciliation can pin its
+    # baseline to the value spent on the wallet, instead of re-reading the
+    # estimates JSON (which could have been hot-swapped between charge and
+    # reconcile, leaving the delta computed against a different number).
+    # Excluded from dumps — in-memory only, scoped to a single live execution.
+    pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):

@@ -51,7 +51,9 @@ from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
-    STOPPED_BY_USER_MARKER,
+    STREAM_ERROR_MARKER,
+    STREAM_INCOMPLETE_MARKER,
+    STREAM_LOCK_PREFIX,
     is_transient_api_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
@@ -101,6 +103,7 @@ from ..response_model import (
     StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
+    StreamTextStart,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
@@ -1345,6 +1348,25 @@ def _is_error_marker(msg: ChatMessage) -> bool:
     )
 
 
+def _has_trailing_marker(session: ChatSession | None) -> bool:
+    """True when the session's last message is a copilot system/error marker.
+
+    Used to guard against double-persisting markers when multiple guards
+    (StreamError dispatch, post-stream STREAM_ERROR_MARKER append, retry-loop
+    ``_append_error_marker``) fire on the same turn.
+    """
+    if session is None or not session.messages:
+        return False
+    last = session.messages[-1]
+    if last.role != "assistant" or not last.content:
+        return False
+    return (
+        _is_error_marker(last)
+        or last.content == STREAM_INCOMPLETE_MARKER
+        or last.content == STREAM_ERROR_MARKER
+    )
+
+
 @dataclass
 class _InterruptedAttempt:
     """Captured state of a failed SDK attempt, carried across the retry loop.
@@ -1380,10 +1402,15 @@ class _InterruptedAttempt:
         Trailing error markers appended inside ``_run_stream_attempt`` (idle
         timeout, circuit breaker) are stripped: re-attaching them would make
         the post-loop restore replay a stale marker before adding its own,
-        leaving duplicate error bubbles.
+        leaving duplicate error bubbles.  ``STREAM_ERROR_MARKER`` is treated
+        the same way — the post-loop ``finalize`` calls
+        ``_append_error_marker`` which writes a fresh COPILOT_*_PREFIX row
+        with the final display message.
         """
         tail = list(session.messages[pre_attempt_msg_count:])
-        while tail and _is_error_marker(tail[-1]):
+        while tail and (
+            _is_error_marker(tail[-1]) or tail[-1].content == STREAM_ERROR_MARKER
+        ):
             tail.pop()
         self.partial = tail
         session.messages = session.messages[:pre_attempt_msg_count]
@@ -1572,9 +1599,6 @@ _SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
-
-
-STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
 async def _safe_close_sdk_client(
@@ -3172,7 +3196,8 @@ async def _run_stream_attempt(
 
     Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
     heartbeat timeouts, dispatches adapter responses, and performs post-stream
-    cleanup (safety-net flush, stopped-by-user handling).
+    cleanup (safety-net flush, CLI-side end-of-stream notice when the
+    iterator drains without a ``ResultMessage``).
 
     Yields stream events.  On stream error the exception propagates to the
     caller so the retry loop can rollback and retry.
@@ -3232,7 +3257,7 @@ async def _run_stream_attempt(
         # seconds on cold-starts or large contexts. The frontend prefers
         # this over the generic "Thinking…" copy; fast turns replace it
         # with content immediately.
-        yield StreamStatus(message="Contacting the model\u2026")
+        yield StreamStatus(message="Reading your message\u2026")
 
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
@@ -3357,22 +3382,43 @@ async def _run_stream_attempt(
             yield response
 
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
+        # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
+        # branch means the CLI hung up — per-query budget exhausted, max_turns,
+        # OOM, or crash — without ever emitting a ResultMessage.
         logger.info(
-            "%s Stream ended without ResultMessage (stopped by user)",
+            "%s Stream ended without ResultMessage — likely CLI-side kill "
+            "(budget/turns/crash)",
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
         state.adapter._end_text_if_open(closing_responses)
         for r in closing_responses:
             yield r
+        notice_block_id = str(uuid.uuid4())
+        yield StreamTextStart(id=notice_block_id)
+        yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
+        yield StreamTextEnd(id=notice_block_id)
         ctx.session.messages.append(
-            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
+            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
         )
 
     if (
         acc.assistant_response.content or acc.assistant_response.tool_calls
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
+
+    # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
+    # with ``ended_with_stream_error=True`` and no prior marker is on the
+    # tail.  The on-wire StreamError dies with the SSE connection (client
+    # disconnect, network) — this row keeps the chat history honest on
+    # reload, even if the outer retry loop's ``interrupted.finalize`` later
+    # appends its own COPILOT_ERROR_PREFIX entry on the post-rollback
+    # restore.  The capture/restore cycle pops trailing error markers
+    # before re-attaching, so this row is never double-rendered.
+    if loop_state.ended_with_stream_error and not _has_trailing_marker(ctx.session):
+        ctx.session.messages.append(
+            ChatMessage(role="assistant", content=STREAM_ERROR_MARKER)
+        )
 
     # Raise so the outer retry loop can rollback session messages.
     # already_yielded=False for transient_api_error: StreamError was NOT

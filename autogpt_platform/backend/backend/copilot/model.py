@@ -555,6 +555,30 @@ async def get_chat_session(
     return session
 
 
+async def get_chat_session_metadata(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSessionInfo | None:
+    """Get chat session metadata only (no messages).
+
+    Goes directly to the DB by primary key — bypasses the Redis cache,
+    which stores the full session and would deserialize the entire message
+    history just to read ``user_id``. Use this for ownership/existence
+    checks; use ``get_chat_session`` when the message history is actually
+    needed.
+    """
+    session_meta = await chat_db().get_chat_session_metadata(session_id)
+    if session_meta is None:
+        return None
+    if user_id is not None and session_meta.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: "
+            f"{session_meta.user_id} != {user_id}"
+        )
+        return None
+    return session_meta
+
+
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)

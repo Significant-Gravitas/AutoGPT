@@ -2,18 +2,80 @@
 Tests for activity status generator functionality.
 """
 
+import json
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from backend.blocks.llm import LlmModel, LLMResponse
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
     generate_activity_status_for_execution,
 )
+
+
+def _make_usage(
+    *,
+    prompt_tokens: int = 120,
+    completion_tokens: int = 40,
+    cost: object | None = 0.0042,
+) -> CompletionUsage:
+    """Build a typed ``CompletionUsage`` carrying OpenRouter's ``cost`` extension
+    via ``model_extra`` — same pattern as ``simulator_test._sim_usage``.
+    ``model_construct`` preserves unknown fields; ``model_validate`` would drop them.
+    """
+    payload: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    if cost is not None:
+        payload["cost"] = cost
+    return CompletionUsage.model_construct(None, **payload)
+
+
+def _make_completion(
+    *,
+    content: str,
+    usage: CompletionUsage | None = None,
+) -> ChatCompletion:
+    """Build a typed ``ChatCompletion`` with the given content + usage."""
+    message = ChatCompletionMessage.model_construct(
+        None, role="assistant", content=content
+    )
+    choice = Choice.model_construct(
+        None, index=0, finish_reason="stop", message=message
+    )
+    return ChatCompletion.model_construct(
+        None,
+        id="cmpl-act",
+        object="chat.completion",
+        created=0,
+        model="openai/gpt-4o-mini",
+        choices=[choice],
+        usage=usage,
+    )
+
+
+def _make_client(
+    *responses: ChatCompletion,
+) -> tuple[MagicMock, AsyncMock]:
+    """Build a mock OpenAI client whose ``chat.completions.create`` returns the
+    given responses in order (or repeats the last one)."""
+    if len(responses) == 1:
+        create_mock = AsyncMock(return_value=responses[0])
+    else:
+        create_mock = AsyncMock(side_effect=list(responses))
+    client = MagicMock()
+    client.chat.completions.create = create_mock
+    return client, create_mock
 
 
 @pytest.fixture
@@ -368,133 +430,6 @@ class TestBuildExecutionSummary:
             assert no_error_node["recent_errors"][0]["error"] == "Unknown error"
 
 
-class TestLLMCall:
-    """Tests for LLM calling functionality."""
-
-    @pytest.mark.asyncio
-    async def test_structured_llm_call_success(self):
-        """Test successful structured LLM call."""
-        from pydantic import SecretStr
-
-        from backend.blocks.llm import AIStructuredResponseGeneratorBlock
-        from backend.data.model import APIKeyCredentials
-
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
-        ):
-            mock_llm_call.return_value = LLMResponse(
-                raw_response={},
-                prompt=[],
-                response='<json_output id="test123">{"activity_status": "Test completed successfully", "correctness_score": 0.9}</json_output>',
-                tool_calls=None,
-                prompt_tokens=50,
-                completion_tokens=20,
-            )
-
-            credentials = APIKeyCredentials(
-                id="test",
-                provider="openai",
-                api_key=SecretStr("test_key"),
-                title="Test",
-            )
-
-            prompt = [{"role": "user", "content": "Test prompt"}]
-            expected_format = {
-                "activity_status": "User-friendly summary",
-                "correctness_score": "Float score from 0.0 to 1.0",
-            }
-
-            # Create structured block and input
-            structured_block = AIStructuredResponseGeneratorBlock()
-            credentials_input = {
-                "provider": credentials.provider,
-                "id": credentials.id,
-                "type": credentials.type,
-                "title": credentials.title,
-            }
-
-            structured_input = AIStructuredResponseGeneratorBlock.Input(
-                prompt=prompt[0]["content"],
-                expected_format=expected_format,
-                model=LlmModel.GPT4O_MINI,
-                credentials=credentials_input,  # type: ignore
-            )
-
-            # Execute the structured LLM call
-            result = None
-            async for output_name, output_data in structured_block.run(
-                structured_input, credentials=credentials
-            ):
-                if output_name == "response":
-                    result = output_data
-                    break
-
-            assert result is not None
-            assert result["activity_status"] == "Test completed successfully"
-            assert result["correctness_score"] == 0.9
-            mock_llm_call.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_structured_llm_call_validation_error(self):
-        """Test structured LLM call with validation error."""
-        from pydantic import SecretStr
-
-        from backend.blocks.llm import AIStructuredResponseGeneratorBlock
-        from backend.data.model import APIKeyCredentials
-
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
-        ):
-            # Return invalid JSON that will fail validation (missing required field)
-            mock_llm_call.return_value = LLMResponse(
-                raw_response={},
-                prompt=[],
-                response='<json_output id="test123">{"activity_status": "Test completed successfully"}</json_output>',
-                tool_calls=None,
-                prompt_tokens=50,
-                completion_tokens=20,
-            )
-
-            credentials = APIKeyCredentials(
-                id="test",
-                provider="openai",
-                api_key=SecretStr("test_key"),
-                title="Test",
-            )
-
-            prompt = [{"role": "user", "content": "Test prompt"}]
-            expected_format = {
-                "activity_status": "User-friendly summary",
-                "correctness_score": "Float score from 0.0 to 1.0",
-            }
-
-            # Create structured block and input
-            structured_block = AIStructuredResponseGeneratorBlock()
-            credentials_input = {
-                "provider": credentials.provider,
-                "id": credentials.id,
-                "type": credentials.type,
-                "title": credentials.title,
-            }
-
-            structured_input = AIStructuredResponseGeneratorBlock.Input(
-                prompt=prompt[0]["content"],
-                expected_format=expected_format,
-                model=LlmModel.GPT4O_MINI,
-                credentials=credentials_input,  # type: ignore
-                retry=1,  # Use fewer retries for faster test
-            )
-
-            with pytest.raises(
-                Exception
-            ):  # AIStructuredResponseGeneratorBlock may raise different exceptions
-                async for output_name, output_data in structured_block.run(
-                    structured_input, credentials=credentials
-                ):
-                    if output_name == "response":
-                        break
-
-
 class TestGenerateActivityStatusForExecution:
     """Tests for the main generate_activity_status_for_execution function."""
 
@@ -515,33 +450,31 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ):
-
-            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            # Mock the structured block to return our expected response
-            mock_instance = mock_structured_block.return_value
-            # Real NodeExecutionStats so the post-run cost-persist short-circuit
-            # has concrete numbers instead of MagicMock attributes.
-            mock_instance.execution_stats = NodeExecutionStats()
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
+        fake_resp = _make_completion(
+            content=json.dumps(
+                {
                     "activity_status": "I analyzed your data and provided the requested insights.",
                     "correctness_score": 0.85,
                 }
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(fake_resp)
 
-            mock_instance.run = mock_run
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -561,7 +494,13 @@ class TestGenerateActivityStatusForExecution:
             mock_db_client.get_node_executions.assert_called_once()
             mock_db_client.get_graph_metadata.assert_called_once()
             mock_db_client.get_graph.assert_called_once()
-            mock_structured_block.assert_called_once()
+            create_mock.assert_awaited_once()
+            # Confirm the OpenRouter contract: prefixed model + JSON object
+            # response format + usage-include extra_body.
+            call_kwargs = create_mock.await_args.kwargs
+            assert call_kwargs["model"] == "openai/gpt-4o-mini"
+            assert call_kwargs["response_format"] == {"type": "json_object"}
+            assert call_kwargs["extra_body"] == {"usage": {"include": True}}
 
     @pytest.mark.asyncio
     async def test_generate_status_persists_platform_cost(
@@ -569,8 +508,6 @@ class TestGenerateActivityStatusForExecution:
     ):
         """Successful generation schedules a PlatformCostLog entry with the
         right user_id / graph_exec_id / model so admin attribution works."""
-        from backend.data.model import NodeExecutionStats
-
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.return_value = mock_node_executions
 
@@ -583,37 +520,29 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ), patch(
-            "backend.executor.activity_status_generator.schedule_platform_cost_log"
-        ) as mock_schedule_log:
+        fake_resp = _make_completion(
+            content=json.dumps({"activity_status": "Done.", "correctness_score": 0.9}),
+            usage=_make_usage(prompt_tokens=120, completion_tokens=40, cost=0.0042),
+        )
+        client, _ = _make_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.schedule_platform_cost_log"
+            ) as mock_schedule_log,
+        ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            mock_instance = mock_structured_block.return_value
-            # Simulate the block recording its OpenRouter-style USD cost.
-            mock_instance.execution_stats = NodeExecutionStats(
-                input_token_count=120,
-                output_token_count=40,
-                provider_cost=0.0042,
-                provider_cost_type="cost_usd",
-            )
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "Done.",
-                    "correctness_score": 0.9,
-                }
-
-            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -634,8 +563,8 @@ class TestGenerateActivityStatusForExecution:
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
             assert entry.block_name == "activity_status_generator"
-            assert entry.provider == "openai"
-            assert entry.model == "gpt-4o-mini"
+            assert entry.provider == "open_router"
+            assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"
             assert entry.tracking_amount == pytest.approx(0.0042)
             # 0.0042 USD * 1_000_000 µ$/USD = 4200 µ$
@@ -648,10 +577,8 @@ class TestGenerateActivityStatusForExecution:
     async def test_generate_status_no_cost_no_log(
         self, mock_node_executions, mock_execution_stats, mock_blocks
     ):
-        """When the block records neither cost nor tokens, skip the log
+        """When the call returns neither cost nor tokens, skip the log
         write so we don't pollute the cost dashboard with empty rows."""
-        from backend.data.model import NodeExecutionStats
-
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.return_value = mock_node_executions
         mock_graph_metadata = MagicMock()
@@ -662,31 +589,29 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ), patch(
-            "backend.executor.activity_status_generator.schedule_platform_cost_log"
-        ) as mock_schedule_log:
+        fake_resp = _make_completion(
+            content=json.dumps({"activity_status": "Done.", "correctness_score": 0.9}),
+            usage=_make_usage(prompt_tokens=0, completion_tokens=0, cost=None),
+        )
+        client, _ = _make_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.schedule_platform_cost_log"
+            ) as mock_schedule_log,
+        ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            mock_instance = mock_structured_block.return_value
-            mock_instance.execution_stats = NodeExecutionStats()
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "Done.",
-                    "correctness_score": 0.9,
-                }
-
-            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -708,8 +633,6 @@ class TestGenerateActivityStatusForExecution:
         log the entry with tracking_type='tokens' and the summed token count
         as tracking_amount (so admin dashboards still see request volume even
         when cost data is missing)."""
-        from backend.data.model import NodeExecutionStats
-
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.return_value = mock_node_executions
         mock_graph_metadata = MagicMock()
@@ -720,35 +643,29 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ), patch(
-            "backend.executor.activity_status_generator.schedule_platform_cost_log"
-        ) as mock_schedule_log:
+        fake_resp = _make_completion(
+            content=json.dumps({"activity_status": "Done.", "correctness_score": 0.9}),
+            usage=_make_usage(prompt_tokens=200, completion_tokens=80, cost=None),
+        )
+        client, _ = _make_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.schedule_platform_cost_log"
+            ) as mock_schedule_log,
+        ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            mock_instance = mock_structured_block.return_value
-            mock_instance.execution_stats = NodeExecutionStats(
-                input_token_count=200,
-                output_token_count=80,
-                provider_cost=None,
-            )
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "Done.",
-                    "correctness_score": 0.9,
-                }
-
-            mock_instance.run = mock_run
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -767,6 +684,181 @@ class TestGenerateActivityStatusForExecution:
             assert entry.cost_microdollars is None
             assert entry.input_tokens == 200
             assert entry.output_tokens == 80
+
+    @pytest.mark.asyncio
+    async def test_generate_status_retries_on_invalid_json(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        """Invalid JSON on the first attempt should be retried; the second
+        valid response is returned."""
+        mock_db_client = AsyncMock()
+        mock_db_client.get_node_executions.return_value = mock_node_executions
+        mock_graph_metadata = MagicMock()
+        mock_graph_metadata.name = "Test Agent"
+        mock_graph_metadata.description = "A test agent"
+        mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
+        mock_graph = MagicMock()
+        mock_graph.links = []
+        mock_db_client.get_graph.return_value = mock_graph
+
+        bad_resp = _make_completion(content="not-json", usage=_make_usage())
+        good_resp = _make_completion(
+            content=json.dumps(
+                {"activity_status": "Recovered.", "correctness_score": 0.7}
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(bad_resp, good_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            assert result is not None
+            assert result["activity_status"] == "Recovered."
+            assert result["correctness_score"] == 0.7
+            assert create_mock.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_generate_status_returns_none_when_all_retries_fail(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        """If every retry returns invalid JSON, the function swallows the
+        RuntimeError raised internally and returns ``None`` — but the cost of
+        the failed attempts must still be persisted to PlatformCostLog."""
+        mock_db_client = AsyncMock()
+        mock_db_client.get_node_executions.return_value = mock_node_executions
+        mock_graph_metadata = MagicMock()
+        mock_graph_metadata.name = "Test Agent"
+        mock_graph_metadata.description = "A test agent"
+        mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
+        mock_graph = MagicMock()
+        mock_graph.links = []
+        mock_db_client.get_graph.return_value = mock_graph
+
+        bad_resp = _make_completion(
+            content="still-not-json",
+            usage=_make_usage(prompt_tokens=120, completion_tokens=40, cost=0.0042),
+        )
+        client, create_mock = _make_client(bad_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.schedule_platform_cost_log"
+            ) as mock_schedule_log,
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            assert result is None
+            # All 3 retries should have been exhausted before raising.
+            assert create_mock.await_count == 3
+            # Cost from the last billed attempt must still be logged so admin
+            # attribution doesn't undercount failed-parse spend.
+            mock_schedule_log.assert_called_once()
+            _, entry = mock_schedule_log.call_args.args
+            assert entry.tracking_type == "cost_usd"
+            assert entry.tracking_amount == pytest.approx(0.0042)
+            assert entry.input_tokens == 120
+            assert entry.output_tokens == 40
+
+    @pytest.mark.asyncio
+    async def test_generate_status_retries_on_non_numeric_score(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        """A response that parses as JSON with the right keys but a
+        non-numeric ``correctness_score`` should trigger a retry, not bypass
+        the loop and fall through to the outer exception handler."""
+        mock_db_client = AsyncMock()
+        mock_db_client.get_node_executions.return_value = mock_node_executions
+        mock_graph_metadata = MagicMock()
+        mock_graph_metadata.name = "Test Agent"
+        mock_graph_metadata.description = "A test agent"
+        mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
+        mock_graph = MagicMock()
+        mock_graph.links = []
+        mock_db_client.get_graph.return_value = mock_graph
+
+        bad_resp = _make_completion(
+            content=json.dumps(
+                {"activity_status": "Done.", "correctness_score": "high"}
+            ),
+            usage=_make_usage(),
+        )
+        good_resp = _make_completion(
+            content=json.dumps(
+                {"activity_status": "Recovered.", "correctness_score": 0.6}
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(bad_resp, good_resp)
+
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            assert result is not None
+            assert result["correctness_score"] == 0.6
+            assert create_mock.await_count == 2
 
     @pytest.mark.asyncio
     async def test_generate_status_feature_disabled(self, mock_execution_stats):
@@ -790,18 +882,24 @@ class TestGenerateActivityStatusForExecution:
             mock_db_client.get_node_executions.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_generate_status_no_api_key(self, mock_execution_stats):
-        """Test activity status generation with no API key."""
+    async def test_generate_status_no_openrouter_key(self, mock_execution_stats):
+        """Test activity status generation when no OpenRouter key is configured.
+
+        ``get_openai_client(prefer_openrouter=True)`` returns ``None`` when the
+        key is missing — the generator must short-circuit and skip both DB
+        reads and the LLM call."""
         mock_db_client = AsyncMock()
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=None,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-            mock_settings.return_value.secrets.openai_internal_api_key = ""
-
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -820,14 +918,19 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.side_effect = Exception("Database error")
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ):
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock()
 
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -849,31 +952,31 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client.get_graph_metadata.return_value = None  # No metadata
         mock_db_client.get_graph.return_value = None  # No graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ):
-
-            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            # Mock the structured block to return our expected response
-            mock_instance = mock_structured_block.return_value
-            mock_instance.execution_stats = NodeExecutionStats()
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
+        fake_resp = _make_completion(
+            content=json.dumps(
+                {
                     "activity_status": "Agent completed execution.",
                     "correctness_score": 0.8,
                 }
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(fake_resp)
 
-            mock_instance.run = mock_run
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -887,8 +990,7 @@ class TestGenerateActivityStatusForExecution:
             assert result is not None
             assert result["activity_status"] == "Agent completed execution."
             assert result["correctness_score"] == 0.8
-            # The structured block should have been instantiated
-            assert mock_structured_block.called
+            create_mock.assert_awaited_once()
 
 
 class TestIntegration:
@@ -913,31 +1015,31 @@ class TestIntegration:
 
         expected_activity = "I processed user input but failed during final output generation due to system error."
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
-        ):
-
-            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
-            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-
-            # Mock the structured block to return our expected response
-            mock_instance = mock_structured_block.return_value
-            mock_instance.execution_stats = NodeExecutionStats()
-
-            async def mock_run(*args, **kwargs):
-                yield "response", {
+        fake_resp = _make_completion(
+            content=json.dumps(
+                {
                     "activity_status": expected_activity,
-                    "correctness_score": 0.3,  # Low score since there was a failure
+                    "correctness_score": 0.3,
                 }
+            ),
+            usage=_make_usage(),
+        )
+        client, create_mock = _make_client(fake_resp)
 
-            mock_instance.run = mock_run
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+        ):
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -951,11 +1053,7 @@ class TestIntegration:
             assert result is not None
             assert result["activity_status"] == expected_activity
             assert result["correctness_score"] == 0.3
-
-            # Verify the structured block was called
-            assert mock_structured_block.called
-            # The structured block should have been instantiated
-            mock_structured_block.assert_called_once()
+            create_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_manager_integration_with_disabled_feature(

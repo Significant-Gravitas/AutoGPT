@@ -7,6 +7,81 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/blocks/cost-estimates": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "blocks"],
+        "summary": "Export Block Cost Estimates",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "operationId": "getV2Export block cost estimates",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum executions per block to include",
+              "default": 10,
+              "title": "Min Samples"
+            },
+            "description": "Minimum executions per block to include"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -1662,6 +1737,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2593,6 +2671,9 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
           },
           "404": { "description": "Session not found or access denied" },
           "422": {
@@ -4234,6 +4315,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4241,7 +4325,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -6529,6 +6614,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6536,7 +6624,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -10189,6 +10278,56 @@
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
+      },
+      "BlockCostEstimateRow": {
+        "properties": {
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "cost_type": { "type": "string", "title": "Cost Type" },
+          "samples": { "type": "integer", "title": "Samples" },
+          "mean_credits": { "type": "integer", "title": "Mean Credits" },
+          "p50_credits": { "type": "integer", "title": "P50 Credits" },
+          "p95_credits": { "type": "integer", "title": "P95 Credits" }
+        },
+        "type": "object",
+        "required": [
+          "block_id",
+          "block_name",
+          "cost_type",
+          "samples",
+          "mean_credits",
+          "p50_credits",
+          "p95_credits"
+        ],
+        "title": "BlockCostEstimateRow"
+      },
+      "BlockCostEstimatesResponse": {
+        "properties": {
+          "estimates": {
+            "items": { "$ref": "#/components/schemas/BlockCostEstimateRow" },
+            "type": "array",
+            "title": "Estimates"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" },
+          "min_samples": { "type": "integer", "title": "Min Samples" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimates",
+          "total_rows",
+          "window_days",
+          "max_window_days",
+          "min_samples",
+          "generated_at"
+        ],
+        "title": "BlockCostEstimatesResponse"
       },
       "BlockCostType": {
         "type": "string",
