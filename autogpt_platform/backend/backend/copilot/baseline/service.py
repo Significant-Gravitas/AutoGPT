@@ -100,6 +100,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
@@ -1251,7 +1252,27 @@ async def _load_prior_transcript(
         restore.message_count,
     )
 
-    gap = detect_gap(restore, session_messages)
+    # Pre-translate the count-based watermark to a DB sequence so detect_gap
+    # uses the correct boundary semantic when reasoning rows are interleaved.
+    # The same translated value is reused for hole-fill (range fetch).
+    last_covered_sequence: int | None = None
+    if restore.message_count > 0:
+        try:
+            last_covered_sequence = await chat_db().get_sequence_at_non_reasoning_index(
+                session_id, restore.message_count
+            )
+        except Exception as e:
+            logger.warning(
+                "[Baseline] watermark→sequence translation failed for "
+                "session=%s watermark=%d: %s — falling back to count-based gap",
+                session_id,
+                restore.message_count,
+                e,
+            )
+
+    gap = detect_gap(
+        restore, session_messages, last_covered_sequence=last_covered_sequence
+    )
     # Hole-fill: when the cap engaged AND the windowed view starts above the
     # transcript watermark, the sequences in between live in DB but neither
     # the transcript nor the loaded gap. Persisting them to the builder here
@@ -1259,9 +1280,11 @@ async def _load_prior_transcript(
     # detect_gap on every subsequent turn would re-discover the same hole and
     # the LLM context would still be missing those sequences if hole-fill
     # itself fails.
-    hole = await _fill_hole_between_transcript_and_gap(
-        session_id, restore.message_count, gap
-    )
+    hole: list[ChatMessage] = []
+    if last_covered_sequence is not None:
+        hole = await _fill_hole_between_transcript_and_gap(
+            session_id, last_covered_sequence, gap
+        )
     if hole:
         _append_gap_to_builder(hole, transcript_builder)
     if gap:

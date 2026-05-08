@@ -834,10 +834,18 @@ def _gap_by_index(
 
 
 def _gap_by_sequence(
-    candidates: list[tuple[int, ChatMessage]], watermark: int
+    candidates: list[tuple[int, ChatMessage]],
+    boundary: int,
+    *,
+    inclusive: bool,
 ) -> list[ChatMessage]:
-    """Sequence-based gap: messages with ``sequence >= watermark``, after
-    sanity-checking the boundary.
+    """Sequence-based gap with sanity check.
+
+    When ``inclusive=True``, ``boundary`` is treated as a count-style watermark
+    (``sequence >= boundary``).  When ``inclusive=False``, ``boundary`` is a
+    DB sequence and the gap is ``sequence > boundary`` — the correct semantic
+    once the watermark has been translated through
+    ``get_sequence_at_non_reasoning_index``.
 
     Returns [] when:
     - No post-watermark candidates (transcript is current).
@@ -846,31 +854,40 @@ def _gap_by_sequence(
     - The window starts above the watermark and the first gap message isn't
       ``user`` (misaligned watermark / corrupt shape).
     """
-    gap = [m for seq, m in candidates if seq >= watermark]
+    if inclusive:
+        gap = [m for seq, m in candidates if seq >= boundary]
+        pre_gap = [(seq, m) for seq, m in candidates if seq < boundary]
+    else:
+        gap = [m for seq, m in candidates if seq > boundary]
+        pre_gap = [(seq, m) for seq, m in candidates if seq <= boundary]
     if not gap:
         return []
 
-    pre_gap = [(seq, m) for seq, m in candidates if seq < watermark]
     if pre_gap:
         _, prev = max(pre_gap, key=lambda item: item[0])
         if prev.role != "assistant":
             return []
         return gap
 
-    # Window starts above the watermark — can't see wm-1 to verify role.
-    # Require the first gap message to be a user turn (clean turn boundary)
-    # and log when there's a sequence range only DB can fill.
+    # Window starts above the watermark — can't see the pre-gap row to verify
+    # its role. Require the first gap message to be a user turn (clean turn
+    # boundary) and log when there's a sequence range only DB can fill.
     if gap[0].role != "user":
         return []
-    window_start = min(seq for seq, _ in candidates if seq >= watermark)
-    if window_start > watermark:
+    window_start = (
+        min(seq for seq, _ in candidates if seq >= boundary)
+        if inclusive
+        else min(seq for seq, _ in candidates if seq > boundary)
+    )
+    if (inclusive and window_start > boundary) or (
+        not inclusive and window_start > boundary + 1
+    ):
         logger.warning(
-            "detect_gap: window starts at seq=%d but watermark is %d — "
-            "sequences %d..%d need DB-side hole-fill",
+            "detect_gap: window starts at seq=%d but %s is %d — "
+            "DB-side hole-fill required",
             window_start,
-            watermark,
-            watermark,
-            window_start - 1,
+            "watermark" if inclusive else "last-covered-seq",
+            boundary,
         )
     return gap
 
@@ -878,6 +895,8 @@ def _gap_by_sequence(
 def detect_gap(
     download: TranscriptDownload,
     session_messages: list[ChatMessage],
+    *,
+    last_covered_sequence: int | None = None,
 ) -> list[ChatMessage]:
     """Return chat-db messages after the transcript watermark (excluding the
     current user turn).
@@ -917,14 +936,18 @@ def detect_gap(
     session_messages = [m for m in session_messages if m.role != "reasoning"]
     if len(session_messages) < 2:
         return []
-    watermark = download.message_count
 
     candidates: list[tuple[int, ChatMessage]] = [
         (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
     ]
     if not candidates:
-        return _gap_by_index(session_messages, watermark)
-    return _gap_by_sequence(candidates, watermark)
+        return _gap_by_index(session_messages, download.message_count)
+    # Prefer the pre-translated DB-sequence boundary when the caller computed
+    # it; falls back to the raw watermark count for the no-reasoning common
+    # case (and tests that don't mock the DB translation helper).
+    if last_covered_sequence is not None:
+        return _gap_by_sequence(candidates, last_covered_sequence, inclusive=False)
+    return _gap_by_sequence(candidates, download.message_count, inclusive=True)
 
 
 def _decode_transcript_content(content: bytes | str) -> str | None:
@@ -955,41 +978,22 @@ def _parse_transcript_to_messages(
 
 async def _fill_hole_between_transcript_and_gap(
     session_id: str,
-    watermark: int,
+    last_covered_sequence: int,
     gap: list[ChatMessage],
 ) -> list[ChatMessage]:
-    """When the cap engaged and the transcript is stale, the DB sequences
-    just past the transcript may not be loaded in the windowed view. Fetch
-    them so the LLM never sees a mid-conversation hole.
+    """Fetch DB rows in the range ``(last_covered_sequence, gap[0].sequence)``.
 
-    The transcript watermark is a *count* of non-reasoning JSONL rows, not a
-    DB sequence — reasoning rows interleave in DB but never appear in the
-    JSONL. We translate count → sequence via
-    ``get_sequence_at_non_reasoning_index`` so the hole-fill range stays
-    disjoint from the transcript even when reasoning rows precede the gap.
-    Returns [] when there is no hole, the translation fails, or the fetch
-    fails (best-effort — better to ship partial context than crash).
-    """
+    When the cap engaged and the transcript is stale, the windowed view
+    starts above the watermark — sequences in between live in DB but
+    neither in transcript nor in the loaded gap. The caller passes the
+    pre-translated ``last_covered_sequence`` (the DB sequence of the last
+    transcript-covered row) so we don't re-do the count→sequence translation
+    here; the hole is the open range to ``gap[0].sequence``. Reasoning rows
+    in the range are filtered. Returns [] when there is no hole or the
+    fetch fails (best-effort — partial context beats crash)."""
     if not gap or gap[0].sequence is None:
         return []
-    try:
-        last_covered_seq = await chat_db().get_sequence_at_non_reasoning_index(
-            session_id, watermark
-        )
-    except Exception as e:
-        logger.error(
-            "extract_context_messages: watermark→sequence translation "
-            "failed for session=%s watermark=%d: %s",
-            session_id,
-            watermark,
-            e,
-        )
-        return []
-    if last_covered_seq is None:
-        # Fewer non-reasoning rows in DB than the watermark claims — the
-        # transcript covers everything we'd otherwise fetch. Nothing to do.
-        return []
-    hole_start = last_covered_seq + 1
+    hole_start = last_covered_sequence + 1
     hole_end = gap[0].sequence
     if hole_start >= hole_end:
         return []
@@ -1054,11 +1058,33 @@ async def extract_context_messages(
     if transcript_msgs is None:
         return prior
 
-    gap = detect_gap(download, session_messages)
+    # Pre-translate the count-based watermark to a DB sequence so detect_gap
+    # uses the correct boundary semantic when reasoning rows are interleaved.
+    # Without this, sequence >= count would mis-include or mis-exclude rows
+    # whenever reasoning rows precede the gap.
+    last_covered_sequence: int | None = None
+    if session_id and download.message_count > 0:
+        try:
+            last_covered_sequence = await chat_db().get_sequence_at_non_reasoning_index(
+                session_id, download.message_count
+            )
+        except Exception as e:
+            logger.warning(
+                "extract_context_messages: watermark→sequence translation "
+                "failed for session=%s watermark=%d: %s — falling back to "
+                "count-based gap (correct when no reasoning rows interleave)",
+                session_id,
+                download.message_count,
+                e,
+            )
 
-    if session_id:
+    gap = detect_gap(
+        download, session_messages, last_covered_sequence=last_covered_sequence
+    )
+
+    if session_id and last_covered_sequence is not None:
         hole = await _fill_hole_between_transcript_and_gap(
-            session_id, download.message_count, gap
+            session_id, last_covered_sequence, gap
         )
         if hole:
             return transcript_msgs + hole + gap
