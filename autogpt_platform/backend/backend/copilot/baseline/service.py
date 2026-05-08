@@ -27,7 +27,10 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
-from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
+from backend.copilot.anthropic_rate_card import (
+    compute_anthropic_cost_usd,
+    get_max_output_tokens,
+)
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
@@ -705,11 +708,16 @@ async def _baseline_llm_caller(
         # whenever ``thinking`` is enabled — the OR proxy hides this by
         # injecting a sane default, but the direct endpoint 400s when
         # ``max_tokens`` is omitted and the compat-shim default lands at or
-        # below ``budget_tokens``.  Set it explicitly to budget + a 4096
-        # response-token margin so the model has headroom for its actual
-        # answer after burning the thinking budget.
+        # below ``budget_tokens``.  Cap at the model's published
+        # ``max_output_tokens`` (Opus 4.x = 32K, Sonnet 4.x = 64K) so a high
+        # thinking budget can't push the sum past the hard output limit and
+        # 400 the request.  Floor at budget + 1 token to keep the
+        # ``max_tokens > budget`` contract even when budget already meets the
+        # model ceiling.
         if not config.openrouter_active and "thinking" in extra_body:
-            create_kwargs["max_tokens"] = config.claude_agent_max_thinking_tokens + 4096
+            budget = config.claude_agent_max_thinking_tokens
+            model_max = get_max_output_tokens(state.model)
+            create_kwargs["max_tokens"] = max(budget + 1, min(budget + 4096, model_max))
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers
         if tools:

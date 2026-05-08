@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from backend.copilot.config import ChatConfig
 
-_default_config = ChatConfig()
-
 
 def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None) -> str:
     """Normalize a model name for the **actual** SDK CLI / OpenAI-compat
@@ -40,10 +38,11 @@ def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None)
     *cfg* is optional so call sites that already hold a per-module
     ``ChatConfig`` reference (e.g. ``copilot.sdk.service.config``) can
     pass it through and keep monkeypatch-based test fixtures working
-    against that exact reference.  When omitted, falls back to the
-    module-level default.
+    against that exact reference.  When omitted, a fresh ``ChatConfig``
+    is read from the current environment per call — no module-level
+    cache that goes stale when tests mutate env vars.
     """
-    config = cfg if cfg is not None else _default_config
+    config = cfg if cfg is not None else ChatConfig()
     if config.effective_transport == "openrouter":
         return raw_model
     model = raw_model

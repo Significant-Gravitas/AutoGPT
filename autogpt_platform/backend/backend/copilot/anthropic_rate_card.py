@@ -50,6 +50,28 @@ _FALLBACK_INPUT_PER_TOKEN = 15.0 / 1_000_000  # opus-4-1: $15/Mtok
 _FALLBACK_OUTPUT_PER_TOKEN = 75.0 / 1_000_000  # opus-4-1: $75/Mtok
 
 
+# Conservative output-token cap when LiteLLM has no entry / no max_output_tokens
+# field — Opus 4.x publishes 32K, Sonnet 4.x publishes 64K.  Pick the lower
+# bound so a fresh slug we don't recognise can't push the request over a
+# concrete model's hard limit and 400 the API.
+_FALLBACK_MAX_OUTPUT_TOKENS = 32_000
+
+
+def get_max_output_tokens(model: str) -> int:
+    """Return the model's max output tokens from LiteLLM, or a conservative
+    fallback when LiteLLM has no entry.
+
+    Used by the baseline path to cap ``max_tokens`` on direct-Anthropic
+    extended-thinking requests so ``budget_tokens + response margin`` never
+    exceeds the model's hard output limit (Anthropic 400s on overflow).
+    """
+    info = _resolve_info(model) or {}
+    raw = info.get("max_output_tokens")
+    if isinstance(raw, int) and raw > 0:
+        return raw
+    return _FALLBACK_MAX_OUTPUT_TOKENS
+
+
 def _is_anthropic_slug(model: str) -> bool:
     """Quick pre-check: does the slug look like an Anthropic model?
 
