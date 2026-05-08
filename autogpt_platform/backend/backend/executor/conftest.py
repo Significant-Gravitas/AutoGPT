@@ -19,7 +19,11 @@ def _bypass_paywall(mocker):
     concerning themselves with paywall state. Tests that specifically
     exercise the paywall live in ``backend/copilot/rate_limit_test.py``.
     """
+    # Patch the *bound* name in executor.utils (where the gate fires).
+    # ``utils.py`` does ``from backend.copilot.rate_limit import is_user_paywalled``
+    # at import time, so patching ``backend.copilot.rate_limit.is_user_paywalled``
+    # alone does not affect the call site here.
     mocker.patch(
-        "backend.copilot.rate_limit.is_user_paywalled",
+        "backend.executor.utils.is_user_paywalled",
         new=mocker.AsyncMock(return_value=False),
     )

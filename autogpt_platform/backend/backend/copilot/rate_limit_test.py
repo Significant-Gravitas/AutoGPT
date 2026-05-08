@@ -580,7 +580,7 @@ class TestFetchUserTierErrorPropagation:
         mock_db = mocker.MagicMock()
         mock_db.get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
         mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
-        from .rate_limit import _UserNotFoundError, _fetch_user_tier
+        from .rate_limit import _fetch_user_tier, _UserNotFoundError
 
         with pytest.raises(_UserNotFoundError):
             await _fetch_user_tier(_USER)

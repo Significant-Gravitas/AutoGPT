@@ -1118,6 +1118,7 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1137,6 +1138,9 @@ async def add_graph_execution(
         nodes_input_masks: Node inputs to use in the execution.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
+        bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
+            recovery paths (requeueing stuck executions on behalf of a user
+            who may be on NO_TIER) — never for user-initiated runs.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1156,7 +1160,7 @@ async def add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
-    if await is_user_paywalled(user_id):
+    if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
     if prisma.is_connected():

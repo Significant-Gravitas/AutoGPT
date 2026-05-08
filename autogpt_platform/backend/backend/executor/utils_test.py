@@ -1735,3 +1735,68 @@ def test_make_node_credentials_input_map_excludes_auto_creds(
             # Verify no auto-credential phantom entries
             if isinstance(value, dict):
                 assert "_credentials_id" not in value
+
+
+# ============================================================================
+# Admin-bypass paywall: requeue stuck executions for users on NO_TIER must
+# not be blocked by the paywall gate (Sentry bug prediction: admin recovery
+# would otherwise raise UserPaywalledError on the original user's behalf).
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_paywall_blocks_paywalled_user(
+    mocker: MockerFixture,
+):
+    """Sanity: with ``bypass_paywall=False`` (default), a paywalled user
+    is rejected before any DB work happens."""
+    from backend.copilot.rate_limit import UserPaywalledError
+
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock()
+
+    with pytest.raises(UserPaywalledError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="paywalled-user",
+        )
+
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_bypass_paywall_skips_check(
+    mocker: MockerFixture,
+):
+    """``bypass_paywall=True`` skips the paywall gate entirely — admin
+    requeue paths must succeed even when the original user is NO_TIER."""
+    paywall_mock = mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    # Stub everything downstream — we only care that the gate didn't fire.
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch("backend.executor.utils.user_db")
+    mocker.patch("backend.executor.utils.graph_db")
+    mocker.patch("backend.executor.utils.workspace_db")
+    mocker.patch("backend.executor.utils.onboarding_db")
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    # Force an early sentinel error AFTER the gate so we can verify the
+    # gate was passed without simulating the whole requeue pipeline.
+    mock_edb.get_graph_execution = mocker.AsyncMock(
+        side_effect=RuntimeError("reached requeue lookup")
+    )
+
+    with pytest.raises(RuntimeError, match="reached requeue lookup"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="paywalled-user",
+            graph_exec_id="stuck-exec-id",
+            bypass_paywall=True,
+        )
+
+    paywall_mock.assert_not_called()
