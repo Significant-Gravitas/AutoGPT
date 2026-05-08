@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,12 +19,12 @@ from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
-    ChatSession,
+    ChatSessionInfo,
     ChatSessionMetadata,
     append_and_save_message,
     create_chat_session,
     delete_chat_session,
-    get_chat_session,
+    get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
     update_session_title,
@@ -42,6 +42,7 @@ from backend.copilot.rate_limit import (
     RateLimitUnavailable,
     acquire_reset_lock,
     check_rate_limit,
+    enforce_payment_paywall,
     get_daily_reset_count,
     get_global_rate_limits,
     get_usage_status,
@@ -59,6 +60,10 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_schedules import (
+    ScheduleDeletedResponse,
+    ScheduleListResponse,
+)
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -105,9 +110,14 @@ config = ChatConfig()
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
-) -> ChatSession:
-    """Validate session exists and belongs to user."""
-    session = await get_chat_session(session_id, user_id)
+) -> ChatSessionInfo:
+    """Validate session exists and belongs to user.
+
+    Returns metadata-only — callers needing the message history must use
+    ``get_chat_session`` directly. Bypassing the message-loading path
+    avoids a multi-KB cache deserialisation per ownership check.
+    """
+    session = await get_chat_session_metadata(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
@@ -487,12 +497,7 @@ async def disconnect_session_stream(
     backend releases XREAD listeners immediately rather than waiting for
     the 5-10 s timeout.
     """
-    session = await get_chat_session(session_id, user_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session {session_id} not found or access denied",
-        )
+    await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
 
@@ -901,6 +906,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
 @router.post(
     "/sessions/{session_id}/stream",
     responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
         404: {"description": "Session not found or access denied"},
         429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
         503: {
@@ -909,6 +915,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
             "header before retrying."
         },
     },
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def stream_chat_post(
     session_id: str,
@@ -998,8 +1005,10 @@ async def stream_chat_post(
     )
 
     # Pre-turn rate limit check (cost-based, microdollars).
-    # check_rate_limit short-circuits internally when both limits are 0.
-    # Global defaults sourced from LaunchDarkly, falling back to config.
+    # Entitlement (NO_TIER + ENABLE_PLATFORM_PAYMENT) is gated upstream by
+    # the route-level ``enforce_payment_paywall`` dependency; here we only
+    # enforce per-window USD caps. Global defaults sourced from
+    # LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
@@ -1143,6 +1152,11 @@ async def stream_chat_post(
             if subscriber_queue is None:
                 yield StreamFinish().to_sse()
                 return
+
+            # Flush a heartbeat immediately so the client knows the
+            # connection is live — without this the first event arrives
+            # only after the _stream_listener's first xread (up to 5 s).
+            yield StreamHeartbeat().to_sse()
 
             # Read from the subscriber queue and yield to SSE
             logger.info(
@@ -1529,7 +1543,12 @@ async def health_check() -> dict:
 
     # Create and retrieve session to verify full data layer
     session = await create_chat_session(health_check_user_id, dry_run=False)
-    await get_chat_session(session.session_id, health_check_user_id)
+    fetched = await get_chat_session_metadata(session.session_id, health_check_user_id)
+    if fetched is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat read path unhealthy: session not found after create",
+        )
 
     return {
         "status": "healthy",
@@ -1562,6 +1581,8 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | ScheduleListResponse
+    | ScheduleDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

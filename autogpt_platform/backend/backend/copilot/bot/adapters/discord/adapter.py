@@ -6,6 +6,7 @@ in the core handler. Slash commands live in commands.py.
 """
 
 import logging
+import re
 from typing import Optional
 
 import discord
@@ -83,12 +84,18 @@ class DiscordAdapter(PlatformAdapter):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None
 
-    async def send_message(self, channel_id: str, text: str) -> None:
+    async def send_message(
+        self,
+        channel_id: str,
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
+            rendered, allowed = _resolve_mentions(text, mentionable_users)
             # tts=False is the default but we pin it explicitly — AutoPilot
             # output is untrusted and should never blast through voice.
-            await channel.send(text, tts=False)
+            await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_link(
         self, channel_id: str, text: str, link_label: str, link_url: str
@@ -107,16 +114,21 @@ class DiscordAdapter(PlatformAdapter):
         await channel.send(text, view=view, tts=False)
 
     async def send_reply(
-        self, channel_id: str, text: str, reply_to_message_id: str
+        self,
+        channel_id: str,
+        text: str,
+        reply_to_message_id: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
+        rendered, allowed = _resolve_mentions(text, mentionable_users)
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(text, tts=False)
+            await msg.reply(rendered, tts=False, allowed_mentions=allowed)
         except discord.NotFound:
-            await channel.send(text, tts=False)
+            await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.
@@ -146,6 +158,18 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to create thread in channel %s", channel_id)
             return None
 
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        channel = await self._resolve_channel(thread_id)
+        if channel is None or not isinstance(channel, discord.Thread):
+            logger.warning("Cannot rename non-thread channel %s", thread_id)
+            return False
+        try:
+            await channel.edit(name=name[:100])
+            return True
+        except discord.HTTPException:
+            logger.exception("Failed to rename thread %s", thread_id)
+            return False
+
     # -- Internal --
 
     def _register_events(self) -> None:
@@ -165,7 +189,15 @@ class DiscordAdapter(PlatformAdapter):
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
-            if message.author.bot:
+            # Always skip our own messages — without this we'd loop forever
+            # answering our own replies. Other bots are fine: in channels
+            # we still require an @mention, in threads we still require an
+            # explicit subscription, so the existing gates already bound the
+            # blast radius of bot-to-bot interactions.
+            if (
+                self._client.user is not None
+                and message.author.id == self._client.user.id
+            ):
                 return
             if self._on_message_callback is None:
                 return
@@ -193,6 +225,7 @@ class DiscordAdapter(PlatformAdapter):
                 text=self._strip_mentions(message),
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
+                mentionable_users=self._collect_mentionable_users(message),
             )
             await self._on_message_callback(ctx, self)
 
@@ -222,6 +255,17 @@ class DiscordAdapter(PlatformAdapter):
                 text = text.replace(token, replacement)
         return text.strip()
 
+    def _collect_mentionable_users(
+        self, message: discord.Message
+    ) -> tuple[tuple[str, str], ...]:
+        """Users from the inbound message the bot may ping back this turn."""
+        bot_id = self._client.user.id if self._client.user else None
+        return tuple(
+            (user.display_name, str(user.id))
+            for user in message.mentions
+            if user.id != bot_id
+        )
+
     async def _thread_history(
         self, message: discord.Message
     ) -> tuple[MessageHistoryEntry, ...]:
@@ -229,13 +273,16 @@ class DiscordAdapter(PlatformAdapter):
             return ()
 
         entries: list[MessageHistoryEntry] = []
+        bot_user_id = self._client.user.id if self._client.user else None
         try:
             async for prior in message.channel.history(
                 limit=THREAD_HISTORY_LIMIT,
                 before=message,
                 oldest_first=True,
             ):
-                if prior.author.bot:
+                # Skip our own outputs — copilot has its own transcript for
+                # that side. Other bots' messages are kept as context.
+                if bot_user_id is not None and prior.author.id == bot_user_id:
                     continue
                 text = self._strip_mentions(prior)
                 if not text:
@@ -252,3 +299,49 @@ class DiscordAdapter(PlatformAdapter):
             return ()
 
         return tuple(entries)
+
+
+def _resolve_mentions(
+    text: str,
+    mentionable_users: tuple[tuple[str, str], ...],
+) -> tuple[str, discord.AllowedMentions]:
+    """Substitute `@DisplayName` in `text` with `<@id>` markup for users on
+    the allowlist, and return an AllowedMentions that pings exactly those
+    users (and nobody else).
+
+    Anyone not on the allowlist stays as plain text — even if the LLM produces
+    `@everyone`, `@here`, or `@SomeRandomUser`. This keeps the bot from
+    pinging users it learned about elsewhere or hallucinated entirely.
+    """
+    if not mentionable_users:
+        return text, discord.AllowedMentions.none()
+
+    rendered = text
+    pinged_ids: list[int] = []
+    # Longest names first so e.g. "@John Smith" matches before "@John".
+    for display_name, user_id in sorted(
+        mentionable_users, key=lambda pair: -len(pair[0])
+    ):
+        # Word-bounded so "@Name" inside emails/URLs is left alone.
+        pattern = re.compile(
+            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
+            re.IGNORECASE,
+        )
+        if not pattern.search(rendered):
+            continue
+        # Callable replacement avoids backref interpretation of user_id.
+        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
+        try:
+            pinged_ids.append(int(user_id))
+        except ValueError:
+            continue
+
+    if not pinged_ids:
+        return rendered, discord.AllowedMentions.none()
+
+    return rendered, discord.AllowedMentions(
+        everyone=False,
+        users=[discord.Object(id=uid) for uid in pinged_ids],
+        roles=False,
+        replied_user=False,
+    )

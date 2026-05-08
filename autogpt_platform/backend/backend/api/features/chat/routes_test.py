@@ -1124,10 +1124,20 @@ def test_stream_chat_accepts_exactly_max_length_message(
 ):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
+    # Pass generous rate-limits so the rate-limit gate doesn't interfere
+    # with the message-length validation under test. Pre-PR convention
+    # used 0 for "unlimited"; we now treat 0 as "no spend allowed".
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 0, SubscriptionTier.BASIC),
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    # And mock the redis lookup so check_rate_limit sees zero usage.
+    mock_redis = mocker.AsyncMock()
+    mock_redis.get = mocker.AsyncMock(side_effect=["0", "0"])
+    mocker.patch(
+        "backend.copilot.rate_limit.get_redis_async",
+        return_value=mock_redis,
     )
 
     response = client.post(
@@ -1734,7 +1744,7 @@ def test_disconnect_stream_returns_204_and_awaits_registry(
 ) -> None:
     mock_session = MagicMock()
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=mock_session,
     )
@@ -1755,7 +1765,7 @@ def test_disconnect_stream_returns_404_when_session_missing(
     test_user_id: str,
 ) -> None:
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -1915,6 +1925,66 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
+
+
+def test_health_check_returns_503_when_metadata_read_returns_none(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Round-trips create-then-read; if the read path returns None despite
+    # a successful create, the health endpoint must surface the failure.
+    from backend.copilot.model import ChatSession
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert "unhealthy" in response.json()["detail"].lower()
+
+
+def test_health_check_returns_healthy_on_round_trip_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Happy path: create + read both succeed → 200 with healthy body.
+    from backend.copilot.model import ChatSession, ChatSessionInfo
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    fake_session = ChatSession.new("health-check-user", dry_run=False)
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        return_value=fake_session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=ChatSessionInfo(
+            **{**fake_session.model_dump(exclude={"messages"})}
+        ),
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:

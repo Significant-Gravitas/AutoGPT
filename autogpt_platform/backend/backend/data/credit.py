@@ -144,6 +144,7 @@ class UserCreditBase(ABC):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         """
         Spend the credits for the user based on the cost.
@@ -152,6 +153,12 @@ class UserCreditBase(ABC):
             user_id (str): The user ID.
             cost (int): The cost to spend.
             metadata (UsageTransactionMetadata): The metadata of the transaction.
+            fail_insufficient_credits (bool): When True (default) raise
+                InsufficientBalanceError if the wallet can't cover the spend.
+                When False the spend is recorded unconditionally and the
+                balance may go negative — used by post-flight reconciliation
+                so a delta charge that exceeds the wallet is captured as
+                debt instead of silently leaking.
 
         Returns:
             int: The remaining balance.
@@ -673,6 +680,7 @@ class UserCredit(UserCreditBase):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         if cost == 0:
             return 0
@@ -682,6 +690,7 @@ class UserCredit(UserCreditBase):
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
             metadata=SafeJson(metadata.model_dump()),
+            fail_insufficient_credits=fail_insufficient_credits,
         )
 
         # Auto top-up if balance is below threshold.

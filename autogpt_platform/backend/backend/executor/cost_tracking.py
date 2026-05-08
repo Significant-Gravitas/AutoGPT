@@ -234,7 +234,13 @@ async def log_system_credential_cost(
 
             model_name = _extract_model_name(input_data.get("model"))
 
-            credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
+            # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)
+            # compute the *actual* charge from the captured stats. Without this
+            # the call hits the pre-flight path and records the historical
+            # estimate, skewing platform-cost analytics.
+            credit_cost, _ = block_usage_cost(
+                block=block, input_data=input_data, stats=stats
+            )
 
             provider_name = cred_data.get("provider", "unknown")
             tracking_type, tracking_amount = resolve_tracking(

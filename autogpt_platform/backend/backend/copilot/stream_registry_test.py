@@ -7,6 +7,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import STREAM_LOCK_PREFIX
 from backend.copilot.executor.utils import get_session_lock_key
 
 
@@ -283,6 +284,7 @@ async def test_mark_session_completed_releases_cluster_lock_on_success():
 
     assert result is True
     assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
 
 
 @pytest.mark.asyncio
@@ -306,6 +308,7 @@ async def test_mark_session_completed_skips_lock_release_when_already_completed(
 
     assert result is False
     assert get_session_lock_key("sess-1") not in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" not in fake_redis.deleted_keys
     assert not any(
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
@@ -343,6 +346,38 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
     ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_releases_stream_lock():
+    """Force-completing a session (cancel / error) must DELETE both the
+    cluster lock and the SDK stream lock. If the stream lock isn't released
+    here, the next user turn races ahead of the SDK turn's finally block and
+    fails with stream_already_active until the 120s TTL expires."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed(
+            "sess-1", error_message="cancelled"
+        )
+
+    assert result is True
+    assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+    assert f"{STREAM_LOCK_PREFIX}sess-1" in fake_redis.deleted_keys
 
 
 # ---------------------------------------------------------------------------

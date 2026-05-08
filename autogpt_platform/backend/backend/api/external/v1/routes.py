@@ -13,13 +13,16 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
+from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.executor.utils import add_graph_execution, block_usage_cost
+from backend.executor.utils import (
+    add_graph_execution,
+    charge_for_direct_block_execution,
+)
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
@@ -87,30 +90,27 @@ async def execute_graph_block(
         require_permission(APIKeyPermission.EXECUTE_BLOCK)
     ),
 ) -> CompletedBlockOutput:
+    # Sync block exec doesn't pass through ``add_graph_execution`` (no
+    # central enqueue), and external API routes use API-key auth instead
+    # of JWT so the JWT-based dep doesn't apply either. Inline strict
+    # gate with the same fail-closed (503-on-blip) posture as the dep —
+    # consistent with chat / internal block / internal graph routes.
+    await enforce_payment_paywall(auth.user_id)
+
     obj = backend.blocks.get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
-    cost, cost_filter = block_usage_cost(obj, data)
-    if cost > 0:
-        credit_model = await get_user_credit_model(auth.user_id)
-        try:
-            await credit_model.spend_credits(
-                user_id=auth.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    block_id=block_id,
-                    block=obj.name,
-                    input=cost_filter,
-                    reason=f"Direct external API execution of block {obj.name}",
-                ),
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
-            ) from e
+    try:
+        await charge_for_direct_block_execution(
+            user_id=auth.user_id, block=obj, input_data=data, source="external"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+        ) from e
 
     output = defaultdict(list)
     async for name, data in obj.execute(data):
@@ -167,6 +167,10 @@ async def execute_graph(
         require_permission(APIKeyPermission.EXECUTE_GRAPH)
     ),
 ) -> dict[str, Any]:
+    # Strict route-level paywall: 503 on tier-lookup failure (rather
+    # than fail-open via the deep gate inside add_graph_execution).
+    # Consistent with the JWT-gated internal graph-execute route.
+    await enforce_payment_paywall(auth.user_id)
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
@@ -175,6 +179,12 @@ async def execute_graph(
             graph_version=graph_version,
         )
         return {"id": graph_exec.id}
+    except UserPaywalledError:
+        # Defence-in-depth: even though the strict gate above catches
+        # paywall before this point, leave the re-raise so the broad
+        # ``except Exception`` doesn't accidentally collapse a future
+        # deep-gate hit into HTTP 400.
+        raise
     except Exception as e:
         msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
