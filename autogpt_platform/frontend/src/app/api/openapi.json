@@ -6539,6 +6539,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6546,7 +6549,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
