@@ -703,9 +703,13 @@ async def _baseline_llm_caller(
             "model": state.model,
             "messages": typed_messages,
             "stream": True,
-            "stream_options": {"include_usage": True},
             "extra_body": extra_body,
         }
+        # Anthropic's OpenAI-compat endpoint does not support ``stream_options``
+        # and returns a 400 when it is present.  Only include it for OpenRouter,
+        # which uses it to embed the real generation cost into the usage chunk.
+        if config.openrouter_active:
+            create_kwargs["stream_options"] = {"include_usage": True}
         # Anthropic's OpenAI-compat layer requires ``max_tokens > budget_tokens``
         # whenever ``thinking`` is enabled — the OR proxy hides this by
         # injecting a sane default, but the direct endpoint 400s when
@@ -2190,10 +2194,10 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # Count the full message list (system + history + turn) since
-        # each API call sends the complete context window.
-        # NOTE: This estimates one round's prompt tokens. Multi-round tool-calling
-        # turns consume prompt tokens on each API call, so the total is underestimated.
+        # ``openai_messages`` is mutated in-place by tool_call_loop so it
+        # contains the full accumulated conversation (system + history + all
+        # tool-call rounds) by this point — the estimate covers the complete
+        # prompt, not just the final round.
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
         if (

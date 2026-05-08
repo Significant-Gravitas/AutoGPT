@@ -563,6 +563,8 @@ class TestAuxProviderLabel:
             use_openrouter=True,
             api_key="key",
             base_url="https://api.openai.com/v1",
+            aux_api_key=None,
+            aux_base_url=None,
         )
         assert cfg.aux_provider_label == "openai"
 
@@ -585,6 +587,7 @@ class TestAuxClientForDirectMainValidator:
                 api_key=None,
                 base_url=None,
                 aux_api_key=None,
+                aux_base_url=None,
                 title_model="openai/gpt-4o-mini",
             )
 
@@ -599,6 +602,7 @@ class TestAuxClientForDirectMainValidator:
             api_key=None,
             base_url=None,
             aux_api_key=None,
+            aux_base_url=None,
             title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
@@ -614,6 +618,7 @@ class TestAuxClientForDirectMainValidator:
             api_key=None,
             base_url=None,
             aux_api_key=None,
+            aux_base_url=None,
             title_model="anthropic/claude-haiku-4-5",
             simulation_model="google/gemini-2.5-flash-lite",
         )
