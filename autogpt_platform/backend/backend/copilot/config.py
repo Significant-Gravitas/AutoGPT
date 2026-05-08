@@ -787,22 +787,26 @@ class ChatConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_aux_client_for_direct_main(self) -> "ChatConfig":
-        """Fail at boot when direct-Anthropic main mode + non-Anthropic
-        ``title_model`` + no explicit aux creds would 401 every title call.
+        """Fail at boot when direct-Anthropic main mode + missing aux
+        creds would 401 every title call.
 
-        Trip wire: ``use_openrouter=False`` (main routes to Anthropic),
-        no ``CHAT_AUX_API_KEY``, no fallback ``api_key``, and
-        ``title_model`` is non-Anthropic.  Without explicit aux creds
-        the aux client would silently get a credential-less tuple and
-        401 every title call — a regression that's invisible until
-        the first chat.
+        Two trip wires, both gated on ``use_openrouter=False``:
+
+        1. ``aux_base_url`` set with no resolvable api key — the aux
+           client would route to that URL with no creds and 401 on
+           every title call regardless of title model.  Catches the
+           OR-typo case (operator set ``CHAT_AUX_BASE_URL`` but forgot
+           ``CHAT_AUX_API_KEY``).
+        2. Non-Anthropic ``title_model`` with no explicit aux creds —
+           the aux client falls back to direct Anthropic, which can't
+           serve a non-Claude model.
 
         Skipped for subscription mode (the SDK CLI uses OAuth and the
         aux flow is unaffected).  Skipped when ``CHAT_AUX_API_KEY`` is
         set (or when ``api_key`` is set and ``aux_uses_openrouter`` —
-        a single-key OR deployment).  Skipped when the title model is
-        Anthropic (then the fallback to direct creds is fine —
-        Anthropic serves its own model).
+        a single-key OR deployment).  Skipped when ``aux_base_url`` is
+        unset and the title model is Anthropic (then the fallback to
+        direct creds is fine — Anthropic serves its own model).
         """
         if self.use_claude_code_subscription:
             return self
@@ -818,6 +822,18 @@ class ChatConfig(BaseSettings):
         # the OpenAPI schema.
         if self.use_openrouter:
             return self
+        # An explicit ``aux_base_url`` without a resolvable key fails fast
+        # regardless of title model: the aux client would route to that
+        # URL with ``(None, aux_base_url)`` and 401 every call.  This
+        # catches the OpenRouter-typo case where an operator sets
+        # ``CHAT_AUX_BASE_URL`` but forgets ``CHAT_AUX_API_KEY``.
+        if self.aux_base_url and not (self.aux_api_key or self.api_key):
+            raise ValueError(
+                "Direct-Anthropic main mode with CHAT_AUX_BASE_URL set "
+                "but no CHAT_AUX_API_KEY (and no fallback CHAT_API_KEY) "
+                "would 401 every aux call.  Either unset CHAT_AUX_BASE_URL "
+                "to inherit the main client, or set CHAT_AUX_API_KEY."
+            )
         # Aux client falls back to ``api_key`` / ``base_url`` only when
         # those creds actually point at OpenRouter (``aux_uses_openrouter``).
         # A bare ``api_key`` paired with a non-OR ``base_url`` (e.g. an

@@ -632,3 +632,23 @@ class TestAuxClientForDirectMainValidator:
             title_model="openai/gpt-4o-mini",
         )
         assert cfg.title_model == "openai/gpt-4o-mini"
+
+    def test_direct_main_with_aux_base_url_no_key_raises_even_for_anthropic_title(
+        self,
+    ):
+        # Operator typo: ``CHAT_AUX_BASE_URL`` set but ``CHAT_AUX_API_KEY``
+        # forgotten.  Even when ``title_model`` is Anthropic the aux client
+        # would still route to the explicit ``aux_base_url`` with no creds
+        # and 401 every title call — the Anthropic-title short-circuit
+        # only applies when aux falls back to direct Anthropic, which
+        # requires ``aux_base_url`` to be unset.
+        with pytest.raises(Exception, match="CHAT_AUX_BASE_URL"):
+            _make_direct_safe_config(
+                use_openrouter=False,
+                direct_anthropic_api_key="anthropic-key",
+                api_key=None,
+                base_url=None,
+                aux_api_key=None,
+                aux_base_url="https://openrouter.ai/api/v1",
+                title_model="anthropic/claude-haiku-4-5",
+            )
