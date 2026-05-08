@@ -714,3 +714,70 @@ class TestConsumerRetryWithBackoff:
 
             with pytest.raises(RuntimeError, match="postmark 502"):
                 await manager._process_immediate("{}")
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_true_on_send(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock()
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        result = await manager._process_admin_message("{}")
+        assert result is True
+        manager.email_sender.send_templated.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_message_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_admin_message("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_admin_message_propagates_send_failure(self, manager):
+        manager.email_sender = MagicMock()
+        manager.email_sender.send_templated = AsyncMock(
+            side_effect=RuntimeError("postmark 502")
+        )
+        event = MagicMock()
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with pytest.raises(RuntimeError, match="postmark 502"):
+            await manager._process_admin_message("{}")
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_on_unparseable(self, manager):
+        manager._parse_message = MagicMock(return_value=None)
+        result = await manager._process_immediate("garbage")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_false_when_no_email(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value=None)
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_immediate_returns_true_when_user_opted_out(self, manager):
+        event = MagicMock()
+        event.user_id = "u1"
+        event.type = MagicMock()
+        manager._parse_message = MagicMock(return_value=event)
+        manager._should_email_user_based_on_preference = AsyncMock(return_value=False)
+        with patch(
+            "backend.notifications.notifications.get_database_manager_async_client"
+        ) as mock_db_client:
+            mock_db = MagicMock()
+            mock_db.get_user_email_by_id = AsyncMock(return_value="u@example.com")
+            mock_db_client.return_value = mock_db
+            result = await manager._process_immediate("{}")
+            # Opted-out = "delivered" from queue's POV, no retry needed
+            assert result is True
