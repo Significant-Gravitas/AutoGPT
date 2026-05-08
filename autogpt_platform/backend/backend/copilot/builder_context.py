@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
@@ -31,10 +31,14 @@ BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
 
 
 def resolve_session_permissions(
-    session: ChatSession | None,
+    session: ChatSessionInfo | None,
 ) -> CopilotPermissions | None:
     """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
-    return ``None`` (unrestricted) otherwise."""
+    return ``None`` (unrestricted) otherwise.
+
+    Reads ``metadata.builder_graph_id`` only — works on either the bare
+    ``ChatSessionInfo`` (no messages) or the full ``ChatSession``.
+    """
     if session is None or not session.metadata.builder_graph_id:
         return None
     return CopilotPermissions(

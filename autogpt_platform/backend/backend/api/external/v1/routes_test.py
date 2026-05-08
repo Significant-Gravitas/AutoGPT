@@ -6,7 +6,6 @@ import fastapi.testclient
 import pytest
 from prisma.enums import APIKeyPermission
 
-import backend.api.external.v1.routes as routes_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
 from backend.data.auth.base import APIAuthorizationInfo
@@ -61,7 +60,9 @@ def test_zero_balance_returns_402_on_paid_block(monkeypatch: pytest.MonkeyPatch)
     """Zero-credit user calling a paid block must be rejected before execution."""
     block = _stub_block(name="PaidBlock")
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
-    monkeypatch.setattr(routes_mod, "block_usage_cost", lambda *_a, **_k: (5, {}))
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (5, {})
+    )
     spend_mock = AsyncMock(
         side_effect=InsufficientBalanceError(
             user_id="test-user-id",
@@ -71,8 +72,7 @@ def test_zero_balance_returns_402_on_paid_block(monkeypatch: pytest.MonkeyPatch)
         )
     )
     monkeypatch.setattr(
-        routes_mod,
-        "get_user_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         AsyncMock(return_value=MagicMock(spend_credits=spend_mock)),
     )
 
@@ -89,12 +89,12 @@ def test_paid_block_charges_then_runs(
     block = _stub_block(name="PaidBlock")
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
     monkeypatch.setattr(
-        routes_mod, "block_usage_cost", lambda *_a, **_k: (3, {"matched": True})
+        "backend.executor.utils.block_usage_cost",
+        lambda *_a, **_k: (3, {"matched": True}),
     )
     spend_mock = AsyncMock(return_value=97)
     monkeypatch.setattr(
-        routes_mod,
-        "get_user_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         AsyncMock(return_value=MagicMock(spend_credits=spend_mock)),
     )
 
@@ -109,17 +109,19 @@ def test_paid_block_charges_then_runs(
     assert kwargs["metadata"].block_id == block.id
     assert kwargs["metadata"].block == "PaidBlock"
     assert kwargs["metadata"].input == {"matched": True}
+    assert kwargs["metadata"].reason == "Direct external block execution of PaidBlock"
 
 
 def test_free_block_runs_without_charging(monkeypatch: pytest.MonkeyPatch):
     """A block with cost == 0 should execute and never call spend_credits."""
     block = _stub_block(name="FreeBlock")
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
-    monkeypatch.setattr(routes_mod, "block_usage_cost", lambda *_a, **_k: (0, {}))
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
     spend_mock = AsyncMock()
     monkeypatch.setattr(
-        routes_mod,
-        "get_user_credit_model",
+        "backend.executor.utils.get_user_credit_model",
         AsyncMock(return_value=MagicMock(spend_credits=spend_mock)),
     )
 

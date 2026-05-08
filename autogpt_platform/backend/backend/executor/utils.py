@@ -21,6 +21,7 @@ from backend.data import workspace as workspace_db
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
 from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
@@ -190,6 +191,44 @@ def block_usage_cost(
             )
 
     return 0, {}
+
+
+async def charge_for_direct_block_execution(
+    user_id: str,
+    block: Block,
+    input_data: BlockInput,
+    *,
+    source: Literal["internal", "external"],
+) -> None:
+    """Pre-flight charge for a direct block-execute API call.
+
+    Shared by both ``POST /api/blocks/{id}/execute`` (internal UI) and
+    ``POST /api/v1/blocks/{id}/execute`` (external API key) so the two
+    routes stay in lock-step on cost calculation, transaction metadata,
+    and 402 mapping. ``source`` is recorded in the credit-history
+    ``reason`` so transactions remain attributable to the originating
+    surface.
+
+    Dynamic-cost blocks (TOKENS / COST_USD / SECOND / ITEMS) return 0
+    from ``block_usage_cost`` pre-flight and are NOT charged on this
+    code path — the post-flight reconciliation only runs inside
+    ``executor/manager.py``, which the direct block-execute API
+    endpoints bypass entirely.
+    """
+    cost, cost_filter = block_usage_cost(block, input_data)
+    if cost <= 0:
+        return
+    credit_model = await get_user_credit_model(user_id)
+    await credit_model.spend_credits(
+        user_id=user_id,
+        cost=cost,
+        metadata=UsageTransactionMetadata(
+            block_id=block.id,
+            block=block.name,
+            input=cost_filter,
+            reason=f"Direct {source} block execution of {block.name}",
+        ),
+    )
 
 
 def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:

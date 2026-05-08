@@ -193,15 +193,22 @@ async def charge_reconciled_usage(
     """Charge the dynamic portion of a block's cost from its execution stats.
 
     Computes post-flight cost from the execution stats and settles the delta
-    against the pre-flight estimate. Positive delta → charge the user; negative
-    delta → refund the overcharge (happens when a TOKENS block's flat
-    MODEL_COST floor exceeds the real token-metered cost). Zero delta is a
-    no-op — common for RUN-only blocks and any balanced estimate.
+    against the pre-flight estimate. Positive delta → charge the user (allowed
+    to push the balance negative — see below); negative delta → refund the
+    overcharge (happens when a TOKENS block's flat MODEL_COST floor exceeds
+    the real token-metered cost). Zero delta is a no-op — common for RUN-only
+    blocks and any balanced estimate.
+
+    Negative-balance handling: positive deltas are recorded with
+    ``fail_insufficient_credits=False`` so a wallet that can't cover the
+    shortfall ends up in debt rather than producing a `billing_leak`. The
+    block already ran and the provider was already paid in real $$ — failing
+    the spend would just hide the cost. The debt is naturally cleared on the
+    next top-up (auto or manual), since top-ups simply add to the balance.
 
     Called once per node execution AFTER the block has finished running and
-    stats (walltime, tokens, provider_cost) are populated. Swallows its own
-    InsufficientBalanceError because reconciliation must never poison the
-    success path — log and move on; the shortfall is captured in telemetry.
+    stats (walltime, tokens, provider_cost) are populated. Swallows any
+    unexpected exception so reconciliation never poisons the success path.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -221,6 +228,13 @@ async def charge_reconciled_usage(
         # amount is positive (i.e. credits back to the wallet). We reuse the
         # USAGE type so the refund is attributable to the same graph
         # execution in credit history.
+        #
+        # `fail_insufficient_credits=False` is passed for every reconciliation
+        # spend. For positive deltas this bypasses the balance guard so the
+        # spend always lands — the wallet may go negative; that's the point,
+        # we'd rather record real debt than leak the cost. For negative deltas
+        # (refunds) the flag is moot: `amount = -cost > 0`, so the SQL guard's
+        # `$2 >= 0` short-circuit holds regardless.
         remaining_balance = await db_client.spend_credits(
             user_id=node_exec.user_id,
             cost=delta,
@@ -237,6 +251,7 @@ async def charge_reconciled_usage(
                     f"actual={post_flight} credits, pre-flight={pre_flight}"
                 ),
             ),
+            fail_insufficient_credits=False,
         )
         # Refunds can't push the balance below the threshold — skip.
         if delta > 0:
@@ -251,38 +266,6 @@ async def charge_reconciled_usage(
                 delta,
             )
         return delta, remaining_balance
-    except InsufficientBalanceError as e:
-        # Billing leak: work is already done, but the user cannot pay. Emit a
-        # structured ERROR so alerting can pick it up and ping the platform
-        # channel so the leak is visible in real time.
-        logger.error(
-            "billing_leak: insufficient balance after post-flight reconciliation",
-            extra={
-                "billing_leak": True,
-                "user_id": node_exec.user_id,
-                "graph_id": node_exec.graph_id,
-                "graph_exec_id": node_exec.graph_exec_id,
-                "node_exec_id": node_exec.node_exec_id,
-                "block_id": node_exec.block_id,
-                "cost": abs(e.amount),
-                "balance": e.balance,
-                "error": str(e),
-            },
-        )
-        try:
-            await discord_send_alert(
-                f"⚠️ billing_leak (post-flight reconciliation)\n"
-                f"user={node_exec.user_id} graph={node_exec.graph_id} "
-                f"exec={node_exec.graph_exec_id}\n"
-                f"block={node_exec.block_id} needed={abs(e.amount)} "
-                f"balance={e.balance}",
-                DiscordChannel.PLATFORM,
-            )
-        except Exception:
-            # Discord dispatch is best-effort; never let alert failure poison
-            # the success path of a completed block.
-            logger.exception("billing_leak discord alert dispatch failed")
-        return 0, 0
     except Exception:
         logger.exception(
             f"charge_reconciled_usage failed unexpectedly for block "

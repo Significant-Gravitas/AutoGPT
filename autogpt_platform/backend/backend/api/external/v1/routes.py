@@ -18,8 +18,10 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.executor.utils import add_graph_execution, block_usage_cost
+from backend.executor.utils import (
+    add_graph_execution,
+    charge_for_direct_block_execution,
+)
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
@@ -93,24 +95,14 @@ async def execute_graph_block(
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
-    cost, cost_filter = block_usage_cost(obj, data)
-    if cost > 0:
-        credit_model = await get_user_credit_model(auth.user_id)
-        try:
-            await credit_model.spend_credits(
-                user_id=auth.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    block_id=block_id,
-                    block=obj.name,
-                    input=cost_filter,
-                    reason=f"Direct external API execution of block {obj.name}",
-                ),
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
-            ) from e
+    try:
+        await charge_for_direct_block_execution(
+            user_id=auth.user_id, block=obj, input_data=data, source="external"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+        ) from e
 
     output = defaultdict(list)
     async for name, data in obj.execute(data):

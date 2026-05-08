@@ -2109,6 +2109,8 @@
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
                     { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    { "$ref": "#/components/schemas/ScheduleListResponse" },
+                    { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
                     { "$ref": "#/components/schemas/MemorySearchResponse" },
                     {
@@ -5473,6 +5475,17 @@
               "title": "Include Root Only"
             },
             "description": "Only return agents without a folder (root-level agents)"
+          },
+          {
+            "name": "is_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents.",
+              "title": "Is Hidden"
+            },
+            "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents."
           }
         ],
         "responses": {
@@ -5823,6 +5836,48 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/{library_agent_id}/triggers": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Trigger Agents",
+        "description": "List trigger agents linked to the given parent agent.",
+        "operationId": "getV2List trigger agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2List Trigger Agents"
+                }
               }
             }
           },
@@ -12832,6 +12887,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "is_hidden": {
+            "type": "boolean",
+            "title": "Is Hidden",
+            "default": false
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -13102,6 +13162,11 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
+          },
+          "is_hidden": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Hidden",
+            "description": "Whether to hide the agent from the library listing"
           },
           "settings": {
             "anyOf": [
@@ -15211,6 +15276,9 @@
           "block_details",
           "block_output",
           "review_required",
+          "schedule_list",
+          "schedule_deleted",
+          "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",
@@ -15470,6 +15538,24 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "ScheduleDeletedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_deleted"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id"],
+        "title": "ScheduleDeletedResponse",
+        "description": "Response confirming a schedule was deleted."
+      },
       "ScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
@@ -15570,6 +15656,51 @@
         ],
         "title": "ScheduleHealthMetrics",
         "description": "Summary of schedule health diagnostics"
+      },
+      "ScheduleListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/ScheduleSummary" },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": ["message", "schedules"],
+        "title": "ScheduleListResponse",
+        "description": "Response containing a list of schedules."
+      },
+      "ScheduleSummary": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "name": { "type": "string", "title": "Name" },
+          "cron": { "type": "string", "title": "Cron" },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "name",
+          "cron",
+          "timezone",
+          "next_run_time",
+          "graph_id",
+          "graph_version"
+        ],
+        "title": "ScheduleSummary",
+        "description": "Summary of a single schedule."
       },
       "SchedulesListResponse": {
         "properties": {
