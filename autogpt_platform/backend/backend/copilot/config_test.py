@@ -578,7 +578,7 @@ class TestAuxClientForDirectMainValidator:
         # at boot.  Pydantic wraps ValueError in ValidationError, so
         # match against ``Exception`` for parity with the SDK-vendor
         # validator tests above.
-        with pytest.raises(Exception, match="non-Anthropic title_model"):
+        with pytest.raises(Exception, match="title_model=.*is non-Anthropic"):
             _make_direct_safe_config(
                 use_openrouter=False,
                 direct_anthropic_api_key="anthropic-key",
@@ -639,6 +639,25 @@ class TestAuxClientForDirectMainValidator:
             title_model="openai/gpt-4o-mini",
         )
         assert cfg.title_model == "openai/gpt-4o-mini"
+
+    def test_or_main_with_explicit_anthropic_aux_and_non_anthropic_title_raises(
+        self,
+    ):
+        # Sentry: even when ``use_openrouter=True`` for the main client,
+        # an operator can still misconfigure aux to point at Anthropic
+        # (e.g. setting CHAT_AUX_BASE_URL=https://api.anthropic.com).
+        # In that shape, default ``title_model="openai/gpt-4o-mini"`` is
+        # stripped to ``gpt-4o-mini`` and 404s on Anthropic.  Validator
+        # must catch this regardless of the main flag.
+        with pytest.raises(Exception, match="title_model=.*is non-Anthropic"):
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+                aux_api_key="sk-ant-aux",
+                aux_base_url="https://api.anthropic.com/v1/",
+                title_model="openai/gpt-4o-mini",
+            )
 
     def test_subscription_mode_no_aux_no_direct_key_raises(self):
         # Subscription mode (SDK uses OAuth, no api_key needed) but the

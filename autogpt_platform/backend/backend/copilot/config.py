@@ -806,54 +806,75 @@ class ChatConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_aux_client_for_direct_main(self) -> "ChatConfig":
-        """Fail at boot when direct-Anthropic main mode + missing aux
-        creds would 401 every title call.
+        """Fail at boot when the resolved aux client + ``title_model``
+        combination would 401 / 404 on every title call.
 
-        Two trip wires, both gated on ``use_openrouter=False``:
+        The validator is **transport-driven**, not gated on the main
+        ``use_openrouter`` flag.  Three observed traps:
 
         1. ``aux_base_url`` set with no resolvable api key — the aux
            client would route to that URL with no creds and 401 on
            every title call regardless of title model.  Catches the
-           OR-typo case (operator set ``CHAT_AUX_BASE_URL`` but forgot
+           operator-typo case (set ``CHAT_AUX_BASE_URL`` but forgot
            ``CHAT_AUX_API_KEY``).
-        2. Non-Anthropic ``title_model`` with no explicit aux creds —
-           the aux client falls back to direct Anthropic, which can't
-           serve a non-Claude model.
+        2. Non-Anthropic ``title_model`` with the aux client landing
+           on the Anthropic OpenAI-compat endpoint (``aux_base_url``
+           explicitly set to api.anthropic.com, OR aux falls back to
+           a direct-Anthropic main).  Anthropic 404s ``gpt-4o-mini``.
+        3. Subscription mode (``use_claude_code_subscription=True``) +
+           ``use_openrouter=False`` + neither aux creds nor
+           ``direct_anthropic_api_key`` — the SDK CLI uses OAuth so
+           direct creds are optional for it, but the **aux** client
+           still runs the baseline OpenAI-compat path and inherits
+           ``(None, api.anthropic.com)`` from main, 401-ing every call.
 
-        Skipped when ``CHAT_AUX_API_KEY`` is set (or when ``api_key`` is
-        set and ``aux_uses_openrouter`` — a single-key OR deployment).
-        Skipped when ``aux_base_url`` is unset and the title model is
-        Anthropic (then the fallback to direct creds is fine — Anthropic
-        serves its own model).
-
-        Subscription mode (``use_claude_code_subscription=True``) is
-        **not** skipped.  The SDK CLI itself uses OAuth and doesn't
-        need ``direct_anthropic_api_key``, but the **aux** client still
-        runs the baseline OpenAI-compat path for title generation; if
-        aux env vars are unset the aux creds inherit from
-        ``main_client_credentials`` which can be ``(None, ...)`` in
-        subscription mode, 401-ing every title call.
+        Skipped when the resolved aux transport is OpenRouter — OR can
+        serve any vendor prefix.  Also skipped on a fully-empty config
+        (no main creds + no aux creds + no subscription) so build /
+        OpenAPI-schema-export environments that construct
+        ``ChatConfig()`` without env vars don't fail.
         """
-        # Match ``_validate_sdk_model_vendor_compatibility``: only check
-        # the **explicit** opt-out (``use_openrouter=False``).  Build
-        # environments and OpenAPI-schema export jobs construct
-        # ``ChatConfig()`` without any creds; that's not a misconfig
-        # here either, just "no turn will succeed until creds are wired".
-        # The credential-missing path on a real request is caught
-        # downstream by the aux client's 401 response and surfaced via
-        # the title-cost log.  Catching it here would block CI's
-        # ``check API types`` step that imports the config to export
-        # the OpenAPI schema.
-        if self.use_openrouter:
+        # Empty-config escape hatch: build / openapi-export environments
+        # construct ``ChatConfig()`` without any creds.  That's not a
+        # misconfig — just "no turn will succeed until creds are wired"
+        # — and CI's ``check API types`` step imports the config so we
+        # must not raise here.  Real-request credential errors surface
+        # downstream as 401s via the title-cost log path.
+        if (
+            not self.use_claude_code_subscription
+            and not self.api_key
+            and not self.aux_api_key
+            and not self.direct_anthropic_api_key
+            and not self.aux_base_url
+        ):
             return self
-        # Aux inherits main creds when both aux env vars are unset.  In
-        # subscription mode this can land as ``(None, ...)`` because the
-        # SDK doesn't require ``direct_anthropic_api_key`` — but the aux
-        # baseline-path client still needs a key.  Fail fast with the
-        # specific subscription-mode advice rather than the generic
-        # title-model message below.
+        # Fast-path: aux resolves to OpenRouter with a usable key.  OR
+        # serves any vendor prefix so title_model semantics don't matter
+        # here.  This is the common-case OR deployment.
+        if (self.aux_api_key or self.api_key) and self.aux_uses_openrouter:
+            return self
+        # An explicit ``aux_base_url`` without a resolvable key fails fast
+        # regardless of title model: the aux client would route to that
+        # URL with ``(None, aux_base_url)`` and 401 every call.  This
+        # catches the OpenRouter-typo case where an operator sets
+        # ``CHAT_AUX_BASE_URL`` but forgets ``CHAT_AUX_API_KEY``.
+        if self.aux_base_url and not (self.aux_api_key or self.api_key):
+            raise ValueError(
+                "CHAT_AUX_BASE_URL is set but no CHAT_AUX_API_KEY (and "
+                "no fallback CHAT_API_KEY) — the aux client would 401 "
+                "every title call.  Either unset CHAT_AUX_BASE_URL to "
+                "inherit the main client, or set CHAT_AUX_API_KEY."
+            )
+        # Subscription mode trap: SDK uses OAuth so direct creds are
+        # optional for it, but the aux client still runs the baseline
+        # OpenAI-compat path.  When use_openrouter=False AND no aux
+        # creds AND no direct_anthropic_api_key, aux inherits
+        # ``(None, api.anthropic.com)`` from main and 401s every title
+        # call.  (Skipped when use_openrouter=True because that would
+        # have hit the aux_uses_openrouter fast-path above.)
         if (
             self.use_claude_code_subscription
+            and not self.use_openrouter
             and self.aux_api_key is None
             and self.aux_base_url is None
             and not self.direct_anthropic_api_key
@@ -868,26 +889,6 @@ class ChatConfig(BaseSettings):
                 "set CHAT_DIRECT_ANTHROPIC_API_KEY so aux can reach "
                 "Anthropic directly with the title model on Claude."
             )
-        # An explicit ``aux_base_url`` without a resolvable key fails fast
-        # regardless of title model: the aux client would route to that
-        # URL with ``(None, aux_base_url)`` and 401 every call.  This
-        # catches the OpenRouter-typo case where an operator sets
-        # ``CHAT_AUX_BASE_URL`` but forgets ``CHAT_AUX_API_KEY``.
-        if self.aux_base_url and not (self.aux_api_key or self.api_key):
-            raise ValueError(
-                "Direct-Anthropic main mode with CHAT_AUX_BASE_URL set "
-                "but no CHAT_AUX_API_KEY (and no fallback CHAT_API_KEY) "
-                "would 401 every aux call.  Either unset CHAT_AUX_BASE_URL "
-                "to inherit the main client, or set CHAT_AUX_API_KEY."
-            )
-        # Aux client falls back to ``api_key`` / ``base_url`` only when
-        # those creds actually point at OpenRouter (``aux_uses_openrouter``).
-        # A bare ``api_key`` paired with a non-OR ``base_url`` (e.g. an
-        # operator who set ``CHAT_BASE_URL=https://api.anthropic.com``
-        # for the main client) cannot serve a non-Anthropic title model,
-        # so the escape hatch must verify transport, not just presence.
-        if (self.aux_api_key or self.api_key) and self.aux_uses_openrouter:
-            return self
         # Only ``title_model`` is checked here.  ``simulation_model``
         # uses its own client acquisition path
         # (``backend.util.clients.get_openai_client(prefer_openrouter=True)``)
@@ -907,11 +908,11 @@ class ChatConfig(BaseSettings):
         if "/" not in title and title.startswith("claude-"):
             return self
         raise ValueError(
-            f"Direct-Anthropic main mode (use_openrouter=False) "
-            f"with non-Anthropic title_model={title!r} requires "
-            f"explicit auxiliary credentials.  Set CHAT_AUX_API_KEY "
-            f"(and optionally CHAT_AUX_BASE_URL) so title generation "
-            f"routes through a non-Anthropic provider, or override "
+            f"Aux client resolves to a non-OpenRouter transport but "
+            f"title_model={title!r} is non-Anthropic — Anthropic's API "
+            f"will 404 the request.  Either set CHAT_AUX_API_KEY + "
+            f"CHAT_AUX_BASE_URL=https://openrouter.ai/api/v1 so title "
+            f"generation routes through OpenRouter, or override "
             f"CHAT_TITLE_MODEL to an ``anthropic/`` or ``claude-`` slug."
         )
 
