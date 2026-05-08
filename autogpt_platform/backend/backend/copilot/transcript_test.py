@@ -1746,7 +1746,10 @@ class TestExtractContextMessages:
         """When the cap engages and the window starts above the watermark, the
         missing sequences must be fetched from DB and inserted between the
         transcript and the gap — never sent to the LLM as a hole."""
-        from .model import ChatMessage
+        from datetime import UTC, datetime
+
+        from .db import PaginatedMessages
+        from .model import ChatMessage, ChatSessionInfo
 
         # Transcript covers seq 0..1 (wm=2).  Window holds the tail seq 5..7 +
         # current turn.  Missing seq 2..4 must be fetched.
@@ -1760,16 +1763,26 @@ class TestExtractContextMessages:
             ChatMessage(role="user", content="user-7-current", sequence=7),
         ]
 
-        hole = [
+        hole_msgs = [
             ChatMessage(role="user", content="hole-2", sequence=2),
             ChatMessage(role="assistant", content="hole-3", sequence=3),
             ChatMessage(role="user", content="hole-4", sequence=4),
         ]
-        mock_db = mocker.MagicMock()
-        mock_db.get_chat_messages_in_sequence_range = mocker.AsyncMock(
-            return_value=hole
+        hole_page = PaginatedMessages(
+            messages=hole_msgs,
+            has_more=False,
+            oldest_sequence=2,
+            session=ChatSessionInfo(
+                session_id="sess-hole",
+                user_id="u1",
+                usage=[],
+                started_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
         )
-        mocker.patch("backend.data.db_accessors.chat_db", return_value=mock_db)
+        mock_db = mocker.MagicMock()
+        mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
+        mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
 
         result = await extract_context_messages(dl, windowed, session_id="sess-hole")
 
@@ -1784,7 +1797,7 @@ class TestExtractContextMessages:
             "user",  # gap user-5
             "assistant",  # gap assistant-6
         ]
-        # Confirm the hole-fill DB call was issued with the right range.
-        mock_db.get_chat_messages_in_sequence_range.assert_awaited_once_with(
-            "sess-hole", 2, 5
+        # Confirm the hole-fill range fetch was issued with the right bounds.
+        mock_db.get_chat_messages_paginated.assert_awaited_once_with(
+            "sess-hole", limit=3, after_sequence=2, before_sequence=5
         )

@@ -20,16 +20,16 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from uuid import uuid4
 
+from backend.data.db_accessors import chat_db
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
-if TYPE_CHECKING:
-    from .model import ChatMessage
+from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -929,11 +929,9 @@ def _decode_transcript_content(content: bytes | str) -> str | None:
 
 def _parse_transcript_to_messages(
     download: TranscriptDownload,
-) -> "list[ChatMessage] | None":
+) -> list[ChatMessage] | None:
     """Decode + parse a transcript download into ``ChatMessage`` rows, or
     ``None`` if the download is empty / malformed."""
-    from .model import ChatMessage as _ChatMessage
-
     if not download.content:
         return None
     content_str = _decode_transcript_content(download.content)
@@ -942,7 +940,7 @@ def _parse_transcript_to_messages(
     raw = _transcript_to_messages(content_str)
     if not raw:
         return None
-    return [_ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
+    return [ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
 
 
 async def _fill_hole_between_transcript_and_gap(
@@ -958,13 +956,18 @@ async def _fill_hole_between_transcript_and_gap(
     """
     if not gap or gap[0].sequence is None or gap[0].sequence <= watermark:
         return []
-    from backend.data.db_accessors import chat_db
-
     hole_start, hole_end = watermark, gap[0].sequence
     try:
-        return await chat_db().get_chat_messages_in_sequence_range(
-            session_id, hole_start, hole_end
+        # Range fetch via the unified paginated loader. The large limit is a
+        # safety ceiling — the hole is bounded by the cap and the watermark
+        # drift, both of which are O(thousands) at the absolute worst.
+        page = await chat_db().get_chat_messages_paginated(
+            session_id,
+            limit=hole_end - hole_start,
+            after_sequence=hole_start,
+            before_sequence=hole_end,
         )
+        return page.messages if page else []
     except Exception as e:
         logger.error(
             "extract_context_messages: hole-fill fetch failed for session=%s "
