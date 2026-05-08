@@ -605,29 +605,9 @@ async def _baseline_llm_caller(
     round_text = ""
     try:
         client = _get_main_client()
-        # Cache markers are accepted by Anthropic AND Moonshot (via OR's
-        # Anthropic-compat endpoint).  OpenAI/Grok/Gemini 400 on the
-        # unknown ``cache_control`` field — tools were precomputed in
-        # stream_chat_completion_baseline via _mark_tools_with_cache_control
-        # with the same gate, so on unsupported routes tools ship
-        # unmarked too.
-        #
-        # The ``anthropic-beta`` header is only emitted for genuinely
-        # Anthropic routes (see :func:`_is_anthropic_model`) — Moonshot
-        # doesn't need the beta header; sending it is a no-op but we
-        # keep the check strict for clarity.
-        #
-        # `extra_body` `usage.include=true` asks OpenRouter to embed the
-        # real generation cost into the final usage chunk — required by
-        # the cost-based rate limiter in routes.py.  Separate from the
-        # caching headers, always sent.
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
-            # Build the cached system dict once per session and splice it in
-            # on each round.  The full ``messages`` list grows with every
-            # tool call, so copying the entire list just to mutate index 0
-            # scales with conversation length (sentry flagged this); this
-            # splice touches only list slots, not message contents.
+            # Build cached system message once; splice on each round to avoid O(n) list copy.
             if (
                 state.cached_system_message is None
                 and messages
@@ -647,12 +627,7 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
-        # ``usage.include`` and OpenRouter's ``reasoning`` extension are
-        # OR-only — Anthropic's OpenAI-compat endpoint rejects unknown
-        # extras with a 400, so we swap to the Anthropic-native
-        # ``thinking`` parameter in direct mode instead of dropping
-        # extended-thinking entirely.  Cost in direct mode is computed
-        # from the rate card (see chunk loop).
+        # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning; use native thinking param in direct mode.
         if config.openrouter_active:
             extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
             reasoning_param = reasoning_extra_body(
@@ -673,23 +648,10 @@ async def _baseline_llm_caller(
             "stream": True,
             "extra_body": extra_body,
         }
-        # Anthropic's OpenAI-compat endpoint does not support ``stream_options``
-        # and returns a 400 when it is present.  Only include it for OpenRouter,
-        # which uses it to embed the real generation cost into the usage chunk.
+        # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
         if config.openrouter_active:
             create_kwargs["stream_options"] = {"include_usage": True}
-        # Anthropic's OpenAI-compat layer requires ``max_tokens > budget_tokens``
-        # whenever ``thinking`` is enabled — the OR proxy hides this by
-        # injecting a sane default, but the direct endpoint 400s when
-        # ``max_tokens`` is omitted and the compat-shim default lands at or
-        # below ``budget_tokens``.  Cap ``max_tokens`` at the model's
-        # published ``max_output_tokens`` (Opus 4.x = 32K, Sonnet 4.x = 64K)
-        # so a high thinking budget can't push the request past the hard
-        # output limit and 400 the API.  Both the thinking ``budget_tokens``
-        # and ``max_tokens`` are clamped against the model ceiling — when
-        # the operator-configured budget meets or exceeds the ceiling, we
-        # land on ``budget = model_max - 1`` and ``max_tokens = model_max``
-        # so the ``max_tokens > budget`` contract holds.
+        # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
         if not config.openrouter_active and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
@@ -720,11 +682,7 @@ async def _baseline_llm_caller(
                     cost = _extract_usage_cost(chunk.usage)
                     direct_mode = not config.openrouter_active
                     if cost is None and direct_mode:
-                        # Direct-Anthropic / subscription mode — the
-                        # OpenAI-compat endpoint at api.anthropic.com
-                        # does not return ``usage.cost`` (OpenRouter
-                        # extension), so compute from token counts
-                        # against the LiteLLM rate card.
+                        # Direct mode: no usage.cost field (OR extension); compute from rate card.
                         ptd = chunk.usage.prompt_tokens_details
                         cost = compute_anthropic_cost_usd(
                             model=state.model,
@@ -736,11 +694,6 @@ async def _baseline_llm_caller(
                             ),
                             cache_ttl=config.baseline_prompt_cache_ttl,
                         )
-                        # ``compute_anthropic_cost_usd`` returns ``None`` for
-                        # non-Anthropic slugs (gpt-4o-mini, ...) — those
-                        # fall through to the elif below.  Unknown
-                        # *Anthropic* slugs use opus fallback + log ERROR
-                        # so direct-mode cost flow never silently drops.
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
                     elif (
@@ -748,12 +701,7 @@ async def _baseline_llm_caller(
                         and "cost" not in (chunk.usage.model_extra or {})
                         and not state.cost_missing_logged
                     ):
-                        # OpenRouter route with the field absent — warn
-                        # once per stream so error monitoring picks up
-                        # persistent misses without flooding.  Invalid
-                        # values already logged inside
-                        # _extract_usage_cost, so no duplicate warning
-                        # here.  Direct-mode lookups are handled above.
+                        # OR with cost field absent — warn once so monitoring catches persistent misses.
                         logger.warning(
                             "[Baseline] usage chunk missing cost (model=%s, "
                             "prompt=%s, completion=%s) — rate-limit will "
@@ -2185,17 +2133,8 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Direct-Anthropic safety net: if the upstream stream finished
-        # without ever emitting a ``usage`` chunk (final-chunk drop on a
-        # truncated SSE, mid-stream disconnect), ``state.cost_usd`` is
-        # ``None`` and ``persist_and_record_usage`` would skip the
-        # rate-limit charge entirely (token_tracking.py:195 guards on
-        # ``cost_microdollars > 0``) — letting a hostile drive bypass the
-        # limit.  Fall back to the rate card with the tiktoken-estimated
-        # token counts above so rate-limit accounting still charges
-        # *something*.  OR mode keeps ``cost_usd=None`` here because OR's
-        # rate-card markup differs from raw Anthropic pricing — under-
-        # billing is preferable to wrong-billing for the OR path.
+        # Safety net: recover cost from rate card if usage chunk was dropped (truncated SSE).
+        # OR mode skips recovery — OR's markup differs from raw Anthropic pricing.
         if state.cost_usd is None and not config.openrouter_active:
             recovered = compute_anthropic_cost_usd(
                 model=active_model,
@@ -2208,12 +2147,7 @@ async def stream_chat_completion_baseline(
             if recovered is not None:
                 state.cost_usd = recovered
 
-        # Persist token usage to session and record for rate limiting.
-        # OAI-compat returns prompt_tokens as the total input — including
-        # both cached reads and cache writes.  Subtract both so the three
-        # buckets passed to ``persist_and_record_usage`` stay disjoint
-        # and downstream consumers (moonshot.py:125) can sum them to
-        # recover total without double-counting cache writes.
+        # OAI-compat prompt_tokens includes cache buckets; subtract to keep the three buckets disjoint.
         uncached_prompt = max(
             0,
             state.turn_prompt_tokens
@@ -2230,10 +2164,6 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            # Provider tracks the actual main transport so direct-Anthropic
-            # baseline turns land under ``provider="anthropic"`` instead of
-            # the helper's default ``"open_router"`` — required for the
-            # admin cost dashboard to attribute spend correctly.
             provider="open_router" if config.openrouter_active else "anthropic",
         )
 
