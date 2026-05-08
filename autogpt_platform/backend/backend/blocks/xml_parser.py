@@ -44,7 +44,7 @@ class XMLParserBlock(Block):
             elif token.type == "TAG_CLOSE":
                 depth -= 1
                 if depth < 0:
-                    raise SyntaxError("Unexpected closing tag in XML input.")
+                    raise ValueError("Unexpected closing tag in XML input.")
             elif token.type in {"TEXT", "ESCAPE"}:
                 if depth == 0 and token.value:
                     raise ValueError(
@@ -53,7 +53,7 @@ class XMLParserBlock(Block):
                     )
 
         if depth != 0:
-            raise SyntaxError("Unclosed tag detected in XML input.")
+            raise ValueError("Unclosed tag detected in XML input.")
         if not root_seen:
             raise ValueError("XML must include a root element.")
 
@@ -76,4 +76,7 @@ class XMLParserBlock(Block):
         except ValueError as val_e:
             raise ValueError(f"Validation error for dict:{val_e}") from val_e
         except SyntaxError as syn_e:
-            raise SyntaxError(f"Error in input xml syntax: {syn_e}") from syn_e
+            # Raise as ValueError so the base Block.execute() wraps it as
+            # BlockExecutionError (expected user-caused failure) instead of
+            # BlockUnknownError (unexpected platform error that alerts Sentry).
+            raise ValueError(f"Error in input xml syntax: {syn_e}") from syn_e

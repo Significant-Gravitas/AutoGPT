@@ -84,6 +84,8 @@ export function PublishAgentModal({
             subheader={currentState.submissionData.sub_heading}
             description={currentState.submissionData.description || ""}
             thumbnailSrc={currentState.submissionData.image_urls?.[0]}
+            status={currentState.submissionData.status}
+            reviewComments={currentState.submissionData.review_comments}
             onClose={handleClose}
             onDone={handleClose}
             onViewProgress={() => handleGoToDashboard()}

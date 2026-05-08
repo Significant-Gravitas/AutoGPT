@@ -2,54 +2,104 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.data.graph import BaseGraph
 from backend.data.model import CredentialsMetaInput
 
 
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
+    # General
+    ERROR = "error"
+    NO_RESULTS = "no_results"
+    NEED_LOGIN = "need_login"
+
+    # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
+    INPUT_VALIDATION_ERROR = "input_validation_error"
     EXECUTION_STARTED = "execution_started"
-    NEED_LOGIN = "need_login"
-    ERROR = "error"
-    NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
-    AGENT_PREVIEW = "agent_preview"
-    AGENT_SAVED = "agent_saved"
-    CLARIFICATION_NEEDED = "clarification_needed"
+    SUGGESTED_GOAL = "suggested_goal"
+
+    # Agent builder (create / edit / validate / fix)
+    AGENT_BUILDER_GUIDE = "agent_builder_guide"
+    AGENT_BUILDER_PREVIEW = "agent_builder_preview"
+    AGENT_BUILDER_SAVED = "agent_builder_saved"
+    AGENT_BUILDER_CLARIFICATION_NEEDED = "agent_builder_clarification_needed"
+    AGENT_BUILDER_VALIDATION_RESULT = "agent_builder_validation_result"
+    AGENT_BUILDER_FIX_RESULT = "agent_builder_fix_result"
+
+    # Block
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
+    REVIEW_REQUIRED = "review_required"
+
+    # Schedules
+    SCHEDULE_LIST = "schedule_list"
+    SCHEDULE_DELETED = "schedule_deleted"
+
+    # Agent triggers
+    AGENT_TRIGGER_LIST = "agent_trigger_list"
+
+    # MCP
+    MCP_GUIDE = "mcp_guide"
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
+
+    # Docs
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
-    # Workspace response types
+
+    # Workspace files
     WORKSPACE_FILE_LIST = "workspace_file_list"
     WORKSPACE_FILE_CONTENT = "workspace_file_content"
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    # Long-running operation types
-    OPERATION_STARTED = "operation_started"
-    OPERATION_PENDING = "operation_pending"
-    OPERATION_IN_PROGRESS = "operation_in_progress"
-    # Input validation
-    INPUT_VALIDATION_ERROR = "input_validation_error"
-    # Web fetch
-    WEB_FETCH = "web_fetch"
+
+    # Folder management
+    FOLDER_CREATED = "folder_created"
+    FOLDER_LIST = "folder_list"
+    FOLDER_UPDATED = "folder_updated"
+    FOLDER_MOVED = "folder_moved"
+    FOLDER_DELETED = "folder_deleted"
+    AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
+
+    # Browser automation
+    BROWSER_NAVIGATE = "browser_navigate"
+    BROWSER_ACT = "browser_act"
+    BROWSER_SCREENSHOT = "browser_screenshot"
+
     # Code execution
     BASH_EXEC = "bash_exec"
-    # Operation status check
-    OPERATION_STATUS = "operation_status"
-    # Feature request types
+
+    # Web
+    WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
+
+    # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
+
+    # Graphiti memory
+    MEMORY_STORE = "memory_store"
+    MEMORY_SEARCH = "memory_search"
+    MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
+    MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
+    # Planning
+    TODO_WRITE = "todo_write"
+
+    # Platform info
+    PLATFORM_INFO = "platform_info"
 
 
 # Base response model
@@ -80,9 +130,22 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    graph_version: int | None = None
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",
+    )
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's outputs (for AgentExecutorBlock)",
+    )
     inputs: dict[str, Any] | None = Field(
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",
+    )
+    graph: BaseGraph | None = Field(
+        default=None,
+        description="Full graph structure (nodes + links) when include_graph is requested",
     )
 
 
@@ -210,6 +273,90 @@ class ErrorResponse(ToolResponseBase):
     details: dict[str, Any] | None = None
 
 
+class SubSessionProgressSnapshot(BaseModel):
+    """Mid-flight snapshot of a running sub-AutoPilot.
+
+    Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
+    caller passes ``include_progress=true`` while the sub is still running.
+    """
+
+    message_count: int = Field(
+        description="Total messages in the sub's ChatSession so far.",
+    )
+    last_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Up to the last 5 messages (role + truncated content) from the "
+            "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+
+
+class SubSessionStatusResponse(ToolResponseBase):
+    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+
+    Returned by both ``run_sub_session`` (synchronously when the sub finishes
+    within ``wait_for_result``, else with ``status='running'``) and
+    ``get_sub_session_result`` when the agent polls.
+    """
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+        description=(
+            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "target session already had a turn in flight, so the message was "
+            "pushed onto its pending buffer and will be picked up by the "
+            "existing turn on its next drain."
+        ),
+    )
+    sub_session_id: str = Field(
+        description=(
+            "Opaque id for this run. Pass to ``get_sub_session_result`` or "
+            "``run_sub_session(cancel=true, ...)`` to interact with it."
+        ),
+    )
+    response: str | None = Field(
+        default=None,
+        description="Assistant response text when status=completed.",
+    )
+    sub_autopilot_session_id: str | None = Field(
+        default=None,
+        description=(
+            "The session_id of the sub-AutoPilot conversation. Use with "
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
+        ),
+    )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Tool calls made during the sub-AutoPilot run.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when status=error.",
+    )
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="How long the sub-AutoPilot has been running (or took).",
+    )
+    progress: SubSessionProgressSnapshot | None = Field(
+        default=None,
+        description=(
+            "Mid-flight progress snapshot. Populated only when "
+            "get_sub_session_result is called with include_progress=true "
+            "and the sub is still running."
+        ),
+    )
+
+
 class InputValidationErrorResponse(ToolResponseBase):
     """Response when run_agent receives unknown input fields."""
 
@@ -234,6 +381,7 @@ class ExecutionOutputInfo(BaseModel):
     ended_at: datetime | None = None
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
+    node_executions: list[dict[str, Any]] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
@@ -270,7 +418,7 @@ class ClarifyingQuestion(BaseModel):
 class AgentPreviewResponse(ToolResponseBase):
     """Response for previewing a generated agent before saving."""
 
-    type: ResponseType = ResponseType.AGENT_PREVIEW
+    type: ResponseType = ResponseType.AGENT_BUILDER_PREVIEW
     agent_json: dict[str, Any]
     agent_name: str
     description: str
@@ -281,9 +429,10 @@ class AgentPreviewResponse(ToolResponseBase):
 class AgentSavedResponse(ToolResponseBase):
     """Response when an agent is saved to the library."""
 
-    type: ResponseType = ResponseType.AGENT_SAVED
+    type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
@@ -292,8 +441,24 @@ class AgentSavedResponse(ToolResponseBase):
 class ClarificationNeededResponse(ToolResponseBase):
     """Response when the LLM needs more information from the user."""
 
-    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
+
+
+class SuggestedGoalResponse(ToolResponseBase):
+    """Response when the goal needs refinement with a suggested alternative."""
+
+    type: ResponseType = ResponseType.SUGGESTED_GOAL
+    suggested_goal: str = Field(description="The suggested alternative goal")
+    reason: str = Field(
+        default="", description="Why the original goal needs refinement"
+    )
+    original_goal: str = Field(
+        default="", description="The user's original goal for context"
+    )
+    goal_type: Literal["vague", "unachievable"] = Field(
+        default="vague", description="Type: 'vague' or 'unachievable'"
+    )
 
 
 # Documentation search models
@@ -353,6 +518,10 @@ class BlockInfoSummary(BaseModel):
         default_factory=dict,
         description="Full JSON schema for block outputs",
     )
+    static_output: bool = Field(
+        default=False,
+        description="Whether the block produces output without needing input",
+    )
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
         description="List of input fields for this block",
@@ -399,63 +568,24 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
+    is_dry_run: bool | None = (
+        None  # only set to True on dry-run; omitted in normal runs
+    )
 
 
-# Long-running operation models
-class OperationStartedResponse(ToolResponseBase):
-    """Response when a long-running operation has been started in the background.
+class ReviewRequiredResponse(ToolResponseBase):
+    """Response when a block requires human review before execution."""
 
-    This is returned immediately to the client while the operation continues
-    to execute. The user can close the tab and check back later.
-
-    The task_id can be used to reconnect to the SSE stream via
-    GET /chat/tasks/{task_id}/stream?last_idx=0
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    operation_id: str
-    tool_name: str
-    task_id: str | None = None  # For SSE reconnection
-
-
-class OperationPendingResponse(ToolResponseBase):
-    """Response stored in chat history while a long-running operation is executing.
-
-    This is persisted to the database so users see a pending state when they
-    refresh before the operation completes.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_PENDING
-    operation_id: str
-    tool_name: str
-
-
-class OperationInProgressResponse(ToolResponseBase):
-    """Response when an operation is already in progress.
-
-    Returned for idempotency when the same tool_call_id is requested again
-    while the background task is still running.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
-    tool_call_id: str
-
-
-class AsyncProcessingResponse(ToolResponseBase):
-    """Response when an operation has been delegated to async processing.
-
-    This is returned by tools when the external service accepts the request
-    for async processing (HTTP 202 Accepted). The Redis Streams completion
-    consumer will handle the result when the external service completes.
-
-    The status field is specifically "accepted" to allow the long-running tool
-    handler to detect this response and skip LLM continuation.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_STARTED
-    status: str = "accepted"  # Must be "accepted" for detection
-    operation_id: str | None = None
-    task_id: str | None = None
+    type: ResponseType = ResponseType.REVIEW_REQUIRED
+    block_id: str
+    block_name: str
+    review_id: str = Field(description="The review ID for tracking approval status")
+    graph_exec_id: str = Field(
+        description="The graph execution ID for fetching review status"
+    )
+    input_data: dict[str, Any] = Field(
+        description="The input data that requires review"
+    )
 
 
 class WebFetchResponse(ToolResponseBase):
@@ -467,6 +597,32 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
+    results: list[WebSearchResult] = Field(default_factory=list)
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):
@@ -486,7 +642,6 @@ class FeatureRequestInfo(BaseModel):
     id: str
     identifier: str
     title: str
-    description: str | None = None
 
 
 class FeatureRequestSearchResponse(ToolResponseBase):
@@ -508,3 +663,236 @@ class FeatureRequestCreatedResponse(ToolResponseBase):
     issue_url: str
     is_new_issue: bool  # False if added to existing
     customer_name: str
+
+
+# MCP tool models
+class MCPToolInfo(BaseModel):
+    """Information about a single MCP tool discovered from a server."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+class MCPToolsDiscoveredResponse(ToolResponseBase):
+    """Response when MCP tools are discovered from a server (agent-internal)."""
+
+    type: ResponseType = ResponseType.MCP_TOOLS_DISCOVERED
+    server_url: str
+    tools: list[MCPToolInfo]
+
+
+class MCPToolOutputResponse(ToolResponseBase):
+    """Response after executing an MCP tool."""
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    server_url: str
+    tool_name: str
+    result: Any = None
+    success: bool = True
+
+
+# Agent-browser multi-step automation models
+
+
+class BrowserNavigateResponse(ToolResponseBase):
+    """Response for browser_navigate tool."""
+
+    type: ResponseType = ResponseType.BROWSER_NAVIGATE
+    url: str
+    title: str
+    snapshot: str  # Interactive accessibility tree with @ref IDs
+
+
+class BrowserActResponse(ToolResponseBase):
+    """Response for browser_act tool."""
+
+    type: ResponseType = ResponseType.BROWSER_ACT
+    action: str
+    current_url: str = ""
+    snapshot: str  # Updated accessibility tree after the action
+
+
+class BrowserScreenshotResponse(ToolResponseBase):
+    """Response for browser_screenshot tool."""
+
+    type: ResponseType = ResponseType.BROWSER_SCREENSHOT
+    file_id: str  # Workspace file ID — use read_workspace_file to retrieve
+    filename: str
+
+
+# Agent generation tool response models
+
+
+class ValidationResultResponse(ToolResponseBase):
+    """Response for validate_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_VALIDATION_RESULT
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    error_count: int = 0
+
+
+class FixResultResponse(ToolResponseBase):
+    """Response for fix_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
+    fixed_agent_json: dict[str, Any]
+    fixes_applied: list[str] = Field(default_factory=list)
+    fix_count: int = 0
+    valid_after_fix: bool = False
+    remaining_errors: list[str] = Field(default_factory=list)
+
+
+# Folder management models
+
+
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class FolderInfo(BaseModel):
+    """Information about a folder."""
+
+    id: str
+    name: str
+    parent_id: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
+
+
+class FolderTreeInfo(FolderInfo):
+    """Folder with nested children for tree display."""
+
+    children: list["FolderTreeInfo"] = []
+
+
+class FolderCreatedResponse(ToolResponseBase):
+    """Response when a folder is created."""
+
+    type: ResponseType = ResponseType.FOLDER_CREATED
+    folder: FolderInfo
+
+
+class FolderListResponse(ToolResponseBase):
+    """Response for listing folders."""
+
+    type: ResponseType = ResponseType.FOLDER_LIST
+    folders: list[FolderInfo] = Field(default_factory=list)
+    tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
+    count: int = 0
+
+
+class FolderUpdatedResponse(ToolResponseBase):
+    """Response when a folder is updated."""
+
+    type: ResponseType = ResponseType.FOLDER_UPDATED
+    folder: FolderInfo
+
+
+class FolderMovedResponse(ToolResponseBase):
+    """Response when a folder is moved."""
+
+    type: ResponseType = ResponseType.FOLDER_MOVED
+    folder: FolderInfo
+    target_parent_id: str | None = None
+
+
+class FolderDeletedResponse(ToolResponseBase):
+    """Response when a folder is deleted."""
+
+    type: ResponseType = ResponseType.FOLDER_DELETED
+    folder_id: str
+
+
+class AgentsMovedToFolderResponse(ToolResponseBase):
+    """Response when agents are moved to a folder."""
+
+    type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
+    agent_ids: list[str]
+    agent_names: list[str] = []
+    folder_id: str | None = None
+    count: int = 0
+
+
+# --- Graphiti memory responses ---
+
+
+class MemoryStoreResponse(ToolResponseBase):
+    """Response when a memory is stored."""
+
+    type: ResponseType = ResponseType.MEMORY_STORE
+    memory_name: str
+
+
+class MemorySearchResponse(ToolResponseBase):
+    """Response when memories are searched."""
+
+    type: ResponseType = ResponseType.MEMORY_SEARCH
+    facts: list[str] = Field(default_factory=list)
+    recent_episodes: list[str] = Field(default_factory=list)
+
+
+class MemoryForgetCandidatesResponse(ToolResponseBase):
+    """Response with candidate memories to forget."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
+    candidates: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MemoryForgetConfirmResponse(ToolResponseBase):
+    """Response after deleting specific memory edges."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
+    deleted_uuids: list[str] = Field(default_factory=list)
+    failed_uuids: list[str] = Field(default_factory=list)
+
+
+# --- Planning ---
+
+
+class TodoItem(BaseModel):
+    """One entry in a ``TodoWrite`` checklist.
+
+    Mirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so
+    the frontend's ``GenericTool`` accordion renders baseline-emitted todos
+    identically to SDK-emitted ones.
+    """
+
+    content: str = Field(description="Imperative description of the task.")
+    activeForm: str = Field(
+        description="Present-continuous form shown while the task is running.",
+    )
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
+class TodoWriteResponse(ToolResponseBase):
+    """Ack returned by ``TodoWrite``.
+
+    The tool is effectively stateless — the authoritative task list lives in
+    the assistant's latest tool-call arguments, which are replayed from the
+    transcript on each turn. The tool output only needs to confirm that the
+    update was accepted so the model can proceed.
+    """
+
+    type: ResponseType = ResponseType.TODO_WRITE
+    todos: list[TodoItem] = Field(default_factory=list)
+
+
+class PlatformInfoResponse(ToolResponseBase):
+    """Response from the ``get_platform_info`` tool."""
+
+    type: ResponseType = ResponseType.PLATFORM_INFO
+    topic: str
+    tier: str | None = None
+    billing_url: str | None = "/settings/billing"

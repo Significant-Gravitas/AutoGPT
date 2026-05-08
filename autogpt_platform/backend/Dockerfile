@@ -50,7 +50,7 @@ RUN poetry install --no-ansi --no-root
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
 # =============================== DB MIGRATOR =============================== #
@@ -82,7 +82,7 @@ RUN pip3 install prisma>=0.15.0 --break-system-packages
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
@@ -95,7 +95,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
-# for the bash_exec MCP tool.
+# for the bash_exec MCP tool (fallback when E2B is not configured).
 # Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
@@ -111,12 +111,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
 COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
 COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
-# Copy Node.js installation for Prisma
+# Copy Node.js installation for Prisma and agent-browser.
+# npm/npx are symlinks in the builder (-> ../lib/node_modules/npm/bin/*-cli.js);
+# COPY resolves them to regular files, breaking require() paths.  Recreate as
+# proper symlinks so npm/npx can find their modules.
 COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=builder /usr/bin/npm /usr/bin/npm
-COPY --from=builder /usr/bin/npx /usr/bin/npx
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install agent-browser (Copilot browser tool) using the system chromium package.
+# Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
+# has no ARM64 builds, so we use the distro-packaged chromium instead — verified to
+# work with agent-browser via Docker tests on arm64; amd64 is validated in CI.
+# Note: system chromium tracks the Debian package schedule rather than a pinned
+# Chrome for Testing release. If agent-browser requires a specific Chrome version,
+# verify compatibility against the chromium package version in the base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g agent-browser \
+    && rm -rf /tmp/* /root/.npm
+
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app/autogpt_platform/backend
 

@@ -106,8 +106,6 @@ export function useSignupPage() {
         data.agreeToTerms,
       );
 
-      setIsLoading(false);
-
       if (!result.success) {
         if (result.error === "user_already_exists") {
           setFeedback("User with this email already exists");
@@ -141,6 +139,10 @@ export function useSignupPage() {
             : "Unexpected error during signup",
         variant: "destructive",
       });
+    } finally {
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 3000);
     }
   }
 

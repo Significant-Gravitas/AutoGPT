@@ -2,12 +2,17 @@ from typing import Mapping
 
 
 class BlockError(Exception):
-    """An error occurred during the running of a block"""
+    """An error occurred during the running of a block.
+
+    Exposes the underlying message as ``str(exc)`` without a framing prefix
+    so ``yield "error", str(exc)`` surfaces the actual cause to the user.
+    The block name and id are kept as attributes for structured logging.
+    """
 
     def __init__(self, message: str, block_name: str, block_id: str) -> None:
-        super().__init__(
-            f"raised by {block_name} with message: {message}. block_id: {block_id}"
-        )
+        super().__init__(message)
+        self.block_name = block_name
+        self.block_id = block_id
 
 
 class BlockInputError(BlockError, ValueError):
@@ -62,6 +67,10 @@ class GraphNotAccessibleError(NotAuthorizedError):
 
 class GraphNotInLibraryError(GraphNotAccessibleError):
     """Raised when attempting to execute a graph that is not / no longer in the user's library."""
+
+
+class PreconditionFailed(Exception):
+    """The user must do something else first before trying the current operation"""
 
 
 class InsufficientBalanceError(ValueError):
@@ -151,3 +160,19 @@ class RedisError(Exception):
     """Raised when there is an error interacting with Redis"""
 
     pass
+
+
+class LinkAlreadyExistsError(ValueError):
+    """A platform_linking target (server or user) is already linked."""
+
+
+class LinkTokenExpiredError(ValueError):
+    """A platform_linking token has expired or been consumed."""
+
+
+class LinkFlowMismatchError(ValueError):
+    """A platform_linking token was used for the wrong flow (server vs user)."""
+
+
+class DuplicateChatMessageError(ValueError):
+    """The same user message is already in flight for this chat session."""

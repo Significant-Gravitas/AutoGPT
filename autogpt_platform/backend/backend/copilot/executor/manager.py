@@ -26,7 +26,7 @@ from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
-from .processor import execute_copilot_task, init_worker
+from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -34,6 +34,7 @@ from .utils import (
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
+    get_session_lock_key,
 )
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
@@ -84,7 +85,7 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
-        self._active_tasks_lock = threading.Lock()
+        self._active_tasks_lock_obj: threading.Lock | None = None
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -92,6 +93,13 @@ class CoPilotExecutor(AppProcess):
         """Main service loop - consume from RabbitMQ."""
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
+
+        # Materialise the active-tasks lock NOW, before any worker threads
+        # exist, so subsequent multi-threaded reads of the lazy property
+        # never race on its check-then-init pattern.  ``__init__`` can't
+        # do this because ``_thread.lock`` is not picklable and the
+        # forkserver start method serialises the process object.
+        self._active_tasks_lock  # noqa: B018 — touch to materialise
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
@@ -104,25 +112,46 @@ class CoPilotExecutor(AppProcess):
             time.sleep(1e5)
 
     def cleanup(self):
-        """Graceful shutdown with active execution waiting."""
-        pid = os.getpid()
-        logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
+        """Graceful shutdown — mirrors ``backend.executor.manager`` pattern.
 
-        # Signal the consumer thread to stop
+        1. Stop consumer immediately (both the Python flag that gates
+           ``_handle_run_message`` and ``channel.stop_consuming()`` at
+           the broker), so no new work enters.
+        2. Passively wait for ``active_tasks`` to drain — each turn's
+           own ``finally`` publishes its terminal state via
+           ``mark_session_completed``. When a turn exits, ``on_run_done``
+           removes it from ``active_tasks`` and releases its cluster lock.
+        3. Shut down the thread-pool executor (cancels pending, leaves
+           running threads alone — process exit handles them).
+        4. Release any cluster locks still held (defensive — on_run_done's
+           finally should have already released them).
+        5. Stop message consumer threads + disconnect pika clients.
+
+        The zombie-session bug this PR targets is handled inside each
+        turn's own lifecycle by :func:`sync_fail_close_session`, NOT by
+        cleanup — so cleanup can stay as a simple "wait, then teardown"
+        and matches agent-executor's proven pattern.
+        """
+        pid = os.getpid()
+        prefix = f"[cleanup {pid}]"
+        logger.info(f"{prefix} Starting graceful shutdown...")
+
+        # 1. Stop consumer — flag AND broker-side
         try:
             self.stop_consuming.set()
             run_channel = self.run_client.get_channel()
             run_channel.connection.add_callback_threadsafe(
                 lambda: run_channel.stop_consuming()
             )
-            logger.info(f"[cleanup {pid}] Consumer has been signaled to stop")
+            logger.info(f"{prefix} Consumer has been signaled to stop")
         except Exception as e:
-            logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
+            logger.error(f"{prefix} Error stopping consumer: {e}")
 
-        # Wait for active executions to complete
+        # 2. Wait for in-flight turns to finish naturally
         if self.active_tasks:
             logger.info(
-                f"[cleanup {pid}] Waiting for {len(self.active_tasks)} active tasks to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
+                f"{prefix} Waiting for {len(self.active_tasks)} active tasks "
+                f"to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
             )
 
             start_time = time.monotonic()
@@ -137,59 +166,63 @@ class CoPilotExecutor(AppProcess):
                 if not self.active_tasks:
                     break
 
-                # Refresh cluster locks periodically
-                current_time = time.monotonic()
-                if current_time - last_refresh >= lock_refresh_interval:
+                now = time.monotonic()
+                if now - last_refresh >= lock_refresh_interval:
                     for lock in list(self._task_locks.values()):
                         try:
                             lock.refresh()
                         except Exception as e:
-                            logger.warning(
-                                f"[cleanup {pid}] Failed to refresh lock: {e}"
-                            )
-                    last_refresh = current_time
+                            logger.warning(f"{prefix} Failed to refresh lock: {e}")
+                    last_refresh = now
 
                 logger.info(
-                    f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
+                    f"{prefix} {len(self.active_tasks)} tasks still active, waiting..."
                 )
                 time.sleep(10.0)
 
-        # Stop message consumers
+            if self.active_tasks:
+                logger.warning(
+                    f"{prefix} {len(self.active_tasks)} tasks still running after "
+                    f"{GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s — process exit will "
+                    f"abandon them; RabbitMQ redelivery handles the message."
+                )
+
+        # 3. Stop message consumer threads
         if self._run_thread:
             self._stop_message_consumers(
-                self._run_thread, self.run_client, "[cleanup][run]"
+                self._run_thread, self.run_client, f"{prefix} [run]"
             )
         if self._cancel_thread:
             self._stop_message_consumers(
-                self._cancel_thread, self.cancel_client, "[cleanup][cancel]"
+                self._cancel_thread, self.cancel_client, f"{prefix} [cancel]"
             )
 
-        # Shutdown executor
+        # 4. Worker cleanup + executor shutdown
         if self._executor:
-            logger.info(f"[cleanup {pid}] Shutting down executor...")
+            from .processor import cleanup_worker
+
+            logger.info(f"{prefix} Cleaning up workers...")
+            futures = []
+            for _ in range(self._executor._max_workers):
+                futures.append(self._executor.submit(cleanup_worker))
+            for f in futures:
+                try:
+                    f.result(timeout=10)
+                except Exception as e:
+                    logger.warning(f"{prefix} Worker cleanup error: {e}")
+
+            logger.info(f"{prefix} Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # Close async resources (workspace storage aiohttp session, etc.)
-        try:
-            from backend.util.workspace_storage import shutdown_workspace_storage
-
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(shutdown_workspace_storage())
-            loop.close()
-        except Exception as e:
-            logger.warning(f"[cleanup {pid}] Error closing workspace storage: {e}")
-
-        # Release any remaining locks
-        for task_id, lock in list(self._task_locks.items()):
+        # 5. Release any cluster locks still held
+        for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
-                logger.info(f"[cleanup {pid}] Released lock for {task_id}")
+                logger.info(f"{prefix} Released lock for {session_id}")
             except Exception as e:
-                logger.error(
-                    f"[cleanup {pid}] Failed to release lock for {task_id}: {e}"
-                )
+                logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
-        logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+        logger.info(f"{prefix} Graceful shutdown completed")
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -266,20 +299,20 @@ class CoPilotExecutor(AppProcess):
     ):
         """Handle cancel message from FANOUT exchange."""
         request = CancelCoPilotEvent.model_validate_json(body)
-        task_id = request.task_id
-        if not task_id:
-            logger.warning("Cancel message missing 'task_id'")
+        session_id = request.session_id
+        if not session_id:
+            logger.warning("Cancel message missing 'session_id'")
             return
-        if task_id not in self.active_tasks:
-            logger.debug(f"Cancel received for {task_id} but not active")
+        if session_id not in self.active_tasks:
+            logger.debug(f"Cancel received for {session_id} but not active")
             return
 
-        _, cancel_event = self.active_tasks[task_id]
-        logger.info(f"Received cancel for {task_id}")
+        _, cancel_event = self.active_tasks[session_id]
+        logger.info(f"Received cancel for {session_id}")
         if not cancel_event.is_set():
             cancel_event.set()
         else:
-            logger.debug(f"Cancel already set for {task_id}")
+            logger.debug(f"Cancel already set for {session_id}")
 
     def _handle_run_message(
         self,
@@ -351,12 +384,12 @@ class CoPilotExecutor(AppProcess):
             ack_message(reject=True, requeue=False)
             return
 
-        task_id = entry.task_id
+        session_id = entry.session_id
 
-        # Check for local duplicate - task is already running on this executor
-        if task_id in self.active_tasks:
+        # Check for local duplicate - session is already running on this executor
+        if session_id in self.active_tasks:
             logger.warning(
-                f"Task {task_id} already running locally, rejecting duplicate"
+                f"Session {session_id} already running locally, rejecting duplicate"
             )
             ack_message(reject=True, requeue=False)
             return
@@ -364,64 +397,67 @@ class CoPilotExecutor(AppProcess):
         # Try to acquire cluster-wide lock
         cluster_lock = ClusterLock(
             redis=redis.get_redis(),
-            key=f"copilot:task:{task_id}:lock",
+            key=get_session_lock_key(session_id),
             owner_id=self.executor_id,
             timeout=settings.config.cluster_lock_timeout,
         )
         current_owner = cluster_lock.try_acquire()
         if current_owner != self.executor_id:
             if current_owner is not None:
-                logger.warning(f"Task {task_id} already running on pod {current_owner}")
+                logger.warning(
+                    f"Session {session_id} already running on pod {current_owner}"
+                )
                 ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
-                    f"Could not acquire lock for {task_id} - Redis unavailable"
+                    f"Could not acquire lock for {session_id} - Redis unavailable"
                 )
                 ack_message(reject=True, requeue=True)
             return
 
         # Execute the task
         try:
-            self._task_locks[task_id] = cluster_lock
-
             logger.info(
-                f"Acquired cluster lock for {task_id}, executor_id={self.executor_id}"
+                f"Acquired cluster lock for {session_id}, "
+                f"executor_id={self.executor_id}"
             )
 
+            self._task_locks[session_id] = cluster_lock
             cancel_event = threading.Event()
             future = self.executor.submit(
-                execute_copilot_task, entry, cancel_event, cluster_lock
+                execute_copilot_turn, entry, cancel_event, cluster_lock
             )
-            self.active_tasks[task_id] = (future, cancel_event)
+            self.active_tasks[session_id] = (future, cancel_event)
         except Exception as e:
-            logger.warning(f"Failed to setup execution for {task_id}: {e}")
+            logger.warning(f"Failed to setup execution for {session_id}: {e}")
             cluster_lock.release()
-            if task_id in self._task_locks:
-                del self._task_locks[task_id]
+            if session_id in self._task_locks:
+                del self._task_locks[session_id]
             ack_message(reject=True, requeue=True)
             return
 
         self._update_metrics()
 
         def on_run_done(f: Future):
-            logger.info(f"Run completed for {task_id}")
+            logger.info(f"Run completed for {session_id}")
+            error_msg = None
             try:
                 if exec_error := f.exception():
-                    logger.error(f"Execution for {task_id} failed: {exec_error}")
-                    # Don't requeue failed tasks - they've been marked as failed
-                    # in the stream registry. Requeuing would cause infinite retries
-                    # for deterministic failures.
+                    error_msg = str(exec_error) or type(exec_error).__name__
+                    logger.error(f"Execution for {session_id} failed: {error_msg}")
                     ack_message(reject=True, requeue=False)
                 else:
                     ack_message(reject=False, requeue=False)
+            except asyncio.CancelledError:
+                logger.info(f"Run completion callback cancelled for {session_id}")
             except BaseException as e:
-                logger.exception(f"Error in run completion callback: {e}")
+                error_msg = str(e) or type(e).__name__
+                logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
-                # Release the cluster lock
-                if task_id in self._task_locks:
-                    logger.info(f"Releasing cluster lock for {task_id}")
-                    self._task_locks[task_id].release()
-                    del self._task_locks[task_id]
+                if session_id in self._task_locks:
+                    logger.info(f"Releasing cluster lock for {session_id}")
+                    self._task_locks[session_id].release()
+                    del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
 
         future.add_done_callback(on_run_done)
@@ -432,11 +468,11 @@ class CoPilotExecutor(AppProcess):
         """Remove completed futures from active_tasks and update metrics."""
         completed_tasks = []
         with self._active_tasks_lock:
-            for task_id, (future, _) in list(self.active_tasks.items()):
+            for session_id, (future, _) in list(self.active_tasks.items()):
                 if future.done():
-                    completed_tasks.append(task_id)
-                    self.active_tasks.pop(task_id, None)
-                    logger.info(f"Cleaned up completed task {task_id}")
+                    completed_tasks.append(session_id)
+                    self.active_tasks.pop(session_id, None)
+                    logger.info(f"Cleaned up completed session {session_id}")
 
         self._update_metrics()
         return completed_tasks
@@ -472,6 +508,12 @@ class CoPilotExecutor(AppProcess):
             logger.error(f"{prefix} Error disconnecting client: {e}")
 
     # ============ Lazy-initialized Properties ============ #
+
+    @property
+    def _active_tasks_lock(self) -> threading.Lock:
+        if self._active_tasks_lock_obj is None:
+            self._active_tasks_lock_obj = threading.Lock()
+        return self._active_tasks_lock_obj
 
     @property
     def cancel_thread(self) -> threading.Thread:

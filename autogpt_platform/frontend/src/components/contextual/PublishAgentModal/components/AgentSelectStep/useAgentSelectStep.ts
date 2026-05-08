@@ -51,8 +51,8 @@ export function useAgentSelectStep({
           ?.agents.map(
             (agent): Agent => ({
               name: agent.agent_name,
-              id: agent.agent_id,
-              version: agent.agent_version,
+              id: agent.graph_id,
+              version: agent.graph_version,
               lastEdited: agent.last_edited.toLocaleDateString(),
               imageSrc: agent.agent_image || "https://picsum.photos/300/200",
               description: agent.description || "",

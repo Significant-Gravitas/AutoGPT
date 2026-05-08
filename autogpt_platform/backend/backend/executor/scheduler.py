@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -93,7 +94,7 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 def job_listener(event):
     """Logs job execution outcomes for better monitoring."""
     if event.exception:
-        logger.error(
+        logger.warning(
             f"Job {event.job_id} failed: {type(event.exception).__name__}: {event.exception}"
         )
     else:
@@ -136,7 +137,7 @@ def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
     try:
         return future.result(timeout=timeout)
     except Exception as e:
-        logger.error(f"Async operation failed: {type(e).__name__}: {e}")
+        logger.warning(f"Async operation failed: {type(e).__name__}: {e}")
         raise
 
 
@@ -185,7 +186,7 @@ async def _execute_graph(**kwargs):
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
-    logger.error(
+    logger.warning(
         f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
     )
     if args.schedule_id:
@@ -195,8 +196,9 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
             user_id=args.user_id,
         )
     else:
-        logger.error(
-            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+        logger.warning(
+            f"Unable to unschedule graph: {args.graph_id} as this is an old job "
+            f"with no associated schedule_id please remove manually"
         )
 
 
@@ -253,6 +255,16 @@ def cleanup_oauth_tokens():
     async def _cleanup():
         db = get_database_manager_async_client()
         return await db.cleanup_expired_oauth_tokens()
+
+    run_async(_cleanup())
+
+
+def cleanup_failed_push_subscriptions():
+    """Delete push subscriptions that have exceeded the failure threshold."""
+
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_failed_push_subscriptions()
 
     run_async(_cleanup())
 
@@ -580,6 +592,16 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Failed Push Subscription Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_failed_push_subscriptions,
+                id="cleanup_failed_push_subscriptions",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.push_subscription_cleanup_interval_hours * 3600,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
                 execution_accuracy_alerts,
@@ -601,6 +623,19 @@ class Scheduler(AppService):
                 hours=6,
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Block Description Optimization - Every 24 hours
+            # Generates concise LLM-optimized block descriptions for
+            # agent generation. Only processes blocks missing descriptions.
+            self.scheduler.add_job(
+                optimize_block_descriptions,
+                id="optimize_block_descriptions",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

@@ -3,11 +3,9 @@ import {
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
+import * as Sentry from "@sentry/nextjs";
 
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
@@ -56,19 +54,13 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
-    try {
-      const impersonatedUserId = sessionStorage.getItem(
-        IMPERSONATION_STORAGE_KEY,
-      );
-      if (impersonatedUserId) {
-        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+    const traceData = Sentry.getTraceData?.() ?? {};
+    for (const [key, value] of Object.entries(traceData)) {
+      if (typeof value === "string") {
+        headers[key] = value;
       }
-    } catch (error) {
-      console.error(
-        "Admin impersonation: Failed to access sessionStorage:",
-        error,
-      );
     }
+    Object.assign(headers, getSystemHeaders());
   }
 
   const isFormData = data instanceof FormData;

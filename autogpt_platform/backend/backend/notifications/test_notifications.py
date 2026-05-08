@@ -19,6 +19,7 @@ class TestNotificationErrorHandling:
         with patch("backend.notifications.notifications.AppService.__init__"):
             manager = NotificationManager()
             manager.email_sender = MagicMock()
+            manager.email_sender.send_templated = AsyncMock()
             # Mock the _get_template method used by _process_batch
             template_mock = Mock()
             template_mock.base_template = "base"
@@ -27,9 +28,10 @@ class TestNotificationErrorHandling:
             manager.email_sender._get_template = Mock(return_value=template_mock)
             # Mock the formatter
             manager.email_sender.formatter = Mock()
-            manager.email_sender.formatter.format_email = Mock(
+            manager.email_sender.formatter.format_email = AsyncMock(
                 return_value=("subject", "body content")
             )
+            manager.email_sender.send_templated = AsyncMock()
             manager.email_sender.formatter.env = Mock()
             manager.email_sender.formatter.env.globals = {
                 "base_url": "http://example.com"
@@ -256,9 +258,9 @@ class TestNotificationErrorHandling:
             assert 2 not in successful_indices  # Index 2 failed
 
             # Verify 422 error was logged
-            error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
+            warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
             assert any(
-                "422" in call or "malformed" in call.lower() for call in error_calls
+                "422" in call or "malformed" in call.lower() for call in warning_calls
             )
 
             # Verify all notifications were removed (4 successful + 1 malformed)
@@ -331,7 +333,7 @@ class TestNotificationErrorHandling:
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
 
-            notification_manager.email_sender.formatter.format_email = Mock(
+            notification_manager.email_sender.formatter.format_email = AsyncMock(
                 side_effect=format_side_effect
             )
 
@@ -371,10 +373,10 @@ class TestNotificationErrorHandling:
             assert 3 not in successful_indices  # Index 3 was not sent
 
             # Verify oversized error was logged
-            error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
+            warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
             assert any(
                 "exceeds email size limit" in call or "oversized" in call.lower()
-                for call in error_calls
+                for call in warning_calls
             )
 
     @pytest.mark.asyncio
@@ -478,10 +480,10 @@ class TestNotificationErrorHandling:
             assert 1 in failed_indices  # Index 1 failed
 
             # Verify generic error was logged
-            error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
+            warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
             assert any(
                 "api error" in call.lower() or "skipping" in call.lower()
-                for call in error_calls
+                for call in warning_calls
             )
 
             # Only successful ones should be removed from batch (failed one stays for retry)

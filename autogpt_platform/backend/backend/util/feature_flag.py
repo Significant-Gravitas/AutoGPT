@@ -1,5 +1,7 @@
 import contextlib
 import logging
+import os
+import uuid
 from enum import Enum
 from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
@@ -38,7 +40,31 @@ class Flag(str, Enum):
     AGENT_ACTIVITY = "agent-activity"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
+    CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
+    COPILOT_COST_LIMITS = "copilot-cost-limits"
+    COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
+    COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
+    COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
+    GRAPHITI_MEMORY = "graphiti-memory"
+    GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
+    # Stripe Product ID for top-up Checkout sessions. When unset (default),
+    # top_up_intent uses inline product_data (creates ephemeral Stripe products
+    # per Checkout). When set to a real Stripe Product ID, line items reference
+    # that Product so dashboard reporting groups all top-ups under one entity;
+    # the per-Checkout amount stays dynamic via price_data.unit_amount.
+    STRIPE_PRODUCT_ID_TOPUP = "stripe-product-id-topup"
+
+    # Copilot model routing — JSON-valued, returns the per-(mode, tier)
+    # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
+    # ``"moonshotai/kimi-k2.6"``).  Shape:
+    # ``{"fast": {"standard": "...", "advanced": "..."},
+    #   "thinking": {"standard": "...", "advanced": "..."}}``.
+    # Missing mode, missing tier-within-mode, non-string value, non-dict
+    # payload, or LD failure all fall back to the corresponding
+    # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
+    # targeted.
+    COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
 
 def is_configured() -> bool:
@@ -95,6 +121,12 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     builder = Context.builder(user_id).kind("user").anonymous(True)
 
     try:
+        uuid.UUID(user_id)
+    except ValueError:
+        # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
+        return builder.build()
+
+    try:
         from backend.util.clients import get_supabase
 
         # If we have user data, update context
@@ -109,6 +141,10 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
+            if user.created_at:
+                # ISO-8601 string — LD supports RFC3339 date targeting on
+                # this attribute (e.g. cohort users by signup window).
+                builder.set("created_at", user.created_at.isoformat())
 
     except Exception as e:
         logger.warning(f"Failed to fetch user context for {user_id}: {e}")
@@ -163,6 +199,30 @@ async def get_feature_flag_value(
         return default
 
 
+def _env_flag_override(flag_key: Flag) -> bool | None:
+    """Return a local override for ``flag_key`` from the environment.
+
+    Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
+    ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for a single
+    flag in local dev or tests.  Returns ``None`` when no override
+    is configured so the caller falls through to LaunchDarkly.
+
+    The ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` prefix is also accepted so a
+    single shared env var can toggle a flag across backend and
+    frontend (the frontend requires the ``NEXT_PUBLIC_`` prefix to
+    expose the value to the browser bundle).
+
+    Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
+    ``Flag.CHAT_MODE_OPTION`` on regardless of LaunchDarkly.
+    """
+    suffix = flag_key.value.upper().replace("-", "_")
+    for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
+        raw = os.environ.get(prefix + suffix)
+        if raw is not None:
+            return raw.strip().lower() in ("1", "true", "yes", "on")
+    return None
+
+
 async def is_feature_enabled(
     flag_key: Flag,
     user_id: str,
@@ -179,6 +239,11 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
+        return override
+
     result = await get_feature_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it

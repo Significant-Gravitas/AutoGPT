@@ -117,13 +117,11 @@ class TestSearchFeatureRequestsTool:
                 "id": "id-1",
                 "identifier": "FR-1",
                 "title": "Dark mode",
-                "description": "Add dark mode support",
             },
             {
                 "id": "id-2",
                 "identifier": "FR-2",
                 "title": "Dark theme",
-                "description": None,
             },
         ]
         patcher, _ = _mock_linear_config(query_return=_search_response(nodes))

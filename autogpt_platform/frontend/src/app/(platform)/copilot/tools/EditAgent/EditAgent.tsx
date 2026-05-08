@@ -1,24 +1,19 @@
 "use client";
 
-import { WarningDiamondIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
+import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
+import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
   ContentHint,
-  ContentLink,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MiniGame } from "../CreateAgent/components/MiniGame/MiniGame";
-import {
-  ClarificationQuestionsCard,
-  ClarifyingQuestion,
-} from "../CreateAgent/components/ClarificationQuestionsCard";
 import {
   AccordionIcon,
   formatMaybeJson,
@@ -26,11 +21,7 @@ import {
   getEditAgentToolOutput,
   isAgentPreviewOutput,
   isAgentSavedOutput,
-  isClarificationNeededOutput,
   isErrorOutput,
-  isOperationInProgressOutput,
-  isOperationPendingOutput,
-  isOperationStartedOutput,
   ToolIcon,
   truncateText,
   type EditAgentToolOutput,
@@ -48,7 +39,7 @@ interface Props {
   part: EditAgentToolPart;
 }
 
-function getAccordionMeta(output: EditAgentToolOutput): {
+function getAccordionMeta(output: EditAgentToolOutput | null): {
   icon: React.ReactNode;
   title: string;
   titleClassName?: string;
@@ -57,9 +48,14 @@ function getAccordionMeta(output: EditAgentToolOutput): {
 } {
   const icon = <AccordionIcon />;
 
-  if (isAgentSavedOutput(output)) {
-    return { icon, title: output.agent_name };
+  if (!output) {
+    return {
+      icon,
+      title: "Editing agent, this may take a few minutes. Play while you wait.",
+      expanded: true,
+    };
   }
+
   if (isAgentPreviewOutput(output)) {
     return {
       icon,
@@ -67,32 +63,7 @@ function getAccordionMeta(output: EditAgentToolOutput): {
       description: `${output.node_count} block${output.node_count === 1 ? "" : "s"}`,
     };
   }
-  if (isClarificationNeededOutput(output)) {
-    const questions = output.questions ?? [];
-    return {
-      icon,
-      title: "Needs clarification",
-      description: `${questions.length} question${questions.length === 1 ? "" : "s"}`,
-    };
-  }
-  if (
-    isOperationStartedOutput(output) ||
-    isOperationPendingOutput(output) ||
-    isOperationInProgressOutput(output)
-  ) {
-    return {
-      icon: <OrbitLoader size={32} />,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
-  return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
-    title: "Error",
-    titleClassName: "text-red-500",
-  };
+  return { icon, title: "" };
 }
 
 export function EditAgentTool({ part }: Props) {
@@ -104,51 +75,41 @@ export function EditAgentTool({ part }: Props) {
   const output = getEditAgentToolOutput(part);
   const isError =
     part.state === "output-error" || (!!output && isErrorOutput(output));
-  const isOperating =
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output));
-  const hasExpandableContent =
-    part.state === "output-available" &&
-    !!output &&
-    (isOperationStartedOutput(output) ||
-      isOperationPendingOutput(output) ||
-      isOperationInProgressOutput(output) ||
-      isAgentPreviewOutput(output) ||
-      isAgentSavedOutput(output) ||
-      isClarificationNeededOutput(output) ||
-      isErrorOutput(output));
 
-  function handleClarificationAnswers(answers: Record<string, string>) {
-    const questions =
-      output && isClarificationNeededOutput(output)
-        ? (output.questions ?? [])
-        : [];
+  const isOperating = !output;
 
-    const contextMessage = questions
-      .map((q) => {
-        const answer = answers[q.keyword] || "";
-        return `> ${q.question}\n\n${answer}`;
-      })
-      .join("\n\n");
-
-    onSend(
-      `**Here are my answers:**\n\n${contextMessage}\n\nPlease proceed with editing the agent.`,
-    );
-  }
+  // Show accordion for operating state and successful outputs, but not for errors
+  // (errors are shown inline so they get replaced when retrying)
+  const hasExpandableContent = !isError;
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ToolIcon isStreaming={isStreaming} isError={isError} />
-        <MorphingTextAnimation
-          text={text}
-          className={isError ? "text-red-500" : undefined}
-        />
-      </div>
+      {isOperating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming={isStreaming} isError={isError} />
+          <MorphingTextAnimation
+            text={text}
+            className={isError ? "text-red-500" : undefined}
+          />
+        </div>
+      )}
 
-      {hasExpandableContent && output && (
+      {isError && output && isErrorOutput(output) && (
+        <ToolErrorCard
+          message={output.message}
+          fallbackMessage="Failed to edit the agent. Please try again."
+          error={output.error ? formatMaybeJson(output.error) : undefined}
+          details={output.details ? formatMaybeJson(output.details) : undefined}
+          actions={[
+            {
+              label: "Try again",
+              onClick: () => onSend("Please try editing the agent again."),
+            },
+          ]}
+        />
+      )}
+
+      {hasExpandableContent && !(output && isAgentSavedOutput(output)) && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isOperating && (
             <ContentGrid>
@@ -159,27 +120,7 @@ export function EditAgentTool({ part }: Props) {
             </ContentGrid>
           )}
 
-          {isAgentSavedOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              <div className="flex flex-wrap gap-2">
-                <ContentLink href={output.library_agent_link}>
-                  Open in library
-                </ContentLink>
-                <ContentLink href={output.agent_page_link}>
-                  Open in builder
-                </ContentLink>
-              </div>
-              <ContentCodeBlock>
-                {truncateText(
-                  formatMaybeJson({ agent_id: output.agent_id }),
-                  800,
-                )}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
-
-          {isAgentPreviewOutput(output) && (
+          {output && isAgentPreviewOutput(output) && (
             <ContentGrid>
               <ContentMessage>{output.message}</ContentMessage>
               {output.description?.trim() && (
@@ -192,42 +133,16 @@ export function EditAgentTool({ part }: Props) {
               </ContentCodeBlock>
             </ContentGrid>
           )}
-
-          {isClarificationNeededOutput(output) && (
-            <ClarificationQuestionsCard
-              questions={(output.questions ?? []).map((q) => {
-                const item: ClarifyingQuestion = {
-                  question: q.question,
-                  keyword: q.keyword,
-                };
-                const example =
-                  typeof q.example === "string" && q.example.trim()
-                    ? q.example.trim()
-                    : null;
-                if (example) item.example = example;
-                return item;
-              })}
-              message={output.message}
-              onSubmitAnswers={handleClarificationAnswers}
-            />
-          )}
-
-          {isErrorOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.error && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.error)}
-                </ContentCodeBlock>
-              )}
-              {output.details && (
-                <ContentCodeBlock>
-                  {formatMaybeJson(output.details)}
-                </ContentCodeBlock>
-              )}
-            </ContentGrid>
-          )}
         </ToolAccordion>
+      )}
+
+      {output && isAgentSavedOutput(output) && (
+        <AgentSavedCard
+          agentName={output.agent_name}
+          message="has been updated!"
+          libraryAgentLink={output.library_agent_link}
+          agentPageLink={output.agent_page_link}
+        />
       )}
     </div>
   );

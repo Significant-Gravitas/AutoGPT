@@ -4,7 +4,14 @@ import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -89,6 +96,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=500,
         description="Thread pool size for FastAPI sync operations. All sync endpoints and dependencies automatically use this pool. Higher values support more concurrent sync operations but use more memory.",
     )
+    ollama_host: str = Field(
+        default="localhost:11434",
+        description="Default Ollama host; exempted from SSRF checks.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -116,14 +127,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
-    )
-    enable_beta_monthly_credit: bool = Field(
-        default=True,
-        description="If beta monthly credits accounting is enabled or not",
-    )
-    num_user_credits_refill: int = Field(
-        default=1500,
-        description="Number of credits to refill for each user",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -248,6 +251,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for notification service daemon to run on",
     )
 
+    platform_linking_service_port: int = Field(
+        default=8009,
+        description="The port for the platform_linking manager daemon to run on",
+    )
+
+    copilot_chat_bridge_port: int = Field(
+        default=8010,
+        description="The port for the CoPilot chat bridge (multi-platform bot) "
+        "service daemon to run on",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -263,6 +277,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    platform_link_base_url: str = Field(
+        default="https://platform.agpt.co/link",
+        description="Base URL the bot service prepends to one-time linking "
+        "tokens when it posts them to users ({base}/{token}?platform=...). "
+        "Should point at the frontend /link page.",
     )
 
     media_gcs_bucket_name: str = Field(
@@ -286,14 +307,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    # Prefer the cluster env var so the new image can co-exist with old-image
+    # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
         default="localhost",
         description="The host for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_HOST", "RABBITMQ_HOST"),
     )
 
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_PORT", "RABBITMQ_PORT"),
     )
 
     rabbitmq_vhost: str = Field(
@@ -301,14 +326,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The vhost for the RabbitMQ server",
     )
 
+    # Same rollover pattern as rabbitmq_host; REDIS_CLUSTER_HOST must win so
+    # cache.py's RedisCluster client reaches the sharded cluster, not the
+    # pre-migration standalone Redis.
     redis_host: str = Field(
         default="localhost",
         description="The host for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_HOST", "REDIS_HOST"),
     )
 
     redis_port: int = Field(
         default=6379,
         description="The port for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_PORT", "REDIS_PORT"),
     )
 
     redis_password: str = Field(
@@ -363,23 +393,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to mark failed scans as clean or not",
     )
 
-    agentgenerator_host: str = Field(
-        default="",
-        description="The host for the Agent Generator service (empty to use built-in)",
-    )
-    agentgenerator_port: int = Field(
-        default=8000,
-        description="The port for the Agent Generator service",
-    )
-    agentgenerator_timeout: int = Field(
-        default=600,
-        description="The timeout in seconds for Agent Generator service requests (includes retries for rate limits)",
-    )
-    agentgenerator_use_dummy: bool = Field(
-        default=False,
-        description="Use dummy agent generator responses for testing (bypasses external service)",
-    )
-
     enable_example_blocks: bool = Field(
         default=False,
         description="Whether to enable example blocks in production",
@@ -397,6 +410,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between OAuth token cleanup runs (1-24 hours)",
+    )
+
+    push_subscription_cleanup_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours between failed push subscription cleanup runs (1-168 hours)",
     )
 
     upload_file_size_limit_mb: int = Field(
@@ -593,6 +613,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    vapid_private_key: str = Field(
+        default="", description="VAPID private key for Web Push"
+    )
+    vapid_public_key: str = Field(
+        default="", description="VAPID public key for Web Push (base64url)"
+    )
+    vapid_claim_email: str = Field(
+        default="mailto:push@agpt.co", description="VAPID contact email"
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -646,6 +676,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     did_api_key: str = Field(default="", description="D-ID API Key")
     revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
+    autopilot_bot_discord_token: str = Field(
+        default="",
+        description="Discord bot token for the CoPilot chat bridge. When set, "
+        "the bridge enables its Discord adapter.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")
@@ -691,6 +726,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
 
+    tally_api_key: str = Field(
+        default="",
+        description="Tally API key for form submission lookup on signup",
+    )
+    tally_form_id: str = Field(
+        default="npGe0q",
+        description="Tally form ID for signup business understanding form",
+    )
+
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
@@ -705,6 +749,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The LaunchDarkly SDK key for feature flag management",
     )
 
+    agentmail_api_key: str = Field(default="", description="AgentMail API Key")
+
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 
@@ -713,6 +759,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
+    )
+    langfuse_tracing_environment: str = Field(
+        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics

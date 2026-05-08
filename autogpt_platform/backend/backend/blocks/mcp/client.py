@@ -55,7 +55,9 @@ class MCPClient:
         server_url: str,
         auth_token: str | None = None,
     ):
-        self.server_url = server_url.rstrip("/")
+        from backend.blocks.mcp.helpers import normalize_mcp_url
+
+        self.server_url = normalize_mcp_url(server_url)
         self.auth_token = auth_token
         self._request_id = 0
         self._session_id: str | None = None

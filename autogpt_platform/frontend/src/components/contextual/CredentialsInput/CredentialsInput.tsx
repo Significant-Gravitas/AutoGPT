@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { CredentialsFlatView } from "./components/CredentialsFlatView/CredentialsFlatView";
+import { CredentialTypeSelector } from "./components/CredentialTypeSelector/CredentialTypeSelector";
+import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
@@ -70,20 +72,31 @@ export function CredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
+    hasMultipleCredentialTypes,
+    supportedTypes,
     userCredentials,
     systemCredentials,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
-    oAuthPopupController,
+    cancelOAuthFlow,
     actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setCredentialTypeSelectorOpen,
     handleActionButtonClick,
     handleCredentialSelect,
+    handleOAuthLogin,
+    handleDeleteCredential,
+    handleDeleteConfirm,
+    credentialToDelete,
+    deleteWarningMessage,
+    setCredentialToDelete,
+    isDeletingCredential,
   } = hookData;
 
   const displayName = toDisplayName(provider);
@@ -107,6 +120,7 @@ export function CredentialsInput({
         onSelectCredential={handleCredentialSelect}
         onClearCredential={() => onSelectCredential(undefined)}
         onAddCredential={handleActionButtonClick}
+        onDeleteCredential={readOnly ? undefined : handleDeleteCredential}
         actionButtonText={actionButtonText}
         isOptional={isOptional}
         showTitle={showTitle}
@@ -116,7 +130,28 @@ export function CredentialsInput({
 
       {!readOnly && (
         <>
-          {supportsApiKey && (
+          {hasMultipleCredentialTypes && (
+            <CredentialTypeSelector
+              schema={schema}
+              open={isCredentialTypeSelectorOpen}
+              onClose={() => setCredentialTypeSelectorOpen(false)}
+              provider={provider}
+              providerName={providerName}
+              supportedTypes={supportedTypes}
+              onCredentialsCreate={(creds) => {
+                onSelectCredential(creds);
+              }}
+              onOAuthLogin={handleOAuthLogin}
+              onOpenPasswordModal={() =>
+                setUserPasswordCredentialsModalOpen(true)
+              }
+              onOpenHostScopedModal={() =>
+                setHostScopedCredentialsModalOpen(true)
+              }
+              siblingInputs={siblingInputs}
+            />
+          )}
+          {supportsApiKey && !hasMultipleCredentialTypes && (
             <APIKeyCredentialsModal
               schema={schema}
               open={isAPICredentialsModalOpen}
@@ -131,7 +166,7 @@ export function CredentialsInput({
           {supportsOAuth2 && (
             <OAuthFlowWaitingModal
               open={isOAuth2FlowInProgress}
-              onClose={() => oAuthPopupController?.abort("canceled")}
+              onClose={cancelOAuthFlow}
               providerName={providerName}
             />
           )}
@@ -165,6 +200,15 @@ export function CredentialsInput({
               Error: {oAuthError}
             </Text>
           )}
+
+          <DeleteConfirmationModal
+            credentialToDelete={credentialToDelete}
+            warningMessage={deleteWarningMessage}
+            isDeleting={isDeletingCredential}
+            onClose={() => setCredentialToDelete(null)}
+            onConfirm={() => handleDeleteConfirm(false)}
+            onForceConfirm={() => handleDeleteConfirm(true)}
+          />
         </>
       )}
     </div>

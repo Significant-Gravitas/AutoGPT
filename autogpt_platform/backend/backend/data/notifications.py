@@ -5,6 +5,7 @@ from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
 from prisma import Json
 from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import (
     NotificationEventCreateInput,
@@ -13,7 +14,14 @@ from prisma.types import (
 )
 
 # from backend.notifications.models import NotificationEvent
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
@@ -175,10 +183,26 @@ class RefundRequestData(BaseNotificationData):
     balance: int
 
 
-class AgentApprovalData(BaseNotificationData):
+class _LegacyAgentFieldsMixin:
+    """Temporary patch to handle existing queued payloads"""
+
+    # FIXME: remove in next release
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_legacy_agent_fields(cls, values: Any):
+        if isinstance(values, dict):
+            if "graph_id" not in values and "agent_id" in values:
+                values["graph_id"] = values.pop("agent_id")
+            if "graph_version" not in values and "agent_version" in values:
+                values["graph_version"] = values.pop("agent_version")
+        return values
+
+
+class AgentApprovalData(_LegacyAgentFieldsMixin, BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str
@@ -193,10 +217,10 @@ class AgentApprovalData(BaseNotificationData):
         return value
 
 
-class AgentRejectionData(BaseNotificationData):
+class AgentRejectionData(_LegacyAgentFieldsMixin, BaseNotificationData):
     agent_name: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     reviewer_name: str
     reviewer_email: str
     comments: str
@@ -436,57 +460,56 @@ async def create_or_add_to_user_notification_batch(
         if not notification_data.data:
             raise ValueError("Notification data must be provided")
 
-        # Serialize the data
         json_data: Json = SafeJson(notification_data.data.model_dump())
 
-        # First try to find existing batch
-        existing_batch = await UserNotificationBatch.prisma().find_unique(
-            where={
-                "userId_type": {
-                    "userId": user_id,
-                    "type": notification_type,
-                }
-            },
-            include={"Notifications": True},
-        )
-
-        if not existing_batch:
-            resp = await UserNotificationBatch.prisma().create(
-                data=UserNotificationBatchCreateInput(
-                    userId=user_id,
-                    type=notification_type,
-                    Notifications={
-                        "create": [
-                            NotificationEventCreateInput(
-                                type=notification_type,
-                                data=json_data,
-                            )
-                        ]
+        # Prisma's upsert is find→INSERT/UPDATE under the hood, not a true
+        # SQL ON CONFLICT, so two concurrent calls on a missing row can both
+        # take the INSERT branch and one loses to @@unique([userId, type]).
+        # Retry once on UniqueViolationError: the row now exists, so the
+        # second pass takes the UPDATE branch. Avoids a write-skipping
+        # find_unique pre-check on the hot path. Skips the eager
+        # `Notifications` include that loaded thousands of rows for heavy
+        # AGENT_RUN users and tripped Postgres statement_timeout.
+        for attempt in range(2):
+            try:
+                resp = await UserNotificationBatch.prisma().upsert(
+                    where={
+                        "userId_type": {
+                            "userId": user_id,
+                            "type": notification_type,
+                        }
                     },
-                ),
-                include={"Notifications": True},
-            )
-            return UserNotificationBatchDTO.from_db(resp)
-        else:
-            resp = await UserNotificationBatch.prisma().update(
-                where={"id": existing_batch.id},
-                data={
-                    "Notifications": {
-                        "create": [
-                            NotificationEventCreateInput(
-                                type=notification_type,
-                                data=json_data,
-                            )
-                        ]
-                    }
-                },
-                include={"Notifications": True},
-            )
-            if not resp:
-                raise DatabaseError(
-                    f"Failed to add notification event to existing batch {existing_batch.id}"
+                    data={
+                        "create": UserNotificationBatchCreateInput(
+                            userId=user_id,
+                            type=notification_type,
+                            Notifications={
+                                "create": [
+                                    NotificationEventCreateInput(
+                                        type=notification_type,
+                                        data=json_data,
+                                    )
+                                ]
+                            },
+                        ),
+                        "update": {
+                            "Notifications": {
+                                "create": [
+                                    NotificationEventCreateInput(
+                                        type=notification_type,
+                                        data=json_data,
+                                    )
+                                ]
+                            }
+                        },
+                    },
                 )
-            return UserNotificationBatchDTO.from_db(resp)
+                return UserNotificationBatchDTO.from_db(resp)
+            except UniqueViolationError:
+                if attempt == 0:
+                    continue
+                raise
+        raise RuntimeError("unreachable")  # for type-checkers
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
@@ -498,21 +521,15 @@ async def get_user_notification_oldest_message_in_batch(
     notification_type: NotificationType,
 ) -> UserNotificationEventDTO | None:
     try:
-        batch = await UserNotificationBatch.prisma().find_first(
-            where={"userId": user_id, "type": notification_type},
-            include={"Notifications": True},
+        oldest = await NotificationEvent.prisma().find_first(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            },
+            order={"createdAt": "asc"},
         )
-        if not batch:
-            return None
-        if not batch.Notifications:
-            return None
-        sorted_notifications = sorted(batch.Notifications, key=lambda x: x.createdAt)
-
-        return (
-            UserNotificationEventDTO.from_db(sorted_notifications[0])
-            if sorted_notifications
-            else None
-        )
+        return UserNotificationEventDTO.from_db(oldest) if oldest else None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -636,6 +653,7 @@ async def get_user_notification_batch(
 async def get_all_batches_by_type(
     notification_type: NotificationType,
 ) -> list[UserNotificationBatchDTO]:
+    # Caller re-fetches events per batch when actually sending; no eager include here.
     try:
         batches = await UserNotificationBatch.prisma().find_many(
             where={
@@ -644,7 +662,6 @@ async def get_all_batches_by_type(
                     "some": {}  # Only return batches with at least one notification
                 },
             },
-            include={"Notifications": True},
         )
         return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:

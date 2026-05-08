@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 from abc import ABC
 from email import encoders
 from email.mime.base import MIMEBase
@@ -8,7 +9,7 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -42,8 +43,52 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
-    """Serialize recipients list to comma-separated string."""
-    return ", ".join(recipients)
+    """Serialize recipients list to comma-separated string.
+
+    Strips leading/trailing whitespace from each address to keep MIME
+    headers clean (mirrors the strip done in ``validate_email_recipients``).
+    """
+    return ", ".join(addr.strip() for addr in recipients)
+
+
+# RFC 5322 simplified pattern: local@domain where domain has at least one dot
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
+    """Validate that all recipients are plausible email addresses.
+
+    Raises ``ValueError`` with a user-friendly message listing every
+    invalid entry so the caller (or LLM) can correct them in one pass.
+    """
+    invalid = [addr for addr in recipients if not _EMAIL_RE.match(addr.strip())]
+    if invalid:
+        formatted = ", ".join(f"'{a}'" for a in invalid)
+        raise ValueError(
+            f"Invalid email address(es) in '{field_name}': {formatted}. "
+            f"Each entry must be a valid email address (e.g. user@example.com)."
+        )
+
+
+@runtime_checkable
+class HasRecipients(Protocol):
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+def validate_all_recipients(input_data: HasRecipients) -> None:
+    """Validate to/cc/bcc recipient fields on an input namespace.
+
+    Calls ``validate_email_recipients`` for ``to`` (required) and
+    ``cc``/``bcc`` (when non-empty), raising ``ValueError`` on the
+    first field that contains an invalid address.
+    """
+    validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
 
 
 def _make_mime_text(
@@ -100,14 +145,16 @@ async def create_mime_message(
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
+    validate_all_recipients(input_data)
+
     message = MIMEMultipart()
     message["to"] = serialize_email_recipients(input_data.to)
     message["subject"] = input_data.subject
 
     if input_data.cc:
-        message["cc"] = ", ".join(input_data.cc)
+        message["cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        message["bcc"] = ", ".join(input_data.bcc)
+        message["bcc"] = serialize_email_recipients(input_data.bcc)
 
     # Use the new helper function with content_type if available
     content_type = getattr(input_data, "content_type", None)
@@ -241,8 +288,8 @@ class GmailBase(Block, ABC):
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)
-                except ImportError:
-                    # Fallback: return raw HTML if html2text is not available
+                except Exception:
+                    # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
         # Handle content stored as attachment
@@ -1167,13 +1214,15 @@ async def _build_reply_message(
         references.append(headers["message-id"])
 
     # Create MIME message
+    validate_all_recipients(input_data)
+
     msg = MIMEMultipart()
     if input_data.to:
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
     if input_data.cc:
-        msg["Cc"] = ", ".join(input_data.cc)
+        msg["Cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Bcc"] = serialize_email_recipients(input_data.bcc)
     msg["Subject"] = subject
     if headers.get("message-id"):
         msg["In-Reply-To"] = headers["message-id"]
@@ -1685,13 +1734,16 @@ To: {original_to}
         else:
             body = f"{forward_header}\n\n{original_body}"
 
+        # Validate all recipient lists before building the MIME message
+        validate_all_recipients(input_data)
+
         # Create MIME message
         msg = MIMEMultipart()
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
         if input_data.cc:
-            msg["Cc"] = ", ".join(input_data.cc)
+            msg["Cc"] = serialize_email_recipients(input_data.cc)
         if input_data.bcc:
-            msg["Bcc"] = ", ".join(input_data.bcc)
+            msg["Bcc"] = serialize_email_recipients(input_data.bcc)
         msg["Subject"] = subject
 
         # Add body with proper content type

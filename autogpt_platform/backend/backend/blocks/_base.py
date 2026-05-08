@@ -25,6 +25,7 @@ from backend.data.model import (
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
     is_credentials_field_name,
 )
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
-    from backend.data.model import ContributorDetails, NodeExecutionStats
+    from backend.data.model import ContributorDetails
 
     from ..data.graph import Link
 
@@ -95,27 +96,64 @@ class BlockCategory(Enum):
 
 
 class BlockCostType(str, Enum):
-    RUN = "run"  # cost X credits per run
-    BYTE = "byte"  # cost X credits per byte
-    SECOND = "second"  # cost X credits per second
+    # RUN       : cost_amount credits per run.
+    # BYTE      : cost_amount credits per byte of input data.
+    # SECOND    : cost_amount credits per cost_divisor walltime seconds.
+    # ITEMS     : cost_amount credits per cost_divisor items (from stats).
+    # COST_USD  : cost_amount credits per USD of stats.provider_cost.
+    # TOKENS    : per-(model, provider) rate table lookup; see TOKEN_COST.
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
+
+    @property
+    def is_dynamic(self) -> bool:
+        """Real charge is computed post-flight from stats.
+
+        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight and
+        settle against stats via charge_reconciled_usage once the block runs.
+        """
+        return self in _DYNAMIC_COST_TYPES
+
+
+_DYNAMIC_COST_TYPES: frozenset[BlockCostType] = frozenset(
+    {
+        BlockCostType.SECOND,
+        BlockCostType.ITEMS,
+        BlockCostType.COST_USD,
+        BlockCostType.TOKENS,
+    }
+)
 
 
 class BlockCost(BaseModel):
     cost_amount: int
     cost_filter: BlockInput
     cost_type: BlockCostType
+    # cost_divisor: interpret cost_amount as "credits per cost_divisor units".
+    # Only meaningful for SECOND / ITEMS. TOKENS routes through TOKEN_COST
+    # rate tables (per-model input/output/cache pricing) and ignores
+    # cost_divisor entirely. Defaults to 1 so existing RUN/BYTE entries stay
+    # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
+    # "1 credit per 10 seconds of walltime".
+    cost_divisor: int = 1
 
     def __init__(
         self,
         cost_amount: int,
         cost_type: BlockCostType = BlockCostType.RUN,
         cost_filter: Optional[BlockInput] = None,
+        cost_divisor: int = 1,
         **data: Any,
     ) -> None:
         super().__init__(
             cost_amount=cost_amount,
             cost_filter=cost_filter or {},
             cost_type=cost_type,
+            cost_divisor=max(1, cost_divisor),
             **data,
         )
 
@@ -167,9 +205,31 @@ class BlockSchema(BaseModel):
         return cls.cached_jsonschema
 
     @classmethod
-    def validate_data(cls, data: BlockInput) -> str | None:
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        schema = cls.jsonschema()
+        if exclude_fields:
+            # Drop the excluded fields from both the properties and the
+            # ``required`` list so jsonschema doesn't flag them as missing.
+            # Used by the dry-run path to skip credentials validation while
+            # still validating the remaining block inputs.
+            schema = {
+                **schema,
+                "properties": {
+                    k: v
+                    for k, v in schema.get("properties", {}).items()
+                    if k not in exclude_fields
+                },
+                "required": [
+                    r for r in schema.get("required", []) if r not in exclude_fields
+                ],
+            }
+            data = {k: v for k, v in data.items() if k not in exclude_fields}
         return json.validate_with_jsonschema(
-            schema=cls.jsonschema(),
+            schema=schema,
             data={k: v for k, v in data.items() if v is not None},
         )
 
@@ -310,6 +370,8 @@ class BlockSchema(BaseModel):
                 "credentials_provider": [config.get("provider", "google")],
                 "credentials_types": [config.get("type", "oauth2")],
                 "credentials_scopes": config.get("scopes"),
+                "is_auto_credential": True,
+                "input_field_name": info["field_name"],
             }
             result[kwarg_name] = CredentialsFieldInfo.model_validate(
                 auto_schema, by_alias=True
@@ -418,6 +480,8 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
+    _optimized_description: ClassVar[str | None] = None
+
     def __init__(
         self,
         id: str = "",
@@ -453,8 +517,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
         """
-        from backend.data.model import NodeExecutionStats
-
         self.id = id
         self.input_schema = input_schema
         self.output_schema = output_schema
@@ -470,7 +532,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_sensitive_action = is_sensitive_action
-        self.execution_stats: "NodeExecutionStats" = NodeExecutionStats()
+        # Read from ClassVar set by initialize_blocks()
+        self.optimized_description: str | None = type(self)._optimized_description
+        self.execution_stats: NodeExecutionStats = NodeExecutionStats()
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -550,7 +614,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
 
-    def merge_stats(self, stats: "NodeExecutionStats") -> "NodeExecutionStats":
+    def merge_stats(self, stats: NodeExecutionStats) -> NodeExecutionStats:
         self.execution_stats += stats
         return self.execution_stats
 
@@ -620,6 +684,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         graph_id: str,
         graph_version: int,
         execution_context: "ExecutionContext",
+        is_graph_execution: bool = True,
         **kwargs,
     ) -> tuple[bool, BlockInput]:
         """
@@ -648,6 +713,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             graph_version=graph_version,
             block_name=self.name,
             editable=True,
+            is_graph_execution=is_graph_execution,
         )
 
         if decision is None:
@@ -692,13 +758,90 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             if should_pause:
                 return
 
-        # Validate the input data (original or reviewer-modified) once
-        if error := self.input_schema.validate_data(input_data):
-            raise BlockInputError(
-                message=f"Unable to execute block with invalid input data: {error}",
-                block_name=self.name,
-                block_id=self.id,
-            )
+        # Validate the input data (original or reviewer-modified) once.
+        # In dry-run mode, credential fields may contain sentinel None values
+        # that would fail JSON schema required checks.  We still validate the
+        # non-credential fields so blocks that execute for real during dry-run
+        # (e.g. AgentExecutorBlock) get proper input validation.
+        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
+        if is_dry_run:
+            # Credential fields may be absent (LLM-built agents often skip
+            # wiring them) or nullified earlier in the pipeline. Validate
+            # the non-credential inputs against a schema with those fields
+            # excluded — stripping only the data while keeping them in the
+            # ``required`` list would falsely report ``'credentials' is a
+            # required property``.
+            cred_field_names = set(self.input_schema.get_credentials_fields().keys())
+            if error := self.input_schema.validate_data(
+                input_data, exclude_fields=cred_field_names
+            ):
+                raise BlockInputError(
+                    message=f"Unable to execute block with invalid input data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
+        else:
+            if error := self.input_schema.validate_data(input_data):
+                raise BlockInputError(
+                    message=f"Unable to execute block with invalid input data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
+
+        # Ensure auto-credential kwargs are present before we hand off to
+        # run(). A missing auto-credential means the upstream field (e.g.
+        # a Google Drive picker) didn't embed a _credentials_id, or the
+        # executor couldn't resolve it. Without this guard, run() would
+        # crash with a TypeError (missing required kwarg) or an opaque
+        # AttributeError deep inside the provider SDK.
+        #
+        # Only raise when the field is ALSO not populated in input_data.
+        # ``_acquire_auto_credentials`` intentionally skips setting the
+        # kwarg in two legitimate cases — ``_credentials_id`` is ``None``
+        # (chained from upstream) or the field is missing from
+        # ``input_data`` at prep time (connected from upstream block).
+        # In both cases the upstream block is expected to populate the
+        # field value by execute time; raising here would break the
+        # documented ``AgentGoogleDriveFileInputBlock`` chaining pattern.
+        # Dry-run skips because the executor intentionally runs blocks
+        # without resolved creds for schema validation.
+        if not is_dry_run:
+            for (
+                kwarg_name,
+                info,
+            ) in self.input_schema.get_auto_credentials_fields().items():
+                kwargs.setdefault(kwarg_name, None)
+                if kwargs[kwarg_name] is not None:
+                    continue
+                # Upstream-chained pattern: the field was populated by a
+                # prior node (e.g. AgentGoogleDriveFileInputBlock) whose
+                # output carries a resolved ``_credentials_id``.
+                # ``_acquire_auto_credentials`` deliberately doesn't set
+                # the kwarg in that case because the value isn't available
+                # at prep time; the executor fills it in before we reach
+                # ``_execute``. Trust it if the ``_credentials_id`` KEY
+                # is present — its value may be explicitly ``None`` in
+                # the chained case (see sentry thread
+                # PRRT_kwDOJKSTjM58sJfA). Checking truthiness here would
+                # falsely preempt run() for every valid chained graph
+                # that ships ``_credentials_id=None`` in the picker
+                # object. Mirror ``_acquire_auto_credentials``'s own
+                # skip rule, which treats ``cred_id is None`` as a
+                # chained-skip signal.
+                field_name = info["field_name"]
+                field_value = input_data.get(field_name)
+                if isinstance(field_value, dict) and "_credentials_id" in field_value:
+                    continue
+                raise BlockExecutionError(
+                    message=(
+                        f"Missing credentials for '{kwarg_name}'. "
+                        "Select a file via the picker (which carries "
+                        "its credentials), or connect credentials for "
+                        "this block."
+                    ),
+                    block_name=self.name,
+                    block_id=self.id,
+                )
 
         # Use the validated input data
         async for output_name, output_data in self.run(

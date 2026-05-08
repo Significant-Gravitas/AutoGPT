@@ -11,23 +11,15 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 300; // 5 minutes timeout for large uploads
 export const dynamic = "force-dynamic";
 
+import {
+  fetchWorkspaceDownloadWithRetry,
+  getWorkspaceDownloadErrorMessage,
+  isWorkspaceDownloadRequest,
+} from "./route.helpers";
+
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
-}
-
-/**
- * Check if this is a workspace file download request that needs binary response handling.
- */
-function isWorkspaceDownloadRequest(path: string[]): boolean {
-  // Match pattern: api/workspace/files/{id}/download (5 segments)
-  return (
-    path.length == 5 &&
-    path[0] === "api" &&
-    path[1] === "workspace" &&
-    path[2] === "files" &&
-    path[path.length - 1] === "download"
-  );
 }
 
 /**
@@ -44,39 +36,67 @@ async function handleWorkspaceDownload(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(backendUrl, {
-    method: "GET",
+  const response = await fetchWorkspaceDownloadWithRetry(
+    backendUrl,
     headers,
-    redirect: "follow", // Follow redirects to signed URLs
-  });
+    2,
+    500,
+  );
 
   if (!response.ok) {
-    return NextResponse.json(
-      { error: `Failed to download file: ${response.statusText}` },
-      { status: response.status },
-    );
+    return await createWorkspaceDownloadErrorResponse(response);
   }
 
-  // Get the content type from the backend response
+  // Fully buffer the response before forwarding.  Passing response.body as a
+  // ReadableStream causes silent truncation in Next.js / Vercel — the last
+  // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
+  const buffer = await response.arrayBuffer();
+
   const contentType =
     response.headers.get("Content-Type") || "application/octet-stream";
   const contentDisposition = response.headers.get("Content-Disposition");
 
-  // Stream the response body
   const responseHeaders: Record<string, string> = {
     "Content-Type": contentType,
+    "Content-Length": String(buffer.byteLength),
   };
 
   if (contentDisposition) {
     responseHeaders["Content-Disposition"] = contentDisposition;
   }
 
-  // Return the binary content
-  const arrayBuffer = await response.arrayBuffer();
-  return new NextResponse(arrayBuffer, {
+  return new NextResponse(buffer, {
     status: 200,
     headers: responseHeaders,
   });
+}
+
+async function createWorkspaceDownloadErrorResponse(
+  response: Response,
+): Promise<NextResponse> {
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      return NextResponse.json(body, { status: response.status });
+    }
+
+    const text = await response.text();
+    const detail =
+      getWorkspaceDownloadErrorMessage(text) ||
+      response.statusText ||
+      "Failed to download file";
+
+    return NextResponse.json({ detail }, { status: response.status });
+  } catch {
+    return NextResponse.json(
+      {
+        detail: response.statusText || "Failed to download file",
+      },
+      { status: response.status },
+    );
+  }
 }
 
 async function handleJsonRequest(
@@ -255,7 +275,6 @@ async function handler(
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {

@@ -16,7 +16,7 @@ import z from "zod";
 interface useEditAgentFormProps {
   submission: StoreSubmissionEditRequest & {
     store_listing_version_id: string | undefined;
-    agent_id: string;
+    graph_id: string;
   };
   onSuccess: (submission: StoreSubmission) => void;
   onClose: () => void;

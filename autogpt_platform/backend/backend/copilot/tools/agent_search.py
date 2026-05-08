@@ -1,10 +1,16 @@
 """Shared agent search functionality for find_agent and find_library_agent tools."""
 
-import logging
-import re
-from typing import Literal
+from __future__ import annotations
 
-from backend.data.db_accessors import library_db, store_db
+import asyncio
+import logging
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from backend.api.features.library.model import LibraryAgent
+    from backend.api.features.store.model import StoreAgent, StoreAgentDetails
+
+from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -14,20 +20,325 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .utils import is_creator_slug, is_uuid
 
 logger = logging.getLogger(__name__)
 
 SearchSource = Literal["marketplace", "library"]
 
-_UUID_PATTERN = re.compile(
-    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-    re.IGNORECASE,
-)
+# Keywords that should be treated as "list all" rather than a literal search
+_LIST_ALL_KEYWORDS = frozenset({"all", "*", "everything", "any", ""})
 
 
-def _is_uuid(text: str) -> bool:
-    """Check if text is a valid UUID v4."""
-    return bool(_UUID_PATTERN.match(text.strip()))
+async def search_agents(
+    query: str,
+    source: SearchSource,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    include_graph: bool = False,
+) -> ToolResponseBase:
+    """Search for agents in marketplace or user library."""
+    if source == "marketplace":
+        return await _search_marketplace(query, session_id)
+    else:
+        return await _search_library(query, session_id, user_id, include_graph)
+
+
+async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
+    """Search marketplace agents, with direct creator/slug lookup fallback."""
+    query = query.strip()
+    if not query:
+        return ErrorResponse(
+            message="Please provide a search query", session_id=session_id
+        )
+
+    agents: list[AgentInfo] = []
+    try:
+        # Direct lookup if query matches "creator/slug" pattern
+        if is_creator_slug(query):
+            logger.info(f"Query looks like creator/slug, trying direct lookup: {query}")
+            creator, slug = query.split("/", 1)
+            agent_info = await _get_marketplace_agent_by_slug(creator, slug)
+            if agent_info:
+                agents.append(agent_info)
+
+        if not agents:
+            logger.info(f"Searching marketplace for: {query}")
+            results = await store_db().get_store_agents(search_query=query, page_size=5)
+            for agent in results.agents:
+                agents.append(_marketplace_agent_to_info(agent))
+    except NotFoundError:
+        pass
+    except DatabaseError as e:
+        logger.error(f"Error searching marketplace: {e}", exc_info=True)
+        return ErrorResponse(
+            message="Failed to search marketplace. Please try again.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    if not agents:
+        return NoResultsResponse(
+            message=(
+                f"No agents found matching '{query}'. Let the user know they can "
+                "try different keywords or browse the marketplace. Also let them "
+                "know you can create a custom agent for them based on their needs."
+            ),
+            suggestions=[
+                "Try more general terms",
+                "Browse categories in the marketplace",
+                "Check spelling",
+            ],
+            session_id=session_id,
+        )
+
+    return AgentsFoundResponse(
+        message=(
+            "Now you have found some options for the user to choose from. "
+            "You can add a link to a recommended agent at: /marketplace/agent/agent_id "
+            "Please ask the user if they would like to use any of these agents. "
+            "Let the user know we can create a custom agent for them based on their needs."
+        ),
+        title=f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'",
+        agents=agents,
+        count=len(agents),
+        session_id=session_id,
+    )
+
+
+async def _search_library(
+    query: str,
+    session_id: str | None,
+    user_id: str | None,
+    include_graph: bool = False,
+) -> ToolResponseBase:
+    """Search user's library agents, with direct UUID lookup fallback."""
+    if not user_id:
+        return ErrorResponse(
+            message="User authentication required to search library",
+            session_id=session_id,
+        )
+
+    query = query.strip()
+    # Normalize list-all keywords to empty string
+    if query.lower() in _LIST_ALL_KEYWORDS:
+        query = ""
+
+    agents: list[AgentInfo] = []
+    try:
+        if is_uuid(query):
+            logger.info(f"Query looks like UUID, trying direct lookup: {query}")
+            agent = await _get_library_agent_by_id(user_id, query)
+            if agent:
+                agents.append(agent)
+
+        if not agents:
+            logger.info(
+                f"{'Listing all agents in' if not query else 'Searching'} "
+                f"user library{'' if not query else f' for: {query}'}"
+            )
+            results = await library_db().list_library_agents(
+                user_id=user_id,
+                search_term=query or None,
+                page_size=50 if not query else 10,
+                # Hide trigger agents — they aren't reusable as sub-agents
+                # (parent-coupled, single-purpose). AutoPilot accesses
+                # them via list_agent_triggers instead.
+                is_hidden=False,
+            )
+            for agent in results.agents:
+                agents.append(_library_agent_to_info(agent))
+    except NotFoundError:
+        pass
+    except DatabaseError as e:
+        logger.error(f"Error searching library: {e}", exc_info=True)
+        return ErrorResponse(
+            message="Failed to search library. Please try again.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    truncation_notice: str | None = None
+    if include_graph and agents:
+        truncation_notice = await _enrich_agents_with_graph(agents, user_id)
+
+    if not agents:
+        if not query:
+            return NoResultsResponse(
+                message=(
+                    "Your library is empty. Let the user know they can browse the "
+                    "marketplace to find agents, or you can create a custom agent "
+                    "for them based on their needs."
+                ),
+                suggestions=[
+                    "Browse the marketplace to find and add agents",
+                    "Use find_agent to search the marketplace",
+                ],
+                session_id=session_id,
+            )
+        return NoResultsResponse(
+            message=(
+                f"No agents matching '{query}' found in your library. Let the "
+                "user know you can create a custom agent for them based on "
+                "their needs."
+            ),
+            suggestions=[
+                "Try different keywords",
+                "Use find_agent to search the marketplace",
+                "Check your library at /library",
+            ],
+            session_id=session_id,
+        )
+
+    if not query:
+        title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library"
+    else:
+        title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library for '{query}'"
+
+    message = (
+        "Found agents in the user's library. You can provide a link to view "
+        "an agent at: /library/agents/{agent_id}. Use agent_output to get "
+        "execution results, or run_agent to execute. Let the user know we can "
+        "create a custom agent for them based on their needs."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
+    return AgentsFoundResponse(
+        message=message,
+        title=title,
+        agents=agents,
+        count=len(agents),
+        session_id=session_id,
+    )
+
+
+_MAX_GRAPH_FETCHES = 10
+
+
+_GRAPH_FETCH_TIMEOUT = 15  # seconds
+
+
+async def _enrich_agents_with_graph(
+    agents: list[AgentInfo], user_id: str
+) -> str | None:
+    """Fetch and attach full Graph (nodes + links) to each agent in-place.
+
+    Only the first ``_MAX_GRAPH_FETCHES`` agents with a ``graph_id`` are
+    enriched.  If some agents are skipped, a truncation notice is returned
+    so the caller can surface it to the copilot.
+
+    Graphs are fetched with ``for_export=True`` so that credentials, API keys,
+    and other secrets in ``input_default`` are stripped before the data reaches
+    the LLM context.
+
+    Returns a truncation notice string when some agents were skipped, or
+    ``None`` when all eligible agents were enriched.
+    """
+    with_graph_id = [a for a in agents if a.graph_id]
+    fetchable = with_graph_id[:_MAX_GRAPH_FETCHES]
+    if not fetchable:
+        return None
+
+    gdb = graph_db()
+
+    async def _fetch(agent: AgentInfo) -> None:
+        graph_id = agent.graph_id
+        if not graph_id:
+            return
+        try:
+            graph = await gdb.get_graph(
+                graph_id,
+                version=agent.graph_version,
+                user_id=user_id,
+                for_export=True,
+            )
+            if graph is None:
+                logger.warning("Graph not found for agent %s", graph_id)
+            agent.graph = graph
+        except Exception as e:
+            logger.warning("Failed to fetch graph for agent %s: %s", graph_id, e)
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*[_fetch(a) for a in fetchable]),
+            timeout=_GRAPH_FETCH_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
+        )
+
+    skipped = len(with_graph_id) - len(fetchable)
+    if skipped > 0:
+        logger.warning(
+            "include_graph: fetched graphs for %d/%d agents "
+            "(_MAX_GRAPH_FETCHES=%d, %d skipped)",
+            len(fetchable),
+            len(with_graph_id),
+            _MAX_GRAPH_FETCHES,
+            skipped,
+        )
+        return (
+            f"Graph data included for {len(fetchable)} of "
+            f"{len(with_graph_id)} eligible agents (limit: {_MAX_GRAPH_FETCHES}). "
+            f"To fetch graphs for remaining agents, narrow your search to a "
+            f"specific agent by UUID."
+        )
+    return None
+
+
+def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:
+    """Convert a marketplace agent (StoreAgent or StoreAgentDetails) to an AgentInfo."""
+    return AgentInfo(
+        id=f"{agent.creator}/{agent.slug}",
+        name=agent.agent_name,
+        description=agent.description or "",
+        source="marketplace",
+        in_library=False,
+        creator=agent.creator,
+        category="general",
+        rating=agent.rating,
+        runs=agent.runs,
+        is_featured=False,
+    )
+
+
+def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
+    """Convert a library agent model to an AgentInfo."""
+    return AgentInfo(
+        id=agent.id,
+        name=agent.name,
+        description=agent.description or "",
+        source="library",
+        in_library=True,
+        creator=agent.creator_name,
+        status=agent.status.value,
+        can_access_graph=agent.can_access_graph,
+        has_external_trigger=agent.has_external_trigger,
+        new_output=agent.new_output,
+        graph_id=agent.graph_id,
+        graph_version=agent.graph_version,
+        input_schema=agent.input_schema,
+        output_schema=agent.output_schema,
+    )
+
+
+async def _get_marketplace_agent_by_slug(creator: str, slug: str) -> AgentInfo | None:
+    """Fetch a marketplace agent by creator/slug identifier."""
+    try:
+        details = await store_db().get_store_agent_details(creator, slug)
+        return _marketplace_agent_to_info(details)
+    except NotFoundError:
+        pass
+    except DatabaseError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch marketplace agent {creator}/{slug}: {e}",
+            exc_info=True,
+        )
+    return None
 
 
 async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
@@ -36,33 +347,15 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     Tries multiple lookup strategies:
     1. First by graph_id (AgentGraph primary key)
     2. Then by library agent ID (LibraryAgent primary key)
-
-    Args:
-        user_id: The user ID
-        agent_id: The ID to look up (can be graph_id or library agent ID)
-
-    Returns:
-        AgentInfo if found, None otherwise
     """
     lib_db = library_db()
 
     try:
         agent = await lib_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
-            logger.debug(f"Found library agent by graph_id: {agent.name}")
-            return AgentInfo(
-                id=agent.id,
-                name=agent.name,
-                description=agent.description or "",
-                source="library",
-                in_library=True,
-                creator=agent.creator_name,
-                status=agent.status.value,
-                can_access_graph=agent.can_access_graph,
-                has_external_trigger=agent.has_external_trigger,
-                new_output=agent.new_output,
-                graph_id=agent.graph_id,
-            )
+            return _library_agent_to_info(agent)
+    except NotFoundError:
+        pass
     except DatabaseError:
         raise
     except Exception as e:
@@ -74,22 +367,9 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     try:
         agent = await lib_db.get_library_agent(agent_id, user_id)
         if agent:
-            logger.debug(f"Found library agent by library_id: {agent.name}")
-            return AgentInfo(
-                id=agent.id,
-                name=agent.name,
-                description=agent.description or "",
-                source="library",
-                in_library=True,
-                creator=agent.creator_name,
-                status=agent.status.value,
-                can_access_graph=agent.can_access_graph,
-                has_external_trigger=agent.has_external_trigger,
-                new_output=agent.new_output,
-                graph_id=agent.graph_id,
-            )
+            return _library_agent_to_info(agent)
     except NotFoundError:
-        logger.debug(f"Library agent not found by library_id: {agent_id}")
+        pass
     except DatabaseError:
         raise
     except Exception as e:
@@ -99,142 +379,3 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
         )
 
     return None
-
-
-async def search_agents(
-    query: str,
-    source: SearchSource,
-    session_id: str | None,
-    user_id: str | None = None,
-) -> ToolResponseBase:
-    """
-    Search for agents in marketplace or user library.
-
-    Args:
-        query: Search query string
-        source: "marketplace" or "library"
-        session_id: Chat session ID
-        user_id: User ID (required for library search)
-
-    Returns:
-        AgentsFoundResponse, NoResultsResponse, or ErrorResponse
-    """
-    if not query:
-        return ErrorResponse(
-            message="Please provide a search query", session_id=session_id
-        )
-
-    if source == "library" and not user_id:
-        return ErrorResponse(
-            message="User authentication required to search library",
-            session_id=session_id,
-        )
-
-    agents: list[AgentInfo] = []
-    try:
-        if source == "marketplace":
-            logger.info(f"Searching marketplace for: {query}")
-            results = await store_db().get_store_agents(search_query=query, page_size=5)
-            for agent in results.agents:
-                agents.append(
-                    AgentInfo(
-                        id=f"{agent.creator}/{agent.slug}",
-                        name=agent.agent_name,
-                        description=agent.description or "",
-                        source="marketplace",
-                        in_library=False,
-                        creator=agent.creator,
-                        category="general",
-                        rating=agent.rating,
-                        runs=agent.runs,
-                        is_featured=False,
-                    )
-                )
-        else:
-            if _is_uuid(query):
-                logger.info(f"Query looks like UUID, trying direct lookup: {query}")
-                agent = await _get_library_agent_by_id(user_id, query)  # type: ignore[arg-type]
-                if agent:
-                    agents.append(agent)
-                    logger.info(f"Found agent by direct ID lookup: {agent.name}")
-
-            if not agents:
-                logger.info(f"Searching user library for: {query}")
-                results = await library_db().list_library_agents(
-                    user_id=user_id,  # type: ignore[arg-type]
-                    search_term=query,
-                    page_size=10,
-                )
-                for agent in results.agents:
-                    agents.append(
-                        AgentInfo(
-                            id=agent.id,
-                            name=agent.name,
-                            description=agent.description or "",
-                            source="library",
-                            in_library=True,
-                            creator=agent.creator_name,
-                            status=agent.status.value,
-                            can_access_graph=agent.can_access_graph,
-                            has_external_trigger=agent.has_external_trigger,
-                            new_output=agent.new_output,
-                            graph_id=agent.graph_id,
-                        )
-                    )
-        logger.info(f"Found {len(agents)} agents in {source}")
-    except NotFoundError:
-        pass
-    except DatabaseError as e:
-        logger.error(f"Error searching {source}: {e}", exc_info=True)
-        return ErrorResponse(
-            message=f"Failed to search {source}. Please try again.",
-            error=str(e),
-            session_id=session_id,
-        )
-
-    if not agents:
-        suggestions = (
-            [
-                "Try more general terms",
-                "Browse categories in the marketplace",
-                "Check spelling",
-            ]
-            if source == "marketplace"
-            else [
-                "Try different keywords",
-                "Use find_agent to search the marketplace",
-                "Check your library at /library",
-            ]
-        )
-        no_results_msg = (
-            f"No agents found matching '{query}'. Let the user know they can try different keywords or browse the marketplace. Also let them know you can create a custom agent for them based on their needs."
-            if source == "marketplace"
-            else f"No agents matching '{query}' found in your library. Let the user know you can create a custom agent for them based on their needs."
-        )
-        return NoResultsResponse(
-            message=no_results_msg, session_id=session_id, suggestions=suggestions
-        )
-
-    title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} "
-    title += (
-        f"for '{query}'"
-        if source == "marketplace"
-        else f"in your library for '{query}'"
-    )
-
-    message = (
-        "Now you have found some options for the user to choose from. "
-        "You can add a link to a recommended agent at: /marketplace/agent/agent_id "
-        "Please ask the user if they would like to use any of these agents. Let the user know we can create a custom agent for them based on their needs."
-        if source == "marketplace"
-        else "Found agents in the user's library. You can provide a link to view an agent at: "
-        "/library/agents/{agent_id}. Use agent_output to get execution results, or run_agent to execute. Let the user know we can create a custom agent for them based on their needs."
-    )
-
-    return AgentsFoundResponse(
-        message=message,
-        title=title,
-        agents=agents,
-        count=len(agents),
-        session_id=session_id,
-    )

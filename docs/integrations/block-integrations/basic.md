@@ -169,7 +169,7 @@ Block for dropdown text selection.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block provides a dropdown selection input for users interacting with your agent. You define the available options using placeholder_values, and users select one option from the list at runtime.
+This block provides a dropdown selection input for users interacting with your agent. You define the available options using the `options` field, and users select one option from the list at runtime.
 
 This is ideal when you want to constrain user input to a predefined set of choices, ensuring valid input and simplifying the user experience. The selected value is passed to downstream blocks in your workflow.
 <!-- END MANUAL -->
@@ -182,9 +182,9 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | value | Text selected from a dropdown. | str | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| placeholder_values | Possible values for the dropdown. | List[Any] | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
+| options | If provided, renders the input as a dropdown selector restricted to these values. Leave empty for free-text input. | List[Any] | No |
 
 ### Outputs
 
@@ -247,7 +247,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 ## Agent Google Drive File Input
 
 ### What it is
-Block for selecting a file from Google Drive.
+Agent-level input for a Google Drive file. REQUIRED for any agent that reads or writes a Drive file (Sheets, Docs, Slides, or generic Drive) — the picker is the only source of the _credentials_id needed at runtime, so consuming blocks cannot receive a hardcoded ID. Set allowed_views to match the consumer: ["SPREADSHEETS"] for Sheets, ["DOCUMENTS"] for Docs, ["PRESENTATIONS"] for Slides (leave default for generic Drive). Wire `result` to the consumer block's Drive field and leave that field unset in the consumer's input_default. Example link to a Google Sheets block: {"source_name": "result", "sink_name": "spreadsheet"} (use "document" for Docs, "presentation" for Slides). Use one input block per distinct file; multiple consumers of the same file share it.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -293,7 +293,7 @@ A block that accepts and processes user input values within a workflow, supporti
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-It accepts a value from the user, along with metadata such as name, description, and optional placeholder values. The block then outputs the provided value.
+It accepts a value from the user, along with metadata such as name and description. The block then outputs the provided value.
 <!-- END MANUAL -->
 
 ### Inputs

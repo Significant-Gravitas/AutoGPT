@@ -19,13 +19,18 @@ from typing import (
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
+from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
 )
 from prisma.types import (
+    AgentGraphExecutionOrderByInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -55,6 +60,7 @@ from .includes import (
     EXECUTION_RESULT_INCLUDE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     graph_execution_include,
 )
 from .model import (
@@ -89,6 +95,7 @@ class ExecutionContext(BaseModel):
     # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+    dry_run: bool = False  # When True, blocks are LLM-simulated, no real execution
 
     # User settings
     user_timezone: str = "UTC"
@@ -178,6 +185,7 @@ class GraphExecutionMeta(BaseDbModel):
     )
     is_shared: bool = False
     share_token: Optional[str] = None
+    is_dry_run: bool = False
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -306,6 +314,7 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
+            is_dry_run=stats.is_dry_run if stats else False,
         )
 
 
@@ -339,12 +348,13 @@ class GraphExecution(GraphExecutionMeta):
                     if (
                         (block := get_block(exec.block_id))
                         and block.block_type == BlockType.INPUT
+                        and "name" in exec.input_data
                     )
                 }
             ),
             **{
                 # input from webhook-triggered block
-                "payload": exec.input_data["payload"]
+                "payload": exec.input_data.get("payload")
                 for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
@@ -357,8 +367,10 @@ class GraphExecution(GraphExecutionMeta):
         outputs: CompletedBlockOutput = defaultdict(list)
         for exec in complete_node_executions:
             if (
-                block := get_block(exec.block_id)
-            ) and block.block_type == BlockType.OUTPUT:
+                (block := get_block(exec.block_id))
+                and block.block_type == BlockType.OUTPUT
+                and "name" in exec.input_data
+            ):
                 outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
@@ -446,7 +458,14 @@ class NodeExecutionResult(BaseModel):
             input_data = type_utils.convert(_node_exec.executionData, BlockInput)
         else:
             input_data: BlockInput = defaultdict()
-            for data in _node_exec.Input or []:
+            inputs = _node_exec.Input or []
+            if len(inputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Input rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in inputs:
                 input_data[data.name] = type_utils.convert(data.data, JsonValue)
 
         output_data: CompletedBlockOutput = defaultdict(list)
@@ -455,7 +474,14 @@ class NodeExecutionResult(BaseModel):
             for name, messages in stats.cleared_outputs.items():
                 output_data[name].extend(messages)
         else:
-            for data in _node_exec.Output or []:
+            outputs = _node_exec.Output or []
+            if len(outputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Output rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
@@ -504,20 +530,39 @@ class NodeExecutionResult(BaseModel):
 
 async def get_graph_executions(
     graph_exec_id: Optional[str] = None,
+    execution_ids: Optional[list[str]] = None,
     graph_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     user_id: Optional[str] = None,
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    started_time_gte: Optional[datetime] = None,
+    started_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
+    order_direction: Literal["asc", "desc"] = "desc",
 ) -> list[GraphExecutionMeta]:
-    """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
+    """
+    Get graph executions with optional filters and ordering.
+
+    ⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints.
+
+    Args:
+        graph_exec_id: Filter by single execution ID (mutually exclusive with execution_ids)
+        execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
+        order_by: Field to order by. Defaults to "createdAt"
+        order_direction: Sort direction. Defaults to "desc"
+    """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
+    elif execution_ids:
+        where_filter["id"] = {"in": execution_ids}
+
     if user_id:
         where_filter["userId"] = user_id
     if graph_id:
@@ -529,13 +574,36 @@ async def get_graph_executions(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+    if started_time_gte or started_time_lte:
+        where_filter["startedAt"] = {
+            "gte": started_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": started_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
+    # Build properly typed order clause
+    # Prisma wants specific typed dicts for each field, so we construct them explicitly
+    order_clause: AgentGraphExecutionOrderByInput
+    match order_by:
+        case "startedAt":
+            order_clause = {
+                "startedAt": order_direction,
+            }
+        case "updatedAt":
+            order_clause = {
+                "updatedAt": order_direction,
+            }
+        case _:
+            order_clause = {
+                "createdAt": order_direction,
+            }
+
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
-        order={"createdAt": "desc"},
+        order=order_clause,
         take=limit,
+        skip=offset,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
@@ -546,6 +614,10 @@ async def get_graph_executions_count(
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    started_time_gte: Optional[datetime] = None,
+    started_time_lte: Optional[datetime] = None,
+    updated_time_gte: Optional[datetime] = None,
+    updated_time_lte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -556,6 +628,10 @@ async def get_graph_executions_count(
         statuses: Optional list of execution statuses to filter by
         created_time_gte: Optional minimum creation time
         created_time_lte: Optional maximum creation time
+        started_time_gte: Optional minimum start time (when execution started running)
+        started_time_lte: Optional maximum start time (when execution started running)
+        updated_time_gte: Optional minimum update time
+        updated_time_lte: Optional maximum update time
 
     Returns:
         Count of matching graph executions
@@ -575,6 +651,19 @@ async def get_graph_executions_count(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    if started_time_gte or started_time_lte:
+        where_filter["startedAt"] = {
+            "gte": started_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": started_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
+    if updated_time_gte or updated_time_lte:
+        where_filter["updatedAt"] = {
+            "gte": updated_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": updated_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
@@ -718,11 +807,12 @@ async def create_graph_execution(
     graph_version: int,
     starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
     inputs: Mapping[str, JsonValue],
-    user_id: str,
+    user_id: str,  # Validated by callers (API auth layer / service-level checks)
     preset_id: Optional[str] = None,
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
+    is_dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -760,6 +850,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
@@ -877,12 +968,12 @@ async def get_execution_outputs_by_node_exec_id(
         where={"referencedByOutputExecId": node_exec_id}
     )
 
-    result = {}
+    result: CompletedBlockOutput = defaultdict(list)
     for output in outputs:
         if output.data is not None:
-            result[output.name] = type_utils.convert(output.data, JsonValue)
+            result[output.name].append(type_utils.convert(output.data, JsonValue))
 
-    return result
+    return dict(result)
 
 
 async def update_graph_execution_start_time(
@@ -1261,6 +1352,22 @@ ExecutionEvent = Annotated[
 ]
 
 
+# Hash-tagged channels keep per-exec and per-graph keys on the same shard,
+# so one SSUBSCRIBE connection can watch both.
+
+
+def _graph_scope_tag(user_id: str, graph_id: str) -> str:
+    return "{" + f"{user_id}/{graph_id}" + "}"
+
+
+def exec_channel(user_id: str, graph_id: str, graph_exec_id: str) -> str:
+    return f"{_graph_scope_tag(user_id, graph_id)}/exec/{graph_exec_id}"
+
+
+def graph_all_channel(user_id: str, graph_id: str) -> str:
+    return f"{_graph_scope_tag(user_id, graph_id)}/all"
+
+
 class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
     Model = ExecutionEvent  # type: ignore
 
@@ -1276,16 +1383,20 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        self._publish(event, res.user_id, res.graph_id, res.graph_exec_id)
 
     def _publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        self._publish(event, res.user_id, res.graph_id, res.id)
 
-    def _publish(self, event: ExecutionEvent, channel: str):
-        """
-        truncate inputs and outputs to avoid large payloads
-        """
+    def _publish(
+        self,
+        event: ExecutionEvent,
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+    ):
+        """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
         limit = config.max_message_size_limit // 2
         if isinstance(event, GraphExecutionEvent):
             event.inputs = truncate(event.inputs, limit)
@@ -1294,12 +1405,22 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
             event.input_data = truncate(event.input_data, limit)
             event.output_data = truncate(event.output_data, limit)
 
-        super().publish_event(event, channel)
+        # Publisher fans out: per-exec and per-graph watchers.
+        super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
+        super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     def listen(
-        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> Generator[ExecutionEvent, None, None]:
-        for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+        """Stream events for a specific graph execution."""
+        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
+            yield event
+
+    def listen_graph(
+        self, user_id: str, graph_id: str
+    ) -> Generator[ExecutionEvent, None, None]:
+        """Stream every event for every execution of ``graph_id``."""
+        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 
@@ -1319,7 +1440,7 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
 
     async def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        await self._publish(event, res.user_id, res.graph_id, res.graph_exec_id)
 
     async def _publish_graph_exec_update(self, res: GraphExecutionMeta):
         # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
@@ -1328,12 +1449,16 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
         event_data.setdefault("inputs", {})
         event_data.setdefault("outputs", {})
         event = GraphExecutionEvent.model_validate(event_data)
-        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        await self._publish(event, res.user_id, res.graph_id, res.id)
 
-    async def _publish(self, event: ExecutionEvent, channel: str):
-        """
-        truncate inputs and outputs to avoid large payloads
-        """
+    async def _publish(
+        self,
+        event: ExecutionEvent,
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+    ):
+        """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
         limit = config.max_message_size_limit // 2
         if isinstance(event, GraphExecutionEvent):
             event.inputs = truncate(event.inputs, limit)
@@ -1342,12 +1467,25 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
             event.input_data = truncate(event.input_data, limit)
             event.output_data = truncate(event.output_data, limit)
 
-        await super().publish_event(event, channel)
+        await super().publish_event(
+            event, exec_channel(user_id, graph_id, graph_exec_id)
+        )
+        await super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     async def listen(
-        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        async for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+        """Stream events for a specific graph execution."""
+        async for event in self.listen_events(
+            exec_channel(user_id, graph_id, graph_exec_id)
+        ):
+            yield event
+
+    async def listen_graph(
+        self, user_id: str, graph_id: str
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        """Stream every event for every execution of ``graph_id``."""
+        async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 
@@ -1528,6 +1666,121 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+def _extract_workspace_file_ids(outputs: CompletedBlockOutput) -> set[str]:
+    """Extract workspace file IDs from execution outputs.
+
+    Scans all output values for workspace:// URI strings and extracts
+    the file IDs. Only matches values that are plain strings starting
+    with workspace://, not substrings within larger text.
+    """
+    file_ids: set[str] = set()
+
+    def _scan(value: Any) -> None:
+        if isinstance(value, str) and value.startswith("workspace://"):
+            raw = value.removeprefix("workspace://")
+            file_ref = raw.split("#", 1)[0] if "#" in raw else raw
+            if file_ref and not file_ref.startswith("/"):
+                file_ids.add(file_ref)
+        elif isinstance(value, list):
+            for item in value:
+                _scan(item)
+        elif isinstance(value, dict):
+            for v in value.values():
+                _scan(v)
+
+    for output_values in outputs.values():
+        if isinstance(output_values, list):
+            for val in output_values:
+                _scan(val)
+        else:
+            _scan(output_values)
+
+    return file_ids
+
+
+async def create_shared_execution_files(
+    execution_id: str,
+    share_token: str,
+    user_id: str,
+    outputs: CompletedBlockOutput,
+) -> int:
+    """Scan execution outputs for workspace files and create allowlist records.
+
+    Only files belonging to the user's workspace are allowlisted — prevents
+    cross-workspace file exposure via crafted outputs.
+
+    Returns the number of records created.
+    """
+    file_ids = _extract_workspace_file_ids(outputs)
+    if not file_ids:
+        return 0
+
+    # Validate file IDs belong to the user's workspace
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    if not workspace:
+        return 0
+
+    owned_files = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": list(file_ids)},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+    owned_ids = {f.id for f in owned_files}
+
+    created = 0
+    for file_id in owned_ids:
+        try:
+            await SharedExecutionFile.prisma().create(
+                data={
+                    "executionId": execution_id,
+                    "fileId": file_id,
+                    "shareToken": share_token,
+                }
+            )
+            created += 1
+        except UniqueViolationError:
+            logger.debug(
+                f"Skipping shared file record for {file_id}: record already exists"
+            )
+        except ForeignKeyViolationError:
+            logger.debug(
+                f"Skipping shared file record for {file_id}: file does not exist"
+            )
+    return created
+
+
+async def delete_shared_execution_files(execution_id: str) -> int:
+    """Delete all shared file records for an execution.
+
+    Returns the number of records deleted.
+    """
+    result = await SharedExecutionFile.prisma().delete_many(
+        where={"executionId": execution_id}
+    )
+    return result
+
+
+async def get_shared_execution_file(
+    share_token: str,
+    file_id: str,
+) -> str | None:
+    """Look up a file ID in the shared execution file allowlist.
+
+    Returns the execution ID if the file is in the allowlist, None otherwise.
+    Uses a single query and returns a uniform None for all failure modes
+    to prevent timing-based enumeration attacks.
+    """
+    record = await SharedExecutionFile.prisma().find_first(
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+        }
+    )
+    return record.executionId if record else None
 
 
 async def get_frequently_executed_graphs(

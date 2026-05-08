@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -12,12 +11,8 @@ export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
-    className={cn(
-      "relative flex-1 overflow-y-hidden",
-      scrollbarStyles,
-      className,
-    )}
-    initial="smooth"
+    className={cn("relative flex-1 overflow-y-hidden", className)}
+    initial="instant"
     resize="smooth"
     role="log"
     {...props}
@@ -30,10 +25,15 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
+    scrollClassName={cn(
+      "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      scrollClassName,
+    )}
     {...props}
   />
 );
@@ -61,15 +61,11 @@ export const ConversationEmptyState = ({
   >
     {children ?? (
       <>
-        {icon && (
-          <div className="text-neutral-500 dark:text-neutral-400">{icon}</div>
-        )}
+        {icon && <div className="text-neutral-500">{icon}</div>}
         <div className="space-y-1">
           <h3 className="text-sm font-medium">{title}</h3>
           {description && (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              {description}
-            </p>
+            <p className="text-sm text-neutral-500">{description}</p>
           )}
         </div>
       </>
@@ -93,7 +89,7 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-white dark:dark:bg-neutral-950 dark:dark:hover:bg-neutral-800 dark:hover:bg-neutral-100",
+          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full",
           className,
         )}
         onClick={handleScrollToBottom}

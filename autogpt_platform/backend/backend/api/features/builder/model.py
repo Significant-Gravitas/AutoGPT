@@ -27,7 +27,6 @@ class SearchEntry(BaseModel):
 
 # Suggestions
 class SuggestionsResponse(BaseModel):
-    otto_suggestions: list[str]
     recent_searches: list[SearchEntry]
     providers: list[ProviderName]
     top_blocks: list[BlockInfo]

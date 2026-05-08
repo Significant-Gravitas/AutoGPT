@@ -36,13 +36,11 @@ export async function login(email: string, password: string) {
     const api = new BackendAPI();
     await api.createUser();
 
-    // Get onboarding status from backend (includes chat flag evaluated for this user)
     const { shouldShowOnboarding } = await getOnboardingStatus();
-    const next = shouldShowOnboarding ? "/onboarding" : "/";
 
     return {
       success: true,
-      next,
+      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
     };
   } catch (err) {
     Sentry.captureException(err);

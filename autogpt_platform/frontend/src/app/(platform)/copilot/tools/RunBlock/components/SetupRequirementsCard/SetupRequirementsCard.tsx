@@ -6,35 +6,42 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import {
-  ContentBadge,
-  ContentCardDescription,
-  ContentCardTitle,
-  ContentMessage,
-} from "../../../../components/ToolAccordion/AccordionContent";
+import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import {
   buildExpectedInputsSchema,
+  buildRunMessage,
+  buildSiblingInputsFromCredentials,
+  checkAllCredentialsComplete,
+  checkAllInputsComplete,
+  checkCanRun,
   coerceCredentialFields,
   coerceExpectedInputs,
+  extractInitialValues,
+  mergeInputValues,
 } from "./helpers";
 
 interface Props {
   output: SetupRequirementsResponse;
+  retryInstruction?: string;
+  credentialsLabel?: string;
+  onComplete?: () => void;
 }
 
-export function SetupRequirementsCard({ output }: Props) {
+export function SetupRequirementsCard({
+  output,
+  retryInstruction,
+  credentialsLabel,
+  onComplete,
+}: Props) {
   const { onSend } = useCopilotChatActions();
 
   const [inputCredentials, setInputCredentials] = useState<
     Record<string, CredentialsMetaInput | undefined>
   >({});
-  const [hasSentCredentials, setHasSentCredentials] = useState(false);
-
-  const [showInputForm, setShowInputForm] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
+  const [hasSent, setHasSent] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
     output.setup_info.user_readiness?.missing_credentials,
@@ -44,33 +51,69 @@ export function SetupRequirementsCard({ output }: Props) {
     (output.setup_info.requirements as Record<string, unknown>)?.inputs,
   );
 
-  const inputSchema = buildExpectedInputsSchema(expectedInputs);
+  const initialValues = useMemo(
+    () => extractInitialValues(expectedInputs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilise on the raw prop
+    [output.setup_info.requirements],
+  );
+
+  const [inputValues, setInputValues] =
+    useState<Record<string, unknown>>(initialValues);
+
+  const initialValuesKey = JSON.stringify(initialValues);
+  useEffect(() => {
+    setInputValues((prev) => mergeInputValues(initialValues, prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
+  }, [initialValuesKey]);
+
+  const hasAdvancedFields = expectedInputs.some((i) => i.advanced);
+  const inputSchema = buildExpectedInputsSchema(expectedInputs, showAdvanced);
+
+  // Build siblingInputs for credential modal host prefill.
+  // Prefer discriminator_values from the credential response, but also
+  // include values from input_data (e.g. url field) so the host pattern
+  // can be extracted even when discriminator_values is empty.
+  const siblingInputs = useMemo(() => {
+    const fromCreds = buildSiblingInputsFromCredentials(
+      output.setup_info.user_readiness?.missing_credentials,
+    );
+    return { ...inputValues, ...fromCreds };
+  }, [output.setup_info.user_readiness?.missing_credentials, inputValues]);
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
   }
 
-  const isAllCredentialsComplete =
-    credentialFields.length > 0 &&
-    [...requiredCredentials].every((key) => !!inputCredentials[key]);
+  const needsCredentials = credentialFields.length > 0;
+  const isAllCredsComplete = checkAllCredentialsComplete(
+    requiredCredentials,
+    inputCredentials,
+  );
 
-  function handleProceedCredentials() {
-    setHasSentCredentials(true);
-    onSend(
-      "I've configured the required credentials. Please re-run the block now.",
-    );
+  const needsInputs = expectedInputs.length > 0;
+  const isAllInputsDone = checkAllInputsComplete(expectedInputs, inputValues);
+
+  if (hasSent) {
+    return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
-  function handleRunWithInputs() {
-    const nonEmpty = Object.fromEntries(
-      Object.entries(inputValues).filter(
-        ([, v]) => v !== undefined && v !== null && v !== "",
+  const canRun = checkCanRun(
+    needsCredentials,
+    isAllCredsComplete,
+    isAllInputsDone,
+  );
+
+  function handleRun() {
+    setHasSent(true);
+    onComplete?.();
+    onSend(
+      buildRunMessage(
+        needsCredentials,
+        needsInputs,
+        inputValues,
+        retryInstruction,
       ),
     );
-    onSend(
-      `Run the block with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
-    );
-    setShowInputForm(false);
     setInputValues({});
   }
 
@@ -78,119 +121,67 @@ export function SetupRequirementsCard({ output }: Props) {
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
-      {credentialFields.length > 0 && (
+      {needsCredentials && (
         <div className="rounded-2xl border bg-background p-3">
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={{}}
-            onCredentialChange={handleCredentialChange}
-          />
-          {isAllCredentialsComplete && !hasSentCredentials && (
-            <Button
-              variant="primary"
-              size="small"
-              className="mt-3 w-full"
-              onClick={handleProceedCredentials}
+          <Text variant="small" className="w-fit border-b text-zinc-500">
+            {credentialsLabel ?? "Credentials"}
+          </Text>
+          <div className="mt-6">
+            <CredentialsGroupedView
+              credentialFields={credentialFields}
+              requiredCredentials={requiredCredentials}
+              inputCredentials={inputCredentials}
+              inputValues={siblingInputs}
+              onCredentialChange={handleCredentialChange}
+            />
+          </div>
+        </div>
+      )}
+
+      {(inputSchema || hasAdvancedFields) && (
+        <div className="rounded-2xl border bg-background p-3 pt-4">
+          <Text variant="small" className="w-fit border-b text-zinc-500">
+            Inputs
+          </Text>
+          {inputSchema && (
+            <FormRenderer
+              jsonSchema={inputSchema}
+              className="mb-3 mt-3"
+              handleChange={(v) =>
+                setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
+              }
+              uiSchema={{
+                "ui:submitButtonOptions": { norender: true },
+              }}
+              initialValues={inputValues}
+              formContext={{
+                showHandles: false,
+                size: "small",
+              }}
+            />
+          )}
+          {hasAdvancedFields && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground underline"
+              onClick={() => setShowAdvanced((v) => !v)}
             >
-              Proceed
-            </Button>
+              {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
+            </button>
           )}
         </div>
       )}
 
-      {inputSchema && (
-        <div className="flex gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="small"
-            className="w-fit"
-            onClick={() => setShowInputForm((prev) => !prev)}
-          >
-            {showInputForm ? "Hide inputs" : "Fill in inputs"}
-          </Button>
-        </div>
-      )}
-
-      <AnimatePresence initial={false}>
-        {showInputForm && inputSchema && (
-          <motion.div
-            initial={{ height: 0, opacity: 0, filter: "blur(6px)" }}
-            animate={{ height: "auto", opacity: 1, filter: "blur(0px)" }}
-            exit={{ height: 0, opacity: 0, filter: "blur(6px)" }}
-            transition={{
-              height: { type: "spring", bounce: 0.15, duration: 0.5 },
-              opacity: { duration: 0.25 },
-              filter: { duration: 0.2 },
-            }}
-            className="overflow-hidden"
-            style={{ willChange: "height, opacity, filter" }}
-          >
-            <div className="rounded-2xl border bg-background p-3 pt-4">
-              <Text variant="body-medium">Block inputs</Text>
-              <FormRenderer
-                jsonSchema={inputSchema}
-                handleChange={(v) => setInputValues(v.formData ?? {})}
-                uiSchema={{
-                  "ui:submitButtonOptions": { norender: true },
-                }}
-                initialValues={inputValues}
-                formContext={{
-                  showHandles: false,
-                  size: "small",
-                }}
-              />
-              <div className="-mt-8 flex gap-2">
-                <Button
-                  variant="primary"
-                  size="small"
-                  className="w-fit"
-                  onClick={handleRunWithInputs}
-                >
-                  Run
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  className="w-fit"
-                  onClick={() => {
-                    setShowInputForm(false);
-                    setInputValues({});
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {expectedInputs.length > 0 && !inputSchema && (
-        <div className="rounded-2xl border bg-background p-3">
-          <ContentCardTitle className="text-xs">
-            Expected inputs
-          </ContentCardTitle>
-          <div className="mt-2 grid gap-2">
-            {expectedInputs.map((input) => (
-              <div key={input.name} className="rounded-xl border p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <ContentCardTitle className="text-xs">
-                    {input.title}
-                  </ContentCardTitle>
-                  <ContentBadge>
-                    {input.required ? "Required" : "Optional"}
-                  </ContentBadge>
-                </div>
-                <ContentCardDescription className="mt-1">
-                  {input.name} &bull; {input.type}
-                  {input.description ? ` \u2022 ${input.description}` : ""}
-                </ContentCardDescription>
-              </div>
-            ))}
-          </div>
-        </div>
+      {(needsCredentials || needsInputs) && (
+        <Button
+          variant="primary"
+          size="small"
+          className="mt-4 w-fit"
+          disabled={!canRun}
+          onClick={handleRun}
+        >
+          Proceed
+        </Button>
       )}
     </div>
   );

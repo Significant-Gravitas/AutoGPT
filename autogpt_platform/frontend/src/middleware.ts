@@ -1,7 +1,17 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Redirect www to non-www so Supabase cookies are issued against a single,
+  // canonical host and avoid the auth/cookie domain mismatch (#9188).
+  // Use url.hostname (already lowercase-normalized by the URL parser) instead
+  // of the raw Host header, which RFC 7230 treats as case-insensitive.
+  const url = request.nextUrl.clone();
+  if (url.hostname.startsWith("www.")) {
+    url.hostname = url.hostname.slice(4);
+    return NextResponse.redirect(url, 308);
+  }
+
   return await updateSession(request);
 }
 

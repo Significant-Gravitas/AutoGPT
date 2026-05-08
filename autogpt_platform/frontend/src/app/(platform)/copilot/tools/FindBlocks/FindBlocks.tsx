@@ -61,7 +61,7 @@ export function FindBlocksTool({ part }: Props) {
 
   const query = (part.input as FindBlockInput | undefined)?.query?.trim();
   const accordionDescription = parsed
-    ? `Found ${parsed.count} block${parsed.count === 1 ? "" : "s"}${query ? ` for "${query}"` : ""}`
+    ? `Found ${parsed.count} action${parsed.count === 1 ? "" : "s"}${query ? ` for "${query}"` : ""}`
     : undefined;
 
   return (
@@ -77,7 +77,7 @@ export function FindBlocksTool({ part }: Props) {
       {hasBlocks && parsed && (
         <ToolAccordion
           icon={<AccordionIcon />}
-          title="Block results"
+          title="Results"
           description={accordionDescription}
         >
           <HorizontalScroll dependencyList={[parsed.blocks.length]}>

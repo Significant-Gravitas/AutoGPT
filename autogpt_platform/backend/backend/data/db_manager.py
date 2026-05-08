@@ -4,12 +4,22 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.library.db import (
     add_store_agent_to_library,
+    bulk_move_agents_to_folder,
+    create_folder,
     create_graph_in_library,
     create_library_agent,
+    delete_folder,
+    get_folder_agents_map,
+    get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_root_agent_summaries,
+    list_folders,
     list_library_agents,
+    move_folder,
+    update_folder,
     update_graph_in_library,
+    update_library_agent,
 )
 from backend.api.features.store.db import (
     get_agent,
@@ -30,6 +40,10 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.block import (
+    get_blocks_needing_optimization,
+    update_block_optimized_description,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -66,7 +80,10 @@ from backend.data.graph import (
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_execution,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
 )
@@ -80,6 +97,13 @@ from backend.data.notifications import (
     remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.platform_cost import log_platform_cost
+from backend.data.push_subscription import (
+    cleanup_failed_subscriptions,
+    delete_push_subscription,
+    get_user_push_subscriptions,
+    increment_fail_count,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -93,7 +117,17 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.data.workspace import get_or_create_workspace
+from backend.data.workspace import (
+    count_workspace_files,
+    create_workspace_file,
+    get_or_create_workspace,
+    get_workspace_file,
+    get_workspace_file_by_path,
+    get_workspace_total_size,
+    list_workspace_files,
+    soft_delete_workspace_file,
+)
+from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -113,15 +147,25 @@ R = TypeVar("R")
 
 
 async def _spend_credits(
-    user_id: str, cost: int, metadata: UsageTransactionMetadata
+    user_id: str,
+    cost: int,
+    metadata: UsageTransactionMetadata,
+    fail_insufficient_credits: bool = True,
 ) -> int:
     user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.spend_credits(user_id, cost, metadata)
+    return await user_credit_model.spend_credits(
+        user_id, cost, metadata, fail_insufficient_credits=fail_insufficient_credits
+    )
 
 
 async def _get_credits(user_id: str) -> int:
     user_credit_model = await get_user_credit_model(user_id)
     return await user_credit_model.get_credits(user_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_credits = _get_credits
+spend_credits = _spend_credits
 
 
 class DatabaseManager(AppService):
@@ -225,7 +269,10 @@ class DatabaseManager(AppService):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
+    get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -249,8 +296,19 @@ class DatabaseManager(AppService):
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
+
+    create_folder = _(create_folder)
+    list_folders = _(list_folders)
+    get_folder_tree = _(get_folder_tree)
+    update_folder = _(update_folder)
+    move_folder = _(move_folder)
+    delete_folder = _(delete_folder)
+    bulk_move_agents_to_folder = _(bulk_move_agents_to_folder)
+    get_folder_agents_map = _(get_folder_agents_map)
+    get_root_agent_summaries = _(get_root_agent_summaries)
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
@@ -274,14 +332,55 @@ class DatabaseManager(AppService):
     get_user_execution_summary_data = _(get_user_execution_summary_data)
 
     # ============ Workspace ============ #
+    count_workspace_files = _(count_workspace_files)
+    create_workspace_file = _(create_workspace_file)
     get_or_create_workspace = _(get_or_create_workspace)
+    get_workspace_file = _(get_workspace_file)
+    get_workspace_file_by_path = _(get_workspace_file_by_path)
+    get_workspace_total_size = _(get_workspace_total_size)
+    list_workspace_files = _(list_workspace_files)
+    soft_delete_workspace_file = _(soft_delete_workspace_file)
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
     upsert_business_understanding = _(upsert_business_understanding)
 
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = _(get_blocks_needing_optimization)
+    update_block_optimized_description = _(update_block_optimized_description)
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = _(log_platform_cost)
+
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = _(get_user_push_subscriptions)
+    delete_push_subscription = _(delete_push_subscription)
+    increment_push_fail_count = _(
+        increment_fail_count, name="increment_push_fail_count"
+    )
+    cleanup_failed_push_subscriptions = _(
+        cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
+    )
+
+    # ============ Platform Linking ============ #
+    find_server_link_owner = _(platform_linking_db.find_server_link_owner)
+    find_user_link_owner = _(platform_linking_db.find_user_link_owner)
+    resolve_server_link = _(platform_linking_db.resolve_server_link)
+    resolve_user_link = _(platform_linking_db.resolve_user_link)
+    create_server_link_token = _(platform_linking_db.create_server_link_token)
+    create_user_link_token = _(platform_linking_db.create_user_link_token)
+    get_link_token_status = _(platform_linking_db.get_link_token_status)
+    get_link_token_info = _(platform_linking_db.get_link_token_info)
+    confirm_server_link = _(platform_linking_db.confirm_server_link)
+    confirm_user_link = _(platform_linking_db.confirm_user_link)
+    list_server_links = _(platform_linking_db.list_server_links)
+    list_user_links = _(platform_linking_db.list_user_links)
+    delete_server_link = _(platform_linking_db.delete_server_link)
+    delete_user_link = _(platform_linking_db.delete_user_link)
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = _(chat_db.get_chat_session)
+    get_chat_session_metadata = _(chat_db.get_chat_session_metadata)
     create_chat_session = _(chat_db.create_chat_session)
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
@@ -289,8 +388,11 @@ class DatabaseManager(AppService):
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
-    get_chat_session_message_count = _(chat_db.get_chat_session_message_count)
+    get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
+    update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_session_title = _(chat_db.update_chat_session_title)
+    set_turn_duration = _(chat_db.set_turn_duration)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -345,6 +447,10 @@ class DatabaseManagerClient(AppServiceClient):
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
 
+    # Block Descriptions
+    get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
+    update_block_optimized_description = _(d.update_block_optimized_description)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -387,7 +493,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
+    get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -416,8 +525,20 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
+
+    # ============ Library Folders ============ #
+    create_folder = d.create_folder
+    list_folders = d.list_folders
+    get_folder_tree = d.get_folder_tree
+    update_folder = d.update_folder
+    move_folder = d.move_folder
+    delete_folder = d.delete_folder
+    bulk_move_agents_to_folder = d.bulk_move_agents_to_folder
+    get_folder_agents_map = d.get_folder_agents_map
+    get_root_agent_summaries = d.get_root_agent_summaries
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
@@ -438,14 +559,54 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_execution_summary_data = d.get_user_execution_summary_data
 
     # ============ Workspace ============ #
+    count_workspace_files = d.count_workspace_files
+    create_workspace_file = d.create_workspace_file
     get_or_create_workspace = d.get_or_create_workspace
+    get_workspace_file = d.get_workspace_file
+    get_workspace_file_by_path = d.get_workspace_file_by_path
+    get_workspace_total_size = d.get_workspace_total_size
+    list_workspace_files = d.list_workspace_files
+    soft_delete_workspace_file = d.soft_delete_workspace_file
+
+    # ============ Credits ============ #
+    spend_credits = d.spend_credits
+    get_credits = d.get_credits
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
     upsert_business_understanding = d.upsert_business_understanding
 
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = d.get_blocks_needing_optimization
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = d.log_platform_cost
+
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = d.get_user_push_subscriptions
+    delete_push_subscription = d.delete_push_subscription
+    increment_push_fail_count = d.increment_push_fail_count
+    cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
+
+    # ============ Platform Linking ============ #
+    find_server_link_owner = d.find_server_link_owner
+    find_user_link_owner = d.find_user_link_owner
+    resolve_server_link = d.resolve_server_link
+    resolve_user_link = d.resolve_user_link
+    create_server_link_token = d.create_server_link_token
+    create_user_link_token = d.create_user_link_token
+    get_link_token_status = d.get_link_token_status
+    get_link_token_info = d.get_link_token_info
+    confirm_server_link = d.confirm_server_link
+    confirm_user_link = d.confirm_user_link
+    list_server_links = d.list_server_links
+    list_user_links = d.list_user_links
+    delete_server_link = d.delete_server_link
+    delete_user_link = d.delete_user_link
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = d.get_chat_session
+    get_chat_session_metadata = d.get_chat_session_metadata
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
@@ -453,5 +614,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
-    get_chat_session_message_count = d.get_chat_session_message_count
+    get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
+    update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_session_title = d.update_chat_session_title
+    set_turn_duration = d.set_turn_duration

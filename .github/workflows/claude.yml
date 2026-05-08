@@ -21,13 +21,10 @@ jobs:
       ) && (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR' ||
         github.event.review.author_association == 'OWNER' ||
         github.event.review.author_association == 'MEMBER' ||
-        github.event.review.author_association == 'COLLABORATOR' ||
         github.event.issue.author_association == 'OWNER' ||
-        github.event.issue.author_association == 'MEMBER' ||
-        github.event.issue.author_association == 'COLLABORATOR'
+        github.event.issue.author_association == 'MEMBER'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -52,55 +52,67 @@ NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
 
+# ``_v2`` suffix marks the classic→quorum rollover: old classic queues keep
+# draining via old-image consumers; orphans are cleaned up by a follow-up PR.
+IMMEDIATE_NOTIFICATIONS_QUEUE = "immediate_notifications_v2"
+ADMIN_NOTIFICATIONS_QUEUE = "admin_notifications_v2"
+SUMMARY_NOTIFICATIONS_QUEUE = "summary_notifications_v2"
+BATCH_NOTIFICATIONS_QUEUE = "batch_notifications_v2"
+FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v2"
+
 
 def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
-
     queues = [
         # Main notification queues
         Queue(
-            name="immediate_notifications",
+            name=IMMEDIATE_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.immediate.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.immediate",
             },
         ),
         Queue(
-            name="admin_notifications",
+            name=ADMIN_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.admin.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.admin",
             },
         ),
         # Summary notification queues
         Queue(
-            name="summary_notifications",
+            name=SUMMARY_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.summary.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.summary",
             },
         ),
         # Batch Queue
         Queue(
-            name="batch_notifications",
+            name=BATCH_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.batch.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.batch",
             },
         ),
-        # Failed notifications queue
+        # DLQ destination — quorum so dead letters survive a broker restart.
         Queue(
-            name="failed_notifications",
+            name=FAILED_NOTIFICATIONS_QUEUE,
             exchange=DEAD_LETTER_EXCHANGE,
             routing_key="failed.#",
+            arguments={"x-queue-type": "quorum"},
         ),
     ]
 
@@ -303,9 +315,9 @@ class NotificationManager(AppService):
                     )
 
                     if not oldest_message:
-                        # this should never happen
-                        logger.error(
-                            f"Batch for user {batch.user_id} and type {notification_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
+                        logger.warning(
+                            f"Batch for user {batch.user_id} and type {notification_type} "
+                            f"has no oldest message — batch may have been cleared concurrently"
                         )
                         continue
 
@@ -318,7 +330,7 @@ class NotificationManager(AppService):
                         ).get_user_email_by_id(batch.user_id)
 
                         if not recipient_email:
-                            logger.error(
+                            logger.warning(
                                 f"User email not found for user {batch.user_id}"
                             )
                             continue
@@ -344,7 +356,7 @@ class NotificationManager(AppService):
                         ).get_user_notification_batch(batch.user_id, notification_type)
 
                         if not batch_data or not batch_data.notifications:
-                            logger.error(
+                            logger.warning(
                                 f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
@@ -372,13 +384,13 @@ class NotificationManager(AppService):
                                     )
                                 )
                             except Exception as e:
-                                logger.error(
+                                logger.warning(
                                     f"Error parsing notification event: {e=}, {db_event=}"
                                 )
                                 continue
                         logger.info(f"{events=}")
 
-                        self.email_sender.send_templated(
+                        await self.email_sender.send_templated(
                             notification=notification_type,
                             user_email=recipient_email,
                             data=events,
@@ -415,7 +427,10 @@ class NotificationManager(AppService):
     async def discord_system_alert(
         self, content: str, channel: DiscordChannel = DiscordChannel.PLATFORM
     ):
-        await discord_send_alert(content, channel)
+        try:
+            await discord_send_alert(content, channel)
+        except Exception as e:
+            logger.warning(f"Failed to send Discord system alert: {e}")
 
     async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
@@ -516,7 +531,7 @@ class NotificationManager(AppService):
                 raise ValueError("Invalid event type or params")
 
         except Exception as e:
-            logger.error(f"Failed to gather summary data: {e}")
+            logger.warning(f"Failed to gather summary data: {e}")
             # Return sensible defaults in case of error
             if event_type == NotificationType.DAILY_SUMMARY and isinstance(
                 params, DailySummaryParams
@@ -562,8 +577,9 @@ class NotificationManager(AppService):
             should_retry=False
         ).get_user_notification_oldest_message_in_batch(user_id, event_type)
         if not oldest_message:
-            logger.error(
-                f"Batch for user {user_id} and type {event_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
+            logger.warning(
+                f"Batch for user {user_id} and type {event_type} "
+                f"has no oldest message — batch may have been cleared concurrently"
             )
             return False
         oldest_age = oldest_message.created_at
@@ -585,7 +601,7 @@ class NotificationManager(AppService):
                 get_notif_data_type(event.type)
             ].model_validate_json(message)
         except Exception as e:
-            logger.error(f"Error parsing message due to non matching schema {e}")
+            logger.warning(f"Error parsing message due to non matching schema {e}")
             return None
 
     async def _process_admin_message(self, message: str) -> bool:
@@ -596,7 +612,7 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing notification for admin: {event}")
             recipient_email = settings.config.refund_notification_email
-            self.email_sender.send_templated(event.type, recipient_email, event)
+            await self.email_sender.send_templated(event.type, recipient_email, event)
             return True
         except Exception as e:
             logger.exception(f"Error processing notification for admin queue: {e}")
@@ -614,7 +630,7 @@ class NotificationManager(AppService):
                 should_retry=False
             ).get_user_email_by_id(event.user_id)
             if not recipient_email:
-                logger.error(f"User email not found for user {event.user_id}")
+                logger.warning(f"User email not found for user {event.user_id}")
                 return False
 
             should_send = await self._should_email_user_based_on_preference(
@@ -628,7 +644,7 @@ class NotificationManager(AppService):
 
             unsub_link = generate_unsubscribe_link(event.user_id)
 
-            self.email_sender.send_templated(
+            await self.email_sender.send_templated(
                 notification=event.type,
                 user_email=recipient_email,
                 data=event,
@@ -651,7 +667,7 @@ class NotificationManager(AppService):
                 should_retry=False
             ).get_user_email_by_id(event.user_id)
             if not recipient_email:
-                logger.error(f"User email not found for user {event.user_id}")
+                logger.warning(f"User email not found for user {event.user_id}")
                 return False
 
             should_send = await self._should_email_user_based_on_preference(
@@ -672,7 +688,7 @@ class NotificationManager(AppService):
                 should_retry=False
             ).get_user_notification_batch(event.user_id, event.type)
             if not batch or not batch.notifications:
-                logger.error(f"Batch not found for user {event.user_id}")
+                logger.warning(f"Batch not found for user {event.user_id}")
                 return False
             unsub_link = generate_unsubscribe_link(event.user_id)
 
@@ -711,7 +727,10 @@ class NotificationManager(AppService):
                     try:
                         # Try to render the email to check its size
                         template = self.email_sender._get_template(event.type)
-                        _, test_message = self.email_sender.formatter.format_email(
+                        (
+                            _,
+                            test_message,
+                        ) = await self.email_sender.formatter.format_email(
                             base_template=template.base_template,
                             subject_template=template.subject_template,
                             content_template=template.body_template,
@@ -726,7 +745,7 @@ class NotificationManager(AppService):
                                 f"(size: {len(test_message):,} chars)"
                             )
 
-                            self.email_sender.send_templated(
+                            await self.email_sender.send_templated(
                                 notification=event.type,
                                 user_email=recipient_email,
                                 data=chunk,
@@ -745,7 +764,7 @@ class NotificationManager(AppService):
                                         f"Removed {len(chunk_ids)} sent notifications from batch"
                                     )
                                 except Exception as e:
-                                    logger.error(
+                                    logger.warning(
                                         f"Failed to remove sent notifications: {e}"
                                     )
                                     # Continue anyway - better to risk duplicates than lose emails
@@ -770,7 +789,7 @@ class NotificationManager(AppService):
                         else:
                             # Message is too large even after size reduction
                             if attempt_size == 1:
-                                logger.error(
+                                logger.warning(
                                     f"Failed to send notification at index {i}: "
                                     f"Single notification exceeds email size limit "
                                     f"({len(test_message):,} chars > {MAX_EMAIL_SIZE:,} chars). "
@@ -789,7 +808,7 @@ class NotificationManager(AppService):
                                             f"Removed oversized notification {chunk_ids[0]} from batch permanently"
                                         )
                                     except Exception as e:
-                                        logger.error(
+                                        logger.warning(
                                             f"Failed to remove oversized notification: {e}"
                                         )
 
@@ -823,7 +842,7 @@ class NotificationManager(AppService):
                                         f"Set email verification to false for user {event.user_id}"
                                     )
                                 except Exception as deactivation_error:
-                                    logger.error(
+                                    logger.warning(
                                         f"Failed to deactivate email for user {event.user_id}: "
                                         f"{deactivation_error}"
                                     )
@@ -835,7 +854,7 @@ class NotificationManager(AppService):
                                         f"Disabled all notification preferences for user {event.user_id}"
                                     )
                                 except Exception as disable_error:
-                                    logger.error(
+                                    logger.warning(
                                         f"Failed to disable notification preferences: {disable_error}"
                                     )
 
@@ -848,7 +867,7 @@ class NotificationManager(AppService):
                                         f"Cleared ALL notification batches for user {event.user_id}"
                                     )
                                 except Exception as remove_error:
-                                    logger.error(
+                                    logger.warning(
                                         f"Failed to clear batches for inactive recipient: {remove_error}"
                                     )
 
@@ -859,7 +878,7 @@ class NotificationManager(AppService):
                                 "422" in error_message
                                 or "unprocessable" in error_message
                             ):
-                                logger.error(
+                                logger.warning(
                                     f"Failed to send notification at index {i}: "
                                     f"Malformed notification data rejected by Postmark. "
                                     f"Error: {e}. Removing from batch permanently."
@@ -877,7 +896,7 @@ class NotificationManager(AppService):
                                             "Removed malformed notification from batch permanently"
                                         )
                                     except Exception as remove_error:
-                                        logger.error(
+                                        logger.warning(
                                             f"Failed to remove malformed notification: {remove_error}"
                                         )
                             # Check if it's a ValueError for size limit
@@ -885,14 +904,14 @@ class NotificationManager(AppService):
                                 isinstance(e, ValueError)
                                 and "too large" in error_message
                             ):
-                                logger.error(
+                                logger.warning(
                                     f"Failed to send notification at index {i}: "
                                     f"Notification size exceeds email limit. "
                                     f"Error: {e}. Skipping this notification."
                                 )
                             # Other API errors
                             else:
-                                logger.error(
+                                logger.warning(
                                     f"Failed to send notification at index {i}: "
                                     f"Email API error ({error_type}): {e}. "
                                     f"Skipping this notification."
@@ -907,7 +926,9 @@ class NotificationManager(AppService):
 
                 if not chunk_sent:
                     # Should not reach here due to single notification handling
-                    logger.error(f"Failed to send notifications starting at index {i}")
+                    logger.warning(
+                        f"Failed to send notifications starting at index {i}"
+                    )
                     failed_indices.append(i)
                     i += 1
 
@@ -946,7 +967,7 @@ class NotificationManager(AppService):
                 should_retry=False
             ).get_user_email_by_id(event.user_id)
             if not recipient_email:
-                logger.error(f"User email not found for user {event.user_id}")
+                logger.warning(f"User email not found for user {event.user_id}")
                 return False
             should_send = await self._should_email_user_based_on_preference(
                 event.user_id, event.type
@@ -969,7 +990,7 @@ class NotificationManager(AppService):
                 data=summary_data,
             )
 
-            self.email_sender.send_templated(
+            await self.email_sender.send_templated(
                 notification=event.type,
                 user_email=recipient_email,
                 data=data,
@@ -1007,7 +1028,10 @@ class NotificationManager(AppService):
                         # Let message.process() handle the rejection
                         pass
                     except Exception as e:
-                        logger.error(f"Error processing message in {queue_name}: {e}")
+                        logger.warning(
+                            f"Error processing message in {queue_name}: {e}",
+                            exc_info=True,
+                        )
                         # Let message.process() handle the rejection
                         raise
         except asyncio.CancelledError:
@@ -1038,10 +1062,10 @@ class NotificationManager(AppService):
         # Set prefetch to prevent overwhelming the service
         await channel.set_qos(prefetch_count=10)
 
-        immediate_queue = await channel.get_queue("immediate_notifications")
-        batch_queue = await channel.get_queue("batch_notifications")
-        admin_queue = await channel.get_queue("admin_notifications")
-        summary_queue = await channel.get_queue("summary_notifications")
+        immediate_queue = await channel.get_queue(IMMEDIATE_NOTIFICATIONS_QUEUE)
+        batch_queue = await channel.get_queue(BATCH_NOTIFICATIONS_QUEUE)
+        admin_queue = await channel.get_queue(ADMIN_NOTIFICATIONS_QUEUE)
+        summary_queue = await channel.get_queue(SUMMARY_NOTIFICATIONS_QUEUE)
 
         # Create consumer tasks for each queue - running in parallel
         consumer_tasks = [
@@ -1049,28 +1073,28 @@ class NotificationManager(AppService):
                 self._consume_queue(
                     queue=immediate_queue,
                     process_func=self._process_immediate,
-                    queue_name="immediate_notifications",
+                    queue_name=IMMEDIATE_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=admin_queue,
                     process_func=self._process_admin_message,
-                    queue_name="admin_notifications",
+                    queue_name=ADMIN_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=batch_queue,
                     process_func=self._process_batch,
-                    queue_name="batch_notifications",
+                    queue_name=BATCH_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=summary_queue,
                     process_func=self._process_summary,
-                    queue_name="summary_notifications",
+                    queue_name=SUMMARY_NOTIFICATIONS_QUEUE,
                 )
             ),
         ]
