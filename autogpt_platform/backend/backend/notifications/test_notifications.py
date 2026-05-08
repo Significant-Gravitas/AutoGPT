@@ -324,11 +324,7 @@ class TestNotificationErrorHandling:
                 data = kwargs.get("data", {}).get("notifications", [])
                 if data and len(data) == 1:
                     # Check notification content to identify index 3
-                    if any(
-                        "Test Agent 3" in str(n.data)
-                        for n in data
-                        if hasattr(n, "data")
-                    ):
+                    if any("Test Agent 3" in str(n.data) for n in data):
                         # Return oversized message for index 3
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
@@ -345,11 +341,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None
@@ -448,11 +440,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification based on content
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             # Index 1 has generic API error
                             if i == 1:
                                 failed_indices.append(i)
@@ -559,11 +547,7 @@ class TestNotificationErrorHandling:
                 if isinstance(data, list) and len(data) == 1:
                     # Track which notification was sent
                     for i, notif in enumerate(notifications):
-                        if any(
-                            f"Test Agent {i}" in str(n.data)
-                            for n in data
-                            if hasattr(n, "data")
-                        ):
+                        if any(f"Test Agent {i}" in str(n.data) for n in data):
                             successful_indices.append(i)
                             return None
                     return None  # Success
