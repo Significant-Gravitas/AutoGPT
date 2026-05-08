@@ -30,6 +30,7 @@ async def _create_test_user(user_id: str) -> None:
             }
         )
     except UniqueViolationError:
+        # Idempotent test setup: row already exists from a prior run.
         pass
 
 
@@ -46,6 +47,7 @@ async def _create_graph(graph_id: str, user_id: str, name: str) -> None:
             }
         )
     except UniqueViolationError:
+        # Idempotent test setup: row already exists from a prior run.
         pass
 
 

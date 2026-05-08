@@ -7,7 +7,11 @@ start every new turn from a well-formed message list.
 
 import logging
 
-from backend.copilot.constants import STOPPED_BY_USER_MARKER, STREAM_INCOMPLETE_MARKER
+from backend.copilot.constants import (
+    STOPPED_BY_USER_MARKER,
+    STREAM_ERROR_MARKER,
+    STREAM_INCOMPLETE_MARKER,
+)
 from backend.copilot.model import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -26,10 +30,10 @@ def prune_orphan_tool_calls(
     ``tool_use`` with no paired ``tool_result`` and the SDK raises a
     generic error.
 
-    Also strips trailing ``STOPPED_BY_USER_MARKER`` and
-    ``STREAM_INCOMPLETE_MARKER`` assistant rows so the next turn's
-    transcript starts clean — these synthetic notices must not leak into
-    the next ``--resume`` turn's history.
+    Also strips trailing ``STOPPED_BY_USER_MARKER``,
+    ``STREAM_INCOMPLETE_MARKER``, and ``STREAM_ERROR_MARKER`` assistant rows
+    so the next turn's transcript starts clean — these synthetic notices
+    must not leak into the next ``--resume`` turn's history.
 
     If *log_prefix* is given, emits an INFO log with the prefix whenever
     something was actually popped so the turn-start cleanup is visible.
@@ -51,6 +55,7 @@ def prune_orphan_tool_calls(
         if msg.role == "assistant" and msg.content in (
             STOPPED_BY_USER_MARKER,
             STREAM_INCOMPLETE_MARKER,
+            STREAM_ERROR_MARKER,
         ):
             cut_index = i
             continue

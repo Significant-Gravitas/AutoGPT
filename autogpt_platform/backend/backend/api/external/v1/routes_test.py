@@ -6,8 +6,10 @@ import fastapi.testclient
 import pytest
 from prisma.enums import APIKeyPermission
 
+import backend.api.external.v1.routes as routes_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -147,3 +149,58 @@ def test_unknown_block_returns_404(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("backend.blocks.get_block", lambda _: None)
     response = client.post("/blocks/00000000-0000-0000-0000-deadbeef/execute", json={})
     assert response.status_code == 404
+
+
+def test_execute_graph_paywall_error_propagates_not_400(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The route's broad ``except Exception`` must NOT swallow
+    ``UserPaywalledError`` — otherwise the 402 handler registered on
+    ``external_api`` never fires and a paywalled user gets a confusing
+    400 instead of 402. Locks the explicit re-raise added for this gap.
+    """
+    monkeypatch.setattr(
+        routes_mod,
+        "add_graph_execution",
+        AsyncMock(side_effect=UserPaywalledError("subscription required")),
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post(
+            "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
+            json={"node_input": {}},
+        )
+
+
+def test_execute_graph_other_errors_still_return_400(monkeypatch: pytest.MonkeyPatch):
+    """Non-paywall exceptions retain the existing 400 behaviour — only
+    ``UserPaywalledError`` is the surgical exception to the catch-all."""
+    monkeypatch.setattr(
+        routes_mod,
+        "add_graph_execution",
+        AsyncMock(side_effect=ValueError("graph missing")),
+    )
+
+    response = client.post(
+        "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
+        json={"node_input": {}},
+    )
+    assert response.status_code == 400
+    assert "graph missing" in response.json()["detail"]
+
+
+def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch):
+    """``execute_graph_block`` must let ``UserPaywalledError`` propagate
+    out so the external app's 402 handler fires. There's no surrounding
+    catch-all on this route, so we just lock the propagation."""
+    monkeypatch.setattr(
+        routes_mod,
+        "enforce_payment_paywall",
+        AsyncMock(side_effect=UserPaywalledError("subscription required")),
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post(
+            "/blocks/00000000-0000-0000-0000-000000000001/execute",
+            json={},
+        )
