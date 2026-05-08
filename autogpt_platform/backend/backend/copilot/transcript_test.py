@@ -848,9 +848,9 @@ class TestStripForUpload:
         types = [
             b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
         ]
-        assert (
-            "thinking" in types
-        ), "Anthropic-signed thinking on last turn must survive strip"
+        assert "thinking" in types, (
+            "Anthropic-signed thinking on last turn must survive strip"
+        )
         assert "text" in types
 
     def test_empty_content(self):
@@ -1208,12 +1208,12 @@ class TestUploadCliSession:
         # a1 should have its thinking block stripped (it's not the last assistant turn).
         a1_stored = json.loads(stored_lines[1])
         a1_content = a1_stored["message"]["content"]
-        assert all(
-            b["type"] != "thinking" for b in a1_content
-        ), "stale thinking block should be stripped from a1"
-        assert any(
-            b["type"] == "text" for b in a1_content
-        ), "text block should be kept in a1"
+        assert all(b["type"] != "thinking" for b in a1_content), (
+            "stale thinking block should be stripped from a1"
+        )
+        assert any(b["type"] == "text" for b in a1_content), (
+            "text block should be kept in a1"
+        )
 
         # a2 (last turn) should be unchanged.
         a2_stored = json.loads(stored_lines[3])
@@ -1782,6 +1782,9 @@ class TestExtractContextMessages:
         )
         mock_db = mocker.MagicMock()
         mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
+        # 2 non-reasoning rows ⇒ the 2nd one's sequence is 1 (transcript covers
+        # seq 0..1).  Hole starts at seq 2.
+        mock_db.get_sequence_at_non_reasoning_index = mocker.AsyncMock(return_value=1)
         mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
 
         result = await extract_context_messages(dl, windowed, session_id="sess-hole")
@@ -1801,3 +1804,138 @@ class TestExtractContextMessages:
         mock_db.get_chat_messages_paginated.assert_awaited_once_with(
             "sess-hole", limit=3, after_sequence=2, before_sequence=5
         )
+        mock_db.get_sequence_at_non_reasoning_index.assert_awaited_once_with(
+            "sess-hole", 2
+        )
+
+    @pytest.mark.asyncio
+    async def test_hole_fill_translates_count_watermark_when_reasoning_interleaved(
+        self, mocker
+    ):
+        """``message_count`` counts non-reasoning JSONL rows; DB ``sequence``
+        includes reasoning. Using the count as a sequence boundary directly
+        would re-fetch rows already covered by the transcript whenever any
+        reasoning row precedes the gap. The translation through
+        ``get_sequence_at_non_reasoning_index`` keeps the fetch range disjoint
+        from the transcript."""
+        from datetime import UTC, datetime
+
+        from .db import PaginatedMessages
+        from .model import ChatMessage, ChatSessionInfo
+
+        # 4 non-reasoning rows in JSONL transcript (watermark=4) but they live
+        # at DB sequences 0, 2, 3, 5 because reasoning rows interleave at 1
+        # and 4.  Window starts at seq 8.  A naive ``after_sequence=watermark``
+        # query would re-fetch seq 4 and 5 — both already in the transcript.
+        transcript_content = _make_valid_transcript(
+            "user", "assistant", "user", "assistant"
+        )
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=4, mode="sdk"
+        )
+        windowed = [
+            ChatMessage(role="user", content="user-8", sequence=8),
+            ChatMessage(role="assistant", content="assistant-9", sequence=9),
+            ChatMessage(role="user", content="user-10-current", sequence=10),
+        ]
+
+        # The fetched range [6, 8) contains exactly the post-transcript hole.
+        hole_msgs = [
+            ChatMessage(role="user", content="hole-6", sequence=6),
+            ChatMessage(role="assistant", content="hole-7", sequence=7),
+        ]
+        hole_page = PaginatedMessages(
+            messages=hole_msgs,
+            has_more=False,
+            oldest_sequence=6,
+            session=ChatSessionInfo(
+                session_id="sess-hole",
+                user_id="u1",
+                usage=[],
+                started_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
+        mock_db = mocker.MagicMock()
+        mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
+        # The 4th non-reasoning row sits at DB sequence 5; hole starts at 6.
+        mock_db.get_sequence_at_non_reasoning_index = mocker.AsyncMock(return_value=5)
+        mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
+
+        result = await extract_context_messages(dl, windowed, session_id="sess-hole")
+
+        # 4 transcript + 2 hole-fill + 1 gap (user-8; user-10 is current).
+        assert [m.role for m in result] == [
+            "user",
+            "assistant",
+            "user",
+            "assistant",
+            "user",  # hole-6
+            "assistant",  # hole-7
+            "user",  # gap user-8
+            "assistant",  # gap assistant-9
+        ]
+        mock_db.get_chat_messages_paginated.assert_awaited_once_with(
+            "sess-hole", limit=2, after_sequence=6, before_sequence=8
+        )
+        mock_db.get_sequence_at_non_reasoning_index.assert_awaited_once_with(
+            "sess-hole", 4
+        )
+
+    @pytest.mark.asyncio
+    async def test_hole_fill_filters_reasoning_rows_from_results(self, mocker):
+        """Even with the watermark→sequence translation, the range fetch may
+        still return reasoning rows that exist inside the hole — they must be
+        stripped before the LLM context is assembled."""
+        from datetime import UTC, datetime
+
+        from .db import PaginatedMessages
+        from .model import ChatMessage, ChatSessionInfo
+
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        windowed = [
+            ChatMessage(role="user", content="user-6", sequence=6),
+            ChatMessage(role="assistant", content="assistant-7", sequence=7),
+            ChatMessage(role="user", content="user-8-current", sequence=8),
+        ]
+
+        # Range fetch returns a reasoning row mixed in with the user/assistant
+        # hole content; the reasoning row must be filtered out.
+        hole_msgs = [
+            ChatMessage(role="user", content="hole-2", sequence=2),
+            ChatMessage(role="reasoning", content="hole-thinking", sequence=3),
+            ChatMessage(role="assistant", content="hole-4", sequence=4),
+            ChatMessage(role="user", content="hole-5", sequence=5),
+        ]
+        hole_page = PaginatedMessages(
+            messages=hole_msgs,
+            has_more=False,
+            oldest_sequence=2,
+            session=ChatSessionInfo(
+                session_id="sess-hole",
+                user_id="u1",
+                usage=[],
+                started_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
+        mock_db = mocker.MagicMock()
+        mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=hole_page)
+        mock_db.get_sequence_at_non_reasoning_index = mocker.AsyncMock(return_value=1)
+        mocker.patch("backend.copilot.transcript.chat_db", return_value=mock_db)
+
+        result = await extract_context_messages(dl, windowed, session_id="sess-hole")
+
+        # Reasoning row at seq 3 is dropped; the rest flows through.
+        assert [m.role for m in result] == [
+            "user",  # transcript
+            "assistant",  # transcript
+            "user",  # hole-2
+            "assistant",  # hole-4 (hole-3 reasoning filtered)
+            "user",  # hole-5
+            "user",  # gap user-6
+            "assistant",  # gap assistant-7
+        ]
