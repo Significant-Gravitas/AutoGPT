@@ -332,7 +332,7 @@ async def websocket_router(
         update_websocket_connections(user_id, -1)
 
 
-@app.get("/")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 
