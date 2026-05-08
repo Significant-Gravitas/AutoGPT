@@ -2250,6 +2250,40 @@ async def get_subscription_price_id(
     return price_id if isinstance(price_id, str) and price_id else None
 
 
+def _list_and_expire_open_subscription_sessions(customer_id: str) -> None:
+    """Expire open subscription checkout sessions synchronously (runs in threadpool).
+
+    An abandoned subscription session leaves an incomplete subscription + open invoice
+    in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
+    invoice, so the user is not shown phantom charges on their billing page.
+    """
+    sessions = stripe.checkout.Session.list(
+        customer=customer_id,
+        status="open",
+        limit=20,
+    )
+    for s in sessions.data:
+        if s.mode == "subscription":
+            try:
+                stripe.checkout.Session.expire(s.id)
+            except stripe.StripeError:
+                logger.warning(
+                    "create_subscription_checkout: could not expire session %s", s.id
+                )
+
+
+async def _expire_open_subscription_sessions(customer_id: str) -> None:
+    try:
+        await run_in_threadpool(
+            _list_and_expire_open_subscription_sessions, customer_id
+        )
+    except stripe.StripeError:
+        logger.warning(
+            "create_subscription_checkout: could not list open sessions for %s",
+            customer_id,
+        )
+
+
 async def create_subscription_checkout(
     user_id: str,
     tier: SubscriptionTier,
@@ -2262,6 +2296,7 @@ async def create_subscription_checkout(
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
+    await _expire_open_subscription_sessions(customer_id)
     session = await run_in_threadpool(
         stripe.checkout.Session.create,
         customer=customer_id,

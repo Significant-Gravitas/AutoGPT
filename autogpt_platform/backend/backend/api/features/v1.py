@@ -1303,6 +1303,19 @@ async def stripe_webhook(request: Request):
             )
             return Response(status_code=200)
         await UserCredit().fulfill_checkout(session_id=session_id)
+        # Sync tier immediately; customer.subscription.created may arrive late or not at all.
+        if data_object.get("mode") == "subscription":
+            sub_id = data_object.get("subscription")
+            if sub_id:
+                try:
+                    sub = await run_in_threadpool(stripe.Subscription.retrieve, sub_id)
+                    await sync_subscription_from_stripe(cast(dict, sub))
+                except stripe.StripeError:
+                    logger.exception(
+                        "stripe_webhook: %s could not retrieve subscription %s",
+                        event_type,
+                        sub_id,
+                    )
 
     if event_type in (
         "customer.subscription.created",
