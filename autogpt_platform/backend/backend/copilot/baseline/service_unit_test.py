@@ -759,9 +759,15 @@ class TestBaselineCostExtraction:
             return_value=_make_stream_mock(chunk)
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                False,
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -983,9 +989,15 @@ class TestBaselineCostExtraction:
             ]
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                False,
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
