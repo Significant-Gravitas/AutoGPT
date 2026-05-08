@@ -112,6 +112,23 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("content-type")).toBe("application/json");
   });
 
+  it("strips Set-Cookie so backend cookies cannot attach to the frontend origin", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Set-Cookie": "session=leak; Path=/; HttpOnly",
+        },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
   it("forwards POST body with duplex: 'half' for streaming", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ created: true }), {

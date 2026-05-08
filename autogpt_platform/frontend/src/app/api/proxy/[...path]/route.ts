@@ -42,6 +42,8 @@ const BACKEND_ACCEPT_ENCODING = "gzip, deflate, br";
 // byte length and encoding no longer match what the backend advertised.
 // Letting Node recompute framing (via Transfer-Encoding: chunked) keeps
 // HTTP parsing on the client side correct.
+// `set-cookie` is stripped defensively so any backend cookie without an
+// explicit Domain attribute can't attach to the frontend origin.
 const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "connection",
   "keep-alive",
@@ -53,6 +55,7 @@ const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   "upgrade",
   "content-encoding",
   "content-length",
+  "set-cookie",
 ]);
 
 function buildBackendUrl(path: string[], queryString: string): string {
