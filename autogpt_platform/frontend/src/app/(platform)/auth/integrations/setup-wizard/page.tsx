@@ -315,7 +315,7 @@ export default function IntegrationSetupWizardPage() {
           <Text variant="small" className="text-center text-slate-500">
             You can view and manage all your integrations in your{" "}
             <Link
-              href="/profile/integrations"
+              href="/settings/integrations"
               target="_blank"
               className="text-purple-600 underline hover:text-purple-800"
             >

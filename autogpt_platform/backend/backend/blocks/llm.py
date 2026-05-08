@@ -7,7 +7,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
 import ollama
@@ -15,6 +15,8 @@ import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -106,7 +108,6 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
-
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
         """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
@@ -143,6 +144,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
@@ -203,8 +205,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
+    KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
+    KIMI_K2_5 = "moonshotai/kimi-k2.5"
+    KIMI_K2_6 = "moonshotai/kimi-k2.6"
+    KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
@@ -326,6 +334,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_7_OPUS: ModelMetadata(
+        "anthropic", 200000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
+    ),  # claude-opus-4-7
     LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-sonnet-4-6
@@ -627,11 +638,41 @@ MODEL_METADATA = {
     LlmModel.GROK_4_1_FAST: ModelMetadata(
         "open_router", 2000000, 30000, "Grok 4.1 Fast", "OpenRouter", "xAI", 1
     ),
+    LlmModel.GROK_4_20: ModelMetadata(
+        "open_router", 2000000, 100000, "Grok 4.20", "OpenRouter", "xAI", 3
+    ),
+    LlmModel.GROK_4_20_MULTI_AGENT: ModelMetadata(
+        "open_router",
+        2000000,
+        100000,
+        "Grok 4.20 Multi-Agent",
+        "OpenRouter",
+        "xAI",
+        3,
+    ),
     LlmModel.GROK_CODE_FAST_1: ModelMetadata(
         "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
     ),
     LlmModel.KIMI_K2: ModelMetadata(
         "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_0905: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2 0905", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_5: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_6: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.6", "OpenRouter", "Moonshot AI", 2
+    ),
+    LlmModel.KIMI_K2_THINKING: ModelMetadata(
+        "open_router",
+        262144,
+        262144,
+        "Kimi K2 Thinking",
+        "OpenRouter",
+        "Moonshot AI",
+        2,
     ),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata(
         "open_router",
@@ -777,32 +818,29 @@ def convert_openai_tool_fmt_to_anthropic(
 
 
 def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
-    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+    """Extract OpenRouter's per-request USD cost from a chat-completion response.
 
-    OpenRouter returns the per-request USD cost in a response header. The
-    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
-    attribute. We use try/except AttributeError so that if the SDK ever drops
-    or renames that attribute, the warning is visible in logs rather than
-    silently degrading to no cost tracking.
+    OpenRouter populates a ``cost`` field on the standard ``usage`` object (a
+    USD float) when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we read
+    it off ``model_extra`` (pydantic v2's typed extras container) — no
+    ``getattr``. Mirrors backend/executor/simulator.py::_extract_cost_usd —
+    keep the two aligned.
     """
-    try:
-        raw_resp = response._response  # type: ignore[attr-defined]
-    except AttributeError:
-        logger.warning(
-            "OpenAI SDK response missing _response attribute"
-            " — OpenRouter cost tracking unavailable"
-        )
+    usage = response.usage
+    if usage is None:
+        return None
+    extras = usage.model_extra or {}
+    cost = extras.get("cost")
+    if cost is None:
         return None
     try:
-        cost_header = raw_resp.headers.get("x-total-cost")
-        if not cost_header:
-            return None
-        cost = float(cost_header)
-        if not math.isfinite(cost) or cost < 0:
-            return None
-        return cost
-    except (ValueError, TypeError, AttributeError):
+        cost_f = float(cost)
+    except (TypeError, ValueError):
         return None
+    if not math.isfinite(cost_f) or cost_f < 0:
+        return None
+    return cost_f
 
 
 def extract_openai_reasoning(response) -> str | None:
@@ -886,21 +924,6 @@ async def llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
-
-    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter API key
-    # is configured, route direct-Anthropic models through OpenRouter instead. This
-    # gives us the x-total-cost header for free, so provider_cost is always populated
-    # without manual token-rate arithmetic.
-    or_key = settings.secrets.open_router_api_key
-    or_model_id: str | None = None
-    if provider == "anthropic" and or_key:
-        provider = "open_router"
-        credentials = APIKeyCredentials(
-            provider=ProviderName.OPEN_ROUTER,
-            title="OpenRouter (auto)",
-            api_key=SecretStr(or_key),
-        )
-        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
@@ -987,7 +1010,6 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "anthropic":
-
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
         # Cache tool definitions alongside the system prompt.
         # Placing cache_control on the last tool caches all tool schemas as a
@@ -1146,7 +1168,6 @@ async def llm_call(
             reasoning=None,
         )
     elif provider == "open_router":
-        tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1161,11 +1182,21 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=or_model_id or llm_model.value,
-            messages=prompt,  # type: ignore
+            # Ask OpenRouter to include the per-request USD cost on the usage
+            # object. Same shape used by simulator.py — keep aligned.
+            extra_body={"usage": {"include": True}},
+            model=llm_model.value,
+            messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
+            tools=(
+                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
+            ),
             parallel_tool_calls=parallel_tool_calls_param,
+            response_format=(
+                ResponseFormatJSONObject(type="json_object")
+                if force_json_output
+                else openai.omit
+            ),
         )
 
         if not response.choices:
@@ -1590,6 +1621,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                                 llm_call_count=retry_count + 1,
                                 llm_retry_count=retry_count,
                                 provider_cost=total_provider_cost,
+                                provider_cost_type=(
+                                    "cost_usd"
+                                    if total_provider_cost is not None
+                                    else None
+                                ),
                             )
                         )
                         yield "response", response_obj
@@ -1611,6 +1647,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             llm_call_count=retry_count + 1,
                             llm_retry_count=retry_count,
                             provider_cost=total_provider_cost,
+                            provider_cost_type=(
+                                "cost_usd" if total_provider_cost is not None else None
+                            ),
                         )
                     )
                     yield "response", {"response": response_text}
@@ -1645,7 +1684,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         # All retries exhausted or user-error break: persist accumulated cost so
         # the executor can still charge/report the spend even on failure.
         if total_provider_cost is not None:
-            self.merge_stats(NodeExecutionStats(provider_cost=total_provider_cost))
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=total_provider_cost,
+                    provider_cost_type="cost_usd",
+                )
+            )
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(

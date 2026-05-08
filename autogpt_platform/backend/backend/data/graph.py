@@ -36,9 +36,7 @@ from backend.util.models import Pagination
 from backend.util.request import parse_url
 
 from .block import BlockInput
-from .db import BaseDbModel
-from .db import prisma as db
-from .db import query_raw_with_schema, transaction
+from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
 from .dynamic_fields import is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
@@ -62,6 +60,7 @@ class GraphSettings(BaseModel):
     sensitive_action_safe_mode: Annotated[
         bool, BeforeValidator(lambda v: v if v is not None else False)
     ] = False
+    builder_chat_session_id: str | None = None
 
     @classmethod
     def from_graph(
@@ -69,13 +68,14 @@ class GraphSettings(BaseModel):
         graph: "GraphModel",
         hitl_safe_mode: bool | None = None,
         sensitive_action_safe_mode: bool = False,
+        builder_chat_session_id: str | None = None,
     ) -> "GraphSettings":
-        # Default to True if not explicitly set
         if hitl_safe_mode is None:
             hitl_safe_mode = True
         return cls(
             human_in_the_loop_safe_mode=hitl_safe_mode,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            builder_chat_session_id=builder_chat_session_id,
         )
 
 
@@ -438,8 +438,7 @@ class GraphModel(Graph, GraphMeta):
     @computed_field
     @property
     def credentials_input_schema(self) -> dict[str, Any]:
-        graph_credentials_inputs = self.aggregate_credentials_inputs()
-
+        graph_credentials_inputs = self.regular_credentials_inputs
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
             f"{graph_credentials_inputs}"
@@ -618,6 +617,28 @@ class GraphModel(Graph, GraphMeta):
             for key, (field_info, node_field_pairs) in combined.items()
         }
 
+    @property
+    def regular_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials that need explicit user mapping (CredentialsMetaInput fields)."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if not v[0].is_auto_credential
+        }
+
+    @property
+    def auto_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
+        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
+        return {
+            k: v
+            for k, v in self.aggregate_credentials_inputs().items()
+            if v[0].is_auto_credential
+        }
+
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
         Reassigns all IDs in the graph to new UUIDs.
@@ -667,6 +688,21 @@ class GraphModel(Graph, GraphMeta):
                 graph_id := node.input_default.get("graph_id")
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
+
+        # Clear auto-credentials references (e.g., _credentials_id in
+        # GoogleDriveFile fields) so the new user must re-authenticate
+        # with their own account. We null the entire field rather than
+        # just the _credentials_id key — a partial object (e.g. a bare
+        # {"id": "...", "name": "..."} left over after stripping) would
+        # be rejected by the auto-credentials validator added below,
+        # breaking fork_graph() for agents that previously had a
+        # picker-selected Drive file.
+        for node in graph.nodes:
+            if not node.input_default:
+                continue
+            for key, value in list(node.input_default.items()):
+                if isinstance(value, dict) and "_credentials_id" in value:
+                    node.input_default[key] = None
 
     def validate_graph(
         self,
@@ -833,6 +869,90 @@ class GraphModel(Graph, GraphMeta):
                         and str(node_input_mask[name]).strip() != ""
                     )
                 )
+
+            # Validate auto-credentials fields (e.g. GoogleDriveFileField).
+            # Blocks with auto-credentials fields expect an *object* whose
+            # embedded `_credentials_id` carries the user's credential at
+            # run time — that field is only populated by a provider-specific
+            # picker (e.g. the Google Drive picker for google-drive-picker
+            # format). Hardcoding a bare ID or a partial object into
+            # `input_default` produces an agent that either fails save-time
+            # schema validation (bare string rejected by pydantic) or passes
+            # it but crashes at execution time because
+            # `_acquire_auto_credentials` has no `_credentials_id` to resolve.
+            # Catch the anti-pattern for any auto-credentials field; tailor
+            # the remediation text to whichever format is declared so that
+            # future auto-credentials pickers don't inherit a stale hint.
+            for kwarg_name, info in InputSchema.get_auto_credentials_fields().items():
+                field_name = info["field_name"]
+                field_schema = InputSchema.get_field_schema(field_name)
+
+                # An upstream link will supply the value at run time — fine.
+                has_incoming = any(
+                    sanitize_pin_name(link.sink_name) == sanitize_pin_name(field_name)
+                    for link in input_links.get(node.id, [])
+                )
+                if has_incoming:
+                    continue
+
+                value = node.input_default.get(field_name)
+                if value is None or value == "":
+                    # Nothing set and nothing linked. Existing required-field
+                    # check above already handles the "required but missing"
+                    # case; we don't double-report here.
+                    continue
+
+                picker_format = field_schema.get("format")
+                if picker_format == "google-drive-picker":
+                    remediation = (
+                        f"Add an AgentGoogleDriveFileInputBlock node to the "
+                        f"graph and link its 'result' output to "
+                        f"{field_name!r} instead. That block renders a "
+                        f"Google Drive picker at run time so whoever runs "
+                        f"the agent supplies their own credentials via the "
+                        f"picked file."
+                    )
+                else:
+                    # Generic fallback for any future auto-credentials format
+                    # we haven't written specific guidance for yet.
+                    remediation = (
+                        f"This field expects a picker-populated object "
+                        f"containing a '_credentials_id'. Wire the matching "
+                        f"input block for this provider into {field_name!r} "
+                        f"so whoever runs the agent supplies their own "
+                        f"credentials at run time."
+                    )
+
+                if isinstance(value, str):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} was set to a bare string ID. This "
+                        f"field expects an object carrying the user's "
+                        f"credentials; a hardcoded ID can't authenticate. "
+                        f"{remediation}"
+                    )
+                    continue
+
+                if isinstance(value, dict) and not value.get("_credentials_id"):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} is hardcoded without credentials "
+                        f"(no '_credentials_id'). This field needs the "
+                        f"user's OAuth credential, which is only populated "
+                        f"by the picker. {remediation}"
+                    )
+                    continue
+
+                # Catch-all: any other type (int, bool, list, ...) falls
+                # through both isinstance checks today and reaches
+                # `_acquire_auto_credentials` at execute time, where
+                # ``.get("_credentials_id")`` on a non-dict raises
+                # AttributeError. Surface a clean error here instead.
+                if not isinstance(value, (str, dict)):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} is set to a {type(value).__name__} "
+                        f"value ({value!r}). This field expects an object "
+                        f"carrying the user's credentials. {remediation}"
+                    )
+                    continue
 
             # Validate dependencies between fields
             for field_name in input_fields.keys():
@@ -1736,15 +1856,15 @@ async def migrate_llm_models(migrate_to: LlmModel):
     # Update each block
     for id, path in llm_model_fields.items():
         query = f"""
-            UPDATE platform."AgentNode"
+            UPDATE {{schema_prefix}}"AgentNode"
             SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
             WHERE "agentBlockId" = $3
             AND "constantInput" ? ($4)::text
             AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
             """
 
-        await db.execute_raw(
-            query,  # type: ignore - is supposed to be LiteralString
+        await execute_raw_with_schema(
+            query,
             [path],
             migrate_to.value,
             id,

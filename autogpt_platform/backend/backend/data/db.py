@@ -2,6 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from typing import TypeVar, overload
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -52,6 +53,7 @@ prisma = Prisma(
 
 
 logger = logging.getLogger(__name__)
+RawQueryModelT = TypeVar("RawQueryModelT", bound=BaseModel)
 
 
 def is_connected():
@@ -117,7 +119,8 @@ async def _raw_with_schema(
     *args,
     execute: bool = False,
     client: Prisma | None = None,
-) -> list[dict] | int:
+    model: type[RawQueryModelT] | None = None,
+) -> list[dict] | list[RawQueryModelT] | int:
     """Internal: Execute raw SQL with proper schema handling.
 
     Use query_raw_with_schema() or execute_raw_with_schema() instead.
@@ -162,12 +165,28 @@ async def _raw_with_schema(
     if execute:
         result = await db_client.execute_raw(formatted_query, *args)  # type: ignore
     else:
-        result = await db_client.query_raw(formatted_query, *args)  # type: ignore
+        result = await db_client.query_raw(formatted_query, *args, model=model)  # type: ignore
 
     return result
 
 
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
+@overload
+async def query_raw_with_schema(query_template: str, *args) -> list[dict]: ...
+
+
+@overload
+async def query_raw_with_schema(
+    query_template: str,
+    *args,
+    model: type[RawQueryModelT],
+) -> list[RawQueryModelT]: ...
+
+
+async def query_raw_with_schema(
+    query_template: str,
+    *args,
+    model: type[RawQueryModelT] | None = None,
+) -> list[dict] | list[RawQueryModelT]:
     """Execute raw SQL SELECT query with proper schema handling.
 
     Args:
@@ -183,7 +202,12 @@ async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
             user_id
         )
     """
-    return await _raw_with_schema(query_template, *args, execute=False)  # type: ignore
+    return await _raw_with_schema(
+        query_template,
+        *args,
+        execute=False,
+        model=model,
+    )  # type: ignore
 
 
 async def execute_raw_with_schema(

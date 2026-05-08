@@ -1,9 +1,9 @@
-"""Shared token-usage persistence and rate-limit recording.
+"""Shared usage persistence and rate-limit recording.
 
 Both the baseline (OpenRouter) and SDK (Anthropic) service layers need to:
   1. Append a ``Usage`` record to the session.
-  2. Log the turn's token counts.
-  3. Record weighted usage in Redis for rate-limiting.
+  2. Log the turn's token counts and cost.
+  3. Record the real generation cost in Redis for rate-limiting.
   4. Write a PlatformCostLog entry for admin cost tracking.
 
 This module extracts that common logic so both paths stay in sync.
@@ -19,7 +19,7 @@ from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
 from .model import ChatSession, Usage
-from .rate_limit import record_token_usage
+from .rate_limit import record_cost_usage
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +96,14 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
-    model_cost_multiplier: float = 1.0,
 ) -> int:
-    """Persist token usage to session and record for rate limiting.
+    """Persist token usage to session and record generation cost for rate limiting.
+
+    Rate-limit counters are charged in microdollars against the provider's
+    reported cost (``cost_usd``), so cache discounts and cross-model pricing
+    differences are already reflected. When cost is unknown the turn is
+    logged but the rate-limit counter is left alone — the caller logs an
+    error at the point the absence is detected.
 
     Args:
         session: The chat session to append usage to (may be None on error).
@@ -108,11 +113,11 @@ async def persist_and_record_usage(
         cache_read_tokens: Tokens served from prompt cache (Anthropic only).
         cache_creation_tokens: Tokens written to prompt cache (Anthropic only).
         log_prefix: Prefix for log messages (e.g. "[SDK]", "[Baseline]").
-        cost_usd: Optional cost for logging (float from SDK, str otherwise).
+        cost_usd: Real generation cost for the turn (float from SDK or parsed
+            from OpenRouter usage.cost). ``None`` means the provider did not
+            report a cost and rate limiting is skipped for this turn.
+        model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
-        model_cost_multiplier: Relative model cost factor for rate limiting
-            (1.0 = Sonnet/default, 5.0 = Opus). Scales the token counter so
-            more expensive models deplete the rate limit proportionally faster.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -156,37 +161,51 @@ async def persist_and_record_usage(
     else:
         logger.info(
             f"{log_prefix} Turn usage: prompt={prompt_tokens}, completion={completion_tokens},"
-            f" total={total_tokens}"
+            f" total={total_tokens}, cost_usd={cost_usd}"
         )
 
-    if user_id:
+    cost_float: float | None = None
+    if cost_usd is not None:
         try:
-            await record_token_usage(
-                user_id=user_id,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_creation_tokens=cache_creation_tokens,
-                model_cost_multiplier=model_cost_multiplier,
+            val = float(cost_usd)
+        except (ValueError, TypeError):
+            logger.error(
+                "%s cost_usd is not numeric: %r — rate limit skipped",
+                log_prefix,
+                cost_usd,
             )
-        except Exception as usage_err:
-            logger.warning("%s Failed to record token usage: %s", log_prefix, usage_err)
+        else:
+            if not math.isfinite(val):
+                logger.error(
+                    "%s cost_usd is non-finite: %r — rate limit skipped",
+                    log_prefix,
+                    val,
+                )
+            elif val < 0:
+                logger.warning(
+                    "%s cost_usd %s is negative — skipping rate-limit + cost log",
+                    log_prefix,
+                    val,
+                )
+            else:
+                cost_float = val
+
+    cost_microdollars = usd_to_microdollars(cost_float)
+
+    if user_id and cost_microdollars is not None and cost_microdollars > 0:
+        # record_cost_usage() owns its fail-open handling for Redis/network
+        # errors. Don't wrap with a broad except here — unexpected accounting
+        # bugs should surface instead of being silently logged as warnings.
+        await record_cost_usage(
+            user_id=user_id,
+            cost_microdollars=cost_microdollars,
+        )
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
-    if user_id and (total_tokens > 0 or cost_usd is not None):
-        cost_float = None
-        if cost_usd is not None:
-            try:
-                val = float(cost_usd)
-                if math.isfinite(val) and val >= 0:
-                    cost_float = val
-            except (ValueError, TypeError):
-                pass
-
-        cost_microdollars = usd_to_microdollars(cost_float)
+    if user_id and (total_tokens > 0 or cost_float is not None):
         session_id = session.session_id if session else None
 
         if cost_float is not None:

@@ -21,7 +21,7 @@ The block authenticates through Ayrshare and submits content to your connected R
 |-------|-------------|------|----------|
 | post | The post text to be published | str | No |
 | media_urls | Optional list of media URLs to include. Set is_video in advanced settings to true if you want to upload videos. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

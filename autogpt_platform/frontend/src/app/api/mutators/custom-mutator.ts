@@ -3,6 +3,7 @@ import {
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
+import * as Sentry from "@sentry/nextjs";
 
 import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
@@ -53,6 +54,12 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
+    const traceData = Sentry.getTraceData?.() ?? {};
+    for (const [key, value] of Object.entries(traceData)) {
+      if (typeof value === "string") {
+        headers[key] = value;
+      }
+    }
     Object.assign(headers, getSystemHeaders());
   }
 

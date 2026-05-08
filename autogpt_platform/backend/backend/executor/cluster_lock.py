@@ -4,19 +4,28 @@ import asyncio
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from redis import Redis
-    from redis.asyncio import Redis as AsyncRedis
+    from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 logger = logging.getLogger(__name__)
+
+# CAS release: DEL only when the stored owner still matches — guards against
+# wiping a successor's lock after an external force-release.
+_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) "
+    "else return 0 end"
+)
 
 
 class ClusterLock:
     """Simple Redis-based distributed lock for preventing duplicate execution."""
 
-    def __init__(self, redis: "Redis", key: str, owner_id: str, timeout: int = 300):
+    def __init__(
+        self, redis: "RedisClient", key: str, owner_id: str, timeout: int = 300
+    ):
         self.redis = redis
         self.key = key
         self.owner_id = owner_id
@@ -116,13 +125,18 @@ class ClusterLock:
             return False
 
     def release(self):
-        """Release the lock."""
+        """Release the lock.
+
+        Owner-checked: only deletes the Redis key if the stored value still
+        matches our owner_id. Prevents wiping a successor's lock when the
+        original key was force-released externally and re-acquired.
+        """
         with self._refresh_lock:
             if self._last_refresh == 0:
                 return
 
         try:
-            self.redis.delete(self.key)
+            self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id)
         except Exception:
             pass
 
@@ -134,7 +148,7 @@ class AsyncClusterLock:
     """Async Redis-based distributed lock for preventing duplicate execution."""
 
     def __init__(
-        self, redis: "AsyncRedis", key: str, owner_id: str, timeout: int = 300
+        self, redis: "AsyncRedisClient", key: str, owner_id: str, timeout: int = 300
     ):
         self.redis = redis
         self.key = key
@@ -237,13 +251,18 @@ class AsyncClusterLock:
             return False
 
     async def release(self):
-        """Release the lock."""
+        """Release the lock.
+
+        Owner-checked: only deletes the Redis key if the stored value still
+        matches our owner_id. Prevents wiping a successor's lock when the
+        original key was force-released externally and re-acquired.
+        """
         async with self._refresh_lock:
             if self._last_refresh == 0:
                 return
 
         try:
-            await self.redis.delete(self.key)
+            await cast(Any, self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id))
         except Exception:
             pass
 

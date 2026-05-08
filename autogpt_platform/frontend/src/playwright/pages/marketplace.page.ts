@@ -274,19 +274,22 @@ export class MarketplacePage extends BasePage {
   async waitForDashboardSubmission(agentTitle: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const submissionRow = this.page
-        .getByTestId("agent-table-row")
+        .getByTestId("submission-row")
         .filter({ hasText: agentTitle })
         .first();
 
-      // Row may not appear immediately after redirect — allow a short render
-      // window before deciding the submission is absent on this attempt.
       if (await submissionRow.isVisible({ timeout: 5000 }).catch(() => false)) {
         return submissionRow;
       }
 
       await this.page.reload();
-      await expect(this.page).toHaveURL(/\/profile\/dashboard/);
-      await expect(this.page.getByText("Agent dashboard")).toBeVisible();
+      await expect(this.page).toHaveURL(/\/settings\/creator-dashboard/);
+      await expect(
+        this.page.getByRole("heading", {
+          name: "Creator dashboard",
+          level: 1,
+        }),
+      ).toBeVisible();
     }
 
     throw new Error(`Submission row for "${agentTitle}" did not appear`);

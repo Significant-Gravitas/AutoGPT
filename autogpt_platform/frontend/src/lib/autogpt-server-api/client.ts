@@ -71,6 +71,24 @@ export class LogoutInterruptError extends Error {
   }
 }
 
+/**
+ * Build the query object for `oAuthLogin`.  Kept as a named helper so the
+ * shape — scopes-only vs credential_id-only vs both vs neither — can be
+ * pinned in tests without mocking the whole BackendAPI request layer.
+ *
+ * Returns `undefined` when neither argument is provided so callers can
+ * omit the query string entirely.
+ */
+export function buildOAuthLoginQuery(
+  scopes?: string[],
+  credentialID?: string,
+): Record<string, string> | undefined {
+  const query: Record<string, string> = {};
+  if (scopes && scopes.length > 0) query.scopes = scopes.join(",");
+  if (credentialID) query.credential_id = credentialID;
+  return Object.keys(query).length > 0 ? query : undefined;
+}
+
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -194,26 +212,6 @@ export default class BackendAPI {
     return this._request("PATCH", "/credits");
   }
 
-  getSubscription(): Promise<{
-    tier: string;
-    monthly_cost: number;
-    tier_costs: Record<string, number>;
-  }> {
-    return this._get("/credits/subscription");
-  }
-
-  setSubscriptionTier(
-    tier: string,
-    successUrl?: string,
-    cancelUrl?: string,
-  ): Promise<{ url: string }> {
-    return this._request("POST", "/credits/subscription", {
-      tier,
-      success_url: successUrl ?? "",
-      cancel_url: cancelUrl ?? "",
-    });
-  }
-
   ////////////////////////////////////////
   //////////////// GRAPHS ////////////////
   ////////////////////////////////////////
@@ -325,9 +323,12 @@ export default class BackendAPI {
   oAuthLogin(
     provider: string,
     scopes?: string[],
+    credentialID?: string,
   ): Promise<{ login_url: string; state_token: string }> {
-    const query = scopes ? { scopes: scopes.join(",") } : undefined;
-    return this._get(`/integrations/${provider}/login`, query);
+    return this._get(
+      `/integrations/${provider}/login`,
+      buildOAuthLoginQuery(scopes, credentialID),
+    );
   }
 
   oAuthCallback(
@@ -371,8 +372,14 @@ export default class BackendAPI {
     );
   }
 
-  listProviders(): Promise<string[]> {
-    return this._get("/integrations/providers");
+  async listProviders(): Promise<string[]> {
+    // The endpoint returns `ProviderMetadata[]` (`{ name, description }`) but
+    // legacy consumers (e.g. CredentialsProvider) still expect a flat string[]
+    // of provider names. Map down so we keep that contract.
+    const response: Array<{ name: string }> = await this._get(
+      "/integrations/providers",
+    );
+    return response.map((p) => p.name);
   }
 
   listSystemProviders(): Promise<string[]> {

@@ -10,11 +10,13 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = ({
   children,
   delayDuration = 10,
+  open,
 }: {
   children: React.ReactNode;
   delayDuration?: number;
+  open?: boolean;
 }) => (
-  <TooltipPrimitive.Root delayDuration={delayDuration}>
+  <TooltipPrimitive.Root delayDuration={delayDuration} open={open}>
     {children}
   </TooltipPrimitive.Root>
 );

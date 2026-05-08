@@ -16,7 +16,13 @@ x-backend-env:
   NOTIFICATIONMANAGER_HOST: notification_server
   CLAMAV_SERVICE_HOST: clamav
   DB_HOST: db
-  REDIS_HOST: redis
+  REDIS_HOST: redis-0
+  REDIS_PORT: "17000"
+  # The 3-container local cluster announces distinct compose hostnames per
+  # shard (redis-0/1/2), each resolvable via Docker DNS inside the compose
+  # network. Bypass the HOST-pinning address_remap so CLUSTER SLOTS uses the
+  # announced addresses directly — see ``backend.data.redis_client``.
+  REDIS_USE_ANNOUNCED_ADDRESS: "true"
   RABBITMQ_HOST: rabbitmq
   GRAPHITI_FALKORDB_HOST: falkordb
   GRAPHITI_FALKORDB_PORT: "6379"
@@ -33,6 +39,14 @@ x-backend-env-files: &backend-env-files
     - backend/.env.default # Base defaults (always exists)
     - path: backend/.env # User overrides (optional)
       required: false
+
+# Shared base for the three Redis Cluster shards + one-shot init sidecar.
+# The anchor absorbs image + network so each service body collapses to its
+# hostname + command + (for the seed) volume + healthcheck.
+x-redis-node: &redis-node
+  image: redis:7
+  networks:
+    - app-network
 
 services:
   migrate:
@@ -71,17 +85,56 @@ services:
       retries: 3
       start_period: 5s
 
-  redis:
-    image: redis:latest
+  # Three-container 3-master Redis Cluster for local dev. Stock ``redis:7``
+  # on each shard runs its default entrypoint; the one-shot ``redis-init``
+  # sidecar runs ``redis-cli --cluster create`` once and exits. No volumes
+  # — local dev treats the cluster as cache-only, so every ``docker compose
+  # up`` starts fresh. (Persisting only the seed volume across restarts is
+  # a trap: the other shards come back with new IDs and the seed's
+  # ``nodes.conf`` pins stale peers that cluster gossip can't heal.) Each
+  # shard announces its own compose hostname via
+  # ``--cluster-announce-hostname`` so both in-compose clients (Docker DNS)
+  # and host-native clients (handled by the backend's ``address_remap``)
+  # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002
+  # sit well clear of FalkorDB on host 6380.
+  redis-0:
+    <<: *redis-node
+    hostname: redis-0
+    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-0 --cluster-announce-port 17000 --cluster-announce-bus-port 27000 --cluster-preferred-endpoint-type hostname
     ports:
-      - "6379:6379"
-    networks:
-      - app-network
+      - "17000:17000"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -p 17000 ping && redis-cli -p 17000 cluster info | grep -q 'cluster_state:ok'",
+        ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 30
+  redis-1:
+    <<: *redis-node
+    hostname: redis-1
+    command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-1 --cluster-announce-port 17001 --cluster-announce-bus-port 27001 --cluster-preferred-endpoint-type hostname
+    ports:
+      - "17001:17001"
+  redis-2:
+    <<: *redis-node
+    hostname: redis-2
+    command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-2 --cluster-announce-port 17002 --cluster-announce-bus-port 27002 --cluster-preferred-endpoint-type hostname
+    ports:
+      - "17002:17002"
+  # The ``|| cluster create`` short-circuit makes this idempotent within the
+  # lifetime of a single compose project: a re-``up`` without ``down`` leaves
+  # the already-formed cluster untouched. A ``down`` + ``up`` wipes every
+  # shard (no volumes) and re-creates from scratch.
+  redis-init:
+    <<: *redis-node
+    depends_on: [redis-0, redis-1, redis-2]
+    restart: "no"
+    command: >-
+      sh -c "redis-cli -h redis-0 -p 17000 cluster info 2>/dev/null | grep -q cluster_state:ok ||
+      redis-cli --cluster create redis-0:17000 redis-1:17001 redis-2:17002 --cluster-replicas 0 --cluster-yes"
   falkordb:
     image: falkordb/falkordb:latest
     ports:
@@ -130,7 +183,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       db:
         condition: service_healthy
@@ -165,7 +218,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -200,7 +253,7 @@ services:
           target: autogpt_platform/backend/
           action: rebuild
     depends_on:
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -240,7 +293,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      redis-0:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -302,7 +355,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      redis-0:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

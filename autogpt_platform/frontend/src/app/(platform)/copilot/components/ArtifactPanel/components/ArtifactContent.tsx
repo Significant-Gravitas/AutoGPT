@@ -6,9 +6,11 @@ import { Suspense, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
   wrapWithHeadInjection,
 } from "@/lib/iframe-sandbox-csp";
@@ -53,20 +55,35 @@ function ArtifactContentLoader({
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <ArtifactRenderer
-        artifact={artifact}
-        content={content}
-        pdfUrl={pdfUrl}
-        isSourceView={isSourceView}
-        classification={classification}
-      />
+      <ArtifactErrorBoundary
+        artifactID={artifact.id}
+        artifactTitle={artifact.title}
+        artifactType={classification.type}
+      >
+        <ArtifactRenderer
+          artifact={artifact}
+          content={content}
+          pdfUrl={pdfUrl}
+          isSourceView={isSourceView}
+          classification={classification}
+        />
+      </ArtifactErrorBoundary>
     </div>
   );
+}
+
+function withCacheBust(src: string, nonce: number): string {
+  if (nonce === 0) return src;
+  const sep = src.includes("?") ? "&" : "?";
+  return `${src}${sep}_retry=${nonce}`;
 }
 
 function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  // Incremented on every Try Again so the URL changes and the browser
+  // can't reuse a negative-cached response (SECRT-2221).
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -80,6 +97,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
           className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
@@ -96,7 +114,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         alt={alt}
         className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setLoaded(true)}
@@ -109,6 +127,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -122,6 +141,7 @@ function ArtifactVideo({ src }: { src: string }) {
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
           className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
@@ -137,7 +157,7 @@ function ArtifactVideo({ src }: { src: string }) {
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
       <video
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         controls
         preload="metadata"
         className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
@@ -200,7 +220,10 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const wrapped = wrapWithHeadInjection(content, tailwindScript);
+    const wrapped = wrapWithHeadInjection(
+      content,
+      tailwindScript + FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+    );
     return (
       <iframe
         sandbox="allow-scripts"

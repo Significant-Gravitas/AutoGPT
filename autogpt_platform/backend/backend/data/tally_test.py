@@ -425,7 +425,7 @@ async def test_extract_business_understanding_themed_prompts():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
@@ -455,7 +455,7 @@ async def test_extract_themed_prompts_filters_long_and_unknown_keys():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.suggested_prompts is not None
@@ -480,7 +480,7 @@ async def test_extract_business_understanding_filters_nulls():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
@@ -500,7 +500,7 @@ async def test_extract_business_understanding_invalid_json():
     mock_client.chat.completions.create.return_value = mock_response
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         pytest.raises(json.JSONDecodeError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
@@ -513,11 +513,24 @@ async def test_extract_business_understanding_timeout():
     mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         patch("backend.data.tally._LLM_TIMEOUT", 0.001),
         pytest.raises(asyncio.TimeoutError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
+
+
+@pytest.mark.asyncio
+async def test_extract_business_understanding_missing_openrouter_key():
+    """When OpenRouter is not configured, raise a clear RuntimeError."""
+    with (
+        patch(
+            "backend.data.tally.get_openai_client", return_value=None
+        ) as mock_get_client,
+        pytest.raises(RuntimeError, match="open_router_api_key not set"),
+    ):
+        await extract_business_understanding("Q: Name?\nA: Alice")
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────

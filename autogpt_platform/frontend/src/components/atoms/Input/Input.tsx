@@ -4,10 +4,12 @@ import {
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
-import { ReactNode, useState } from "react";
+import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
+
+type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
 export interface TextFieldProps extends Omit<InputProps, "size"> {
   label: string;
@@ -35,20 +37,23 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
   amountSuffix?: string;
 }
 
-export function Input({
-  className,
-  label,
-  placeholder,
-  hideLabel = false,
-  decimalCount,
-  hint,
-  error,
-  size = "medium",
-  wrapperClassName,
-  amountPrefix,
-  amountSuffix,
-  ...props
-}: TextFieldProps) {
+export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
+  {
+    className,
+    label,
+    placeholder,
+    hideLabel = false,
+    decimalCount,
+    hint,
+    error,
+    size = "medium",
+    wrapperClassName,
+    amountPrefix,
+    amountSuffix,
+    ...props
+  },
+  ref,
+) {
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
       type: props.type,
@@ -89,6 +94,7 @@ export function Input({
     if (props.type === "textarea") {
       return (
         <textarea
+          ref={ref as React.Ref<HTMLTextAreaElement>}
           className={cn(
             baseStyles,
             errorStyles,
@@ -161,6 +167,7 @@ export function Input({
 
     return (
       <BaseInput
+        ref={ref as React.Ref<HTMLInputElement>}
         className={cn(
           baseStyles,
           errorStyles,
@@ -239,4 +246,4 @@ export function Input({
       {inputWithError}
     </label>
   );
-}
+});

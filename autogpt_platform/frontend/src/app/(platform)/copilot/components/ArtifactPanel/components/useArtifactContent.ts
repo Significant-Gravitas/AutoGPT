@@ -141,6 +141,11 @@ export function useArtifactContent(
   function retry() {
     // Drop any cached failure/content for this id so we actually re-fetch.
     contentCache.delete(artifact.id);
+    // Flip into loading + clear error synchronously with the click so the
+    // user always sees the skeleton (rather than the error UI re-flashing
+    // instantly for same-error retries). See SECRT-2224.
+    setIsLoading(true);
+    setError(null);
     setRetryNonce((n) => n + 1);
   }
 

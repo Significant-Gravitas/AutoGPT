@@ -11,6 +11,33 @@ import pytest_asyncio
 
 from backend.util import json
 
+# ---------------------------------------------------------------------------
+# Env vars that ``ChatConfig`` validators read — must be cleared so explicit
+# constructor values are used.  Centralised here so adding a new env-backed
+# field only needs one update across the SDK test suite.
+# ---------------------------------------------------------------------------
+_CONFIG_ENV_VARS = (
+    "CHAT_USE_OPENROUTER",
+    "CHAT_API_KEY",
+    "OPEN_ROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "CHAT_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "OPENAI_BASE_URL",
+    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
+    "CHAT_USE_CLAUDE_AGENT_SDK",
+    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
+    "CHAT_CLAUDE_AGENT_CLI_PATH",
+    "CLAUDE_AGENT_CLI_PATH",
+)
+
+
+@pytest.fixture()
+def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
+    for var in _CONFIG_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
