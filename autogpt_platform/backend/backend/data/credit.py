@@ -2272,7 +2272,7 @@ def _list_and_expire_open_subscription_sessions(customer_id: str) -> None:
             customer=customer_id,
             status="open",
             limit=100,
-            **({"starting_after": starting_after} if starting_after else {}),
+            starting_after=starting_after,
         )
         for s in sessions.data:
             if s.mode == "subscription":
@@ -2320,7 +2320,7 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         return False
     if sub is None:
         return False
-    await sync_subscription_from_stripe(cast(dict, sub))
+    await sync_subscription_from_stripe(dict(sub))
     return True
 
 

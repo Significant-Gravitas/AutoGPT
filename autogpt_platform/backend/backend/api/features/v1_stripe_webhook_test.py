@@ -145,7 +145,7 @@ def test_expire_open_subscription_sessions_called_on_checkout(
     _list_and_expire_open_subscription_sessions("cus_test")
 
     stripe.checkout.Session.list.assert_called_once_with(
-        customer="cus_test", status="open", limit=100
+        customer="cus_test", status="open", limit=100, starting_after=None
     )
     mock_expire.assert_not_called()
 
@@ -196,7 +196,9 @@ def test_expire_open_subscription_sessions_paginates(
     _list_and_expire_open_subscription_sessions("cus_test")
 
     assert mock_list.call_count == 2
-    mock_list.assert_any_call(customer="cus_test", status="open", limit=100)
+    mock_list.assert_any_call(
+        customer="cus_test", status="open", limit=100, starting_after=None
+    )
     mock_list.assert_any_call(
         customer="cus_test", status="open", limit=100, starting_after="cs_page1"
     )
@@ -233,6 +235,29 @@ async def test_reconcile_stripe_tier_no_active_sub_returns_false(
         "backend.data.credit._get_active_subscription",
         new_callable=AsyncMock,
         return_value=None,
+    )
+    mock_sync = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+
+    result = await reconcile_stripe_tier_for_user("user_abc")
+
+    assert result is False
+    mock_sync.assert_not_called()
+
+
+async def test_reconcile_stripe_tier_stripe_error_returns_false(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    user = MagicMock()
+    user.stripe_customer_id = "cus_abc"
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        side_effect=stripe.StripeError("network error"),
     )
     mock_sync = mocker.patch(
         "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
