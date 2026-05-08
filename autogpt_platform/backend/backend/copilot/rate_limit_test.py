@@ -599,6 +599,57 @@ class TestAssertNotPaywalled:
             await assert_not_paywalled(_USER)
 
 
+class TestEnforcePaywallStrict:
+    """The strict helper is used by both the JWT route dep
+    (``enforce_payment_paywall``) and inline by non-JWT routes (external
+    API graph + block execute). Both paths get the same fail-closed
+    posture: paywalled → ``UserPaywalledError`` (handler maps to 402);
+    lookup error → ``HTTPException(503)`` with Retry-After."""
+
+    @pytest.mark.asyncio
+    async def test_blocks_paywalled_user(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import UserPaywalledError, enforce_paywall_strict
+
+        with pytest.raises(UserPaywalledError):
+            await enforce_paywall_strict(_USER)
+
+    @pytest.mark.asyncio
+    async def test_passes_paid_user(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+        from .rate_limit import enforce_paywall_strict
+
+        await enforce_paywall_strict(_USER)  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_503(self, mocker):
+        """Lookup failure → 503 + Retry-After (not 402, not 500). This is
+        the asymmetry-fix: external API + internal graph routes used to
+        fail-open via the deep gate; now they fail-closed at the route."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_paywall_strict
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_paywall_strict(_USER)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers.get("Retry-After") == "30"
+
+
 class TestEnforcePaymentPaywallContinued:
     """Additional ``enforce_payment_paywall`` cases that depend on the
     helpers above. Kept separate so the related ``TestIsUserPaywalled``

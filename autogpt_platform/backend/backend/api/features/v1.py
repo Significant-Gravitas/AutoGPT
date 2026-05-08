@@ -1671,16 +1671,18 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
-    # 402 is raised by ``add_graph_execution`` when the user is paywalled
-    # (NO_TIER + ENABLE_PLATFORM_PAYMENT on) — the app-level
-    # ``UserPaywalledError`` exception handler maps it. Same gate also
-    # covers scheduled / webhook / external-API runs that don't pass
-    # through this route, so no route-level paywall dep is needed here.
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    # The route dep enforces fail-closed (503-on-blip) so a transient
+    # Supabase outage surfaces as a retryable error, not a free run
+    # for a paywalled user. The deep gate inside ``add_graph_execution``
+    # still covers scheduled / webhook / copilot-internal runs that
+    # don't pass through this route — those callers prefer fail-open
+    # so background work doesn't abandon valid jobs during a blip.
     responses={
         402: {
             "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
         },
+        503: {"description": "Subscription state temporarily unavailable"},
     },
 )
 async def execute_graph(
