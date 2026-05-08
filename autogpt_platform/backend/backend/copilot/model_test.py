@@ -19,6 +19,7 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    _save_session_to_db,
     append_and_save_message,
     get_chat_session,
     get_or_create_builder_session,
@@ -943,6 +944,135 @@ async def test_append_and_save_message_lock_release_failure_is_ignored(
     assert result is not None
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_new_messages_when_windowed(
+    mocker: MockerFixture,
+) -> None:
+    """Regression: when session.messages is the windowed tail (cap-limited),
+    new messages must still be persisted.  The earlier index-based slice
+    ``session.messages[existing_message_count:]`` silently dropped them."""
+    from .model import _save_session_to_db
+
+    # Simulate a session loaded with the cap: DB has 1500 messages, only the
+    # last 3 are in memory (sequences 1497..1499), plus one freshly appended
+    # message that has no sequence yet.
+    loaded = [
+        ChatMessage(role="user", content=f"old-{seq}", sequence=seq)
+        for seq in (1497, 1498, 1499)
+    ]
+    new_msg = ChatMessage(role="assistant", content="brand-new")
+    session = _make_session_with_messages(*loaded, new_msg)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=1500)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=1500, skip_existence_check=True
+    )
+
+    mock_db.add_chat_messages_batch.assert_awaited_once()
+    kwargs = mock_db.add_chat_messages_batch.call_args.kwargs
+    assert kwargs["start_sequence"] == 1500
+    assert len(kwargs["messages"]) == 1
+    assert kwargs["messages"][0]["content"] == "brand-new"
+    # And the in-memory new message receives its sequence back-fill from the
+    # actual start returned by the batch helper.
+    assert new_msg.sequence == 1500
+
+
+# ─── _get_session_from_db cap-hit warning ──────────────────────────────
+
+
+def _make_paginated_response(*, has_more: bool, message_count: int):
+    """Build a PaginatedMessages stub for _get_session_from_db tests."""
+    from datetime import UTC, datetime
+
+    from .db import PaginatedMessages
+    from .model import ChatSessionInfo
+
+    info = ChatSessionInfo(
+        session_id="sess-cap",
+        user_id="u1",
+        usage=[],
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    messages = [
+        ChatMessage(role="user", content=f"m-{i}", sequence=i)
+        for i in range(message_count)
+    ]
+    return PaginatedMessages(
+        messages=messages,
+        has_more=has_more,
+        oldest_sequence=messages[0].sequence if messages else None,
+        session=info,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_warns_when_cap_engages(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When ``get_chat_messages_paginated`` reports ``has_more=True`` (the
+    cap engaged on the LLM-context path), ``_get_session_from_db`` must
+    forward the cap-hit warning so observers can see context loss."""
+    from .model import _get_session_from_db
+
+    page = _make_paginated_response(has_more=True, message_count=3)
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=page)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.model"):
+        session = await _get_session_from_db("sess-cap")
+
+    assert session is not None and len(session.messages) == 3
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert len(cap_warnings) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_silent_when_below_cap(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``has_more=False`` is the common path — the cap-hit warning must not
+    fire there, otherwise every normal session load would log a false
+    positive."""
+    from .model import _get_session_from_db
+
+    page = _make_paginated_response(has_more=False, message_count=3)
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=page)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    with caplog.at_level("WARNING", logger="backend.copilot.model"):
+        await _get_session_from_db("sess-cap")
+
+    cap_warnings = [
+        r for r in caplog.records if "loaded with capped messages" in r.getMessage()
+    ]
+    assert cap_warnings == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_session_from_db_returns_none_when_missing(
+    mocker: MockerFixture,
+) -> None:
+    """Missing session → ``get_chat_messages_paginated`` returns ``None`` →
+    forwarder returns ``None`` (no crash on the .has_more access)."""
+    from .model import _get_session_from_db
+
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_messages_paginated = mocker.AsyncMock(return_value=None)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    assert await _get_session_from_db("missing") is None
+
+
 # ─── get_or_create_builder_session ─────────────────────────────────────
 
 
@@ -1116,3 +1246,33 @@ def test_chat_message_from_db_round_trips_created_at() -> None:
     assert msg.sequence == 3
     assert msg.duration_ms == 4200
     assert msg.created_at == created_at
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_uses_actual_start_after_collision(
+    mocker: MockerFixture,
+) -> None:
+    """When ``add_chat_messages_batch`` retries from ``get_next_sequence``
+    after a unique-constraint collision, it returns the offset actually
+    used.  ``_save_session_to_db`` must back-fill in-memory sequences from
+    that returned value — using the original ``existing_message_count``
+    desyncs in-memory rows from DB and breaks later
+    ``update_message_content_by_sequence`` calls."""
+    msg_a = ChatMessage(role="assistant", content="msg-a")
+    msg_b = ChatMessage(role="user", content="msg-b")
+    session = ChatSession.new(user_id="u1", dry_run=False)
+    session.messages = [msg_a, msg_b]
+
+    # Caller said start at 0 (brand-new session) but the helper retried
+    # after a peer race and the rows actually landed at sequence 5.
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=5)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=0, skip_existence_check=True
+    )
+
+    assert msg_a.sequence == 5
+    assert msg_b.sequence == 6

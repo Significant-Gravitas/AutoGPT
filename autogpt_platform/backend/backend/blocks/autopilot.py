@@ -93,6 +93,13 @@ class AutoPilotBlock(Block):
     autopilot) and scheduled autopilot execution via the agent executor.
     """
 
+    # Coordination block: an autopilot run is a multi-step agentic loop that
+    # can dispatch sub-agents (recursively) and orchestrate platform tools.
+    # Applying the leaf-block wall-clock cap would false-positive on
+    # legitimately long autopilot runs; rely on per-LLM-call timeouts and
+    # downstream sub-graph caps for bounding.
+    execution_timeout_seconds: int | None = None
+
     class Input(BlockSchemaInput):
         """Input schema for the AutoPilot block."""
 
