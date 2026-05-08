@@ -1,12 +1,13 @@
 """Unit tests for Stripe webhook handler and subscription checkout helpers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
-import pytest
 import pytest_mock
 import stripe
+
+from backend.data.credit import _list_and_expire_open_subscription_sessions
 
 from .v1 import v1_router
 
@@ -137,8 +138,6 @@ def test_expire_open_subscription_sessions_called_on_checkout(
     mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
     mock_expire = mocker.patch("stripe.checkout.Session.expire")
 
-    from backend.data.credit import _list_and_expire_open_subscription_sessions
-
     _list_and_expire_open_subscription_sessions("cus_test")
 
     stripe.checkout.Session.list.assert_called_once_with(
@@ -161,8 +160,6 @@ def test_expire_open_subscription_sessions_expires_subscription_sessions(
     mock_sessions.data = [sub_session, payment_session]
     mocker.patch("stripe.checkout.Session.list", return_value=mock_sessions)
     mock_expire = mocker.patch("stripe.checkout.Session.expire")
-
-    from backend.data.credit import _list_and_expire_open_subscription_sessions
 
     _list_and_expire_open_subscription_sessions("cus_test")
 
