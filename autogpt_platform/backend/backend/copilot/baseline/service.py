@@ -2197,11 +2197,19 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
+            # Watermark is a count of non-reasoning JSONL rows — reasoning rows
+            # never appear in the transcript (they're persisted for frontend
+            # replay only). Including them would inflate the watermark and
+            # cause detect_gap to skip the corresponding non-reasoning rows
+            # on the next turn (silent context loss). Mirrors the SDK upload
+            # path in sdk/service.py.
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=len(session.messages),
+                session_msg_count=sum(
+                    1 for m in session.messages if m.role != "reasoning"
+                ),
             )
 
         # Clean up the ephemeral working directory used for file attachments.
