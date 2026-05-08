@@ -469,3 +469,145 @@ async def test_build_query_no_resume_above_token_floor_compresses(monkeypatch):
     # Above the floor → history is injected (not the bare message)
     assert "<conversation_history>" in result
     assert "Now, the user says:\nnew" in result
+
+
+# ---------------------------------------------------------------------------
+# Cap-engaged stale watermark — the sentry CRITICAL bug
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
+    """When the eager-load cap engages and the watermark is beyond the
+    windowed view, ``prior[transcript_msg_count:]`` would silently produce
+    ``[]`` because ``prior`` is zero-indexed from the window start. The fix
+    detects this and falls back to a sequence-based gap via
+    ``get_sequence_at_non_reasoning_index``."""
+    # Window contains the 3 most-recent rows of a much longer conversation.
+    # Watermark = 998 (count of non-reasoning rows in transcript). DB has more.
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="cap-window-user", sequence=1500),
+            ChatMessage(role="assistant", content="cap-window-asst", sequence=1501),
+            ChatMessage(role="user", content="current turn", sequence=1502),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    # 998th non-reasoning row sits at DB sequence 1499; gap is anything > 1499.
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_sequence_at_non_reasoning_index": staticmethod(
+                lambda session_id, n: _async_return(1499)
+            )
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=998,
+        session_id="test-session",
+    )
+    # Both windowed messages have sequence > 1499 — they form the gap.
+    assert "<conversation_history>" in result
+    assert "cap-window-user" in result
+    assert "cap-window-asst" in result
+    assert "Now, the user says:\ncurrent turn" in result
+    assert was_compacted is False
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_translation_failure_safe(monkeypatch):
+    """If the count→sequence translation raises, ``_build_query_message`` must
+    return the bare message instead of crashing the turn."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="cap-window", sequence=1500),
+            ChatMessage(role="assistant", content="cap-asst", sequence=1501),
+            ChatMessage(role="user", content="current", sequence=1502),
+        ]
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_sequence_at_non_reasoning_index": staticmethod(
+                lambda session_id, n: _async_raise(RuntimeError("db down"))
+            )
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "current",
+        session,
+        use_resume=True,
+        transcript_msg_count=998,
+        session_id="test-session",
+    )
+    assert result == "current"
+    assert was_compacted is False
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_translation_returns_none(monkeypatch):
+    """If the watermark is above the DB's non-reasoning row count (transcript
+    is somehow ahead of DB), skip gap injection."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="cap", sequence=1500),
+            ChatMessage(role="assistant", content="asst", sequence=1501),
+            ChatMessage(role="user", content="current", sequence=1502),
+        ]
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_sequence_at_non_reasoning_index": staticmethod(
+                lambda session_id, n: _async_return(None)
+            )
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "current",
+        session,
+        use_resume=True,
+        transcript_msg_count=9999,
+        session_id="test-session",
+    )
+    assert result == "current"
+    assert was_compacted is False
+
+
+async def _async_return(value):
+    return value
+
+
+async def _async_raise(exc):
+    raise exc

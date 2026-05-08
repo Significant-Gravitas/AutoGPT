@@ -41,6 +41,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -2577,6 +2578,74 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
+        # Cap-engaged + watermark beyond the windowed view: the index-based
+        # slice ``prior[transcript_msg_count:]`` would silently produce ``[]``
+        # because the window contains the most-recent rows but ``prior`` is
+        # zero-indexed from the window start, not from absolute sequence 0.
+        # Fall back to a sequence-based gap so the LLM still sees the messages
+        # past the watermark.
+        cap_engaged = transcript_msg_count >= len(prior)
+        if cap_engaged and prior and prior[0].sequence is not None:
+            # The watermark is a *count* of non-reasoning rows over the full
+            # history, not a DB sequence — translate it via the same helper
+            # used by ``extract_context_messages``. Then the gap is every
+            # windowed prior row whose sequence is strictly greater than the
+            # watermark-th non-reasoning row's sequence.
+            try:
+                last_covered_seq = await chat_db().get_sequence_at_non_reasoning_index(
+                    session_id, transcript_msg_count
+                )
+            except Exception as e:
+                logger.warning(
+                    "[SDK] [%s] watermark→sequence translation failed"
+                    " (transcript=%d, db_window=%d): %s — sending bare message",
+                    session_id[:8],
+                    transcript_msg_count,
+                    msg_count,
+                    e,
+                )
+                return current_message, False
+            if last_covered_seq is None:
+                # Fewer non-reasoning rows in DB than the watermark claims —
+                # transcript is ahead of DB; bare message keeps things safe.
+                logger.warning(
+                    "[SDK] [%s] Watermark (%d) above DB non-reasoning count —"
+                    " skipping gap injection (db=%d)",
+                    session_id[:8],
+                    transcript_msg_count,
+                    msg_count,
+                )
+                return current_message, False
+            gap = [
+                m
+                for m in prior
+                if m.sequence is not None and m.sequence > last_covered_seq
+            ]
+            compressed, was_compressed = await _compress_messages(gap, target_tokens)
+            gap_context = _format_conversation_context(compressed)
+            if gap_context:
+                logger.info(
+                    "[SDK] [%s] Cap-engaged stale watermark (%d) — sequence-"
+                    "based gap=%d msgs from windowed view (compressed=%s, "
+                    "context_bytes=%d)",
+                    session_id[:8],
+                    transcript_msg_count,
+                    len(gap),
+                    was_compressed,
+                    len(gap_context),
+                )
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    was_compressed,
+                )
+            logger.warning(
+                "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
+                " not contain post-watermark rows (transcript=%d, db=%d)",
+                session_id[:8],
+                transcript_msg_count,
+                msg_count,
+            )
+            return current_message, False
         if transcript_msg_count < effective_count - 1:
             # Sanity-check the watermark: the last covered position should be
             # an assistant turn.  A user-role message here means the count is
