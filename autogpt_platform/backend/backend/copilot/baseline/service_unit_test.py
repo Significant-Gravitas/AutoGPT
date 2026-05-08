@@ -1900,11 +1900,55 @@ class TestBaselineReasoningStreaming:
                 state=state,
             )
 
-        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        extra_body = call_kwargs["extra_body"]
         # Native Anthropic shape, not the OR ``reasoning`` wrapper.
         assert "reasoning" not in extra_body
         assert extra_body["thinking"]["type"] == "enabled"
-        assert extra_body["thinking"]["budget_tokens"] > 0
+        budget = extra_body["thinking"]["budget_tokens"]
+        assert budget > 0
+        # Anthropic's OpenAI-compat layer requires ``max_tokens > budget_tokens``
+        # whenever ``thinking`` is enabled — without this the request 400s.
+        assert call_kwargs["max_tokens"] > budget
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_absent_on_openrouter_thinking_route(self):
+        """OR proxy injects its own default ``max_tokens`` so we leave
+        ``create_kwargs`` clean — only direct-Anthropic mode needs the
+        explicit ``max_tokens > budget_tokens`` guard."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                True,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.api_key",
+                "or-key",
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert "max_tokens" not in call_kwargs
 
     @pytest.mark.asyncio
     async def test_reasoning_param_absent_on_non_anthropic_routes(self):

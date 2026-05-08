@@ -701,6 +701,15 @@ async def _baseline_llm_caller(
             "stream_options": {"include_usage": True},
             "extra_body": extra_body,
         }
+        # Anthropic's OpenAI-compat layer requires ``max_tokens > budget_tokens``
+        # whenever ``thinking`` is enabled — the OR proxy hides this by
+        # injecting a sane default, but the direct endpoint 400s when
+        # ``max_tokens`` is omitted and the compat-shim default lands at or
+        # below ``budget_tokens``.  Set it explicitly to budget + a 4096
+        # response-token margin so the model has headroom for its actual
+        # answer after burning the thinking budget.
+        if not config.openrouter_active and "thinking" in extra_body:
+            create_kwargs["max_tokens"] = config.claude_agent_max_thinking_tokens + 4096
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers
         if tools:
@@ -2189,6 +2198,29 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
+        # Direct-Anthropic safety net: if the upstream stream finished
+        # without ever emitting a ``usage`` chunk (final-chunk drop on a
+        # truncated SSE, mid-stream disconnect), ``state.cost_usd`` is
+        # ``None`` and ``persist_and_record_usage`` would skip the
+        # rate-limit charge entirely (token_tracking.py:195 guards on
+        # ``cost_microdollars > 0``) — letting a hostile drive bypass the
+        # limit.  Fall back to the rate card with the tiktoken-estimated
+        # token counts above so rate-limit accounting still charges
+        # *something*.  OR mode keeps ``cost_usd=None`` here because OR's
+        # rate-card markup differs from raw Anthropic pricing — under-
+        # billing is preferable to wrong-billing for the OR path.
+        if state.cost_usd is None and not config.openrouter_active:
+            recovered = compute_anthropic_cost_usd(
+                model=active_model,
+                prompt_tokens=state.turn_prompt_tokens,
+                completion_tokens=state.turn_completion_tokens,
+                cache_read_tokens=state.turn_cache_read_tokens,
+                cache_creation_tokens=state.turn_cache_creation_tokens,
+                cache_ttl=config.baseline_prompt_cache_ttl,
+            )
+            if recovered is not None:
+                state.cost_usd = recovered
+
         # Persist token usage to session and record for rate limiting.
         # When prompt_tokens_details.cached_tokens is reported, subtract
         # them from prompt_tokens to get the uncached count so the cost
