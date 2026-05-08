@@ -1,5 +1,6 @@
 """Unit tests for Stripe webhook handler and subscription checkout helpers."""
 
+import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -7,7 +8,10 @@ import fastapi.testclient
 import pytest_mock
 import stripe
 
-from backend.data.credit import _list_and_expire_open_subscription_sessions
+from backend.data.credit import (
+    _list_and_expire_open_subscription_sessions,
+    reconcile_stripe_tier_for_user,
+)
 
 from .v1 import v1_router
 
@@ -164,3 +168,71 @@ def test_expire_open_subscription_sessions_expires_subscription_sessions(
     _list_and_expire_open_subscription_sessions("cus_test")
 
     mock_expire.assert_called_once_with("cs_sub_open")
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stripe_tier_no_customer_returns_false(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    user = MagicMock()
+    user.stripe_customer_id = None
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mock_get_sub = mocker.patch(
+        "backend.data.credit._get_active_subscription", new_callable=AsyncMock
+    )
+
+    result = await reconcile_stripe_tier_for_user("user_abc")
+
+    assert result is False
+    mock_get_sub.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stripe_tier_no_active_sub_returns_false(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    user = MagicMock()
+    user.stripe_customer_id = "cus_abc"
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mock_sync = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+
+    result = await reconcile_stripe_tier_for_user("user_abc")
+
+    assert result is False
+    mock_sync.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    user = MagicMock()
+    user.stripe_customer_id = "cus_abc"
+    fake_sub = {"id": "sub_123", "customer": "cus_abc", "status": "active"}
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=fake_sub,
+    )
+    mock_sync = mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+
+    result = await reconcile_stripe_tier_for_user("user_abc")
+
+    assert result is True
+    mock_sync.assert_called_once_with(fake_sub)

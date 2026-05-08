@@ -2284,6 +2284,23 @@ async def _expire_open_subscription_sessions(customer_id: str) -> None:
         )
 
 
+async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
+    """Check Stripe for an active subscription and sync tier if found.
+
+    Called as a lazy fallback when a user is on NO_TIER to recover from
+    missed webhooks. Returns True if an active subscription was found and
+    synced. Does NOT create a Stripe customer — only checks existing ones.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return False
+    await sync_subscription_from_stripe(cast(dict, sub))
+    return True
+
+
 async def create_subscription_checkout(
     user_id: str,
     tier: SubscriptionTier,

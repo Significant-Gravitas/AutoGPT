@@ -880,6 +880,37 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     raise _UserNotFoundError(user_id)
 
 
+_STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
+_STRIPE_RECONCILE_TTL = 300  # seconds — matches the tier cache TTL
+
+
+async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
+    """Gate a lazy Stripe subscription check to at most once per 5 min per user.
+
+    Sets a Redis NX key before calling Stripe so concurrent requests don't
+    all fan out simultaneously. Returns True when a subscription was found
+    and synced (tier was updated in DB + cache cleared).
+    """
+    try:
+        redis = await get_redis_async()
+        already_checked = not await redis.set(
+            f"{_STRIPE_RECONCILE_PREFIX}{user_id}",
+            "1",
+            nx=True,
+            ex=_STRIPE_RECONCILE_TTL,
+        )
+        if already_checked:
+            return False
+        from backend.data.credit import reconcile_stripe_tier_for_user  # avoid circular
+
+        return await reconcile_stripe_tier_for_user(user_id)
+    except Exception:
+        logger.warning(
+            "stripe_reconcile: check failed for user %s, skipping", user_id[:8]
+        )
+        return False
+
+
 async def get_user_tier(user_id: str) -> SubscriptionTier:
     """Look up the user's rate-limit tier from the database.
 
@@ -889,9 +920,13 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     Falls back to ``DEFAULT_TIER`` **without caching** when the DB is
     unreachable or returns an unrecognised value, so the next call retries
     the query instead of serving a stale fallback for up to 5 minutes.
+
+    When the resolved tier is NO_TIER and the user has a Stripe customer
+    record, a lazy reconciliation check is attempted (gated to once per 5
+    minutes via a Redis key) to recover from missed webhooks.
     """
     try:
-        return await _fetch_user_tier(user_id)
+        tier = await _fetch_user_tier(user_id)
     except Exception as exc:
         logger.warning(
             "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
@@ -899,7 +934,18 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
             DEFAULT_TIER.value,
             exc,
         )
-    return DEFAULT_TIER
+        tier = DEFAULT_TIER
+
+    if tier != SubscriptionTier.NO_TIER:
+        return tier
+
+    if await _maybe_reconcile_stripe_tier(user_id):
+        try:
+            return await _fetch_user_tier(user_id)
+        except Exception:
+            pass
+
+    return tier
 
 
 # Expose cache management on the public function so callers (including tests)
