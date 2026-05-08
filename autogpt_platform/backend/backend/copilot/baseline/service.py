@@ -91,6 +91,7 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
+    _fill_hole_between_transcript_and_gap,
     detect_gap,
     download_transcript,
     extract_context_messages,
@@ -1251,11 +1252,26 @@ async def _load_prior_transcript(
     )
 
     gap = detect_gap(restore, session_messages)
+    # Hole-fill: when the cap engaged AND the windowed view starts above the
+    # transcript watermark, the sequences in between live in DB but neither
+    # the transcript nor the loaded gap. Persisting them to the builder here
+    # (so the next-turn upload includes them) closes the loop — without this,
+    # detect_gap on every subsequent turn would re-discover the same hole and
+    # the LLM context would still be missing those sequences if hole-fill
+    # itself fails.
+    hole = await _fill_hole_between_transcript_and_gap(
+        session_id, restore.message_count, gap
+    )
+    if hole:
+        _append_gap_to_builder(hole, transcript_builder)
     if gap:
         _append_gap_to_builder(gap, transcript_builder)
+    if hole or gap:
         logger.info(
-            "[Baseline] Filled gap: loaded %d transcript msgs + %d gap msgs from DB",
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
+            "+ %d gap msgs from DB",
             restore.message_count,
+            len(hole),
             len(gap),
         )
 
