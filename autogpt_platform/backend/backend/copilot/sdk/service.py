@@ -2620,11 +2620,40 @@ async def _build_query_message(
                     msg_count,
                 )
                 return current_message, False
-            gap = [
+            window_gap = [
                 m
                 for m in prior
                 if m.sequence is not None and m.sequence > last_covered_seq
             ]
+            # Hole-fill: when the window starts above the watermark+1, fetch
+            # the missing rows so the LLM sees the full post-watermark
+            # conversation. Mirrors extract_context_messages / baseline path.
+            window_start_seq = (
+                min(m.sequence for m in window_gap if m.sequence is not None)
+                if window_gap
+                else None
+            )
+            hole: list[ChatMessage] = []
+            if window_start_seq is not None and window_start_seq > last_covered_seq + 1:
+                try:
+                    hole_page = await chat_db().get_chat_messages_paginated(
+                        session_id,
+                        limit=window_start_seq - last_covered_seq - 1,
+                        after_sequence=last_covered_seq + 1,
+                        before_sequence=window_start_seq,
+                    )
+                    if hole_page:
+                        hole = [m for m in hole_page.messages if m.role != "reasoning"]
+                except Exception as e:
+                    logger.warning(
+                        "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
+                        " %s — sending gap without hole",
+                        session_id[:8],
+                        last_covered_seq + 1,
+                        window_start_seq,
+                        e,
+                    )
+            gap = hole + window_gap
             compressed, was_compressed = await _compress_messages(gap, target_tokens)
             gap_context = _format_conversation_context(compressed)
             if gap_context:
