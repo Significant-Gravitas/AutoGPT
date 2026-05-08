@@ -839,12 +839,16 @@ class ChatConfig(BaseSettings):
         OpenAPI-schema-export environments that construct
         ``ChatConfig()`` without env vars don't fail.
         """
-        # Empty-config escape hatch: build / openapi-export environments
-        # construct ``ChatConfig()`` without any creds.  That's not a
-        # misconfig — just "no turn will succeed until creds are wired"
-        # — and CI's ``check API types`` step imports the config so we
-        # must not raise here.  Real-request credential errors surface
-        # downstream as 401s via the title-cost log path.
+        # Empty-config escape hatch: build / openapi-export / pytest-
+        # collection environments construct ``ChatConfig()`` without any
+        # creds.  In that shape ``main_client_credentials`` returns
+        # ``(None, api.anthropic.com)`` (because ``openrouter_active``
+        # requires a key) and aux inherits the same — so
+        # ``aux_uses_openrouter`` is False even though the operator
+        # never opted in to direct-Anthropic.  Skip the title-model
+        # check when no creds are wired and aux/direct are untouched;
+        # real-request credential errors still surface as 401s
+        # downstream via the title-cost log path.
         if (
             not self.use_claude_code_subscription
             and not self.api_key
@@ -853,16 +857,12 @@ class ChatConfig(BaseSettings):
             and not self.aux_base_url
         ):
             return self
-        # Fast-path: aux resolves to OpenRouter with a usable key.  OR
-        # serves any vendor prefix so title_model semantics don't matter
-        # here.  This is the common-case OR deployment.
-        if (self.aux_api_key or self.api_key) and self.aux_uses_openrouter:
-            return self
-        # An explicit ``aux_base_url`` without a resolvable key fails fast
-        # regardless of title model: the aux client would route to that
-        # URL with ``(None, aux_base_url)`` and 401 every call.  This
-        # catches the OpenRouter-typo case where an operator sets
-        # ``CHAT_AUX_BASE_URL`` but forgets ``CHAT_AUX_API_KEY``.
+        # An explicit ``aux_base_url`` without a resolvable key fails
+        # fast regardless of which transport that URL points at — the
+        # aux client would route to that URL with ``(None, aux_base_url)``
+        # and 401 every call.  Catches the operator-typo case where
+        # ``CHAT_AUX_BASE_URL`` is set but ``CHAT_AUX_API_KEY`` was
+        # forgotten (and ``CHAT_API_KEY`` is also absent).
         if self.aux_base_url and not (self.aux_api_key or self.api_key):
             raise ValueError(
                 "CHAT_AUX_BASE_URL is set but no CHAT_AUX_API_KEY (and "
@@ -870,6 +870,10 @@ class ChatConfig(BaseSettings):
                 "every title call.  Either unset CHAT_AUX_BASE_URL to "
                 "inherit the main client, or set CHAT_AUX_API_KEY."
             )
+        # Fast-path: aux's resolved transport is OpenRouter — OR serves
+        # any vendor prefix so the title-model check doesn't apply.
+        if self.aux_uses_openrouter:
+            return self
         # Subscription mode trap: SDK uses OAuth so direct creds are
         # optional for it, but the aux client still runs the baseline
         # OpenAI-compat path.  When use_openrouter=False AND no aux
