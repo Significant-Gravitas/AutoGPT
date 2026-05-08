@@ -1,7 +1,6 @@
 "use server";
 import * as Sentry from "@sentry/nextjs";
 import type { User } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
 import { getRedirectPath } from "./helpers";
 import { getServerSupabase } from "./server/getServerSupabase";
 
@@ -176,10 +175,10 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
         };
       }
 
-      // Narrow path-only revalidation. The cross-tab storage listener calls
-      // router.refresh() and the React Query cache is cleared client-side,
-      // so layout-level revalidation is redundant.
-      revalidatePath("/");
+      // No `revalidatePath`: `/` is a client-only spinner that redirects to
+      // `/copilot`, so there is no RSC payload to invalidate. The cross-tab
+      // storage listener calls `router.refresh()` for any visible page, and
+      // the React Query cache is cleared client-side.
       return { success: true };
     },
   );
