@@ -100,8 +100,14 @@ class ChatConfig(BaseSettings):
         "override: ``copilot-model-routing[thinking][advanced]``.",
     )
     title_model: str = Field(
-        default="openai/gpt-4o-mini",
-        description="Model to use for generating session titles (should be fast/cheap)",
+        default="anthropic/claude-haiku-4-5",
+        description="Model to use for generating session titles (should be "
+        "fast/cheap). Default is Anthropic Haiku so direct-Anthropic "
+        "deployments (``CHAT_USE_OPENROUTER=false``) can route the title "
+        "call through the same client without 404-ing on a non-Anthropic "
+        "vendor prefix.  OpenRouter deployments can override to a cheaper "
+        "non-Anthropic alternative (e.g. ``CHAT_TITLE_MODEL=openai/gpt-4o-mini``) "
+        "via env without code changes.",
     )
     simulation_model: str = Field(
         default="google/gemini-2.5-flash-lite",
