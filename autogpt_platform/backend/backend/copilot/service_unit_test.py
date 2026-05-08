@@ -70,32 +70,36 @@ class TestTitleUsageFromResponse:
 
     def test_usage_none_returns_all_zero(self):
         resp = _build_completion(usage=None)
-        prompt, completion, cost = _title_usage_from_response(resp)
+        prompt, completion, cache_read, cache_write, cost = _title_usage_from_response(
+            resp
+        )
         assert prompt == 0
         assert completion == 0
+        assert cache_read == 0
+        assert cache_write == 0
         assert cost is None
 
     def test_missing_cost_field_returns_none_cost(self):
         resp = _build_completion(usage=_usage_with_cost(None))
-        prompt, completion, cost = _title_usage_from_response(resp)
+        prompt, completion, _, _, cost = _title_usage_from_response(resp)
         assert prompt == 12
         assert completion == 3
         assert cost is None
 
     def test_cost_as_int_is_coerced_to_float(self):
         resp = _build_completion(usage=_usage_with_cost(2))
-        _, _, cost = _title_usage_from_response(resp)
+        _, _, _, _, cost = _title_usage_from_response(resp)
         assert isinstance(cost, float)
         assert cost == 2.0
 
     def test_cost_as_float_is_returned_as_is(self):
         resp = _build_completion(usage=_usage_with_cost(0.000123))
-        _, _, cost = _title_usage_from_response(resp)
+        _, _, _, _, cost = _title_usage_from_response(resp)
         assert cost == pytest.approx(0.000123)
 
     def test_cost_as_non_numeric_string_returns_none(self):
         resp = _build_completion(usage=_usage_with_cost("free"))
-        _, _, cost = _title_usage_from_response(resp)
+        _, _, _, _, cost = _title_usage_from_response(resp)
         assert cost is None
 
     def test_empty_model_extra_returns_none_cost(self):
@@ -103,14 +107,46 @@ class TestTitleUsageFromResponse:
         # receive any extras — prompt/completion still flow through.
         usage = CompletionUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7)
         resp = _build_completion(usage=usage)
-        prompt, completion, cost = _title_usage_from_response(resp)
+        prompt, completion, _, _, cost = _title_usage_from_response(resp)
         assert (prompt, completion, cost) == (5, 2, None)
 
     def test_zero_prompt_and_completion_tokens(self):
         usage = CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
         resp = _build_completion(usage=usage)
-        prompt, completion, cost = _title_usage_from_response(resp)
+        prompt, completion, _, _, cost = _title_usage_from_response(resp)
         assert (prompt, completion, cost) == (0, 0, None)
+
+    def test_cached_tokens_extracted_from_prompt_tokens_details(self):
+        from openai.types.completion_usage import PromptTokensDetails
+
+        usage = CompletionUsage(
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            prompt_tokens_details=PromptTokensDetails(cached_tokens=80),
+        )
+        resp = _build_completion(usage=usage)
+        prompt, _, cache_read, _, _ = _title_usage_from_response(resp)
+        assert prompt == 100
+        assert cache_read == 80
+
+    def test_cache_creation_tokens_via_anthropic_extras(self):
+        from openai.types.completion_usage import PromptTokensDetails
+
+        # Anthropic-native extras key on the OpenAI-compat endpoint.
+        ptd = PromptTokensDetails.model_validate(
+            {"cached_tokens": 50, "cache_creation_input_tokens": 30}
+        )
+        usage = CompletionUsage(
+            prompt_tokens=200,
+            completion_tokens=10,
+            total_tokens=210,
+            prompt_tokens_details=ptd,
+        )
+        resp = _build_completion(usage=usage)
+        _, _, cache_read, cache_write, _ = _title_usage_from_response(resp)
+        assert cache_read == 50
+        assert cache_write == 30
 
 
 class TestRecordTitleGenerationCost:

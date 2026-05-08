@@ -674,27 +674,53 @@ async def _generate_session_title(
 
 def _title_usage_from_response(
     response: ChatCompletion,
-) -> tuple[int, int, float | None]:
-    """Extract ``(prompt_tokens, completion_tokens, cost_usd)`` from a
-    title-generation chat-completion response.
+) -> tuple[int, int, int, int, float | None]:
+    """Extract usage counts + OR-style ``cost`` from a title response.
 
-    Returns zeros / ``None`` for missing fields — the OpenAI SDK's
-    ``CompletionUsage`` doesn't declare OpenRouter's ``cost`` extension,
-    so we read it off ``model_extra`` (pydantic v2 extras container).
-    Absent for non-OR routes; returned as ``None`` in that case.
+    Returns ``(prompt_tokens, completion_tokens, cache_read_tokens,
+    cache_creation_tokens, cost_usd)``.  The cache buckets land in the
+    rate-card lookup so cached title turns are billed at Anthropic's
+    cache-read rate (10% of input) instead of the full input rate.
+
+    The OpenAI SDK's ``CompletionUsage`` doesn't declare OpenRouter's
+    ``cost`` extension, so we read it off ``model_extra`` (pydantic v2
+    extras container) — absent for non-OR routes.
     """
     usage = response.usage
     if usage is None:
-        return 0, 0, None
+        return 0, 0, 0, 0, None
     prompt_tokens = usage.prompt_tokens or 0
     completion_tokens = usage.completion_tokens or 0
+    ptd = usage.prompt_tokens_details
+    cache_read_tokens = (ptd.cached_tokens or 0) if ptd else 0
+    # Cache-write tokens: typed attr first, then both OR/Anthropic
+    # ``model_extra`` field names (mirrors ``_extract_cache_creation_tokens``
+    # in baseline/service.py — duplicated here to avoid the cross-module
+    # import for one helper).
+    cache_creation_tokens = 0
+    if ptd is not None:
+        typed_val = getattr(ptd, "cache_write_tokens", None)
+        if typed_val:
+            cache_creation_tokens = int(typed_val)
+        else:
+            ptd_extras = ptd.model_extra or {}
+            raw = ptd_extras.get("cache_write_tokens") or ptd_extras.get(
+                "cache_creation_input_tokens"
+            )
+            cache_creation_tokens = int(raw) if raw else 0
     extras = usage.model_extra or {}
     cost_raw = extras.get("cost") if isinstance(extras, dict) else None
     if isinstance(cost_raw, (int, float)):
         cost_usd: float | None = float(cost_raw)
     else:
         cost_usd = None
-    return prompt_tokens, completion_tokens, cost_usd
+    return (
+        prompt_tokens,
+        completion_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        cost_usd,
+    )
 
 
 async def _record_title_generation_cost(
@@ -720,7 +746,13 @@ async def _record_title_generation_cost(
         title, and a real DB / Prisma outage surfaces in the caller's
         single background-task warning handler.
     """
-    prompt_tokens, completion_tokens, cost_usd = _title_usage_from_response(response)
+    (
+        prompt_tokens,
+        completion_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        cost_usd,
+    ) = _title_usage_from_response(response)
 
     # Provider label tracks the aux client's actual transport — title
     # generation runs on the aux client (kept on OpenRouter when split
@@ -742,11 +774,16 @@ async def _record_title_generation_cost(
     # ``cost_usd=None``.  Compute it from the rate card instead — otherwise
     # PlatformCostLog records a NULL cost row and the admin dashboard +
     # rate-limit counter under-report direct-Anthropic title spend by 100%.
+    # Pass cache buckets so cached title turns bill at the cache-read rate
+    # (~10% of input) instead of the full input rate.
     if cost_usd is None and provider == "anthropic":
         cost_usd = compute_anthropic_cost_usd(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            cache_ttl=config.baseline_prompt_cache_ttl,
         )
         if cost_usd is None:
             # Rate-card lookup whiffed.  Mirror the baseline streaming path's
@@ -778,11 +815,17 @@ async def _record_title_generation_cost(
     # recorded into ``PlatformCostLog`` (admin dashboard) and the
     # microdollar rate-limit counter — those are the two places that
     # actually matter for this call.
+    # Subtract cached tokens from prompt_tokens so the persisted
+    # ``Usage.prompt_tokens`` reflects fresh-input only, mirroring the
+    # baseline path's uncached_prompt computation at ~service.py:2196.
+    uncached_prompt = max(0, prompt_tokens - cache_read_tokens)
     await persist_and_record_usage(
         session=None,
         user_id=user_id,
-        prompt_tokens=prompt_tokens,
+        prompt_tokens=uncached_prompt,
         completion_tokens=completion_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
         log_prefix="[title]",
         cost_usd=cost_usd,
         model=model,
