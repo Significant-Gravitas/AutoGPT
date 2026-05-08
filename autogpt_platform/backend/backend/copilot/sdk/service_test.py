@@ -492,6 +492,12 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` now also runs in
+            # subscription mode (see PR #13034 review).  Provide an
+            # Anthropic title model + direct key so the aux 401-trap
+            # validator passes — orthogonal to what this test checks.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() is None
@@ -658,6 +664,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -688,6 +696,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 

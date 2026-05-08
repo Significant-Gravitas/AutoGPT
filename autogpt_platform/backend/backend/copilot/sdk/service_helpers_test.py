@@ -548,6 +548,11 @@ class TestEffectiveTransport:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` runs in subscription
+            # mode now (PR #13034 review): pin a direct key + Anthropic
+            # title model so the aux 401-trap validator is satisfied.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.effective_transport == "subscription"
 
