@@ -1022,9 +1022,23 @@ class TestBaselineCostExtraction:
         mock_client = MagicMock()
         mock_client.chat.completions.create = create_mock
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                True,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.api_key",
+                "or-key",
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1822,7 +1836,7 @@ class TestBaselineReasoningStreaming:
 
     @pytest.mark.asyncio
     async def test_reasoning_param_sent_on_anthropic_routes(self):
-        """Anthropic route gets ``reasoning.max_tokens`` on the request."""
+        """Anthropic route via OpenRouter gets ``reasoning.max_tokens``."""
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
 
         mock_client = MagicMock()
@@ -1830,9 +1844,23 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                True,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.api_key",
+                "or-key",
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1843,6 +1871,40 @@ class TestBaselineReasoningStreaming:
         extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
         assert "reasoning" in extra_body
         assert extra_body["reasoning"]["max_tokens"] > 0
+
+    @pytest.mark.asyncio
+    async def test_thinking_param_sent_on_direct_anthropic_route(self):
+        """Direct-Anthropic mode (OR off) swaps OR's ``reasoning`` for the
+        Anthropic-native ``thinking`` parameter so extended-thinking
+        survives the OR→Anthropic transport flip."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                False,
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        # Native Anthropic shape, not the OR ``reasoning`` wrapper.
+        assert "reasoning" not in extra_body
+        assert extra_body["thinking"]["type"] == "enabled"
+        assert extra_body["thinking"]["budget_tokens"] > 0
 
     @pytest.mark.asyncio
     async def test_reasoning_param_absent_on_non_anthropic_routes(self):
@@ -1883,9 +1945,23 @@ class TestBaselineReasoningStreaming:
             return_value=_make_stream_mock()
         )
 
-        with patch(
-            "backend.copilot.baseline.service._get_main_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                True,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.api_key",
+                "or-key",
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
         ):
             await _baseline_llm_caller(
                 messages=[
@@ -1968,8 +2044,9 @@ class TestBaselineReasoningStreaming:
     @pytest.mark.asyncio
     async def test_reasoning_param_suppressed_when_thinking_tokens_zero(self):
         """Operator kill switch: setting ``claude_agent_max_thinking_tokens``
-        to 0 removes the ``reasoning`` fragment from ``extra_body`` even on
-        an Anthropic route.  Restores the zero-disables behaviour the old
+        to 0 removes both the OR ``reasoning`` and the Anthropic-native
+        ``thinking`` fragments from ``extra_body`` regardless of transport.
+        Restores the zero-disables behaviour the old
         ``baseline_reasoning_max_tokens`` config used to provide."""
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
 
@@ -1996,6 +2073,7 @@ class TestBaselineReasoningStreaming:
 
         extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
         assert "reasoning" not in extra_body
+        assert "thinking" not in extra_body
 
     @pytest.mark.asyncio
     async def test_reasoning_persists_to_state_session_messages(self):
