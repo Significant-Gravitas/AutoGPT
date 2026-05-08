@@ -36,8 +36,8 @@ export function ArtifactCard({ artifact }: Props) {
   // in the store (knownIds check).
   useEffect(() => {
     registerArtifactForAutoOpen(artifact);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-register on ID change
-  }, [artifact.id, registerArtifactForAutoOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
+  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen]);
 
   const classification = classifyArtifact(
     artifact.mimeType,

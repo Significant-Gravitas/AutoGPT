@@ -59,6 +59,7 @@ export function useAutoOpenArtifacts({
     if (prevSessionIdRef.current !== sessionId) {
       resetArtifactPanel();
       resetAutoOpenState();
+      wasOpenRef.current = false;
     }
     prevSessionIdRef.current = sessionId;
   }, [sessionId, resetArtifactPanel, resetAutoOpenState]);
