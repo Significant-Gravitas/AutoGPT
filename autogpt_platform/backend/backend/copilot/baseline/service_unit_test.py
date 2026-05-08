@@ -18,7 +18,6 @@ from backend.copilot.baseline.service import (
     _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
     _compress_session_messages,
-    _extract_cache_creation_tokens,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
@@ -26,6 +25,7 @@ from backend.copilot.baseline.service import (
     _mark_tools_with_cache_control,
     _supports_prompt_cache_markers,
 )
+from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
     StreamReasoningDelta,

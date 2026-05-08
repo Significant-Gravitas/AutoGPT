@@ -24,7 +24,6 @@ import orjson
 from langfuse import propagate_attributes
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
 from backend.copilot.anthropic_rate_card import (
@@ -90,7 +89,10 @@ from backend.copilot.service import (
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
-from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.token_tracking import (
+    _extract_cache_creation_tokens,
+    persist_and_record_usage,
+)
 from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
@@ -232,40 +234,6 @@ def _extract_usage_cost(usage: CompletionUsage) -> float | None:
         logger.error("[Baseline] usage.cost is non-finite or negative: %r", val)
         return None
     return val
-
-
-def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
-    """Return cache-write token count from an OpenAI-compatible
-    ``PromptTokensDetails``, handling provider-specific field names and
-    SDK-version shape differences.
-
-    Two shapes we care about:
-
-    - **OpenRouter** (our primary baseline provider) streams the cache-write
-      count as ``cache_write_tokens``.  Newer ``openai-python`` versions
-      declare this as a typed attribute on ``PromptTokensDetails``; older
-      versions expose it only in ``model_extra``.  Verified empirically:
-      cold-cache request returns ``cache_write_tokens`` > 0, warm-cache
-      request returns ``cached_tokens`` > 0 and ``cache_write_tokens`` = 0.
-    - **Direct Anthropic API** uses ``cache_creation_input_tokens`` —
-      never a typed attribute on the OpenAI SDK, always lives in
-      ``model_extra``.
-
-    Lookup order: typed attr → ``model_extra`` (OpenRouter) → ``model_extra``
-    (Anthropic-native).  ``getattr`` handles both the typed-attr case
-    (newer SDK) and the no-such-attr case (older SDK) — we can't only use
-    ``model_extra`` because when the field is typed it's filtered out of
-    ``model_extra``, leaving us at 0 on the modern happy path.
-    """
-    typed_val = getattr(ptd, "cache_write_tokens", None)
-    if typed_val:
-        return int(typed_val)
-    extras = ptd.model_extra or {}
-    return int(
-        extras.get("cache_write_tokens")
-        or extras.get("cache_creation_input_tokens")
-        or 0
-    )
 
 
 async def _prepare_baseline_attachments(

@@ -36,7 +36,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
-from .token_tracking import persist_and_record_usage
+from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -700,21 +700,9 @@ def _title_usage_from_response(
     completion_tokens = usage.completion_tokens or 0
     ptd = usage.prompt_tokens_details
     cache_read_tokens = (ptd.cached_tokens or 0) if ptd else 0
-    # Cache-write tokens: typed attr first, then both OR/Anthropic
-    # ``model_extra`` field names (mirrors ``_extract_cache_creation_tokens``
-    # in baseline/service.py — duplicated here to avoid the cross-module
-    # import for one helper).
-    cache_creation_tokens = 0
-    if ptd is not None:
-        typed_val = getattr(ptd, "cache_write_tokens", None)
-        if typed_val:
-            cache_creation_tokens = int(typed_val)
-        else:
-            ptd_extras = ptd.model_extra or {}
-            raw = ptd_extras.get("cache_write_tokens") or ptd_extras.get(
-                "cache_creation_input_tokens"
-            )
-            cache_creation_tokens = int(raw) if raw else 0
+    cache_creation_tokens = (
+        _extract_cache_creation_tokens(ptd) if ptd is not None else 0
+    )
     extras = usage.model_extra or {}
     cost_raw = extras.get("cost") if isinstance(extras, dict) else None
     if isinstance(cost_raw, (int, float)):
