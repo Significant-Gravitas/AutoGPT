@@ -967,7 +967,11 @@ async def _fill_hole_between_transcript_and_gap(
             after_sequence=hole_start,
             before_sequence=hole_end,
         )
-        return page.messages if page else []
+        if page is None:
+            return []
+        # Reasoning rows are persisted for frontend replay only — never
+        # context for the LLM. Filter them from the fetched range.
+        return [m for m in page.messages if m.role != "reasoning"]
     except Exception as e:
         logger.error(
             "extract_context_messages: hole-fill fetch failed for session=%s "
