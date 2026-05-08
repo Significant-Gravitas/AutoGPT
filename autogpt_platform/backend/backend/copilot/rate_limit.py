@@ -943,7 +943,9 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
         if not await redis.set(gate_key, "1", nx=True, ex=_STRIPE_RECONCILE_TTL):
             return False  # already checked recently
     except Exception as exc:
-        logger.warning("stripe_reconcile: redis gate unavailable for %s: %s", user_id[:8], exc)
+        logger.warning(
+            "stripe_reconcile: redis gate unavailable for %s: %s", user_id[:8], exc
+        )
         return False
 
     try:

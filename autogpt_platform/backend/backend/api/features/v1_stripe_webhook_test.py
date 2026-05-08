@@ -142,7 +142,9 @@ async def test_sync_tier_missing_sub_id_is_noop(
         new_callable=AsyncMock,
     )
 
-    await sync_tier_from_checkout_session({"mode": "subscription", "subscription": None})
+    await sync_tier_from_checkout_session(
+        {"mode": "subscription", "subscription": None}
+    )
 
     mock_retrieve.assert_not_called()
 
