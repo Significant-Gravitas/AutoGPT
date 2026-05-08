@@ -91,8 +91,9 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
-    _fill_hole_between_transcript_and_gap,
     detect_gap,
+    fill_hole_between_transcript_and_gap,
+    next_uncovered_sequence,
     download_transcript,
     extract_context_messages,
     strip_for_upload,
@@ -100,7 +101,6 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
@@ -1252,44 +1252,19 @@ async def _load_prior_transcript(
         restore.message_count,
     )
 
-    # Pre-translate the count-based watermark to a DB sequence so detect_gap
-    # uses the correct boundary semantic when reasoning rows are interleaved.
-    # The same translated value is reused for hole-fill (range fetch).
-    last_covered_sequence: int | None = None
-    if restore.message_count > 0:
-        try:
-            last_covered_sequence = await chat_db().get_sequence_at_non_reasoning_index(
-                session_id, restore.message_count
-            )
-        except Exception as e:
-            logger.warning(
-                "[Baseline] watermark→sequence translation failed for "
-                "session=%s watermark=%d: %s — falling back to count-based gap",
-                session_id,
-                restore.message_count,
-                e,
-            )
-
-    gap = detect_gap(
-        restore, session_messages, last_covered_sequence=last_covered_sequence
-    )
+    gap = detect_gap(restore, session_messages)
     # Hole-fill: when the cap engaged AND the windowed view starts above the
     # transcript watermark, the sequences in between live in DB but neither
-    # the transcript nor the loaded gap. Persisting them to the builder here
+    # the transcript nor the loaded gap.  Persisting them to the builder here
     # (so the next-turn upload includes them) closes the loop — without this,
-    # detect_gap on every subsequent turn would re-discover the same hole and
-    # the LLM context would still be missing those sequences if hole-fill
-    # itself fails.
+    # detect_gap on every subsequent turn would re-discover the same hole.
     hole: list[ChatMessage] = []
-    if last_covered_sequence is not None:
-        hole = await _fill_hole_between_transcript_and_gap(
-            session_id, last_covered_sequence, gap
+    if restore.message_count > 0:
+        hole = await fill_hole_between_transcript_and_gap(
+            session_id, restore.message_count, gap
         )
-    if hole:
-        _append_gap_to_builder(hole, transcript_builder)
-    if gap:
-        _append_gap_to_builder(gap, transcript_builder)
     if hole or gap:
+        _append_gap_to_builder(hole + gap, transcript_builder)
         logger.info(
             "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
             "+ %d gap msgs from DB",
@@ -2220,31 +2195,15 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
-            # Read the absolute non-reasoning count from DB rather than from
-            # ``session.messages`` — the eager load is capped at
-            # ``MAX_LOADED_CHAT_MESSAGES``, so on long sessions counting the
-            # in-memory list under-reports total rows and re-injects already-
-            # uploaded history on the next turn. Reasoning rows are excluded
-            # because they never enter the JSONL (frontend replay only).
-            try:
-                _absolute_count = await chat_db().count_session_non_reasoning_messages(
-                    session_id
-                )
-            except Exception as e:
-                logger.warning(
-                    "[Baseline] non-reasoning count query failed for "
-                    "session=%s: %s — falling back to in-memory count",
-                    session_id,
-                    e,
-                )
-                _absolute_count = sum(
-                    1 for m in session.messages if m.role != "reasoning"
-                )
+            # Watermark = the next uncovered DB sequence (= max non-reasoning
+            # sequence + 1).  Stays accurate on cap-engaged sessions because
+            # the loaded window always includes the most-recent rows; the
+            # max(sequence) is the last assistant just appended this turn.
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=_absolute_count,
+                session_msg_count=next_uncovered_sequence(session.messages),
             )
 
         # Clean up the ephemeral working directory used for file attachments.

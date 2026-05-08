@@ -472,19 +472,18 @@ async def test_build_query_no_resume_above_token_floor_compresses(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Cap-engaged stale watermark — the sentry CRITICAL bug
+# Cap-engaged: window starts above absolute sequence 0
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
-    """When the eager-load cap engages and the watermark is beyond the
-    windowed view, ``prior[transcript_msg_count:]`` would silently produce
-    ``[]`` because ``prior`` is zero-indexed from the window start. The fix
-    detects this and falls back to a sequence-based gap via
-    ``get_sequence_at_non_reasoning_index``."""
+    """When the eager-load cap engages, the windowed ``prior`` doesn't start
+    at absolute sequence 0; index-based ``prior[transcript_msg_count:]`` is
+    wrong.  ``transcript_msg_count`` IS the next uncovered DB sequence, so
+    filtering by ``sequence >= watermark`` reads it directly."""
     # Window contains the 3 most-recent rows of a much longer conversation.
-    # Watermark = 998 (count of non-reasoning rows in transcript). DB has more.
+    # Watermark = 1500 (next uncovered DB sequence).
     session = _make_session(
         [
             ChatMessage(role="user", content="cap-window-user", sequence=1500),
@@ -501,16 +500,8 @@ async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
         _mock_compress,
     )
 
-    # 998th non-reasoning row sits at DB sequence 1499; gap is anything > 1499.
-    fake_db = type(
-        "FakeDB",
-        (),
-        {
-            "get_sequence_at_non_reasoning_index": staticmethod(
-                lambda session_id, n: _async_return(1499)
-            )
-        },
-    )()
+    # No DB lookup expected — the watermark is already a sequence.
+    fake_db = type("FakeDB", (), {})()
     monkeypatch.setattr(
         "backend.copilot.sdk.service.chat_db",
         lambda: fake_db,
@@ -520,10 +511,10 @@ async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
         "current turn",
         session,
         use_resume=True,
-        transcript_msg_count=998,
+        transcript_msg_count=1500,
         session_id="test-session",
     )
-    # Both windowed messages have sequence > 1499 — they form the gap.
+    # Both windowed messages have sequence >= 1500 — they form the gap.
     assert "<conversation_history>" in result
     assert "cap-window-user" in result
     assert "cap-window-asst" in result
@@ -532,91 +523,17 @@ async def test_build_query_resume_cap_engaged_uses_sequence_gap(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_build_query_resume_cap_engaged_translation_failure_safe(monkeypatch):
-    """If the count→sequence translation raises, ``_build_query_message`` must
-    return the bare message instead of crashing the turn."""
-    session = _make_session(
-        [
-            ChatMessage(role="user", content="cap-window", sequence=1500),
-            ChatMessage(role="assistant", content="cap-asst", sequence=1501),
-            ChatMessage(role="user", content="current", sequence=1502),
-        ]
-    )
-
-    fake_db = type(
-        "FakeDB",
-        (),
-        {
-            "get_sequence_at_non_reasoning_index": staticmethod(
-                lambda session_id, n: _async_raise(RuntimeError("db down"))
-            )
-        },
-    )()
-    monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
-        lambda: fake_db,
-    )
-
-    result, was_compacted = await _build_query_message(
-        "current",
-        session,
-        use_resume=True,
-        transcript_msg_count=998,
-        session_id="test-session",
-    )
-    assert result == "current"
-    assert was_compacted is False
-
-
-@pytest.mark.asyncio
-async def test_build_query_resume_cap_engaged_translation_returns_none(monkeypatch):
-    """If the watermark is above the DB's non-reasoning row count (transcript
-    is somehow ahead of DB), skip gap injection."""
-    session = _make_session(
-        [
-            ChatMessage(role="user", content="cap", sequence=1500),
-            ChatMessage(role="assistant", content="asst", sequence=1501),
-            ChatMessage(role="user", content="current", sequence=1502),
-        ]
-    )
-
-    fake_db = type(
-        "FakeDB",
-        (),
-        {
-            "get_sequence_at_non_reasoning_index": staticmethod(
-                lambda session_id, n: _async_return(None)
-            )
-        },
-    )()
-    monkeypatch.setattr(
-        "backend.copilot.sdk.service.chat_db",
-        lambda: fake_db,
-    )
-
-    result, was_compacted = await _build_query_message(
-        "current",
-        session,
-        use_resume=True,
-        transcript_msg_count=9999,
-        session_id="test-session",
-    )
-    assert result == "current"
-    assert was_compacted is False
-
-
-@pytest.mark.asyncio
 async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeypatch):
-    """When the window starts above ``last_covered_seq + 1``, the missing
-    sequences are fetched from DB and prepended to ``window_gap`` so the
-    LLM sees the full post-watermark conversation."""
+    """When the window starts above the watermark, the missing sequences are
+    fetched from DB and prepended to ``window_gap`` so the LLM sees the full
+    post-watermark conversation."""
     from datetime import UTC, datetime
 
     from backend.copilot.db import PaginatedMessages
     from backend.copilot.model import ChatSessionInfo
 
-    # Window covers sequences 1502..1503 — but transcript watermark maps to
-    # sequence 1499, leaving sequences 1500..1501 in the hole.
+    # Window covers sequences 1502..1503; watermark sits at 1500 leaving
+    # sequences 1500..1501 in the hole.
     session = _make_session(
         [
             ChatMessage(role="user", content="window-1502", sequence=1502),
@@ -653,9 +570,6 @@ async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeyp
         "FakeDB",
         (),
         {
-            "get_sequence_at_non_reasoning_index": staticmethod(
-                lambda session_id, n: _async_return(1499)
-            ),
             "get_chat_messages_paginated": staticmethod(
                 lambda *args, **kwargs: _async_return(hole_page)
             ),
@@ -666,11 +580,11 @@ async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeyp
         lambda: fake_db,
     )
 
-    result, was_compacted = await _build_query_message(
+    result, _ = await _build_query_message(
         "current turn",
         session,
         use_resume=True,
-        transcript_msg_count=998,
+        transcript_msg_count=1500,
         session_id="test-session",
     )
     # All 4 messages (2 hole + 2 window) are in the gap.
@@ -708,9 +622,6 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
         "FakeDB",
         (),
         {
-            "get_sequence_at_non_reasoning_index": staticmethod(
-                lambda session_id, n: _async_return(1499)
-            ),
             "get_chat_messages_paginated": staticmethod(
                 lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
             ),
@@ -721,11 +632,11 @@ async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only
         lambda: fake_db,
     )
 
-    result, was_compacted = await _build_query_message(
+    result, _ = await _build_query_message(
         "current",
         session,
         use_resume=True,
-        transcript_msg_count=998,
+        transcript_msg_count=1500,
         session_id="test-session",
     )
     # Hole fetch failed but window_gap survives — context is partial but

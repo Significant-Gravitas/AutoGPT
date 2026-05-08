@@ -569,43 +569,6 @@ async def get_next_sequence(session_id: str) -> int:
     return 0 if not results else results[0]["sequence"] + 1
 
 
-async def get_sequence_at_non_reasoning_index(session_id: str, n: int) -> int | None:
-    """Return the DB ``sequence`` of the ``n``-th non-reasoning row (1-indexed).
-
-    The transcript watermark counts JSONL rows (non-reasoning only) while DB
-    sequences include reasoning rows. Callers that need to translate a count
-    watermark into a real sequence boundary use this helper. Returns ``None``
-    when fewer than ``n`` non-reasoning rows exist.
-    """
-    if n <= 0:
-        return None
-    results = await db.query_raw_with_schema(
-        'SELECT "sequence" FROM {schema_prefix}"ChatMessage" '
-        'WHERE "sessionId" = $1 AND "role" <> \'reasoning\' '
-        'ORDER BY "sequence" ASC OFFSET $2 LIMIT 1',
-        session_id,
-        n - 1,
-    )
-    return results[0]["sequence"] if results else None
-
-
-async def count_session_non_reasoning_messages(session_id: str) -> int:
-    """Return the total count of non-reasoning rows for a session.
-
-    The eager-loaded ``session.messages`` is capped at
-    ``MAX_LOADED_CHAT_MESSAGES``; deriving the transcript watermark from that
-    list undercounts on long sessions and causes the next turn to re-fill
-    rows already in the transcript. Callers uploading the watermark use this
-    to read the absolute count from DB instead.
-    """
-    results = await db.query_raw_with_schema(
-        'SELECT COUNT(*)::bigint AS count FROM {schema_prefix}"ChatMessage" '
-        'WHERE "sessionId" = $1 AND "role" <> \'reasoning\'',
-        session_id,
-    )
-    return int(results[0]["count"]) if results else 0
-
-
 async def update_tool_message_content(
     session_id: str,
     tool_call_id: str,

@@ -135,6 +135,7 @@ from ..transcript import (
     compact_transcript,
     download_transcript,
     extract_context_messages,
+    next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
     strip_for_upload,
@@ -797,8 +798,7 @@ async def _consume_sdk_until_done(
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
-                    "%s Intermediate flush: %d messages "
-                    "(msgs_since=%d, elapsed=%.1fs)",
+                    "%s Intermediate flush: %d messages (msgs_since=%d, elapsed=%.1fs)",
                     ctx.log_prefix,
                     len(ctx.session.messages),
                     loop_state.msgs_since_flush,
@@ -2605,66 +2605,35 @@ async def _build_query_message(
     if use_resume and transcript_msg_count > 0:
         # Cap-engaged: the windowed ``prior`` doesn't start at absolute sequence
         # 0, so any index-based slice ``prior[transcript_msg_count:]`` is wrong
-        # regardless of whether the watermark fits inside ``len(prior)``.
-        # Two signals indicate cap engagement:
+        # regardless of whether the watermark fits inside ``len(prior)``.  Two
+        # signals indicate cap engagement:
         # 1. transcript_msg_count >= len(prior) — watermark beyond the window
         # 2. prior[0].sequence > 0 — window starts above absolute sequence 0
         # Either condition means the index-based path silently mis-slices
         # (or returns []), so route through the sequence-based gap detection.
+        # ``transcript_msg_count`` IS the next uncovered DB sequence, so
+        # filtering ``sequence >= transcript_msg_count`` reads it directly.
         cap_engaged = transcript_msg_count >= len(prior) or (
             bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
         )
         if cap_engaged and prior and prior[0].sequence is not None:
-            # The watermark is a *count* of non-reasoning rows over the full
-            # history, not a DB sequence — translate it via the same helper
-            # used by ``extract_context_messages``. Then the gap is every
-            # windowed prior row whose sequence is strictly greater than the
-            # watermark-th non-reasoning row's sequence.
-            try:
-                last_covered_seq = await chat_db().get_sequence_at_non_reasoning_index(
-                    session_id, transcript_msg_count
-                )
-            except Exception as e:
-                logger.warning(
-                    "[SDK] [%s] watermark→sequence translation failed"
-                    " (transcript=%d, db_window=%d): %s — sending bare message",
-                    session_id[:8],
-                    transcript_msg_count,
-                    msg_count,
-                    e,
-                )
-                return current_message, False
-            if last_covered_seq is None:
-                # Fewer non-reasoning rows in DB than the watermark claims —
-                # transcript is ahead of DB; bare message keeps things safe.
-                logger.warning(
-                    "[SDK] [%s] Watermark (%d) above DB non-reasoning count —"
-                    " skipping gap injection (db=%d)",
-                    session_id[:8],
-                    transcript_msg_count,
-                    msg_count,
-                )
-                return current_message, False
             window_gap = [
                 m
                 for m in prior
-                if m.sequence is not None and m.sequence > last_covered_seq
+                if m.sequence is not None and m.sequence >= transcript_msg_count
             ]
-            # Hole-fill: when the window starts above the watermark+1, fetch
-            # the missing rows so the LLM sees the full post-watermark
-            # conversation. Mirrors extract_context_messages / baseline path.
             window_start_seq = (
                 min(m.sequence for m in window_gap if m.sequence is not None)
                 if window_gap
                 else None
             )
             hole: list[ChatMessage] = []
-            if window_start_seq is not None and window_start_seq > last_covered_seq + 1:
+            if window_start_seq is not None and window_start_seq > transcript_msg_count:
                 try:
                     hole_page = await chat_db().get_chat_messages_paginated(
                         session_id,
-                        limit=window_start_seq - last_covered_seq - 1,
-                        after_sequence=last_covered_seq + 1,
+                        limit=window_start_seq - transcript_msg_count,
+                        after_sequence=transcript_msg_count,
                         before_sequence=window_start_seq,
                     )
                     if hole_page:
@@ -2674,7 +2643,7 @@ async def _build_query_message(
                         "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
                         " %s — sending gap without hole",
                         session_id[:8],
-                        last_covered_seq + 1,
+                        transcript_msg_count,
                         window_start_seq,
                         e,
                     )
@@ -5166,44 +5135,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
                     #
-                    # Mid-turn follow-up user rows (persisted via the
-                    # StreamToolOutputAvailable handler) are NOT part of the CLI
-                    # JSONL — the CLI only knows them as embedded text inside a
-                    # tool_result, and even that embedding can be stripped by
-                    # the CLI's internal tool_result size cap.  Deduct them
-                    # from the watermark so detect_gap on the next turn
-                    # treats them as gap-fill entries and the model sees them
-                    # as real user messages instead of missing text.
+                    # Watermark = next uncovered DB sequence.  Mid-turn
+                    # follow-up user rows (StreamToolOutputAvailable) are
+                    # persisted to DB but not to the CLI's JSONL, so we step
+                    # the watermark back by their count — detect_gap on the
+                    # next turn re-injects them as the model would otherwise
+                    # only see them embedded in the tool_result (and the CLI's
+                    # internal tool_result size cap can strip that embedding).
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    # Read the absolute non-reasoning count from DB; the
-                    # in-memory ``session.messages`` is capped at
-                    # ``MAX_LOADED_CHAT_MESSAGES`` and would under-report on
-                    # long sessions, leading detect_gap on the next turn to
-                    # treat already-uploaded rows as gap and re-inject them.
-                    # Reasoning rows are excluded because they never enter the
-                    # JSONL; extract_context_messages translates the resulting
-                    # count back to a DB sequence via
-                    # ``get_sequence_at_non_reasoning_index``.
-                    try:
-                        _non_reasoning_count = (
-                            await chat_db().count_session_non_reasoning_messages(
-                                session_id
-                            )
-                        )
-                    except Exception as cnt_err:
-                        logger.warning(
-                            "%s non-reasoning count query failed for "
-                            "session=%s: %s — falling back to in-memory count",
-                            log_prefix,
-                            session_id,
-                            cnt_err,
-                        )
-                        _non_reasoning_count = sum(
-                            1 for m in session.messages if m.role != "reasoning"
-                        )
-                    _jsonl_covered = _non_reasoning_count - _midturn_offset
+                    _jsonl_covered = max(
+                        0,
+                        next_uncovered_sequence(session.messages) - _midturn_offset,
+                    )
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
