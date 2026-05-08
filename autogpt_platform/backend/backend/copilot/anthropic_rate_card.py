@@ -1,47 +1,123 @@
-"""Static Anthropic rate card for direct-mode cost computation.
+"""Anthropic rate-card lookup for direct-mode cost computation.
 
 Used by the baseline path when ``CHAT_USE_OPENROUTER=false`` — the
 OpenAI-compat endpoint at api.anthropic.com does **not** return a
 ``usage.cost`` field (that is an OpenRouter extension), so we compute
-USD from token counts × rates here.
+USD from token counts × per-model rates here.
 
-Rates are USD per 1M tokens, sourced from
-https://www.anthropic.com/pricing (Sonnet 4.6 and Opus 4.7 — the two
-models the SDK / baseline configurations resolve to today).  Cache
-write/read multipliers follow Anthropic's prompt-caching docs:
-https://docs.claude.com/en/docs/build-with-claude/prompt-caching.
+Rates are sourced from LiteLLM's community-maintained model pricing
+JSON, vendored at ``litellm_anthropic_rates.json`` next to this module.
+The vendored copy is auto-refreshed via the ``refresh-litellm-rates``
+GitHub Actions cron — that workflow downloads the upstream JSON,
+filters to Claude entries, and opens a PR.  No runtime network
+dependency: the JSON is a regular file read at module import.
+
+LiteLLM source:
+https://raw.githubusercontent.com/BerriAI/litellm/main/litellm/model_prices_and_context_window_backup.json
+
+Anthropic prompt-caching docs (rates we apply when LiteLLM omits the
+1h cache-write field on a model):
+https://docs.claude.com/en/docs/build-with-claude/prompt-caching
 """
 
 from __future__ import annotations
 
-# Per-million-token rates in USD.  Keep keyed on the **post-normalize**
-# slug (no ``anthropic/`` prefix, dots → hyphens) since
-# ``normalize_model_for_transport`` runs upstream.
-_INPUT_USD_PER_MTOK: dict[str, float] = {
-    "claude-sonnet-4-5": 3.0,
-    "claude-sonnet-4-6": 3.0,
-    "claude-opus-4-6": 15.0,
-    "claude-opus-4-7": 15.0,
-    "claude-haiku-4-5": 1.0,
-}
-_OUTPUT_USD_PER_MTOK: dict[str, float] = {
-    "claude-sonnet-4-5": 15.0,
-    "claude-sonnet-4-6": 15.0,
-    "claude-opus-4-6": 75.0,
-    "claude-opus-4-7": 75.0,
-    "claude-haiku-4-5": 5.0,
-}
+import json
+import logging
+from pathlib import Path
+from typing import TypedDict
 
-# Cache-write surcharge multipliers (applied to the input rate) keyed
-# by TTL.  Anthropic publishes only two TTLs: 5m (1.25× input) and 1h
-# (2× input) — see prompt-caching docs.  The active TTL is the
-# ``baseline_prompt_cache_ttl`` config value, threaded in by the caller
-# rather than read here so this module stays config-free for testing.
-_CACHE_WRITE_MULTIPLIER_BY_TTL: dict[str, float] = {
-    "5m": 1.25,
-    "1h": 2.0,
-}
-_CACHE_READ_MULTIPLIER = 0.1
+logger = logging.getLogger(__name__)
+
+_RATES_PATH = Path(__file__).parent / "litellm_anthropic_rates.json"
+
+# LiteLLM uses USD per single token; we expose USD per million for
+# legibility in error logs / docstrings.  Conversion factor only.
+_USD_PER_MTOK = 1_000_000
+
+# Default cache-read multiplier when LiteLLM omits the field — Anthropic's
+# documented rate is 10% of the input rate (0.1×).
+_DEFAULT_CACHE_READ_MULTIPLIER = 0.1
+# Default 1h cache-write multiplier when LiteLLM omits the field —
+# Anthropic's documented rate is 2.0× input.
+_DEFAULT_CACHE_WRITE_1H_MULTIPLIER = 2.0
+# Default 5m cache-write multiplier — Anthropic's documented 1.25× input.
+_DEFAULT_CACHE_WRITE_5M_MULTIPLIER = 1.25
+
+
+class _RateEntry(TypedDict, total=False):
+    input_cost_per_token: float
+    output_cost_per_token: float
+    cache_read_input_token_cost: float
+    cache_creation_input_token_cost: float  # 5m default
+    cache_creation_input_token_cost_above_1hr: float  # 1h
+
+
+_rates_cache: dict[str, _RateEntry] | None = None
+
+
+def _load_rates() -> dict[str, _RateEntry]:
+    """Load + cache the LiteLLM rate JSON. Empty dict on any failure so a
+    corrupt or missing file degrades to ``compute_anthropic_cost_usd``
+    returning None (callers already handle that as a misconfiguration
+    signal — see the warning at ``service.py:_record_title_generation_cost``
+    and ``baseline/service.py:cost_missing_logged``).
+    """
+    global _rates_cache
+    if _rates_cache is not None:
+        return _rates_cache
+    try:
+        raw = json.loads(_RATES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.exception(
+            "Failed to load %s; Anthropic direct-mode cost lookups will "
+            "return None until the file is restored",
+            _RATES_PATH.name,
+        )
+        _rates_cache = {}
+        return _rates_cache
+    if not isinstance(raw, dict):
+        logger.error(
+            "Invalid LiteLLM rates JSON root in %s (expected object); "
+            "direct-mode cost lookups disabled",
+            _RATES_PATH.name,
+        )
+        _rates_cache = {}
+        return _rates_cache
+    # Filter defensively to entries shaped like LiteLLM rate rows.  We don't
+    # require every field — `compute_anthropic_cost_usd` falls back per
+    # bucket — but the row must at minimum carry the input + output rates.
+    valid: dict[str, _RateEntry] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        if not isinstance(value.get("input_cost_per_token"), (int, float)):
+            continue
+        if not isinstance(value.get("output_cost_per_token"), (int, float)):
+            continue
+        valid[key] = value  # type: ignore[assignment]
+    _rates_cache = valid
+    return valid
+
+
+def reset_cache() -> None:
+    """Test-only: drop the in-memory rates cache so a freshly-written JSON
+    re-loads on the next call."""
+    global _rates_cache
+    _rates_cache = None
+
+
+def _resolve_entry(model: str) -> _RateEntry | None:
+    """Return the LiteLLM entry for ``model``, trying the post-normalize
+    slug first, then the ``anthropic/`` prefixed variant — LiteLLM's keys
+    sometimes carry the prefix and sometimes don't, depending on the
+    canonical alias the project picked at the time the entry was added.
+    """
+    rates = _load_rates()
+    entry = rates.get(model)
+    if entry is None:
+        entry = rates.get(f"anthropic/{model}")
+    return entry
 
 
 def compute_anthropic_cost_usd(
@@ -64,20 +140,25 @@ def compute_anthropic_cost_usd(
     the breakdown (cached + write > total), the fresh-input bucket is
     clamped to zero to avoid flipping the sign.
 
-    *cache_ttl* selects the cache-write surcharge multiplier — must
-    match the ``cache_control: ttl`` set on the cached blocks (today
-    that's ``baseline_prompt_cache_ttl`` config; 1h default).  Unknown
-    TTLs fall back to 1h with no error since over-billing is preferable
-    to mis-billing in the cache write column.
+    *cache_ttl* selects which cache-write field to read from the LiteLLM
+    entry: ``5m`` → ``cache_creation_input_token_cost`` (LiteLLM's
+    default-TTL field), ``1h`` → ``cache_creation_input_token_cost_above_1hr``.
+    Unknown TTLs fall back to the 1h field.  When the LiteLLM entry omits
+    the field entirely, we fall back to Anthropic's documented multiplier
+    (1.25× input for 5m, 2.0× input for 1h, 0.1× input for cache reads).
 
     Returns ``None`` for unknown models so the caller can decide
     between recording 0 (under-bills) or skipping the row (silent
     miss).  We pick None to surface the misconfiguration upstream.
     """
-    input_rate = _INPUT_USD_PER_MTOK.get(model)
-    output_rate = _OUTPUT_USD_PER_MTOK.get(model)
-    if input_rate is None or output_rate is None:
+    entry = _resolve_entry(model)
+    if entry is None:
         return None
+    input_per_tok = entry.get("input_cost_per_token")
+    output_per_tok = entry.get("output_cost_per_token")
+    if input_per_tok is None or output_per_tok is None:
+        return None
+
     # Clamp each token bucket to ``>= 0`` per the codebase convention —
     # a malformed upstream that reports a negative count must not flip
     # the sign of the recorded cost (which would skew rate-limit and
@@ -89,13 +170,31 @@ def compute_anthropic_cost_usd(
     fresh_input_tokens = max(
         0, prompt_tokens - cache_read_tokens - cache_creation_tokens
     )
-    cache_write_multiplier = _CACHE_WRITE_MULTIPLIER_BY_TTL.get(cache_ttl, 2.0)
-    fresh_input_cost = fresh_input_tokens * input_rate / 1_000_000
-    output_cost = completion_tokens * output_rate / 1_000_000
-    cache_read_cost = (
-        cache_read_tokens * input_rate * _CACHE_READ_MULTIPLIER / 1_000_000
-    )
-    cache_write_cost = (
-        cache_creation_tokens * input_rate * cache_write_multiplier / 1_000_000
-    )
+
+    # Cache-read rate: prefer the explicit LiteLLM field, fall back to
+    # Anthropic's documented 0.1× input.
+    cache_read_per_tok = entry.get("cache_read_input_token_cost")
+    if cache_read_per_tok is None:
+        cache_read_per_tok = input_per_tok * _DEFAULT_CACHE_READ_MULTIPLIER
+
+    # Cache-write rate: pick the field matching the configured TTL.  5m
+    # is LiteLLM's default-TTL field; 1h is the explicit "above_1hr"
+    # variant.  Fall back to Anthropic's documented multiplier when
+    # absent.
+    if cache_ttl == "5m":
+        cache_write_per_tok = entry.get("cache_creation_input_token_cost")
+        if cache_write_per_tok is None:
+            cache_write_per_tok = input_per_tok * _DEFAULT_CACHE_WRITE_5M_MULTIPLIER
+    else:
+        # 1h is the documented default TTL for our deployments.  Unknown
+        # TTLs land here too — over-billing on cache writes is preferable
+        # to mis-billing.
+        cache_write_per_tok = entry.get("cache_creation_input_token_cost_above_1hr")
+        if cache_write_per_tok is None:
+            cache_write_per_tok = input_per_tok * _DEFAULT_CACHE_WRITE_1H_MULTIPLIER
+
+    fresh_input_cost = fresh_input_tokens * input_per_tok
+    output_cost = completion_tokens * output_per_tok
+    cache_read_cost = cache_read_tokens * cache_read_per_tok
+    cache_write_cost = cache_creation_tokens * cache_write_per_tok
     return fresh_input_cost + output_cost + cache_read_cost + cache_write_cost

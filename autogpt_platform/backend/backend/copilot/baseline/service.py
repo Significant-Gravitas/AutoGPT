@@ -30,6 +30,7 @@ from opentelemetry import trace as otel_trace
 from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
+    anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
 from backend.copilot.builder_context import (
@@ -675,8 +676,10 @@ async def _baseline_llm_caller(
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
         # ``usage.include`` and OpenRouter's ``reasoning`` extension are
         # OR-only — Anthropic's OpenAI-compat endpoint rejects unknown
-        # extras with a 400, so we omit them in direct mode.  Cost in
-        # direct mode is computed from the rate card (see chunk loop).
+        # extras with a 400, so we swap to the Anthropic-native
+        # ``thinking`` parameter in direct mode instead of dropping
+        # extended-thinking entirely.  Cost in direct mode is computed
+        # from the rate card (see chunk loop).
         if config.openrouter_active:
             extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
             reasoning_param = reasoning_extra_body(
@@ -686,6 +689,11 @@ async def _baseline_llm_caller(
                 extra_body.update(reasoning_param)
         else:
             extra_body = {}
+            thinking_param = anthropic_thinking_extra_body(
+                state.model, config.claude_agent_max_thinking_tokens
+            )
+            if thinking_param:
+                extra_body.update(thinking_param)
         create_kwargs: dict[str, Any] = {
             "model": state.model,
             "messages": typed_messages,

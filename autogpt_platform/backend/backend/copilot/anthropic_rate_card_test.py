@@ -14,13 +14,29 @@ class TestComputeAnthropicCostUsd:
         assert cost == 18.0
 
     def test_opus_basic(self):
-        # 1M prompt × $15 + 1M completion × $75 = $90
+        # claude-opus-4-1 stays at the legacy Opus pricing in LiteLLM:
+        # 1M prompt × $15 + 1M completion × $75 = $90.  (Newer Opus
+        # models like opus-4-7 ship with revised $5/$25 rates per the
+        # vendored LiteLLM data — covered by the LiteLLM source-of-truth
+        # smoke below.)
+        cost = compute_anthropic_cost_usd(
+            model="claude-opus-4-1",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        assert cost == 90.0
+
+    def test_loads_rate_from_vendored_litellm_json(self):
+        # Confirms the LiteLLM JSON ingestion path: claude-opus-4-7 is in
+        # the vendored data with the current $5/$25 rates, not the legacy
+        # $15/$75 schedule the static rate card was hard-coded for.
         cost = compute_anthropic_cost_usd(
             model="claude-opus-4-7",
             prompt_tokens=1_000_000,
             completion_tokens=1_000_000,
         )
-        assert cost == 90.0
+        # 1M × $5 + 1M × $25 = $30
+        assert cost == 30.0
 
     def test_cache_read_at_one_tenth_input_rate(self):
         cost = compute_anthropic_cost_usd(

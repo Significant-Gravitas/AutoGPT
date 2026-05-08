@@ -218,6 +218,38 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
     return {"reasoning": {"max_tokens": max_thinking_tokens}}
 
 
+def anthropic_thinking_extra_body(
+    model: str, max_thinking_tokens: int
+) -> dict[str, Any] | None:
+    """Build the Anthropic-native ``extra_body["thinking"]`` fragment.
+
+    Used in direct-Anthropic mode (``CHAT_USE_OPENROUTER=false``) where
+    the OpenRouter ``reasoning`` wrapper isn't recognized — Anthropic's
+    OpenAI-compat endpoint takes the parameter under its native key.
+    Without this fragment, models like Claude 3.7 Sonnet silently lose
+    extended-thinking and degrade to non-reasoning responses.
+
+    Returns ``None`` for non-reasoning models (incl. Kimi, which never
+    talks to Anthropic), for ``max_thinking_tokens <= 0`` (kill switch),
+    or for any non-Claude slug — the Anthropic ``thinking`` field is
+    Anthropic-specific.
+    """
+    if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
+        return None
+    # Only Claude models accept the Anthropic-native ``thinking`` field;
+    # non-Claude reasoning routes (Kimi) are routed through OpenRouter
+    # and use ``reasoning_extra_body`` instead.
+    lowered = model.lower()
+    if "claude" not in lowered:
+        return None
+    return {
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": max_thinking_tokens,
+        }
+    }
+
+
 class BaselineReasoningEmitter:
     """Owns the reasoning block lifecycle for one streaming round.
 

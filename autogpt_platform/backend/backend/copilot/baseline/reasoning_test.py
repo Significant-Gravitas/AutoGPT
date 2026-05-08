@@ -13,6 +13,7 @@ from backend.copilot.baseline.reasoning import (
     OpenRouterDeltaExtension,
     ReasoningDetail,
     _is_reasoning_route,
+    anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
 from backend.copilot.model import ChatMessage
@@ -224,6 +225,41 @@ class TestReasoningExtraBody:
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", 0) is None
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", -1) is None
         assert reasoning_extra_body("moonshotai/kimi-k2.6", 0) is None
+
+
+class TestAnthropicThinkingExtraBody:
+    def test_claude_route_returns_anthropic_native_fragment(self):
+        # Direct-Anthropic mode swaps the OR ``reasoning`` wrapper for
+        # the native ``thinking`` parameter — without this fragment,
+        # extended-thinking is silently dropped on api.anthropic.com.
+        assert anthropic_thinking_extra_body("anthropic/claude-sonnet-4-6", 4096) == {
+            "thinking": {"type": "enabled", "budget_tokens": 4096}
+        }
+
+    def test_post_normalize_claude_id_still_matches(self):
+        # `normalize_model_for_transport` strips ``anthropic/`` and dots
+        # before the call — confirm the helper handles either shape.
+        assert anthropic_thinking_extra_body("claude-haiku-4-5", 8192) == {
+            "thinking": {"type": "enabled", "budget_tokens": 8192}
+        }
+
+    def test_kimi_route_returns_none(self):
+        # Kimi never reaches Anthropic — even though it's a reasoning
+        # route, the Anthropic-native ``thinking`` fragment would be
+        # nonsense on Moonshot's endpoint.
+        assert anthropic_thinking_extra_body("moonshotai/kimi-k2.6", 8192) is None
+        assert (
+            anthropic_thinking_extra_body("moonshotai/kimi-k2-thinking", 4096) is None
+        )
+
+    def test_non_reasoning_route_returns_none(self):
+        assert anthropic_thinking_extra_body("openai/gpt-4o", 4096) is None
+        assert anthropic_thinking_extra_body("google/gemini-2.5-pro", 4096) is None
+
+    def test_zero_max_tokens_kill_switch(self):
+        # Same operator kill switch as the OR helper.
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", 0) is None
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", -1) is None
 
 
 class TestBaselineReasoningEmitter:
