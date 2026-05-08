@@ -19,6 +19,7 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    _save_session_to_db,
     append_and_save_message,
     get_chat_session,
     get_or_create_builder_session,
@@ -1128,8 +1129,6 @@ async def test_save_session_to_db_uses_actual_start_after_collision(
     that returned value — using the original ``existing_message_count``
     desyncs in-memory rows from DB and breaks later
     ``update_message_content_by_sequence`` calls."""
-    from .model import _save_session_to_db
-
     msg_a = ChatMessage(role="assistant", content="msg-a")
     msg_b = ChatMessage(role="user", content="msg-b")
     session = ChatSession.new(user_id="u1", dry_run=False)
