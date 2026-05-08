@@ -1325,7 +1325,7 @@ async def stripe_webhook(request: Request):
         await UserCredit().fulfill_checkout(session_id=session_id)
         try:
             await sync_tier_from_checkout_session(data_object)
-        except stripe.StripeError:
+        except Exception:
             logger.exception(
                 "stripe_webhook: %s tier sync failed for session %s",
                 event_type,
