@@ -882,9 +882,19 @@ def detect_gap(
     """Return chat-db messages after the transcript watermark (excluding the
     current user turn).
 
+    The watermark (``download.message_count``) counts non-reasoning JSONL
+    rows.  After the up-front reasoning filter the in-memory list is also
+    indexed by non-reasoning position, so the count comparison
+    ``sequence >= watermark`` aligns when sequences are dense — the common
+    production case (no reasoning rows interleaved before the gap).  When
+    reasoning rows DO interleave below the watermark, the
+    ``_fill_hole_between_transcript_and_gap`` step in
+    ``extract_context_messages`` translates the count to a real DB sequence
+    via ``get_sequence_at_non_reasoning_index`` and fills any missing window.
+
     Two paths:
     - **Sequence-based** (production): every prior message has a ``sequence``
-      (NOT NULL in schema). Filter by ``sequence >= watermark``, with a
+      (NOT NULL in schema). Filter by ``sequence >= watermark`` with a
       role-shape sanity check at the boundary.
     - **Index fallback**: triggered when no prior message has a sequence —
       only test fixtures and the post-DB-failure cache state. Treats the list
