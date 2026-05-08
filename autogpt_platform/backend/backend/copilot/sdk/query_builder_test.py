@@ -605,6 +605,137 @@ async def test_build_query_resume_cap_engaged_translation_returns_none(monkeypat
     assert was_compacted is False
 
 
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_hole_fills_above_watermark(monkeypatch):
+    """When the window starts above ``last_covered_seq + 1``, the missing
+    sequences are fetched from DB and prepended to ``window_gap`` so the
+    LLM sees the full post-watermark conversation."""
+    from datetime import UTC, datetime
+
+    from backend.copilot.db import PaginatedMessages
+    from backend.copilot.model import ChatSessionInfo
+
+    # Window covers sequences 1502..1503 — but transcript watermark maps to
+    # sequence 1499, leaving sequences 1500..1501 in the hole.
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="window-1502", sequence=1502),
+            ChatMessage(role="assistant", content="window-1503", sequence=1503),
+            ChatMessage(role="user", content="current turn", sequence=1504),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    hole_page = PaginatedMessages(
+        messages=[
+            ChatMessage(role="user", content="hole-1500", sequence=1500),
+            ChatMessage(role="assistant", content="hole-1501", sequence=1501),
+        ],
+        has_more=False,
+        oldest_sequence=1500,
+        session=ChatSessionInfo(
+            session_id="test-session",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_sequence_at_non_reasoning_index": staticmethod(
+                lambda session_id, n: _async_return(1499)
+            ),
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_return(hole_page)
+            ),
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "current turn",
+        session,
+        use_resume=True,
+        transcript_msg_count=998,
+        session_id="test-session",
+    )
+    # All 4 messages (2 hole + 2 window) are in the gap.
+    assert "<conversation_history>" in result
+    assert "hole-1500" in result
+    assert "hole-1501" in result
+    assert "window-1502" in result
+    assert "window-1503" in result
+    assert "Now, the user says:\ncurrent turn" in result
+
+
+@pytest.mark.asyncio
+async def test_build_query_resume_cap_engaged_hole_fill_failure_uses_window_only(
+    monkeypatch,
+):
+    """If the hole-fill fetch raises, fall back to the windowed gap rather
+    than dropping the entire LLM context."""
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="window-1502", sequence=1502),
+            ChatMessage(role="assistant", content="window-1503", sequence=1503),
+            ChatMessage(role="user", content="current", sequence=1504),
+        ]
+    )
+
+    async def _mock_compress(msgs, target_tokens=None):
+        return msgs, False
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service._compress_messages",
+        _mock_compress,
+    )
+
+    fake_db = type(
+        "FakeDB",
+        (),
+        {
+            "get_sequence_at_non_reasoning_index": staticmethod(
+                lambda session_id, n: _async_return(1499)
+            ),
+            "get_chat_messages_paginated": staticmethod(
+                lambda *args, **kwargs: _async_raise(RuntimeError("db down"))
+            ),
+        },
+    )()
+    monkeypatch.setattr(
+        "backend.copilot.sdk.service.chat_db",
+        lambda: fake_db,
+    )
+
+    result, was_compacted = await _build_query_message(
+        "current",
+        session,
+        use_resume=True,
+        transcript_msg_count=998,
+        session_id="test-session",
+    )
+    # Hole fetch failed but window_gap survives — context is partial but
+    # not empty, and the turn keeps going.
+    assert "<conversation_history>" in result
+    assert "window-1502" in result
+    assert "window-1503" in result
+    assert "Now, the user says:\ncurrent" in result
+
+
 async def _async_return(value):
     return value
 
