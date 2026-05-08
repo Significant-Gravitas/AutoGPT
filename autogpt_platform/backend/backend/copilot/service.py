@@ -799,9 +799,9 @@ async def _record_title_generation_cost(
             # below (tokens > 0 keeps the guard from short-circuiting), but
             # operators get a signal to extend the rate card.
             logger.warning(
-                "[title] direct-Anthropic rate card has no entry for "
-                "model=%s — cost field will be NULL on this PlatformCostLog "
-                "row; add the model to anthropic_rate_card.py",
+                "[title] direct-Anthropic rate lookup (litellm) has no "
+                "entry for model=%s — cost field will be NULL on this "
+                "PlatformCostLog row; bump litellm in pyproject.toml",
                 model,
             )
 

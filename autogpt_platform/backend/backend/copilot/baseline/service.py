@@ -761,10 +761,10 @@ async def _baseline_llm_caller(
                             # in direct mode, so this is the only place
                             # the operator gets a signal.
                             logger.warning(
-                                "[Baseline] direct-mode rate card has no "
-                                "entry for model=%s — add it to "
-                                "anthropic_rate_card.py or this turn's "
-                                "cost is dropped",
+                                "[Baseline] direct-mode rate lookup "
+                                "(litellm) has no entry for model=%s — "
+                                "bump litellm in pyproject.toml or this "
+                                "turn's cost is dropped",
                                 state.model,
                             )
                             state.cost_missing_logged = True

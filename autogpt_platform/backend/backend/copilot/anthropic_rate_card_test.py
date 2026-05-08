@@ -26,10 +26,10 @@ class TestComputeAnthropicCostUsd:
         )
         assert cost == 90.0
 
-    def test_loads_rate_from_vendored_litellm_json(self):
-        # Confirms the LiteLLM JSON ingestion path: claude-opus-4-7 is in
-        # the vendored data with the current $5/$25 rates, not the legacy
-        # $15/$75 schedule the static rate card was hard-coded for.
+    def test_opus_4_7_uses_litellm_revised_rates(self):
+        # Regression cover for the static-rate-card era: opus-4-7 was
+        # hardcoded at the legacy $15/$75 schedule, 3× over-billing every
+        # turn.  LiteLLM's data has the revised $5/$25 rates.
         cost = compute_anthropic_cost_usd(
             model="claude-opus-4-7",
             prompt_tokens=1_000_000,

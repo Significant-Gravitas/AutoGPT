@@ -42,6 +42,7 @@ jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
 langfuse = "^3.14.1"
 launchdarkly-server-sdk = "^9.14.1"
+litellm = "^1.80.0"  # used for direct-Anthropic per-turn cost lookup (litellm.get_model_info); refresh = bump this version
 mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
 ollama = "^0.6.1"
