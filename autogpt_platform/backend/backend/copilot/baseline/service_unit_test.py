@@ -1930,6 +1930,56 @@ class TestBaselineReasoningStreaming:
         assert call_kwargs["max_tokens"] > budget
 
     @pytest.mark.asyncio
+    async def test_thinking_budget_clamped_to_model_max_in_direct_mode(self):
+        """When the operator-configured thinking budget exceeds the model's
+        ``max_output_tokens`` ceiling, both the ``thinking.budget_tokens``
+        parameter and ``max_tokens`` must be clamped so the
+        ``max_tokens > budget_tokens`` and ``max_tokens <= model_max``
+        contracts both hold — otherwise Anthropic 400s the request."""
+        state = _BaselineStreamState(model="anthropic/claude-opus-4-1")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.use_openrouter",
+                False,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
+                128_000,  # well above any current Claude max_output_tokens
+            ),
+            patch(
+                "backend.copilot.baseline.service.get_max_output_tokens",
+                return_value=32_000,  # opus-4-x published ceiling
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        extra_body = call_kwargs["extra_body"]
+        budget = extra_body["thinking"]["budget_tokens"]
+        max_tokens = call_kwargs["max_tokens"]
+        # Both stay at/under the model ceiling — overflow would 400 Anthropic.
+        assert max_tokens <= 32_000
+        assert budget < max_tokens
+        # Budget is clamped to model_max - 1 so max_tokens=model_max satisfies
+        # the strict ``max_tokens > budget`` requirement.
+        assert budget == 31_999
+        assert max_tokens == 32_000
+
+    @pytest.mark.asyncio
     async def test_max_tokens_absent_on_openrouter_thinking_route(self):
         """OR proxy injects its own default ``max_tokens`` so we leave
         ``create_kwargs`` clean — only direct-Anthropic mode needs the

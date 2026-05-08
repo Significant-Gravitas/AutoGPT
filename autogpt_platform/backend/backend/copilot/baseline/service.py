@@ -708,16 +708,19 @@ async def _baseline_llm_caller(
         # whenever ``thinking`` is enabled — the OR proxy hides this by
         # injecting a sane default, but the direct endpoint 400s when
         # ``max_tokens`` is omitted and the compat-shim default lands at or
-        # below ``budget_tokens``.  Cap at the model's published
-        # ``max_output_tokens`` (Opus 4.x = 32K, Sonnet 4.x = 64K) so a high
-        # thinking budget can't push the sum past the hard output limit and
-        # 400 the request.  Floor at budget + 1 token to keep the
-        # ``max_tokens > budget`` contract even when budget already meets the
-        # model ceiling.
+        # below ``budget_tokens``.  Cap ``max_tokens`` at the model's
+        # published ``max_output_tokens`` (Opus 4.x = 32K, Sonnet 4.x = 64K)
+        # so a high thinking budget can't push the request past the hard
+        # output limit and 400 the API.  Both the thinking ``budget_tokens``
+        # and ``max_tokens`` are clamped against the model ceiling — when
+        # the operator-configured budget meets or exceeds the ceiling, we
+        # land on ``budget = model_max - 1`` and ``max_tokens = model_max``
+        # so the ``max_tokens > budget`` contract holds.
         if not config.openrouter_active and "thinking" in extra_body:
-            budget = config.claude_agent_max_thinking_tokens
             model_max = get_max_output_tokens(state.model)
-            create_kwargs["max_tokens"] = max(budget + 1, min(budget + 4096, model_max))
+            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+            extra_body["thinking"]["budget_tokens"] = budget
+            create_kwargs["max_tokens"] = min(budget + 4096, model_max)
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers
         if tools:
