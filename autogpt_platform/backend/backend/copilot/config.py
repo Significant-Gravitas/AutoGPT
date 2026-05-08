@@ -294,23 +294,24 @@ class ChatConfig(BaseSettings):
         "compaction cascades. Skipped unconditionally for Moonshot routes.",
     )
     claude_agent_max_thinking_tokens: int = Field(
-        deprecated=(
-            "Setting a thinking token budget is not supported in Claude 4.7+. "
-            "Use `claude_agent_thinking_effort` instead to steer thinking effort."
-        ),
         default=8192,
         ge=0,
         le=128000,
         description="Maximum thinking/reasoning tokens per LLM call. Applies "
         "to both the Claude Agent SDK path (as ``max_thinking_tokens``) and "
-        "the baseline OpenRouter path (as ``extra_body.reasoning.max_tokens`` "
-        "on Anthropic routes). Extended thinking on Opus can generate 50k+ "
-        "tokens at $75/M — capping this is the single biggest cost lever. "
-        "8192 is sufficient for most tasks; increase for complex reasoning. "
-        "Set to 0 to disable extended thinking on both paths (kill switch): "
-        "baseline skips the ``reasoning`` extra_body; SDK omits the "
-        "``max_thinking_tokens`` kwarg so the CLI falls back to model default "
-        "(which, without the flag, leaves extended thinking off).",
+        "the baseline path (as ``extra_body.reasoning.max_tokens`` on "
+        "OpenRouter Anthropic routes, and as ``extra_body.thinking.budget_tokens`` "
+        "on direct-Anthropic OpenAI-compat routes — the OAI-compat schema has "
+        "no ``effort`` equivalent so this remains the only knob there). "
+        "Extended thinking on Opus can generate 50k+ tokens at $75/M — capping "
+        "this is the single biggest cost lever. 8192 is sufficient for most "
+        "tasks; increase for complex reasoning. Set to 0 to disable extended "
+        "thinking on both paths (kill switch): baseline skips the ``reasoning`` "
+        "extra_body; SDK omits the ``max_thinking_tokens`` kwarg so the CLI "
+        "falls back to model default (which, without the flag, leaves "
+        "extended thinking off). On the SDK path with Claude 4.7+, prefer "
+        "``claude_agent_thinking_effort`` for adaptive control — the SDK "
+        "ignores ``max_thinking_tokens`` for those models.",
     )
     render_reasoning_in_ui: bool = Field(
         default=True,
@@ -819,15 +820,20 @@ class ChatConfig(BaseSettings):
            the aux client falls back to direct Anthropic, which can't
            serve a non-Claude model.
 
-        Skipped for subscription mode (the SDK CLI uses OAuth and the
-        aux flow is unaffected).  Skipped when ``CHAT_AUX_API_KEY`` is
-        set (or when ``api_key`` is set and ``aux_uses_openrouter`` —
-        a single-key OR deployment).  Skipped when ``aux_base_url`` is
-        unset and the title model is Anthropic (then the fallback to
-        direct creds is fine — Anthropic serves its own model).
+        Skipped when ``CHAT_AUX_API_KEY`` is set (or when ``api_key`` is
+        set and ``aux_uses_openrouter`` — a single-key OR deployment).
+        Skipped when ``aux_base_url`` is unset and the title model is
+        Anthropic (then the fallback to direct creds is fine — Anthropic
+        serves its own model).
+
+        Subscription mode (``use_claude_code_subscription=True``) is
+        **not** skipped.  The SDK CLI itself uses OAuth and doesn't
+        need ``direct_anthropic_api_key``, but the **aux** client still
+        runs the baseline OpenAI-compat path for title generation; if
+        aux env vars are unset the aux creds inherit from
+        ``main_client_credentials`` which can be ``(None, ...)`` in
+        subscription mode, 401-ing every title call.
         """
-        if self.use_claude_code_subscription:
-            return self
         # Match ``_validate_sdk_model_vendor_compatibility``: only check
         # the **explicit** opt-out (``use_openrouter=False``).  Build
         # environments and OpenAPI-schema export jobs construct
@@ -840,6 +846,28 @@ class ChatConfig(BaseSettings):
         # the OpenAPI schema.
         if self.use_openrouter:
             return self
+        # Aux inherits main creds when both aux env vars are unset.  In
+        # subscription mode this can land as ``(None, ...)`` because the
+        # SDK doesn't require ``direct_anthropic_api_key`` — but the aux
+        # baseline-path client still needs a key.  Fail fast with the
+        # specific subscription-mode advice rather than the generic
+        # title-model message below.
+        if (
+            self.use_claude_code_subscription
+            and self.aux_api_key is None
+            and self.aux_base_url is None
+            and not self.direct_anthropic_api_key
+        ):
+            raise ValueError(
+                "Subscription mode (CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true) "
+                "with CHAT_USE_OPENROUTER=false and no CHAT_AUX_API_KEY: "
+                "the aux client (title generation, builder helpers) would "
+                "inherit (None, api.anthropic.com) and 401 every call. "
+                "Set CHAT_AUX_API_KEY (recommended: route aux through "
+                "OpenRouter via CHAT_AUX_API_KEY+CHAT_AUX_BASE_URL), or "
+                "set CHAT_DIRECT_ANTHROPIC_API_KEY so aux can reach "
+                "Anthropic directly with the title model on Claude."
+            )
         # An explicit ``aux_base_url`` without a resolvable key fails fast
         # regardless of title model: the aux client would route to that
         # URL with ``(None, aux_base_url)`` and 401 every call.  This

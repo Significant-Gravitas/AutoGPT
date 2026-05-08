@@ -257,10 +257,15 @@ class TestSdkModelVendorCompatibility:
     def test_subscription_mode_skips_check(self):
         """Subscription path resolves the model to None and bypasses
         ``_normalize_model_name``, so the slug check is skipped."""
+        # ``direct_anthropic_api_key`` is provided so the separate aux-client
+        # validator (``_validate_aux_client_for_direct_main``) is satisfied —
+        # without it, subscription mode + use_openrouter=False would trip
+        # the aux-401 trap before the SDK check we're targeting here runs.
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
             base_url=None,
+            direct_anthropic_api_key="sk-ant-test",
             use_claude_code_subscription=True,
         )
         assert cfg.use_claude_code_subscription is True
@@ -632,6 +637,55 @@ class TestAuxClientForDirectMainValidator:
             title_model="openai/gpt-4o-mini",
         )
         assert cfg.title_model == "openai/gpt-4o-mini"
+
+    def test_subscription_mode_no_aux_no_direct_key_raises(self):
+        # Subscription mode (SDK uses OAuth, no api_key needed) but the
+        # aux client still runs the baseline OpenAI-compat path for title
+        # generation.  When CHAT_AUX_API_KEY and CHAT_DIRECT_ANTHROPIC_API_KEY
+        # are both unset, aux_client_credentials returns
+        # ``(None, api.anthropic.com)`` and 401s every title call.
+        # Validator must reject at boot rather than silently 401 forever.
+        with pytest.raises(Exception, match="Subscription mode"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                aux_api_key=None,
+                aux_base_url=None,
+                direct_anthropic_api_key=None,
+                use_claude_code_subscription=True,
+            )
+
+    def test_subscription_mode_with_direct_anthropic_key_passes(self):
+        # Subscription + direct_anthropic_api_key set — aux can reach
+        # Anthropic with valid creds.  Title must be on Anthropic for
+        # the inheritance path to be valid, which is the same constraint
+        # as the direct-mode-non-subscription case.
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            direct_anthropic_api_key="sk-ant-test",
+            use_claude_code_subscription=True,
+        )
+        assert cfg.use_claude_code_subscription is True
+
+    def test_subscription_mode_with_explicit_aux_key_passes(self):
+        # Subscription + explicit aux key — aux routes to its own
+        # endpoint (typically OpenRouter for cheap title model).
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            aux_api_key="or-key",
+            aux_base_url="https://openrouter.ai/api/v1",
+            direct_anthropic_api_key=None,
+            use_claude_code_subscription=True,
+            title_model="openai/gpt-4o-mini",
+        )
+        assert cfg.aux_api_key == "or-key"
 
     def test_direct_main_with_aux_base_url_no_key_raises_even_for_anthropic_title(
         self,
