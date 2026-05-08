@@ -25,15 +25,11 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 logger = logging.getLogger(__name__)
 
 _RATES_PATH = Path(__file__).parent / "litellm_anthropic_rates.json"
-
-# LiteLLM uses USD per single token; we expose USD per million for
-# legibility in error logs / docstrings.  Conversion factor only.
-_USD_PER_MTOK = 1_000_000
 
 # Default cache-read multiplier when LiteLLM omits the field — Anthropic's
 # documented rate is 10% of the input rate (0.1×).
@@ -95,7 +91,10 @@ def _load_rates() -> dict[str, _RateEntry]:
             continue
         if not isinstance(value.get("output_cost_per_token"), (int, float)):
             continue
-        valid[key] = value  # type: ignore[assignment]
+        # Cast: above isinstance gates ensure the row matches _RateEntry's
+        # structural shape; runtime keys beyond the TypedDict fields are
+        # benign (they're ignored at access time via .get()).
+        valid[key] = cast(_RateEntry, value)
     _rates_cache = valid
     return valid
 
