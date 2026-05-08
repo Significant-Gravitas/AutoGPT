@@ -990,7 +990,14 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         return tier
 
     if await _maybe_reconcile_stripe_tier(user_id):
-        return await _fetch_user_tier(user_id)
+        try:
+            return await _fetch_user_tier(user_id)
+        except Exception as exc:
+            logger.warning(
+                "get_user_tier: tier re-read failed after reconciliation for %s: %s",
+                user_id[:8],
+                exc,
+            )
 
     return tier
 
