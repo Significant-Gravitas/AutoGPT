@@ -154,13 +154,13 @@ class ChatConfig(BaseSettings):
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     daily_cost_limit_microdollars: int = Field(
         default=1_000_000,
-        description="Max cost per day in microdollars, resets at midnight UTC "
-        "(0 = unlimited).",
+        description="Max cost per day in microdollars, resets at midnight UTC. "
+        "0 means no spend allowed (will block); there is no unlimited tier.",
     )
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
-        description="Max cost per week in microdollars, resets Monday 00:00 UTC "
-        "(0 = unlimited).",
+        description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
+        "0 means no spend allowed (will block); there is no unlimited tier.",
     )
 
     # Cost (in credits / cents) to reset the daily rate limit using credits.

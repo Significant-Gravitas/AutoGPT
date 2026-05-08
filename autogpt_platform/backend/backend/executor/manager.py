@@ -626,6 +626,7 @@ class ExecutionProcessor:
                 reconciled_delta, _ = await billing.charge_reconciled_usage(
                     node_exec=node_exec,
                     stats=execution_stats,
+                    pre_flight_charge=node_exec.pre_flight_charge,
                 )
                 if reconciled_delta != 0:
                     execution_stats.reconciled_cost_delta += reconciled_delta
@@ -1014,12 +1015,20 @@ class ExecutionProcessor:
                 # Charge usage (may raise) — skipped for dry runs
                 try:
                     if not graph_exec.execution_context.dry_run:
-                        cost, remaining_balance = billing.charge_usage(
+                        (
+                            cost,
+                            remaining_balance,
+                            block_pre_flight,
+                        ) = billing.charge_usage(
                             node_exec=queued_node_exec,
                             execution_count=increment_execution_count(
                                 graph_exec.user_id
                             ),
                         )
+                        # Pin the reconciliation baseline to what was just
+                        # billed — protects against a hot-swap of the
+                        # estimates JSON between charge and reconcile.
+                        queued_node_exec.pre_flight_charge = block_pre_flight
                         with execution_stats_lock:
                             execution_stats.cost += cost
                         # Check if we crossed the low balance threshold

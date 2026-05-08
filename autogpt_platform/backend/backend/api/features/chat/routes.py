@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -42,6 +42,7 @@ from backend.copilot.rate_limit import (
     RateLimitUnavailable,
     acquire_reset_lock,
     check_rate_limit,
+    enforce_payment_paywall,
     get_daily_reset_count,
     get_global_rate_limits,
     get_usage_status,
@@ -905,6 +906,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
 @router.post(
     "/sessions/{session_id}/stream",
     responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
         404: {"description": "Session not found or access denied"},
         429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
         503: {
@@ -913,6 +915,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
             "header before retrying."
         },
     },
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def stream_chat_post(
     session_id: str,
@@ -1002,8 +1005,10 @@ async def stream_chat_post(
     )
 
     # Pre-turn rate limit check (cost-based, microdollars).
-    # check_rate_limit short-circuits internally when both limits are 0.
-    # Global defaults sourced from LaunchDarkly, falling back to config.
+    # Entitlement (NO_TIER + ENABLE_PLATFORM_PAYMENT) is gated upstream by
+    # the route-level ``enforce_payment_paywall`` dependency; here we only
+    # enforce per-window USD caps. Global defaults sourced from
+    # LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(

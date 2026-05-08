@@ -2051,3 +2051,101 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in assistant_msgs]
         assert STREAM_INCOMPLETE_MARKER in contents
         assert STOPPED_BY_USER_MARKER not in contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_persists_stream_error_marker(self):
+        """SECRT-2333: when the SDK turn ends with
+        ``loop_state.ended_with_stream_error=True`` (idle timeout, transient
+        retries exhausted, breaker, subtype=error) and no marker is on the
+        tail yet, the post-stream branch must persist a STREAM_ERROR_MARKER
+        ChatMessage so chat reload sees a clear "stopped on error" entry —
+        even when the on-wire StreamError is dropped (client disconnect)."""
+        from backend.copilot.constants import STREAM_ERROR_MARKER
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover  (make this an async generator)
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER in contents, contents
+
+    @pytest.mark.asyncio
+    async def test_ended_with_stream_error_skips_marker_when_one_exists(self):
+        """When the inner branch (idle timeout, breaker) already appended an
+        ``_append_error_marker`` row, the post-stream branch must NOT add a
+        second STREAM_ERROR_MARKER on top — that would render two error
+        bubbles on reload."""
+        from backend.copilot.constants import (
+            COPILOT_RETRYABLE_ERROR_PREFIX,
+            STREAM_ERROR_MARKER,
+        )
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _HandledStreamError, _run_stream_attempt
+
+        ctx = self._ctx()
+        state = self._state()
+
+        async def fake_consume(_client, _ctx, _state, _acc, loop_state):
+            # Mirror the idle-timeout branch: it calls ``_append_error_marker``
+            # before flipping the flag.
+            _ctx.session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} Idle timeout",
+                )
+            )
+            loop_state.stream_error_msg = "Idle timeout"
+            loop_state.stream_error_code = "idle_timeout"
+            loop_state.ended_with_stream_error = True
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch(
+                "backend.copilot.sdk.service._consume_sdk_until_done",
+                new=fake_consume,
+            ),
+            pytest.raises(_HandledStreamError),
+        ):
+            async for _ev in _run_stream_attempt(ctx, state):
+                pass
+
+        contents = [m.content for m in ctx.session.messages]
+        assert STREAM_ERROR_MARKER not in contents, contents

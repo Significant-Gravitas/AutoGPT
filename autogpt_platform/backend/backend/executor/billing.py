@@ -118,13 +118,23 @@ def resolve_block_cost(
 def charge_usage(
     node_exec: NodeExecutionEntry,
     execution_count: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
+    """Pre-flight charge for a node execution.
+
+    Returns ``(total_cost, remaining_balance, block_pre_flight_cost)``.
+    ``block_pre_flight_cost`` is the block-only portion (excludes the
+    every-N-blocks ``execution_usage_cost``) so reconciliation can settle
+    its delta against the exact value charged here, not a re-fetched one
+    that may have drifted if the estimates JSON was hot-swapped between
+    the two calls.
+    """
     total_cost = 0
     remaining_balance = 0
+    block_pre_flight = 0
     db_client = get_db_client()
     block, cost, matching_filter = resolve_block_cost(node_exec)
     if not block:
-        return total_cost, 0
+        return total_cost, 0, block_pre_flight
 
     if cost > 0:
         remaining_balance = db_client.spend_credits(
@@ -142,6 +152,7 @@ def charge_usage(
             ),
         )
         total_cost += cost
+        block_pre_flight = cost
     elif _block_has_paid_cost_entry(block, node_exec.inputs):
         # Dynamic-cost blocks (SECOND/ITEMS/COST_USD) compute 0 pre-flight
         # because the real charge is settled post-flight against stats. Guard
@@ -183,12 +194,13 @@ def charge_usage(
         )
         total_cost += cost
 
-    return total_cost, remaining_balance
+    return total_cost, remaining_balance, block_pre_flight
 
 
 async def charge_reconciled_usage(
     node_exec: NodeExecutionEntry,
     stats: NodeExecutionStats,
+    pre_flight_charge: int | None = None,
 ) -> tuple[int, int]:
     """Charge the dynamic portion of a block's cost from its execution stats.
 
@@ -209,6 +221,12 @@ async def charge_reconciled_usage(
     Called once per node execution AFTER the block has finished running and
     stats (walltime, tokens, provider_cost) are populated. Swallows any
     unexpected exception so reconciliation never poisons the success path.
+
+    ``pre_flight_charge`` lets the caller pin the baseline to the exact
+    amount that was actually billed in `charge_usage`, instead of re-reading
+    the historical-average JSON. Without this, a hot-swap of
+    ``block_preflight_estimates.json`` between charge and reconciliation
+    would shift the baseline and skew the delta.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -216,7 +234,10 @@ async def charge_reconciled_usage(
         if not block:
             return 0, 0
 
-        pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        if pre_flight_charge is None:
+            pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        else:
+            pre_flight = pre_flight_charge
         post_flight, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs, stats=stats
         )
@@ -291,7 +312,7 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     """
 
     def _run():
-        total_cost, remaining = charge_usage(node_exec, 0)
+        total_cost, remaining, _ = charge_usage(node_exec, 0)
         if total_cost > 0:
             handle_low_balance(
                 get_db_client(), node_exec.user_id, remaining, total_cost

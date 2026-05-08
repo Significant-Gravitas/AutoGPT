@@ -2,8 +2,9 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, HTTPException, Query, Security, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
@@ -367,6 +368,11 @@ async def delete_preset(
     tags=["presets"],
     summary="Execute a preset",
     description="Execute a preset with the given graph and node input for the current user.",
+    dependencies=[Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+        503: {"description": "Subscription state temporarily unavailable"},
+    },
 )
 async def execute_preset(
     preset_id: str,

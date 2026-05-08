@@ -99,10 +99,14 @@ def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_overrid
         patch("backend.executor.billing.get_db_client", return_value=db_client),
         patch("backend.executor.billing.get_block", return_value=SearchTheWebBlock()),
     ):
-        total_cost, remaining = charge_usage(exec_entry, execution_count=0)
+        total_cost, remaining, block_pre_flight = charge_usage(
+            exec_entry, execution_count=0
+        )
 
     assert total_cost == 0
     assert remaining == 50
+    # Dynamic-cost block returns 0 pre-flight; reconciliation will settle.
+    assert block_pre_flight == 0
     db_client.spend_credits.assert_not_called()
 
 
@@ -330,3 +334,59 @@ async def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_ov
     # Refunds can't push the user below the low-balance threshold, so
     # handle_low_balance must not fire here.
     handle_lb.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pre_flight_charge_override_pins_reconciliation_baseline(
+    tmp_block_costs_override,
+):
+    """Reconciliation must use the caller-supplied ``pre_flight_charge``
+    instead of recomputing from ``block_usage_cost`` — protects against a
+    hot-swap of ``block_preflight_estimates.json`` between charge and
+    reconcile that would otherwise shift the delta baseline.
+
+    Setup mimics the race: the executor charged 3 credits up front (captured
+    on ``NodeExecutionEntry.pre_flight_charge``); a (counterfactual) JSON
+    edit during execution would now make ``block_usage_cost`` return 100 for
+    the same inputs. Without the override, delta would be ``post - 100``;
+    with the override, delta = ``post - 3``.
+    """
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.pre_flight_charge = 3  # actual amount billed
+    # post-flight: $0.05 * 100 = 5 credits
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = _async_db_client(spend_credits_return=42)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance"),
+        # If the override is honored, this MUST NOT be called for the
+        # pre-flight branch (stats=None). It is still called once for the
+        # post-flight branch (stats=...). Use a spy that delegates to the
+        # real implementation.
+        patch(
+            "backend.data.block_preflight_estimates.get_preflight_estimate"
+        ) as get_preflight,
+    ):
+        get_preflight.return_value = 100  # would-be hot-swapped value
+        delta, _ = await charge_reconciled_usage(
+            exec_entry,
+            stats,
+            pre_flight_charge=exec_entry.pre_flight_charge,
+        )
+
+    # Delta must be (post 5) - (pinned pre 3) = 2, NOT (post 5) - (drifted 100) = -95
+    assert delta == 2
+    # The pinned baseline must short-circuit the JSON re-read for pre-flight.
+    # `get_preflight_estimate` is also reachable from the post-flight path
+    # (where stats are populated, dynamic types skip it), so 0 calls is the
+    # right assertion: with stats provided, post-flight goes through the
+    # COST_USD post-flight branch which doesn't touch get_preflight_estimate.
+    assert get_preflight.call_count == 0

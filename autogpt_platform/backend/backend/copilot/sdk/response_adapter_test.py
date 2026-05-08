@@ -874,6 +874,105 @@ def test_result_error_emits_error_and_finish():
     assert isinstance(results[1], StreamFinish)
 
 
+def test_result_orphan_tool_use_then_empty_assistant_emits_empty_completion():
+    """SECRT-2333: a turn that emits tool_use blocks whose tool never runs,
+    then an AssistantMessage with empty content, then a ResultMessage with
+    ``subtype='error'`` must surface as an ``empty_completion`` StreamError —
+    even when subtype is "error" (langsmith ``is_error=true`` case).
+    Without this guard the chat history just stops mid-task because the
+    empty AssistantMessage produces no events and the StreamError emitted
+    by the subtype=error branch is racy on the wire."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Step 1: model emits 4 ToolUseBlocks (parallel browser_act calls).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id=f"t{i}",
+                    name=f"{MCP_TOOL_PREFIX}browser_act",
+                    input={"action": "click", "selector": f"e{i}"},
+                )
+                for i in range(4)
+            ],
+            model="test",
+        )
+    )
+    # Step 2: tool never executes (no UserMessage tool_result).  Model
+    # emits a thinking-only AssistantMessage trying to plan the next click.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="Planning click on e113", signature="")],
+            model="test",
+        )
+    )
+    # Step 3: model returns an AssistantMessage with empty content.
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    # Step 4: ResultMessage with subtype="error".
+    msg = ResultMessage(
+        subtype="error",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=3,
+        session_id="s1",
+        result="model returned empty content",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # The empty-completion guard must beat the subtype=error branch so the
+    # service-layer post-stream flow can flip ``acc.stream_completed=True``
+    # via the paired StreamFinish and the dispatched StreamError persists
+    # an error marker.
+    assert "StreamError" in types, types
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion", err.code
+    # StreamFinish is required so ``acc.stream_completed`` flips True and
+    # the post-stream branch doesn't append a second STREAM_INCOMPLETE_MARKER.
+    assert "StreamFinish" in types, types
+
+
+def test_result_orphan_tool_use_with_thinking_only_assistant_does_not_fire():
+    """The orphan-tool-use guard must NOT fire when the final AssistantMessage
+    carried any content (e.g. just a ThinkingBlock).  Without this guard the
+    thinking-only-final-turn re-prompt would never get a chance to run."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t1",
+                    name=f"{MCP_TOOL_PREFIX}browser_act",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    # The most recent AssistantMessage has thinking — NOT empty content.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="hmm", signature="")],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=2,
+        session_id="s1",
+        result="hmm",
+        usage={"output_tokens": 5},
+    )
+    results = adapter.convert_message(msg)
+    err_codes = [r.code for r in results if isinstance(r, StreamError)]
+    assert "empty_completion" not in err_codes, err_codes
+
+
 # -- Text after tools (new block ID) ----------------------------------------
 
 

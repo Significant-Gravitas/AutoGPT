@@ -1282,6 +1282,13 @@ class NodeExecutionEntry(BaseModel):
     block_id: str
     inputs: BlockInput
     execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
+    # Block-only pre-flight credits actually billed by `charge_usage`. Set by
+    # the dispatcher right after the charge so reconciliation can pin its
+    # baseline to the value spent on the wallet, instead of re-reading the
+    # estimates JSON (which could have been hot-swapped between charge and
+    # reconcile, leaving the delta computed against a different number).
+    # Excluded from dumps — in-memory only, scoped to a single live execution.
+    pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
