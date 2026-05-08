@@ -5037,17 +5037,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    # Watermark = max DB sequence covered + 1 (aligned with
-                    # detect_gap's filter `sequence >= watermark`). Using a
-                    # count instead would diverge from the DB sequence index
-                    # whenever the eager-load cap engaged at upload time, and
-                    # the next turn's hole-fill would re-fetch already-
-                    # transcribed messages.
-                    _sequences = [
-                        m.sequence for m in session.messages if m.sequence is not None
-                    ]
-                    _max_seq_covered = max(_sequences) if _sequences else 0
-                    _jsonl_covered = _max_seq_covered + 1 - _midturn_offset
+                    # ``role="reasoning"`` rows are persisted to session.messages
+                    # for frontend replay but never appear in the CLI JSONL
+                    # (extended_thinking lives embedded in assistant entries, not
+                    # as standalone rows). Exclude them so the count matches the
+                    # JSONL row count. ``extract_context_messages`` translates
+                    # this count back to a DB sequence at read time via
+                    # ``get_sequence_at_non_reasoning_index`` so the next turn's
+                    # hole-fill range is disjoint from the transcript even when
+                    # reasoning rows interleave the DB sequence.
+                    _non_reasoning_count = sum(
+                        1 for m in session.messages if m.role != "reasoning"
+                    )
+                    _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,

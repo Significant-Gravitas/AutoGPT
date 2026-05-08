@@ -2181,19 +2181,11 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
-            # Watermark = highest DB sequence covered + 1 (the next un-transcribed
-            # sequence). With the eager-load cap, len(session.messages) no longer
-            # equals the DB row count, so we can't use it as the watermark — that
-            # would make detect_gap re-fetch already-transcribed messages.
-            sequences = [m.sequence for m in session.messages if m.sequence is not None]
-            sequence_watermark = (
-                (max(sequences) + 1) if sequences else len(session.messages)
-            )
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=sequence_watermark,
+                session_msg_count=len(session.messages),
             )
 
         # Clean up the ephemeral working directory used for file attachments.

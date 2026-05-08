@@ -393,6 +393,7 @@ class DatabaseManager(AppService):
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
+    get_sequence_at_non_reasoning_index = _(chat_db.get_sequence_at_non_reasoning_index)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
     update_chat_session_title = _(chat_db.update_chat_session_title)
@@ -611,6 +612,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
     get_chat_messages_paginated = d.get_chat_messages_paginated
+    get_sequence_at_non_reasoning_index = d.get_sequence_at_non_reasoning_index
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
@@ -619,6 +621,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
+    get_sequence_at_non_reasoning_index = d.get_sequence_at_non_reasoning_index
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
     update_chat_session_title = d.update_chat_session_title

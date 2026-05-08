@@ -948,19 +948,42 @@ async def _fill_hole_between_transcript_and_gap(
     watermark: int,
     gap: list[ChatMessage],
 ) -> list[ChatMessage]:
-    """When the cap engaged and the transcript is stale, sequences
-    ``[watermark, gap[0].sequence)`` exist in DB but neither in transcript
-    nor in the loaded window. Fetch those rows so the LLM never sees a
-    mid-conversation hole. Returns [] when there is no hole or the fetch
-    fails (best-effort — better to ship the partial context than crash).
+    """When the cap engaged and the transcript is stale, the DB sequences
+    just past the transcript may not be loaded in the windowed view. Fetch
+    them so the LLM never sees a mid-conversation hole.
+
+    The transcript watermark is a *count* of non-reasoning JSONL rows, not a
+    DB sequence — reasoning rows interleave in DB but never appear in the
+    JSONL. We translate count → sequence via
+    ``get_sequence_at_non_reasoning_index`` so the hole-fill range stays
+    disjoint from the transcript even when reasoning rows precede the gap.
+    Returns [] when there is no hole, the translation fails, or the fetch
+    fails (best-effort — better to ship partial context than crash).
     """
-    if not gap or gap[0].sequence is None or gap[0].sequence <= watermark:
+    if not gap or gap[0].sequence is None:
         return []
-    hole_start, hole_end = watermark, gap[0].sequence
     try:
-        # Range fetch via the unified paginated loader. The large limit is a
-        # safety ceiling — the hole is bounded by the cap and the watermark
-        # drift, both of which are O(thousands) at the absolute worst.
+        last_covered_seq = await chat_db().get_sequence_at_non_reasoning_index(
+            session_id, watermark
+        )
+    except Exception as e:
+        logger.error(
+            "extract_context_messages: watermark→sequence translation "
+            "failed for session=%s watermark=%d: %s",
+            session_id,
+            watermark,
+            e,
+        )
+        return []
+    if last_covered_seq is None:
+        # Fewer non-reasoning rows in DB than the watermark claims — the
+        # transcript covers everything we'd otherwise fetch. Nothing to do.
+        return []
+    hole_start = last_covered_seq + 1
+    hole_end = gap[0].sequence
+    if hole_start >= hole_end:
+        return []
+    try:
         page = await chat_db().get_chat_messages_paginated(
             session_id,
             limit=hole_end - hole_start,
