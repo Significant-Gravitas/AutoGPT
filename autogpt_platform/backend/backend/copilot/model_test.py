@@ -965,7 +965,7 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
 
     mock_db = mocker.MagicMock()
     mock_db.update_chat_session = mocker.AsyncMock()
-    mock_db.add_chat_messages_batch = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=1500)
     mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
 
     await _save_session_to_db(
@@ -977,7 +977,8 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
     assert kwargs["start_sequence"] == 1500
     assert len(kwargs["messages"]) == 1
     assert kwargs["messages"][0]["content"] == "brand-new"
-    # And the in-memory new message receives its sequence back-fill.
+    # And the in-memory new message receives its sequence back-fill from the
+    # actual start returned by the batch helper.
     assert new_msg.sequence == 1500
 
 
