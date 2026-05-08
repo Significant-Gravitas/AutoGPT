@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from backend.util import json
 
 from .transcript import (
@@ -1648,61 +1650,57 @@ def _make_valid_transcript(*roles: str) -> str:
 class TestExtractContextMessages:
     """``extract_context_messages`` returns the shared context primitive."""
 
-    def test_none_download_returns_prior(self):
+    @pytest.mark.asyncio
+    async def test_none_download_returns_prior(self):
         """No download → falls back to all session messages except current turn."""
         messages = _msgs("user", "assistant", "user")
-        result = extract_context_messages(None, messages)
+        result = await extract_context_messages(None, messages)
         assert result == messages[:-1]
         assert len(result) == 2
 
-    def test_empty_content_download_returns_prior(self):
+    @pytest.mark.asyncio
+    async def test_empty_content_download_returns_prior(self):
         """Empty bytes content → falls back to all prior messages."""
         dl = TranscriptDownload(content=b"", message_count=2, mode="sdk")
         messages = _msgs("user", "assistant", "user")
-        result = extract_context_messages(dl, messages)
+        result = await extract_context_messages(dl, messages)
         assert result == messages[:-1]
 
-    def test_valid_transcript_no_gap_returns_transcript_messages(self):
+    @pytest.mark.asyncio
+    async def test_valid_transcript_no_gap_returns_transcript_messages(self):
         """Transcript covers all prior turns → only transcript messages returned."""
-        # Transcript: [user, assistant] — 2 messages
-        # Session: [user, assistant, user(current)] — watermark=2 covers prefix
         transcript_content = _make_valid_transcript("user", "assistant")
         dl = TranscriptDownload(
             content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
         )
         messages = _msgs("user", "assistant", "user")
-        result = extract_context_messages(dl, messages)
-        # Transcript has 2 messages (user + assistant) and no gap
+        result = await extract_context_messages(dl, messages)
         assert len(result) == 2
         assert result[0].role == "user"
         assert result[1].role == "assistant"
 
-    def test_valid_transcript_with_gap_returns_transcript_plus_gap(self):
+    @pytest.mark.asyncio
+    async def test_valid_transcript_with_gap_returns_transcript_plus_gap(self):
         """Transcript is stale → gap messages appended after transcript content."""
-        # Transcript: [user, assistant] — watermark=2
-        # Session: [user, assistant, user, assistant, user(current)]
-        # Gap: [user(2), assistant(3)] — positions 2 and 3
         transcript_content = _make_valid_transcript("user", "assistant")
         dl = TranscriptDownload(
             content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
         )
         messages = _msgs("user", "assistant", "user", "assistant", "user")
-        result = extract_context_messages(dl, messages)
-        # 2 transcript messages + 2 gap messages = 4
+        result = await extract_context_messages(dl, messages)
         assert len(result) == 4
-        assert result[0].role == "user"  # transcript user
-        assert result[1].role == "assistant"  # transcript assistant
-        assert result[2].role == "user"  # gap user
-        assert result[3].role == "assistant"  # gap assistant
+        assert result[0].role == "user"
+        assert result[1].role == "assistant"
+        assert result[2].role == "user"
+        assert result[3].role == "assistant"
 
-    def test_compact_summary_entries_preserved(self):
+    @pytest.mark.asyncio
+    async def test_compact_summary_entries_preserved(self):
         """``isCompactSummary=True`` entries survive ``_transcript_to_messages``."""
         import json as stdlib_json
 
         from .transcript import STOP_REASON_END_TURN
 
-        # Build a transcript where one entry is a compaction summary.
-        # isCompactSummary=True entries have type in STRIPPABLE_TYPES but are kept.
         compact_entry = stdlib_json.dumps(
             {
                 "type": "summary",
@@ -1735,12 +1733,58 @@ class TestExtractContextMessages:
             content=content.encode("utf-8"), message_count=2, mode="sdk"
         )
         messages = _msgs("user", "assistant", "user")
-        result = extract_context_messages(dl, messages)
-        # Both the compact summary and the assistant response are present
+        result = await extract_context_messages(dl, messages)
         assert len(result) == 2
         roles = [m.role for m in result]
-        assert "user" in roles  # compact summary has role=user
+        assert "user" in roles
         assert "assistant" in roles
-        # The compact summary content is preserved
         compact_msgs = [m for m in result if m.role == "user"]
         assert any("COMPACT_SUMMARY_CONTENT" in (m.content or "") for m in compact_msgs)
+
+    @pytest.mark.asyncio
+    async def test_hole_filled_via_db_when_window_starts_above_watermark(self, mocker):
+        """When the cap engages and the window starts above the watermark, the
+        missing sequences must be fetched from DB and inserted between the
+        transcript and the gap — never sent to the LLM as a hole."""
+        from .model import ChatMessage
+
+        # Transcript covers seq 0..1 (wm=2).  Window holds the tail seq 5..7 +
+        # current turn.  Missing seq 2..4 must be fetched.
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        windowed = [
+            ChatMessage(role="user", content="user-5", sequence=5),
+            ChatMessage(role="assistant", content="assistant-6", sequence=6),
+            ChatMessage(role="user", content="user-7-current", sequence=7),
+        ]
+
+        hole = [
+            ChatMessage(role="user", content="hole-2", sequence=2),
+            ChatMessage(role="assistant", content="hole-3", sequence=3),
+            ChatMessage(role="user", content="hole-4", sequence=4),
+        ]
+        mock_db = mocker.MagicMock()
+        mock_db.get_chat_messages_in_sequence_range = mocker.AsyncMock(
+            return_value=hole
+        )
+        mocker.patch("backend.data.db_accessors.chat_db", return_value=mock_db)
+
+        result = await extract_context_messages(dl, windowed, session_id="sess-hole")
+
+        # 2 transcript + 3 hole-fill + 1 gap (the user-5; the user-7 is the
+        # current turn and excluded; assistant-6 lands in the gap too).
+        assert [m.role for m in result] == [
+            "user",  # transcript
+            "assistant",  # transcript
+            "user",  # hole-2
+            "assistant",  # hole-3
+            "user",  # hole-4
+            "user",  # gap user-5
+            "assistant",  # gap assistant-6
+        ]
+        # Confirm the hole-fill DB call was issued with the right range.
+        mock_db.get_chat_messages_in_sequence_range.assert_awaited_once_with(
+            "sess-hole", 2, 5
+        )

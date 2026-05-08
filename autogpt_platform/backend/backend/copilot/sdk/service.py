@@ -3529,7 +3529,11 @@ async def _restore_cli_session_for_turn(
     # Build context from transcript content + gap, falling back to full DB.
     # extract_context_messages handles both: non-None baseline_download uses
     # the compacted transcript + gap; None falls back to all prior DB messages.
-    context_msgs = extract_context_messages(result.baseline_download, session.messages)
+    context_msgs = await extract_context_messages(
+        result.baseline_download,
+        session.messages,
+        session_id=session.session_id,
+    )
     result.context_messages = context_msgs
     result.transcript_msg_count = (
         result.baseline_download.message_count

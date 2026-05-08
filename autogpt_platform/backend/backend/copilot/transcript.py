@@ -817,166 +817,201 @@ async def download_transcript(
     return TranscriptDownload(content=content, message_count=message_count, mode=mode)
 
 
-def detect_gap(
-    download: TranscriptDownload,
-    session_messages: list[ChatMessage],
+def _gap_by_index(
+    session_messages: list[ChatMessage], watermark: int
 ) -> list[ChatMessage]:
-    """Return chat-db messages after the transcript watermark (excluding current user turn).
-
-    Returns [] if transcript is current, watermark is zero, or the watermark
-    position doesn't end on an assistant turn (misaligned watermark).
-
-    ``session_messages`` may be a window (most-recent N) rather than the full
-    history, so this filters by each message's own ``sequence`` field rather
-    than relying on list-index = absolute-sequence equivalence.
+    """Index-based gap fallback: ``session_messages`` is treated as the full
+    history (list-index == absolute sequence).  Used when no message in the
+    candidate set carries a sequence — only test fixtures and the post-DB-
+    failure cache state hit this in practice.
     """
-    if download.message_count == 0:
+    total = len(session_messages)
+    if watermark >= total - 1:
         return []
-    if len(session_messages) < 2:
+    if session_messages[watermark - 1].role != "assistant":
         return []
-    wm = download.message_count
+    return list(session_messages[watermark : total - 1])
 
-    # Last entry is the current user turn; everything else is candidate context.
-    # ``ChatMessage.sequence`` is NOT NULL in the schema, so DB-loaded messages
-    # always carry it.  Two known cases produce sequenceless rows in the prior
-    # context: (1) test fixtures that build ChatMessage by role only, (2) a
-    # production session whose DB write failed but whose Redis cache still
-    # holds the in-memory state with un-back-filled sequences.  Both cases
-    # would crash the index-based slice below and *would* crash a strict
-    # assertion — fall through to the index-based fallback when no sequenced
-    # rows are present, and silently drop the unsequenced ones from the
-    # sequence-based path otherwise (they are not yet persisted, so by
-    # definition they are not part of the post-watermark "DB gap" — the
-    # current-turn append still appears in ``session_messages[-1]`` and the
-    # caller layers prior unsequenced rows back in via the upstream cache
-    # path).
-    candidates: list[tuple[int, ChatMessage]] = [
-        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
-    ]
-    if not candidates:
-        # All-unsequenced (test fixtures or post-DB-failure cache state) — fall
-        # back to index-based slicing.  Only valid when ``session_messages`` is
-        # the full history; production windowed loads always have at least one
-        # sequenced row, so this branch is harmless there.
-        total = len(session_messages)
-        if wm >= total - 1:
-            return []
-        if session_messages[wm - 1].role != "assistant":
-            return []
-        return list(session_messages[wm : total - 1])
 
-    gap = [m for seq, m in candidates if seq >= wm]
+def _gap_by_sequence(
+    candidates: list[tuple[int, ChatMessage]], watermark: int
+) -> list[ChatMessage]:
+    """Sequence-based gap: messages with ``sequence >= watermark``, after
+    sanity-checking the boundary.
+
+    Returns [] when:
+    - No post-watermark candidates (transcript is current).
+    - The pre-watermark message immediately before the gap isn't an assistant
+      turn (data shift / deletion).
+    - The window starts above the watermark and the first gap message isn't
+      ``user`` (misaligned watermark / corrupt shape).
+    """
+    gap = [m for seq, m in candidates if seq >= watermark]
     if not gap:
         return []
 
-    # Sanity: the message just before the gap (highest sequence < wm) should
-    # be an assistant turn. If not, skip — the DB shifted under us (deletion
-    # or similar) and applying the gap would feed bad context to the LLM.
-    pre_gap = [(seq, m) for seq, m in candidates if seq < wm]
+    pre_gap = [(seq, m) for seq, m in candidates if seq < watermark]
     if pre_gap:
         _, prev = max(pre_gap, key=lambda item: item[0])
         if prev.role != "assistant":
             return []
-    else:
-        # No pre-watermark messages loaded but the gap is non-empty: the
-        # window starts AFTER the watermark, so we cannot directly check
-        # whether the message immediately before the gap is assistant. Fall
-        # back to checking gap[0] — a well-formed gap always starts with a
-        # user turn (the next turn after the assistant at wm-1). Anything
-        # else means the watermark is misaligned or the conversation shape
-        # is corrupt; skip the gap.
-        if gap[0].role != "user":
-            return []
-        window_start = min(seq for seq, _ in candidates if seq >= wm)
-        if window_start > wm:
-            logger.warning(
-                "detect_gap: window starts at seq=%d but watermark is %d — "
-                "sequences %d..%d absent from both transcript and gap",
-                window_start,
-                wm,
-                wm,
-                window_start - 1,
-            )
+        return gap
+
+    # Window starts above the watermark — can't see wm-1 to verify role.
+    # Require the first gap message to be a user turn (clean turn boundary)
+    # and log when there's a sequence range only DB can fill.
+    if gap[0].role != "user":
+        return []
+    window_start = min(seq for seq, _ in candidates if seq >= watermark)
+    if window_start > watermark:
+        logger.warning(
+            "detect_gap: window starts at seq=%d but watermark is %d — "
+            "sequences %d..%d need DB-side hole-fill",
+            window_start,
+            watermark,
+            watermark,
+            window_start - 1,
+        )
     return gap
 
 
-def extract_context_messages(
+def detect_gap(
+    download: TranscriptDownload,
+    session_messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Return chat-db messages after the transcript watermark (excluding the
+    current user turn).
+
+    Two paths:
+    - **Sequence-based** (production): every prior message has a ``sequence``
+      (NOT NULL in schema). Filter by ``sequence >= watermark``, with a
+      role-shape sanity check at the boundary.
+    - **Index fallback**: triggered when no prior message has a sequence —
+      only test fixtures and the post-DB-failure cache state. Treats the list
+      as the full history and slices by index.
+
+    Hole-fill (sequences in DB but neither in transcript nor window) is
+    performed by ``extract_context_messages``, not here — this function stays
+    pure / sync.
+    """
+    if download.message_count == 0 or len(session_messages) < 2:
+        return []
+    watermark = download.message_count
+
+    candidates: list[tuple[int, ChatMessage]] = [
+        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
+    ]
+    if not candidates:
+        return _gap_by_index(session_messages, watermark)
+    return _gap_by_sequence(candidates, watermark)
+
+
+def _decode_transcript_content(content: bytes | str) -> str | None:
+    """Return decoded transcript content, or ``None`` on UTF-8 errors."""
+    if isinstance(content, str):
+        return content
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _parse_transcript_to_messages(
+    download: TranscriptDownload,
+) -> "list[ChatMessage] | None":
+    """Decode + parse a transcript download into ``ChatMessage`` rows, or
+    ``None`` if the download is empty / malformed."""
+    from .model import ChatMessage as _ChatMessage
+
+    if not download.content:
+        return None
+    content_str = _decode_transcript_content(download.content)
+    if content_str is None:
+        return None
+    raw = _transcript_to_messages(content_str)
+    if not raw:
+        return None
+    return [_ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
+
+
+async def _fill_hole_between_transcript_and_gap(
+    session_id: str,
+    watermark: int,
+    gap: list[ChatMessage],
+) -> list[ChatMessage]:
+    """When the cap engaged and the transcript is stale, sequences
+    ``[watermark, gap[0].sequence)`` exist in DB but neither in transcript
+    nor in the loaded window. Fetch those rows so the LLM never sees a
+    mid-conversation hole. Returns [] when there is no hole or the fetch
+    fails (best-effort — better to ship the partial context than crash).
+    """
+    if not gap or gap[0].sequence is None or gap[0].sequence <= watermark:
+        return []
+    from backend.data.db_accessors import chat_db
+
+    hole_start, hole_end = watermark, gap[0].sequence
+    try:
+        return await chat_db().get_chat_messages_in_sequence_range(
+            session_id, hole_start, hole_end
+        )
+    except Exception as e:
+        logger.error(
+            "extract_context_messages: hole-fill fetch failed for session=%s "
+            "range=[%d,%d): %s",
+            session_id,
+            hole_start,
+            hole_end,
+            e,
+        )
+        return []
+
+
+async def extract_context_messages(
     download: TranscriptDownload | None,
     session_messages: "list[ChatMessage]",
+    *,
+    session_id: str | None = None,
 ) -> "list[ChatMessage]":
-    """Return context messages for the current turn: transcript content + gap.
+    """Return context messages for the current turn: transcript + (hole-fill) + gap.
 
-    This is the shared context primitive used by both the SDK path
-    (``use_resume=False`` → ``<conversation_history>`` injection) and the
-    baseline path (OpenAI messages array).
+    Shared primitive used by both SDK (``use_resume=False`` →
+    ``<conversation_history>`` injection) and baseline (OpenAI messages array)
+    paths.
 
-    How it works:
+    Layered structure:
+    - **Transcript**: GCS-cached compaction (preserves ``isCompactSummary=True``).
+      Tool-use blocks are flattened to text via ``_flatten_assistant_content``
+      (same trade-off as the prior ``_compress_session_messages`` approach).
+    - **Hole-fill** (only when cap-engaged + stale-transcript): sequences
+      ``[watermark, window_start)`` fetched directly from DB so the LLM never
+      sees a mid-conversation hole. Requires ``session_id``.
+    - **Gap**: DB messages from the loaded window with ``sequence >= watermark``,
+      preserving structured ``tool_calls``.
 
-    - When a transcript exists, ``TranscriptBuilder.load_previous`` preserves
-      ``isCompactSummary=True`` compaction entries, so the returned messages
-      mirror the compacted context the CLI would see via ``--resume``.
-    - The gap (DB messages after the transcript watermark) is always small in
-      normal operation; it only grows during mode switches or when an upload
-      was missed.
-    - Falls back to full DB messages when no transcript exists (first turn,
-      upload failure, or GCS unavailable).
-    - Returns *prior* messages only (excluding the current user turn at
-      ``session_messages[-1]``).  Callers that need the current turn append
-      ``session_messages[-1]`` themselves.
-    - **Tool calls from transcript entries are flattened to text**: assistant
-      messages derived from the JSONL use ``_flatten_assistant_content``, which
-      serialises ``tool_use`` blocks as human-readable text rather than
-      structured ``tool_calls``.  Gap messages (from DB) preserve their
-      original ``tool_calls`` field.  This is the same trade-off as the old
-      ``_compress_session_messages(session.messages)`` approach — no regression.
-
-    Args:
-        download: The ``TranscriptDownload`` from GCS, or ``None`` when no
-            transcript is available.  ``content`` may be either ``bytes`` or
-            ``str`` (the baseline path decodes + strips before returning).
-        session_messages: All messages in the session, with the current user
-            turn as the last element.
-
-    Returns:
-        A list of ``ChatMessage`` objects covering the prior conversation
-        context, suitable for injection as conversation history.
+    Falls back to full prior messages (``session_messages[:-1]``) when no
+    transcript is available. Excludes ``role="reasoning"`` rows (they are
+    persisted for frontend replay only, never sent back to the model). The
+    current user turn at ``session_messages[-1]`` is excluded — callers append
+    it themselves.
     """
-    from .model import ChatMessage as _ChatMessage  # runtime import
-
-    # ``role="reasoning"`` rows are persisted for frontend replay of
-    # extended_thinking content but are NOT conversation context — the
-    # transcript-based --resume path already carries thinking separately,
-    # and sending them back to the model as user/assistant turns would be
-    # both redundant and malformed.  Drop them before any gap detection
-    # or transcript comparison so ordering invariants still hold.
     session_messages = [m for m in session_messages if m.role != "reasoning"]
-
     prior = session_messages[:-1]
 
     if download is None:
         return prior
-
-    raw_content = download.content
-    if not raw_content:
+    transcript_msgs = _parse_transcript_to_messages(download)
+    if transcript_msgs is None:
         return prior
 
-    # Handle both bytes (raw GCS download) and str (pre-decoded baseline path).
-    if isinstance(raw_content, bytes):
-        try:
-            content_str: str = raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            return prior
-    else:
-        content_str = raw_content
-
-    raw = _transcript_to_messages(content_str)
-    if not raw:
-        return prior
-
-    transcript_msgs = [
-        _ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw
-    ]
     gap = detect_gap(download, session_messages)
+
+    if session_id:
+        hole = await _fill_hole_between_transcript_and_gap(
+            session_id, download.message_count, gap
+        )
+        if hole:
+            return transcript_msgs + hole + gap
+
     return transcript_msgs + gap
 
 

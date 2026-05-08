@@ -500,6 +500,29 @@ async def add_chat_messages_batch(
     raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
 
 
+async def get_chat_messages_in_sequence_range(
+    session_id: str,
+    start_sequence: int,
+    end_sequence: int,
+) -> list[ChatMessage]:
+    """Fetch messages with ``start_sequence <= sequence < end_sequence`` in
+    ascending order.  Used by ``extract_context_messages`` to fill the gap
+    between the transcript watermark and a windowed-load's start sequence —
+    without this, sessions with a stale transcript and a cap-engaged window
+    would silently drop the messages in between.
+    """
+    if start_sequence >= end_sequence:
+        return []
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={
+            "sessionId": session_id,
+            "sequence": {"gte": start_sequence, "lt": end_sequence},
+        },
+        order={"sequence": "asc"},
+    )
+    return [ChatMessage.from_db(m) for m in rows]
+
+
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,

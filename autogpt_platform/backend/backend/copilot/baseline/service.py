@@ -1523,7 +1523,9 @@ async def stream_chat_completion_baseline(
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
-    prior_context = extract_context_messages(transcript_download, session.messages)
+    prior_context = await extract_context_messages(
+        transcript_download, session.messages, session_id=session.session_id
+    )
     messages_for_context = await _compress_session_messages(
         prior_context + ([session.messages[-1]] if session.messages else []),
         model=active_model,
