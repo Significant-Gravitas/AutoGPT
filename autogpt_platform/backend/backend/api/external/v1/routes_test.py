@@ -195,7 +195,7 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(
         routes_mod,
-        "enforce_paywall_strict",
+        "enforce_payment_paywall",
         AsyncMock(side_effect=UserPaywalledError("subscription required")),
     )
 

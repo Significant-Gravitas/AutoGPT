@@ -1250,22 +1250,34 @@ async def assert_not_paywalled(user_id: str) -> None:
         )
 
 
-async def enforce_paywall_strict(user_id: str) -> None:
-    """Strict paywall gate — fail-closed on tier-lookup failure.
+async def enforce_payment_paywall(
+    user_id: str = fastapi.Security(get_user_id),
+) -> None:
+    """Strict paywall gate for HTTP routes — fail-closed on lookup error.
 
-    HTTP routes that need to surface a *retryable* error during a
-    transient Supabase / LD outage call this directly (or via
-    :func:`enforce_payment_paywall` when JWT auth is in play). The
-    raised :class:`UserPaywalledError` propagates to the app-level
-    handler (HTTP 402); a lookup failure is mapped here to **HTTP 503
-    + Retry-After** so the client retries instead of treating the blip
-    as a permanent paywall.
+    Two call shapes, same behaviour:
 
-    Background callers (scheduled jobs, webhook handlers, copilot
-    internal tools) prefer :func:`assert_not_paywalled` directly so
-    they can fail-open on lookup error and keep valid runs alive
-    during a transient outage — see
-    ``executor/utils.add_graph_execution`` for that posture.
+    1. **JWT route dep**:
+       ``dependencies=[Depends(enforce_payment_paywall)]`` — FastAPI
+       auto-fills ``user_id`` from the JWT via the ``Security``
+       default. Mirrors the ``requires_admin_user`` pattern.
+
+    2. **Non-JWT route (inline)**: ``await enforce_payment_paywall(
+       auth.user_id)`` — for API-key-auth routes (external API) where
+       the JWT-based ``Security`` default doesn't apply; the explicit
+       positional argument wins.
+
+    Wraps :func:`assert_not_paywalled` so :class:`UserPaywalledError`
+    propagates to the app-level handler (HTTP 402); a tier-lookup
+    failure is mapped to **HTTP 503 + Retry-After** so the client
+    retries instead of treating a transient Supabase / LD blip as a
+    permanent paywall.
+
+    Background callers (scheduled cron, webhook handlers, copilot
+    internal tools) call :func:`assert_not_paywalled` directly so the
+    background framework's own error handling can decide what to do
+    (typically: log + retry on next tick) instead of synthesising an
+    HTTP-shaped exception.
     """
     try:
         await assert_not_paywalled(user_id)
@@ -1273,7 +1285,7 @@ async def enforce_paywall_strict(user_id: str) -> None:
         raise
     except Exception as exc:
         logger.warning(
-            "enforce_paywall_strict: tier lookup failed for %s: %s",
+            "enforce_payment_paywall: tier lookup failed for %s: %s",
             user_id[:8],
             exc,
         )
@@ -1282,18 +1294,3 @@ async def enforce_paywall_strict(user_id: str) -> None:
             detail="Subscription state temporarily unavailable, retry shortly.",
             headers={"Retry-After": "30"},
         ) from exc
-
-
-async def enforce_payment_paywall(
-    user_id: str = fastapi.Security(get_user_id),
-) -> None:
-    """FastAPI dependency wrapping :func:`enforce_paywall_strict` for
-    JWT-authenticated routes.
-
-    Apply via ``dependencies=[fastapi.Depends(enforce_payment_paywall)]``
-    on JWT routes that need entitlement checking. Mirrors the
-    ``requires_admin_user`` pattern. Non-JWT routes (e.g. API-key auth
-    on the external API) should call :func:`enforce_paywall_strict`
-    inline so the strict / 503-on-blip posture is preserved.
-    """
-    await enforce_paywall_strict(user_id)

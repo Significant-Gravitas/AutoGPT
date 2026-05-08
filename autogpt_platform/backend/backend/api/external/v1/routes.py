@@ -13,7 +13,7 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
-from backend.copilot.rate_limit import UserPaywalledError, enforce_paywall_strict
+from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
@@ -93,7 +93,7 @@ async def execute_graph_block(
     # of JWT so the JWT-based dep doesn't apply either. Inline strict
     # gate with the same fail-closed (503-on-blip) posture as the dep —
     # consistent with chat / internal block / internal graph routes.
-    await enforce_paywall_strict(auth.user_id)
+    await enforce_payment_paywall(auth.user_id)
 
     obj = backend.blocks.get_block(block_id)
     if not obj:
@@ -178,7 +178,7 @@ async def execute_graph(
     # Strict route-level paywall: 503 on tier-lookup failure (rather
     # than fail-open via the deep gate inside add_graph_execution).
     # Consistent with the JWT-gated internal graph-execute route.
-    await enforce_paywall_strict(auth.user_id)
+    await enforce_payment_paywall(auth.user_id)
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,

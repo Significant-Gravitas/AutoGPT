@@ -599,12 +599,11 @@ class TestAssertNotPaywalled:
             await assert_not_paywalled(_USER)
 
 
-class TestEnforcePaywallStrict:
-    """The strict helper is used by both the JWT route dep
-    (``enforce_payment_paywall``) and inline by non-JWT routes (external
-    API graph + block execute). Both paths get the same fail-closed
-    posture: paywalled → ``UserPaywalledError`` (handler maps to 402);
-    lookup error → ``HTTPException(503)`` with Retry-After."""
+class TestEnforcePaymentPaywallInline:
+    """``enforce_payment_paywall`` doubles as both a JWT route dep AND an
+    inline call from non-JWT routes (external API graph + block execute).
+    These tests cover the inline form — the dep form is exercised
+    transitively by the chat / internal-block route tests via FastAPI."""
 
     @pytest.mark.asyncio
     async def test_blocks_paywalled_user(self, mocker):
@@ -616,10 +615,10 @@ class TestEnforcePaywallStrict:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         )
-        from .rate_limit import UserPaywalledError, enforce_paywall_strict
+        from .rate_limit import UserPaywalledError, enforce_payment_paywall
 
         with pytest.raises(UserPaywalledError):
-            await enforce_paywall_strict(_USER)
+            await enforce_payment_paywall(_USER)
 
     @pytest.mark.asyncio
     async def test_passes_paid_user(self, mocker):
@@ -627,14 +626,14 @@ class TestEnforcePaywallStrict:
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.PRO),
         )
-        from .rate_limit import enforce_paywall_strict
+        from .rate_limit import enforce_payment_paywall
 
-        await enforce_paywall_strict(_USER)  # must not raise
+        await enforce_payment_paywall(_USER)  # must not raise
 
     @pytest.mark.asyncio
     async def test_db_failure_raises_503(self, mocker):
         """Lookup failure → 503 + Retry-After (not 402, not 500). This is
-        the asymmetry-fix: external API + internal graph routes used to
+        the asymmetry fix: external API + internal graph routes used to
         fail-open via the deep gate; now they fail-closed at the route."""
         mocker.patch(
             "backend.copilot.rate_limit._fetch_user_tier",
@@ -642,10 +641,10 @@ class TestEnforcePaywallStrict:
         )
         from fastapi import HTTPException
 
-        from .rate_limit import enforce_paywall_strict
+        from .rate_limit import enforce_payment_paywall
 
         with pytest.raises(HTTPException) as exc_info:
-            await enforce_paywall_strict(_USER)
+            await enforce_payment_paywall(_USER)
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers.get("Retry-After") == "30"
 
