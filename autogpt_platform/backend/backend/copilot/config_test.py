@@ -2,7 +2,7 @@
 
 import pytest
 
-from .config import ChatConfig
+from .config import ChatConfig, _host_matches
 
 # Env vars that the ChatConfig validators read — must be cleared so they don't
 # override the explicit constructor values we pass in each test.  Includes the
@@ -652,3 +652,38 @@ class TestAuxClientForDirectMainValidator:
                 aux_base_url="https://openrouter.ai/api/v1",
                 title_model="anthropic/claude-haiku-4-5",
             )
+
+
+class TestHostMatches:
+    """``_host_matches`` parses the URL and compares the actual host —
+    rejects substring tricks that pass the loose ``"x" in url`` check.
+    """
+
+    def test_exact_host(self):
+        assert _host_matches("https://api.anthropic.com/v1/", "anthropic.com")
+        assert _host_matches("https://openrouter.ai/api/v1", "openrouter.ai")
+
+    def test_subdomain_matches_via_dot_suffix(self):
+        assert _host_matches("https://api.openrouter.ai/v1", "openrouter.ai")
+
+    def test_substring_in_path_does_not_match(self):
+        # The loose ``"anthropic.com" in base_url`` check would say yes
+        # to attacker-controlled URLs that embed the suffix in the path.
+        assert not _host_matches(
+            "https://attacker.example/anthropic.com/v1", "anthropic.com"
+        )
+        assert not _host_matches("https://evil.test/openrouter.ai/api", "openrouter.ai")
+
+    def test_substring_in_host_without_dot_does_not_match(self):
+        # ``api.anthropic.com.attacker.test`` ends with ``.test`` not
+        # ``.anthropic.com`` — the dot-suffix check rejects the spoof.
+        assert not _host_matches(
+            "https://anthropic.com.attacker.test/v1", "anthropic.com"
+        )
+
+    def test_empty_url(self):
+        assert not _host_matches(None, "anthropic.com")
+        assert not _host_matches("", "anthropic.com")
+
+    def test_case_insensitive(self):
+        assert _host_matches("https://API.ANTHROPIC.COM/", "anthropic.com")

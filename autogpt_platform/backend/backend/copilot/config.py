@@ -2,11 +2,29 @@
 
 import os
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
+
+
+def _host_matches(base_url: str | None, suffix: str) -> bool:
+    """True when ``base_url``'s parsed hostname equals or ends with
+    ``.suffix``.
+
+    Substring checks (``"anthropic.com" in base_url``) are flagged by
+    CodeQL as incomplete URL sanitization — an attacker-controlled URL
+    like ``https://evil.com/anthropic.com/x`` would match.  Parse the
+    URL and compare the hostname so only the actual host is considered.
+    """
+    if not base_url:
+        return False
+    host = (urlparse(base_url).hostname or "").lower()
+    suffix = suffix.lower()
+    return host == suffix or host.endswith("." + suffix)
+
 
 # Anthropic's OpenAI-compatible endpoint. Used by the baseline path when
 # ``use_openrouter=False`` so the OpenAI SDK stays in place but talks
@@ -542,7 +560,7 @@ class ChatConfig(BaseSettings):
         ``usage.include`` and PostHog tracing) at the call site.
         """
         _, base_url = self.aux_client_credentials
-        return bool(base_url and "openrouter.ai" in base_url)
+        return _host_matches(base_url, "openrouter.ai")
 
     @property
     def aux_provider_label(self) -> str:
@@ -562,9 +580,9 @@ class ChatConfig(BaseSettings):
         _, base_url = self.aux_client_credentials
         if not base_url:
             return "openai"
-        if "openrouter.ai" in base_url:
+        if _host_matches(base_url, "openrouter.ai"):
             return "open_router"
-        if "anthropic.com" in base_url:
+        if _host_matches(base_url, "anthropic.com"):
             return "anthropic"
         return "openai"
 
