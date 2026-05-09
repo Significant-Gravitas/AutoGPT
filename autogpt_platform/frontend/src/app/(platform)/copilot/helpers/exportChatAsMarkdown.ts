@@ -49,11 +49,7 @@ export function exportChatAsMarkdown(
   const displayTitle = title || "Untitled chat";
   const date = new Date().toISOString().slice(0, 10);
 
-  const lines: string[] = [
-    `# ${displayTitle}`,
-    `_Exported: ${date}_`,
-    "",
-  ];
+  const lines: string[] = [`# ${displayTitle}`, `_Exported: ${date}_`, ""];
 
   for (const msg of messages) {
     if (msg.role === "tool") continue;
