@@ -866,10 +866,13 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    # Release the per-user concurrent-turn slot now that this turn is no longer
-    # in flight. user_id may be empty for anonymous sessions; release_turn_slot
-    # is a no-op in that case (no slot was ever acquired).
-    user_id = (meta.get("user_id") or "") if meta else ""
+    # Release the per-user concurrent-turn slot now that this turn is no
+    # longer in flight. ``meta`` may be an empty dict if the session's
+    # Redis key expired between the ``hgetall`` above and the CAS that
+    # just succeeded — read ``user_id`` directly so we don't skip the
+    # release on an empty-but-not-None payload. ``user_id`` is empty for
+    # anonymous sessions; ``release_turn_slot`` is a no-op then.
+    user_id = meta.get("user_id") or ""
     if user_id:
         await release_turn_slot(user_id, session_id)
 
