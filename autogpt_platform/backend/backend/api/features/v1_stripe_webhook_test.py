@@ -67,9 +67,10 @@ def test_stripe_webhook_checkout_calls_sync_tier_helper(
     mock_sync.assert_called_once()
 
 
-def test_stripe_webhook_checkout_stripe_error_does_not_break_webhook(
+def test_stripe_webhook_checkout_propagates_sync_failure(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    """Tier sync failure must surface as 5xx so Stripe retries the webhook."""
     mocker.patch(
         "stripe.Webhook.construct_event",
         return_value=_make_checkout_event("subscription", "sub_err"),
@@ -87,13 +88,18 @@ def test_stripe_webhook_checkout_stripe_error_does_not_break_webhook(
         side_effect=stripe.StripeError("network error"),
     )
 
-    response = client.post(
+    # raise_server_exceptions=False so the test client returns 500 instead of
+    # re-raising, mirroring real ASGI behavior where Stripe sees the 5xx and retries.
+    nonraising_client = fastapi.testclient.TestClient(
+        app, raise_server_exceptions=False
+    )
+    response = nonraising_client.post(
         "/credits/stripe_webhook",
         content=b"{}",
         headers={"stripe-signature": "t=1,v1=sig"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code >= 500
 
 
 # ---------------------------------------------------------------------------

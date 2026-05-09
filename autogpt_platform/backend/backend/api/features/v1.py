@@ -1323,14 +1323,7 @@ async def stripe_webhook(request: Request):
             )
             return Response(status_code=200)
         await UserCredit().fulfill_checkout(session_id=session_id)
-        try:
-            await sync_tier_from_checkout_session(data_object)
-        except Exception:
-            logger.exception(
-                "stripe_webhook: %s tier sync failed for session %s",
-                event_type,
-                session_id,
-            )
+        await sync_tier_from_checkout_session(data_object)
 
     if event_type in (
         "customer.subscription.created",
