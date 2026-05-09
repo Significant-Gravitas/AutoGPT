@@ -273,17 +273,3 @@ export const TIMEZONES = TIMEZONE_LIST;
 export function findTimezoneLabel(value: string): string {
   return TIMEZONES.find((t) => t.value === value)?.label ?? value;
 }
-
-export function formatGmtOffset(timezone: string): string | null {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      timeZoneName: "shortOffset",
-    });
-    const parts = formatter.formatToParts(new Date());
-    const offset = parts.find((p) => p.type === "timeZoneName")?.value;
-    return offset ?? null;
-  } catch {
-    return null;
-  }
-}

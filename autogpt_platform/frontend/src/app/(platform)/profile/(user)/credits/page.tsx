@@ -12,7 +12,8 @@ import {
 import { RefundModal } from "./RefundModal";
 import { SubscriptionTierSection } from "./components/SubscriptionTierSection/SubscriptionTierSection";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
-import { UsagePanelContent } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
+import { StorageBar } from "@/app/(platform)/copilot/components/UsageLimits/StorageBar";
+import { UsageBar } from "@/app/(platform)/copilot/components/UsageLimits/UsageBar";
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 
@@ -41,8 +42,22 @@ function CoPilotUsageSection() {
   return (
     <div className="my-6 space-y-4">
       <h3 className="text-lg font-medium">AutoPilot Usage & Storage</h3>
-      <div className="rounded-lg border border-neutral-200 p-4">
-        <UsagePanelContent usage={usage} showBillingLink={false} />
+      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
+        {usage.daily && (
+          <UsageBar
+            label="Today"
+            percentUsed={usage.daily.percent_used}
+            resetsAt={usage.daily.resets_at}
+          />
+        )}
+        {usage.weekly && (
+          <UsageBar
+            label="This week"
+            percentUsed={usage.weekly.percent_used}
+            resetsAt={usage.weekly.resets_at}
+          />
+        )}
+        <StorageBar />
       </div>
       <Button className="w-full" onClick={() => router.push("/copilot")}>
         Open AutoPilot

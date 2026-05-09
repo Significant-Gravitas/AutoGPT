@@ -26,6 +26,7 @@ import orjson
 from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.copilot.active_turns import release_turn_slot
 from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
@@ -35,6 +36,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
+from .constants import STREAM_LOCK_PREFIX
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
@@ -865,6 +867,16 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
+    # Release the per-user concurrent-turn slot now that this turn is no
+    # longer in flight. ``meta`` may be an empty dict if the session's
+    # Redis key expired between the ``hgetall`` above and the CAS that
+    # just succeeded — read ``user_id`` directly so we don't skip the
+    # release on an empty-but-not-None payload. ``user_id`` is empty for
+    # anonymous sessions; ``release_turn_slot`` is a no-op then.
+    user_id = meta.get("user_id") or ""
+    if user_id:
+        await release_turn_slot(user_id, session_id)
+
     # Force-release the executor's cluster lock so the next enqueued turn can
     # acquire it immediately. The lock holder's on_run_done will also release
     # (idempotent delete); doing it here unblocks cases where the task hangs
@@ -873,6 +885,15 @@ async def mark_session_completed(
         await redis.delete(get_session_lock_key(session_id))
     except RedisError as e:
         logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
+
+    # Force-release the SDK-stream lock too. The SDK turn's finally block
+    # normally releases it, but on cancel/force-complete the next user turn
+    # can race ahead before that runs and hit stream_already_active. The
+    # delete is idempotent with the SDK's own release.
+    try:
+        await redis.delete(f"{STREAM_LOCK_PREFIX}{session_id}")
+    except RedisError as e:
+        logger.warning(f"Failed to release stream lock for session {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:

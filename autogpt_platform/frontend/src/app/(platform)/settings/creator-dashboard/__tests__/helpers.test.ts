@@ -5,7 +5,7 @@ import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmis
 
 import {
   applyFiltersAndSort,
-  computeStats,
+  EMPTY_DASHBOARD_STATS,
   filterSubmissions,
   formatRuns,
   formatSubmittedAt,
@@ -15,6 +15,7 @@ import {
   STATUS_FILTERS,
   STATUS_OPTIONS,
   STATUS_VISUAL,
+  toDashboardStats,
   type FilterState,
 } from "../helpers";
 
@@ -219,41 +220,21 @@ describe("creator-dashboard helpers", () => {
     });
   });
 
-  describe("computeStats", () => {
-    test("returns zeroed stats with null average for empty list", () => {
-      expect(computeStats([])).toEqual({
-        total: 0,
-        approved: 0,
-        pending: 0,
-        totalRuns: 0,
-        averageRating: null,
-      });
+  describe("toDashboardStats", () => {
+    test("returns zeroed stats with null average when stats are missing", () => {
+      expect(toDashboardStats(undefined)).toEqual(EMPTY_DASHBOARD_STATS);
     });
 
-    test("aggregates totals, approved, pending, runs, and average rating", () => {
-      const list = [
-        makeSubmission({
-          status: SubmissionStatus.APPROVED,
-          run_count: 100,
-          review_avg_rating: 4,
+    test("maps server SubmissionStats into camelCase DashboardStats", () => {
+      expect(
+        toDashboardStats({
+          total: 4,
+          approved: 2,
+          pending: 1,
+          total_runs: 360,
+          average_rating: 4.5,
         }),
-        makeSubmission({
-          status: SubmissionStatus.APPROVED,
-          run_count: 200,
-          review_avg_rating: 5,
-        }),
-        makeSubmission({
-          status: SubmissionStatus.PENDING,
-          run_count: 50,
-          review_avg_rating: 0,
-        }),
-        makeSubmission({
-          status: SubmissionStatus.REJECTED,
-          run_count: 10,
-        }),
-      ];
-
-      expect(computeStats(list)).toEqual({
+      ).toEqual({
         total: 4,
         approved: 2,
         pending: 1,
@@ -262,12 +243,16 @@ describe("creator-dashboard helpers", () => {
       });
     });
 
-    test("returns null average when no submission has a positive rating", () => {
-      const list = [
-        makeSubmission({ review_avg_rating: 0 }),
-        makeSubmission({ review_avg_rating: undefined }),
-      ];
-      expect(computeStats(list).averageRating).toBeNull();
+    test("preserves null average when no submission has a positive rating", () => {
+      expect(
+        toDashboardStats({
+          total: 2,
+          approved: 0,
+          pending: 0,
+          total_runs: 0,
+          average_rating: null,
+        }).averageRating,
+      ).toBeNull();
     });
   });
 
@@ -318,6 +303,16 @@ describe("creator-dashboard helpers", () => {
     test("promotes near-million boundary into M (no '1000.0K')", () => {
       expect(formatRuns(999_950)).toBe("1.0M");
       expect(formatRuns(999_949)).toBe("999.9K");
+    });
+
+    test("formats billions with B suffix", () => {
+      expect(formatRuns(1_500_000_000)).toBe("1.5B");
+      expect(formatRuns(12_300_000_000)).toBe("12.3B");
+    });
+
+    test("promotes near-billion boundary into B (no '1000.0M')", () => {
+      expect(formatRuns(999_950_000)).toBe("1.0B");
+      expect(formatRuns(999_949_999)).toBe("999.9M");
     });
   });
 

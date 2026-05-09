@@ -8,6 +8,7 @@ import {
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
+import type { SubmissionStats } from "@/app/api/__generated__/models/submissionStats";
 
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
@@ -140,39 +141,24 @@ export interface DashboardStats {
   averageRating: number | null;
 }
 
-export function computeStats(submissions: StoreSubmission[]): DashboardStats {
-  if (submissions.length === 0) {
-    return {
-      total: 0,
-      approved: 0,
-      pending: 0,
-      totalRuns: 0,
-      averageRating: null,
-    };
-  }
+export const EMPTY_DASHBOARD_STATS: DashboardStats = {
+  total: 0,
+  approved: 0,
+  pending: 0,
+  totalRuns: 0,
+  averageRating: null,
+};
 
-  let approved = 0;
-  let pending = 0;
-  let totalRuns = 0;
-  let ratingSum = 0;
-  let ratingCount = 0;
-
-  for (const submission of submissions) {
-    if (submission.status === SubmissionStatus.APPROVED) approved += 1;
-    if (submission.status === SubmissionStatus.PENDING) pending += 1;
-    totalRuns += submission.run_count ?? 0;
-    if (submission.review_avg_rating && submission.review_avg_rating > 0) {
-      ratingSum += submission.review_avg_rating;
-      ratingCount += 1;
-    }
-  }
-
+export function toDashboardStats(
+  stats: SubmissionStats | undefined,
+): DashboardStats {
+  if (!stats) return EMPTY_DASHBOARD_STATS;
   return {
-    total: submissions.length,
-    approved,
-    pending,
-    totalRuns,
-    averageRating: ratingCount > 0 ? ratingSum / ratingCount : null,
+    total: stats.total,
+    approved: stats.approved,
+    pending: stats.pending,
+    totalRuns: stats.total_runs,
+    averageRating: stats.average_rating ?? null,
   };
 }
 
@@ -185,6 +171,7 @@ export function filterSubmissions(
 }
 
 export function formatRuns(value: number): string {
+  if (value >= 999_950_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 999_950) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toLocaleString();

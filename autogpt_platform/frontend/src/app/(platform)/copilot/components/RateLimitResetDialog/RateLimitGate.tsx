@@ -1,7 +1,10 @@
 "use client";
 
-import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
+import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
+import type { SubscriptionTier } from "@/app/api/__generated__/models/subscriptionTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useEffect } from "react";
 import { RateLimitResetDialog } from "./RateLimitResetDialog";
@@ -29,6 +32,19 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
     },
   });
 
+  // Pulls the user's current tier so the dialog can branch the CTA between
+  // "Upgrade plan" (route to /settings/billing) and "Contact us" (top-tier
+  // users have no higher self-serve plan to upgrade to).
+  const { data: tier } = useGetSubscriptionStatus({
+    query: {
+      enabled: !!rateLimitMessage,
+      select: (res) =>
+        res.status === 200
+          ? ((res.data as SubscriptionStatusResponse).tier as SubscriptionTier)
+          : null,
+    },
+  });
+
   useEffect(() => {
     if (!rateLimitMessage) return;
     if (!usageError) return;
@@ -47,6 +63,7 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
       isOpen={isOpen}
       onClose={onDismiss}
       resetsAt={usage?.daily?.resets_at ?? usage?.weekly?.resets_at ?? null}
+      tier={tier ?? null}
     />
   );
 }

@@ -19,6 +19,12 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     mockUseGetV2GetCopilotUsage(...args),
 }));
 
+const mockUseGetSubscriptionStatus = vi.fn();
+vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
+  useGetSubscriptionStatus: (...args: unknown[]) =>
+    mockUseGetSubscriptionStatus(...args),
+}));
+
 // Capture props the dialog was rendered with so we can assert on them.
 const dialogSpy = vi.fn();
 vi.mock("../RateLimitResetDialog", () => ({
@@ -26,6 +32,7 @@ vi.mock("../RateLimitResetDialog", () => ({
     isOpen: boolean;
     onClose: () => void;
     resetsAt?: string | Date | null;
+    tier?: string | null;
   }) => {
     dialogSpy(props);
     return <div data-testid="reset-dialog" data-open={String(props.isOpen)} />;
@@ -38,8 +45,17 @@ afterEach(() => {
   cleanup();
   mockToast.mockReset();
   mockUseGetV2GetCopilotUsage.mockReset();
+  mockUseGetSubscriptionStatus.mockReset();
   dialogSpy.mockReset();
 });
+
+function setSubscription(tier: string | null = null) {
+  mockUseGetSubscriptionStatus.mockReturnValue({
+    data: tier,
+    isSuccess: tier !== null,
+    isError: false,
+  });
+}
 
 describe("RateLimitGate", () => {
   it("disables the usage query when no rate-limit message is present", () => {
@@ -48,6 +64,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: false,
     });
+    setSubscription();
 
     render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
 
@@ -64,6 +81,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate
@@ -78,6 +96,23 @@ describe("RateLimitGate", () => {
     expect(config?.query?.enabled).toBe(true);
   });
 
+  it("disables the subscription query when no rate-limit message is present", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+      isError: false,
+    });
+    setSubscription();
+
+    render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
+
+    expect(mockUseGetSubscriptionStatus).toHaveBeenCalled();
+    const [config] = mockUseGetSubscriptionStatus.mock.calls[0] as [
+      { query?: { enabled?: boolean } },
+    ];
+    expect(config?.query?.enabled).toBe(false);
+  });
+
   it("opens the reset dialog when usage data is available", () => {
     const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
     mockUseGetV2GetCopilotUsage.mockReturnValue({
@@ -85,6 +120,7 @@ describe("RateLimitGate", () => {
       isSuccess: true,
       isError: false,
     });
+    setSubscription("PRO");
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -96,6 +132,40 @@ describe("RateLimitGate", () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
+  it("forwards the user's subscription tier to the dialog", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription("MAX");
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.tier).toBe("MAX");
+  });
+
+  it("passes null tier when subscription status is unavailable", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription(null);
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.tier).toBeNull();
+  });
+
   it("falls back to a toast when usage query errors", () => {
     const onDismiss = vi.fn();
     mockUseGetV2GetCopilotUsage.mockReturnValue({
@@ -103,6 +173,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: true,
     });
+    setSubscription();
 
     render(
       <RateLimitGate
@@ -130,6 +201,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: true,
     });
+    setSubscription();
 
     render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
 
@@ -142,6 +214,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -159,6 +232,7 @@ describe("RateLimitGate", () => {
       isSuccess: true,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -180,6 +254,7 @@ describe("RateLimitGate", () => {
       isSuccess: true,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -196,6 +271,7 @@ describe("RateLimitGate", () => {
       isSuccess: true,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -219,6 +295,7 @@ describe("RateLimitGate", () => {
       isSuccess: true,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,

@@ -7,30 +7,33 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    concurrent_turn_limit_message,
+)
 from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
-from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
+from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
-    ChatMessage,
-    ChatSession,
+    ChatSessionInfo,
     ChatSessionMetadata,
-    append_and_save_message,
     create_chat_session,
     delete_chat_session,
-    get_chat_session,
+    get_chat_session_metadata,
     get_or_create_builder_session,
     get_user_sessions,
     update_session_title,
 )
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
+    StreamRegistryUnavailable,
     is_turn_in_flight,
     queue_pending_for_http,
 )
@@ -38,8 +41,10 @@ from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
+    RateLimitUnavailable,
     acquire_reset_lock,
     check_rate_limit,
+    enforce_payment_paywall,
     get_daily_reset_count,
     get_global_rate_limits,
     get_usage_status,
@@ -57,6 +62,10 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.manage_schedules import (
+    ScheduleDeletedResponse,
+    ScheduleListResponse,
+)
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -85,7 +94,6 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
-from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -103,9 +111,14 @@ config = ChatConfig()
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
-) -> ChatSession:
-    """Validate session exists and belongs to user."""
-    session = await get_chat_session(session_id, user_id)
+) -> ChatSessionInfo:
+    """Validate session exists and belongs to user.
+
+    Returns metadata-only — callers needing the message history must use
+    ``get_chat_session`` directly. Bypassing the message-loading path
+    avoids a multi-KB cache deserialisation per ownership check.
+    """
+    session = await get_chat_session_metadata(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
@@ -485,12 +498,7 @@ async def disconnect_session_stream(
     backend releases XREAD listeners immediately rather than waiting for
     the 5-10 s timeout.
     """
-    session = await get_chat_session(session_id, user_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session {session_id} not found or access denied",
-        )
+    await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
 
@@ -899,9 +907,19 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
 @router.post(
     "/sessions/{session_id}/stream",
     responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
         404: {"description": "Session not found or access denied"},
-        429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
+        429: {
+            "description": "Cost rate-limit, call-frequency cap, or "
+            "per-user concurrent-turn limit exceeded"
+        },
+        503: {
+            "description": "Chat service degraded (Redis unavailable for rate "
+            "limit or stream registry); client should honour the Retry-After "
+            "header before retrying."
+        },
     },
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def stream_chat_post(
     session_id: str,
@@ -944,11 +962,24 @@ async def stream_chat_post(
     )
     session = await _validate_and_get_session(session_id, user_id)
 
-    if (
-        request.is_user_message
-        and request.message
-        and await is_turn_in_flight(session_id)
-    ):
+    try:
+        turn_in_flight = (
+            request.is_user_message
+            and request.message
+            and await is_turn_in_flight(session_id)
+        )
+    except StreamRegistryUnavailable as exc:
+        # Same fail-closed mapping as the RateLimitUnavailable branch below:
+        # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
+        # so a Redis brown-out at this step would otherwise surface as a raw
+        # 500 instead of the polished 503 + Retry-After.
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+
+    if turn_in_flight:
         try:
             await queue_pending_for_http(
                 session_id=session_id,
@@ -978,8 +1009,10 @@ async def stream_chat_post(
     )
 
     # Pre-turn rate limit check (cost-based, microdollars).
-    # check_rate_limit short-circuits internally when both limits are 0.
-    # Global defaults sourced from LaunchDarkly, falling back to config.
+    # Entitlement (NO_TIER + ENABLE_PLATFORM_PAYMENT) is gated upstream by
+    # the route-level ``enforce_payment_paywall`` dependency; here we only
+    # enforce per-window USD caps. Global defaults sourced from
+    # LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
@@ -994,6 +1027,16 @@ async def stream_chat_post(
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
+        except RateLimitUnavailable as e:
+            # Fail-closed on Redis brown-out: the user may already be at or
+            # past their USD cap and we cannot prove otherwise. 503 + a short
+            # Retry-After is the right UX (transient outage, retry shortly),
+            # not 429 ("you hit your limit").
+            raise HTTPException(
+                status_code=503,
+                detail="Rate limit service degraded, retry shortly",
+                headers={"Retry-After": "30"},
+            ) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -1018,54 +1061,12 @@ async def stream_chat_post(
     # near the start) — that path returns early.  Any request that
     # reaches this point is starting a fresh turn, so we always mint a
     # ``turn_id`` unless ``append_and_save_message`` reports a duplicate.
-    is_duplicate_message = False
-    if request.message:
-        message = ChatMessage(
-            id=request.message_id,
-            role="user" if request.is_user_message else "assistant",
-            content=request.message,
-        )
-        logger.info(f"[STREAM] Saving user message to session {session_id}")
-        is_duplicate_message = (
-            await append_and_save_message(session_id, message)
-        ) is None
-        logger.info(f"[STREAM] User message saved for session {session_id}")
-        if not is_duplicate_message and request.is_user_message:
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(request.message),
-            )
-
-    # Create a task in the stream registry for reconnection support.
-    # For duplicate messages, skip create_session entirely so the infra-retry
-    # client subscribes to the *existing* turn's Redis stream and receives the
-    # in-progress executor output rather than an empty stream.
-    turn_id = "" if is_duplicate_message else str(uuid4())
-    if turn_id:
-        log_meta["turn_id"] = turn_id
-        session_create_start = time.perf_counter()
-        await stream_registry.create_session(
-            session_id=session_id,
-            user_id=user_id,
-            tool_call_id="chat_stream",
-            tool_name="chat",
-            turn_id=turn_id,
-        )
-        logger.info(
-            f"[TIMING] create_session completed in {(time.perf_counter() - session_create_start) * 1000:.1f}ms",
-            extra={
-                "json_fields": {
-                    **log_meta,
-                    "duration_ms": (time.perf_counter() - session_create_start) * 1000,
-                }
-            },
-        )
-        await enqueue_copilot_turn(
+    try:
+        turn_id = await schedule_chat_turn(
             session_id=session_id,
             user_id=user_id,
             message=request.message,
-            turn_id=turn_id,
+            message_id=request.message_id,
             is_user_message=request.is_user_message,
             context=request.context,
             file_ids=sanitized_file_ids,
@@ -1074,10 +1075,17 @@ async def stream_chat_post(
             permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
-    else:
+    except ConcurrentTurnLimitError as exc:
+        raise HTTPException(
+            status_code=429, detail=concurrent_turn_limit_message()
+        ) from exc
+
+    if turn_id is None:
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )
+    else:
+        log_meta["turn_id"] = turn_id
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
@@ -1225,6 +1233,10 @@ async def stream_chat_post(
         404: {"description": "Session not found or access denied"},
         409: {"description": "Session has no active turn to receive pending messages"},
         429: {"description": "Call-frequency cap exceeded"},
+        503: {
+            "description": "Chat service degraded (Redis unavailable); "
+            "client should honour the Retry-After header before retrying."
+        },
     },
 )
 async def queue_pending_message(
@@ -1234,7 +1246,15 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     await _validate_and_get_session(session_id, user_id)
-    if not await is_turn_in_flight(session_id):
+    try:
+        turn_in_flight = await is_turn_in_flight(session_id)
+    except StreamRegistryUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+    if not turn_in_flight:
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
@@ -1487,7 +1507,12 @@ async def health_check() -> dict:
 
     # Create and retrieve session to verify full data layer
     session = await create_chat_session(health_check_user_id, dry_run=False)
-    await get_chat_session(session.session_id, health_check_user_id)
+    fetched = await get_chat_session_metadata(session.session_id, health_check_user_id)
+    if fetched is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat read path unhealthy: session not found after create",
+        )
 
     return {
         "status": "healthy",
@@ -1520,6 +1545,8 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | ScheduleListResponse
+    | ScheduleDeletedResponse
     | MemoryStoreResponse
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse

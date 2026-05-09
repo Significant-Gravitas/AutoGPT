@@ -455,6 +455,183 @@ describe("ArtifactContent", () => {
     expect(retryButtons.length).toBeGreaterThan(0);
   });
 
+  it("surfaces a network failure as a visible error message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("Network error")),
+    );
+
+    const artifact = makeArtifact({ id: "network-error-artifact" });
+    const classification = makeClassification({ type: "html" });
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content", {}, { timeout: 2500 });
+    expect(screen.getByText(/Network error/)).toBeTruthy();
+  });
+
+  it("retries transient HTML 5xx failures and renders content once a later attempt succeeds", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount < 3) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            headers: { get: () => "application/json" },
+            json: () => Promise.resolve({ detail: "temporary upstream error" }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve("<html>ok now</html>"),
+        });
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "transient-html-retry",
+      title: "flaky.html",
+      mimeType: "text/html",
+    });
+    const classification = makeClassification({ type: "html" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByTitle("flaky.html", {}, { timeout: 2500 });
+    expect(callCount).toBe(3);
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("srcdoc")).toContain("ok now");
+    expect(screen.queryByText("Failed to load content")).toBeNull();
+  });
+
+  it("surfaces backend error detail from JSON error responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: { get: () => "application/json" },
+        json: () => Promise.resolve({ detail: "File not found" }),
+      }),
+    );
+
+    const artifact = makeArtifact({ id: "json-error-detail" });
+    const classification = makeClassification({ type: "html" });
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content");
+    expect(screen.getByText(/404/)).toBeTruthy();
+    expect(screen.getByText(/File not found/)).toBeTruthy();
+  });
+
+  it("does not retry non-transient 403 failures", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          text: () => Promise.resolve("Forbidden"),
+        });
+      }),
+    );
+
+    const artifact = makeArtifact({ id: "forbidden-no-retry" });
+    const classification = makeClassification({ type: "text" });
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content");
+    expect(screen.getByText(/403/)).toBeTruthy();
+    expect(callCount).toBe(1);
+  });
+
+  it("shows error state when a PDF download returns a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve("Server Error"),
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "pdf-error",
+      title: "broken.pdf",
+      mimeType: "application/pdf",
+    });
+    const classification = makeClassification({ type: "pdf" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content", {}, { timeout: 2500 });
+    expect(screen.getByText(/500/)).toBeTruthy();
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("shows error state when a PDF download fails with a network error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("PDF network failure")),
+    );
+
+    const artifact = makeArtifact({
+      id: "pdf-network-error",
+      title: "broken.pdf",
+      mimeType: "application/pdf",
+    });
+    const classification = makeClassification({ type: "pdf" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content", {}, { timeout: 2500 });
+    expect(screen.getByText(/PDF network failure/)).toBeTruthy();
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
   // SECRT-2224: "try again doesn't do anything". The retry itself works — the
   // user's complaint is that there's no visible feedback when the same error
   // returns (e.g. a 404 for a deleted file). Clicking Try Again must flip the

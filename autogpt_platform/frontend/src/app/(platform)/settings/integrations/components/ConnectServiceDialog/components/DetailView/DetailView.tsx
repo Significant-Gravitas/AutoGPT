@@ -13,9 +13,12 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 
 import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
+import { McpConnectPanel } from "./McpConnectPanel";
 import { MethodPanel, TAB_LABEL } from "./MethodPanel";
 import { ProviderAvatar } from "./ProviderAvatar";
 import { UnsupportedNotice } from "./UnsupportedNotice";
+
+const MCP_PROVIDER_ID = "mcp";
 
 interface Props {
   provider: ConnectableProvider;
@@ -49,8 +52,8 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
     remembered && tabs.includes(remembered) ? remembered : tabs[0];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-5 pl-1">
+      <div className="flex items-center gap-3 pl-1">
         <Button
           variant="icon"
           size="icon"
@@ -74,7 +77,9 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
         </div>
       </div>
 
-      {tabs.length === 0 ? (
+      {provider.id === MCP_PROVIDER_ID ? (
+        <McpConnectPanel onSuccess={onSuccess} />
+      ) : tabs.length === 0 ? (
         <UnsupportedNotice providerName={provider.name} />
       ) : tabs.length === 1 ? (
         <MethodPanel

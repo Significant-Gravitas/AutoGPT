@@ -71,7 +71,7 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
       <Dialog.Content>
         <MotionConfig transition={TRANSITION}>
           <motion.div
-            className="relative overflow-hidden"
+            className="relative overflow-hidden px-2"
             animate={{ height: contentHeight ?? "auto" }}
             transition={reduceMotion ? { duration: 0 } : HEIGHT_TRANSITION}
           >

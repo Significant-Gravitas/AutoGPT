@@ -213,6 +213,8 @@ class LibraryAgent(pydantic.BaseModel):
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
 
+    is_hidden: bool = False
+
     recommended_schedule_cron: str | None = None
     is_scheduled: bool = pydantic.Field(
         default=False,
@@ -365,6 +367,7 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
@@ -578,6 +581,10 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"

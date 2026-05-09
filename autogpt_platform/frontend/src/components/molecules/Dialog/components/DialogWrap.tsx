@@ -102,7 +102,7 @@ export function DialogWrap({
         }}
       >
         <div
-          className={`flex items-center justify-between ${
+          className={`flex items-center justify-between px-2 ${
             title ? "pb-6" : "pb-0"
           }`}
         >
@@ -134,7 +134,7 @@ export function DialogWrap({
           <div
             ref={scrollRef}
             className={cn(
-              "flex-1 overflow-y-auto overflow-x-hidden",
+              "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,
             )}
             style={{
