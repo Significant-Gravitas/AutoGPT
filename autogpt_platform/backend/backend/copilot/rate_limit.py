@@ -978,6 +978,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     tier_from_db = True
     try:
         tier = await _fetch_user_tier(user_id)
+    except _UserNotFoundError:
+        # Row missing or tier is NULL — DB-confirmed NO_TIER, eligible for reconciliation.
+        tier = SubscriptionTier.NO_TIER
     except Exception as exc:
         logger.warning(
             "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
