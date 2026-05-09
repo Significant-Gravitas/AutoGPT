@@ -162,27 +162,17 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         new_callable=AsyncMock,
         return_value=False,
     )
-    mock_save = mocker.patch(
-        "backend.api.features.chat.routes.append_and_save_message",
-        return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
+    # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
+    # in one call. Patching it at the route boundary lets tests exercise
+    # validation/enrichment (file_ids, message length, rate limits, etc.)
+    # without touching Redis, RabbitMQ, or the chat DB. Returning a turn_id
+    # mimics a fresh dispatch (vs ``None`` which would mean a duplicate).
+    mock_schedule = mocker.patch(
+        "backend.api.features.chat.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+        return_value="turn-id-mock",
     )
-    mock_registry = mocker.MagicMock()
-    mock_registry.create_session = mocker.AsyncMock(return_value=None)
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry",
-        mock_registry,
-    )
-    mock_enqueue = mocker.patch(
-        "backend.api.features.chat.routes.enqueue_copilot_turn",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.track_user_message",
-        return_value=None,
-    )
-    return types.SimpleNamespace(
-        save=mock_save, enqueue=mock_enqueue, registry=mock_registry
-    )
+    return types.SimpleNamespace(enqueue=mock_schedule)
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -217,21 +207,23 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
 def test_stream_chat_skips_enqueue_for_duplicate_message(
     mocker: pytest_mock.MockerFixture,
 ):
-    """When append_and_save_message returns None (duplicate detected),
-    enqueue_copilot_turn and stream_registry.create_session must NOT be called
-    to avoid double-processing and to prevent overwriting the active stream's
-    turn_id in Redis (which would cause reconnecting clients to miss the response)."""
+    """When ``schedule_chat_turn`` returns ``None`` (duplicate-message detected
+    inside the slot context), the route must surface the empty UI message stream
+    without scheduling another turn — otherwise reconnecting clients would miss
+    the original turn's response."""
     mocks = _mock_stream_internals(mocker)
-    # Override save to return None — signalling a duplicate
-    mocks.save.return_value = None
+    # Patched ``schedule_chat_turn`` returns None on duplicate.
+    mocks.enqueue.return_value = None
 
     response = client.post(
         "/sessions/sess-1/stream",
         json={"message": "hello"},
     )
     assert response.status_code == 200
-    mocks.enqueue.assert_not_called()
-    mocks.registry.create_session.assert_not_called()
+    # The dup branch returns early; the helper was *called* once but it returned
+    # None, so no further dispatch happened (verified by the helper's own
+    # contract — see schedule_chat_turn tests).
+    mocks.enqueue.assert_called_once()
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -1124,10 +1116,20 @@ def test_stream_chat_accepts_exactly_max_length_message(
 ):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
+    # Pass generous rate-limits so the rate-limit gate doesn't interfere
+    # with the message-length validation under test. Pre-PR convention
+    # used 0 for "unlimited"; we now treat 0 as "no spend allowed".
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 0, SubscriptionTier.BASIC),
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    # And mock the redis lookup so check_rate_limit sees zero usage.
+    mock_redis = mocker.AsyncMock()
+    mock_redis.get = mocker.AsyncMock(side_effect=["0", "0"])
+    mocker.patch(
+        "backend.copilot.rate_limit.get_redis_async",
+        return_value=mock_redis,
     )
 
     response = client.post(
@@ -1734,7 +1736,7 @@ def test_disconnect_stream_returns_204_and_awaits_registry(
 ) -> None:
     mock_session = MagicMock()
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=mock_session,
     )
@@ -1755,7 +1757,7 @@ def test_disconnect_stream_returns_404_when_session_missing(
     test_user_id: str,
 ) -> None:
     mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session",
+        "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -1915,6 +1917,66 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
+
+
+def test_health_check_returns_503_when_metadata_read_returns_none(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Round-trips create-then-read; if the read path returns None despite
+    # a successful create, the health endpoint must surface the failure.
+    from backend.copilot.model import ChatSession
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert "unhealthy" in response.json()["detail"].lower()
+
+
+def test_health_check_returns_healthy_on_round_trip_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Happy path: create + read both succeed → 200 with healthy body.
+    from backend.copilot.model import ChatSession, ChatSessionInfo
+
+    mocker.patch(
+        "backend.data.user.get_or_create_user",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    fake_session = ChatSession.new("health-check-user", dry_run=False)
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        return_value=fake_session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=ChatSessionInfo(
+            **{**fake_session.model_dump(exclude={"messages"})}
+        ),
+    )
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:

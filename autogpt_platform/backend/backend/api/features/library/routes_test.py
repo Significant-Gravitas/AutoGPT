@@ -115,6 +115,7 @@ async def test_get_library_agents_success(
         page_size=15,
         folder_id=None,
         include_root_only=False,
+        is_hidden=None,
     )
 
 
@@ -224,3 +225,50 @@ def test_add_agent_to_library_success(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
     mock_complete_onboarding.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_list_trigger_agents_route(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """GET /agents/{id}/triggers delegates to db.list_trigger_agents
+    and returns the serialized LibraryAgent list."""
+    trigger_agent = library_model.LibraryAgent(
+        id="trigger-1",
+        graph_id="trigger-graph",
+        graph_version=1,
+        name="Email Watcher",
+        description="Watches the inbox",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        is_hidden=True,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+    )
+    mock_db_call = mocker.patch("backend.api.features.library.db.list_trigger_agents")
+    mock_db_call.return_value = [trigger_agent]
+
+    response = client.get("/agents/parent-id/triggers")
+    assert response.status_code == 200
+
+    data = [library_model.LibraryAgent.model_validate(a) for a in response.json()]
+    assert len(data) == 1
+    assert data[0].id == "trigger-1"
+    assert data[0].is_hidden is True
+
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        library_agent_id="parent-id",
+    )

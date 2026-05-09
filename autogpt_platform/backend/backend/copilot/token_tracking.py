@@ -15,6 +15,8 @@ import math
 import re
 import threading
 
+from openai.types.completion_usage import PromptTokensDetails
+
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
@@ -22,6 +24,27 @@ from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Return cache-write token count from a ``PromptTokensDetails`` object.
+
+    Two provider-specific field names exist:
+    - OpenRouter streams ``cache_write_tokens`` (typed attr on newer SDK,
+      ``model_extra`` on older SDK).
+    - Direct Anthropic API uses ``cache_creation_input_tokens`` in
+      ``model_extra`` (never a typed attr on the OpenAI SDK).
+    """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
+    extras = ptd.model_extra or {}
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
+
 
 # Hold strong references to in-flight cost log tasks to prevent GC.
 _pending_log_tasks: set[asyncio.Task[None]] = set()

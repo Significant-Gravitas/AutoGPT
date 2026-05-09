@@ -174,6 +174,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    max_concurrent_copilot_turns_per_user: int = Field(
+        default=15,
+        ge=1,
+        le=1000,
+        description=(
+            "Hard cap on concurrent in-flight AutoPilot/CoPilot chat turns "
+            "per user. Reached via the chat HTTP route, the AutoPilotBlock, "
+            "and run_sub_session — all funnel through schedule_turn() and "
+            "share this cap. The user-facing 429 message renders this value."
+        ),
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,

@@ -60,6 +60,7 @@ from .includes import (
     EXECUTION_RESULT_INCLUDE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     graph_execution_include,
 )
 from .model import (
@@ -457,7 +458,14 @@ class NodeExecutionResult(BaseModel):
             input_data = type_utils.convert(_node_exec.executionData, BlockInput)
         else:
             input_data: BlockInput = defaultdict()
-            for data in _node_exec.Input or []:
+            inputs = _node_exec.Input or []
+            if len(inputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Input rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in inputs:
                 input_data[data.name] = type_utils.convert(data.data, JsonValue)
 
         output_data: CompletedBlockOutput = defaultdict(list)
@@ -466,7 +474,14 @@ class NodeExecutionResult(BaseModel):
             for name, messages in stats.cleared_outputs.items():
                 output_data[name].extend(messages)
         else:
-            for data in _node_exec.Output or []:
+            outputs = _node_exec.Output or []
+            if len(outputs) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+                logger.warning(
+                    "NodeExecution %s Output rows hit MAX_NODE_INPUT_OUTPUT_FETCH "
+                    "cap; result may be truncated",
+                    _node_exec.id,
+                )
+            for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
         graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
@@ -977,11 +992,33 @@ async def update_graph_execution_start_time(
     return GraphExecution.from_db(res) if res else None
 
 
+TERMINAL_GRAPH_EXECUTION_STATUSES = (
+    ExecutionStatus.COMPLETED,
+    ExecutionStatus.FAILED,
+    ExecutionStatus.TERMINATED,
+)
+
+
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
+    cascade_running_children: bool = True,
 ) -> GraphExecution | None:
+    """Update a graph_exec's status and/or stats.
+
+    When `status` transitions the row into a terminal state and
+    `cascade_running_children` is True (default), all of its child node
+    executions still in `RUNNING` are batch-updated to `FAILED`. This
+    keeps the invariant "if parent is terminal, no child is RUNNING"
+    in a single transaction-adjacent pair of writes, so callers don't
+    need to remember to clean up node_execs after marking a graph
+    terminal.
+
+    Set `cascade_running_children=False` only if you have a specific
+    reason to leave child rows untouched (e.g. resume flows or
+    speculative writes that will be reconciled separately).
+    """
     if not status and not stats:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
@@ -998,12 +1035,7 @@ async def update_graph_execution_stats(
     if status:
         update_data["executionStatus"] = status
         # Set endedAt when execution reaches a terminal status
-        terminal_statuses = [
-            ExecutionStatus.COMPLETED,
-            ExecutionStatus.FAILED,
-            ExecutionStatus.TERMINATED,
-        ]
-        if status in terminal_statuses:
+        if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
             update_data["endedAt"] = datetime.now(tz=timezone.utc)
 
     where_clause: AgentGraphExecutionWhereInput = {"id": graph_exec_id}
@@ -1025,6 +1057,23 @@ async def update_graph_execution_stats(
         where=where_clause,
         data=update_data,
     )
+
+    if cascade_running_children and status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        # Sweep any child node_execs that are still RUNNING. Without this,
+        # an in-flight node task whose asyncio cancel didn't propagate
+        # (e.g. provider-SDK stuck in a write) would leave a ghost RUNNING
+        # row long after the graph itself was finalized.
+        await AgentNodeExecution.prisma().update_many(
+            where={
+                "agentGraphExecutionId": graph_exec_id,
+                "executionStatus": ExecutionStatus.RUNNING.value,
+            },
+            data=_get_update_status_data(
+                ExecutionStatus.FAILED,
+                None,
+                {"error": f"graph_execution_{status.value.lower()}"},
+            ),
+        )
 
     graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
         where={"id": graph_exec_id},
@@ -1267,6 +1316,13 @@ class NodeExecutionEntry(BaseModel):
     block_id: str
     inputs: BlockInput
     execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
+    # Block-only pre-flight credits actually billed by `charge_usage`. Set by
+    # the dispatcher right after the charge so reconciliation can pin its
+    # baseline to the value spent on the wallet, instead of re-reading the
+    # estimates JSON (which could have been hot-swapped between charge and
+    # reconcile, leaving the delta computed against a different number).
+    # Excluded from dumps — in-memory only, scoped to a single live execution.
+    pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):

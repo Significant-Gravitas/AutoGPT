@@ -8,6 +8,8 @@ persistent typing indicator.
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
+from urllib.parse import quote
 
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import (
@@ -15,6 +17,7 @@ from backend.util.exceptions import (
     LinkAlreadyExistsError,
     NotFoundError,
 )
+from backend.util.settings import Settings
 
 from . import threads
 from .adapters.base import MessageContext, PlatformAdapter
@@ -23,6 +26,11 @@ from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
+
+THREAD_NAME_MAX_LENGTH = 100
+THREAD_NAME_PREFIX = "AutoPilot: "
+TITLE_RENAME_ATTEMPTS = 5
+TITLE_RENAME_INTERVAL_SECONDS = 1.0
 
 
 @dataclass
@@ -43,6 +51,8 @@ class MessageHandler:
     def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
+        # Strong-ref set so the GC doesn't drop fire-and-forget rename tasks.
+        self._rename_tasks: set[asyncio.Task[None]] = set()
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
         if not ctx.text.strip():
@@ -87,7 +97,7 @@ class MessageHandler:
             return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
-        thread_name = f"{ctx.username} × AutoPilot"
+        thread_name = build_thread_name(ctx.text, ctx.username)
         thread_id = await adapter.create_thread(
             ctx.channel_id, ctx.message_id, thread_name
         )
@@ -155,8 +165,15 @@ class MessageHandler:
         redis = await get_redis_async()
         cache_key = f"copilot-bot:session:{ctx.platform}:{target_id}"
         cached_session_id = await redis.get(cache_key)
+        active_session_id = (
+            cached_session_id.decode()
+            if isinstance(cached_session_id, bytes)
+            else cached_session_id
+        )
 
         async def _on_session_id(sid: str) -> None:
+            nonlocal active_session_id
+            active_session_id = sid
             try:
                 await redis.set(cache_key, sid, ex=SESSION_TTL)
             except Exception:
@@ -165,6 +182,44 @@ class MessageHandler:
         flush_at = adapter.chunk_flush_at
         buffer = ""
         sent_any_content = False
+        setup_prompt_sent = False
+
+        async def _on_setup_required(
+            session_id: str,
+            setup_output: dict[str, Any],
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal buffer, sent_any_content, setup_prompt_sent
+            if setup_prompt_sent:
+                return
+            setup_prompt_sent = True
+            # Drain any pending text first so the link button doesn't render
+            # ahead of the message it belongs to.
+            if buffer.strip():
+                await adapter.send_message(
+                    target_id, buffer, mentionable_users=ctx.mentionable_users
+                )
+                buffer = ""
+            sent_any_content = True
+            session_url = _copilot_session_url(session_id)
+            message = _setup_required_message(setup_output)
+            if session_url is None:
+                # No base URL configured — fall back to plain text since
+                # Discord rejects relative URLs on link buttons.
+                logger.warning(
+                    "No frontend/platform base URL configured; "
+                    "sending setup-required prompt without a button"
+                )
+                await adapter.send_message(
+                    target_id, message, mentionable_users=ctx.mentionable_users
+                )
+                return
+            await adapter.send_link(
+                target_id,
+                message,
+                link_label="Open AutoGPT",
+                link_url=session_url,
+            )
 
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
@@ -172,15 +227,20 @@ class MessageHandler:
                 platform=ctx.platform,
                 platform_user_id=ctx.user_id,
                 message=prefixed,
-                session_id=cached_session_id,
+                session_id=active_session_id,
                 platform_server_id=ctx.server_id,
                 on_session_id=_on_session_id,
+                on_setup_required=_on_setup_required,
             ):
                 buffer += chunk
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
                     if post:
-                        await adapter.send_message(target_id, post)
+                        await adapter.send_message(
+                            target_id,
+                            post,
+                            mentionable_users=ctx.mentionable_users,
+                        )
                         if post.strip():
                             sent_any_content = True
         except DuplicateChatMessageError:
@@ -212,7 +272,9 @@ class MessageHandler:
             await adapter.stop_typing(target_id)
 
         if buffer.strip():
-            await adapter.send_message(target_id, buffer)
+            await adapter.send_message(
+                target_id, buffer, mentionable_users=ctx.mentionable_users
+            )
             sent_any_content = True
 
         if not sent_any_content:
@@ -220,6 +282,44 @@ class MessageHandler:
                 target_id,
                 "AutoPilot didn't produce a response. Try rephrasing your question.",
             )
+
+        if (
+            ctx.channel_type == "channel"
+            and target_id != ctx.channel_id
+            and active_session_id
+        ):
+            # Fire-and-forget so the rename poll doesn't stall follow-up turns.
+            task = asyncio.create_task(
+                self._rename_thread_from_session_title(
+                    adapter, target_id, active_session_id
+                )
+            )
+            self._rename_tasks.add(task)
+            task.add_done_callback(self._rename_tasks.discard)
+
+    async def _rename_thread_from_session_title(
+        self,
+        adapter: PlatformAdapter,
+        thread_id: str,
+        session_id: str,
+    ) -> None:
+        for attempt in range(TITLE_RENAME_ATTEMPTS):
+            try:
+                title = await self._api.get_session_title(session_id)
+            except Exception:
+                logger.warning(
+                    "Failed to fetch generated title for %s (attempt %d/%d)",
+                    session_id,
+                    attempt + 1,
+                    TITLE_RENAME_ATTEMPTS,
+                    exc_info=True,
+                )
+                title = None
+            if title:
+                await adapter.rename_thread(thread_id, clamp_thread_name(title))
+                return
+            if attempt < TITLE_RENAME_ATTEMPTS - 1:
+                await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
 
     # -- Linking --
 
@@ -308,3 +408,42 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         raise
     except Exception:
         logger.debug("Typing loop error", exc_info=True)
+
+
+def build_thread_name(text: str, username: str) -> str:
+    """Build a Discord-safe thread name from the user's first prompt."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        cleaned = f"{username} with AutoPilot"
+    return clamp_thread_name(f"{THREAD_NAME_PREFIX}{cleaned}")
+
+
+def clamp_thread_name(name: str) -> str:
+    cleaned = " ".join(name.split()) or "AutoPilot Chat"
+    if len(cleaned) > THREAD_NAME_MAX_LENGTH:
+        return cleaned[: THREAD_NAME_MAX_LENGTH - 3].rstrip() + "..."
+    return cleaned
+
+
+def _copilot_session_url(session_id: str) -> str | None:
+    """Absolute URL to the live copilot session, or None if no base URL set."""
+    config = Settings().config
+    base_url = (config.frontend_base_url or config.platform_base_url).rstrip("/")
+    if not base_url:
+        return None
+    return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
+
+
+def _setup_required_message(setup_output: dict[str, Any]) -> str:
+    message = str(setup_output.get("message") or "").strip()
+    if not message:
+        message = (
+            "AutoPilot needs you to sign in or authorize an integration "
+            "before it can continue."
+        )
+
+    return (
+        f"{message}\n\n"
+        "Click the button below to open your AutoGPT chat and finish setup "
+        "there. Reply here when you're done."
+    )
