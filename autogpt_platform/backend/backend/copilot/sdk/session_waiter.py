@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from backend.copilot import stream_registry
+from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
@@ -200,17 +202,10 @@ async def run_copilot_turn_via_queue(
         observed.pending_buffer_length = state.buffer_length
         return outcome, observed
 
-    # Apply the same per-user concurrent-turn cap as the HTTP chat route
-    # via the shared ``schedule_turn`` helper. Without this, a graph
-    # spawning N AutoPilotBlocks or a tool-loop firing run_sub_session
-    # could fan out unbounded copilot turns even when the user is already
-    # at their cap on the chat side.
-    # Local import: schedule_turn lives next to this module under
-    # copilot.executor and is only needed on the dispatch branch — keep
-    # the cold-start path light.
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-    from backend.copilot.executor.utils import schedule_turn
-
+    # Same per-user concurrent-turn cap as the HTTP chat route via the
+    # shared ``schedule_turn`` helper — without this a graph spawning N
+    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
+    # out unbounded copilot turns past the user's cap.
     turn_id = str(uuid.uuid4())
     try:
         await schedule_turn(

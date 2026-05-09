@@ -187,7 +187,7 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
             new=AsyncMock(return_value=False),
         ),
         patch(
-            "backend.copilot.active_turns.acquire_turn_slot",
+            "backend.copilot.executor.utils.acquire_turn_slot",
             side_effect=ConcurrentTurnLimitError(),
         ),
         patch(

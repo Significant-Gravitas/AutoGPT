@@ -41,6 +41,7 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import peek_pending_messages
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -116,6 +117,76 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
+
+
+async def _persist_and_dispatch_chat_turn(
+    *,
+    request: "StreamChatRequest",
+    session_id: str,
+    user_id: str,
+    sanitized_file_ids: list[str] | None,
+    builder_permissions: CopilotPermissions | None,
+    request_arrival_at: float,
+    log_meta: dict[str, str],
+) -> str | None:
+    """Acquire the user's concurrency slot, persist the user message, and
+    dispatch the turn to the executor — atomically, in that order.
+
+    Returns the new ``turn_id`` if a fresh turn was scheduled, or
+    ``None`` if the inbound message was a duplicate of one already
+    saved (caller subscribes to the existing in-flight turn's stream
+    instead).
+
+    Raises :class:`ConcurrentTurnLimitError` when the user is at the
+    configured cap. Caller maps that to HTTP 429.
+
+    Acquire-before-persist is intentional: a 429 must not leave a ghost
+    user-message in chat history with no answer ever scheduled. The
+    re-acquire path of :func:`acquire_turn_slot` keeps same-session
+    network retries safe — the existing slot's score is bumped, no new
+    slot is admitted, and exiting without :meth:`TurnSlot.keep` does
+    not release the slot held by the original turn.
+    """
+    async with acquire_turn_slot(user_id, session_id) as slot:
+        is_duplicate_message = False
+        if request.message:
+            message = ChatMessage(
+                id=request.message_id,
+                role="user" if request.is_user_message else "assistant",
+                content=request.message,
+            )
+            logger.info(f"[STREAM] Saving user message to session {session_id}")
+            is_duplicate_message = (
+                await append_and_save_message(session_id, message)
+            ) is None
+            logger.info(f"[STREAM] User message saved for session {session_id}")
+            if not is_duplicate_message and request.is_user_message:
+                track_user_message(
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_length=len(request.message),
+                )
+
+        if is_duplicate_message:
+            return None
+
+        turn_id = str(uuid4())
+        log_meta["turn_id"] = turn_id
+        await dispatch_turn(
+            slot,
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=request.message,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=sanitized_file_ids,
+            mode=request.mode,
+            model=request.model,
+            permissions=builder_permissions,
+            request_arrival_at=request_arrival_at,
+        )
+        return turn_id
 
 
 router = APIRouter(
@@ -1056,79 +1127,22 @@ async def stream_chat_post(
     # near the start) — that path returns early.  Any request that
     # reaches this point is starting a fresh turn, so we always mint a
     # ``turn_id`` unless ``append_and_save_message`` reports a duplicate.
-    # Per-user concurrent-turn cap (acquire BEFORE persisting the user's
-    # message so a 429 doesn't leave a ghost message in chat history).
-    # The Lua admit/refresh distinction in ``acquire_turn_slot`` keeps
-    # this safe for same-session retries: a network retransmit during an
-    # active turn refreshes the existing reservation instead of acquiring
-    # a new slot, so the context manager's exit-without-keep doesn't
-    # release the slot held by the original turn.
-    turn_id = ""
-    is_duplicate_message = False
     try:
-        async with acquire_turn_slot(
-            user_id=user_id,
+        turn_id = await _persist_and_dispatch_chat_turn(
+            request=request,
             session_id=session_id,
-        ) as slot:
-            if request.message:
-                message = ChatMessage(
-                    id=request.message_id,
-                    role="user" if request.is_user_message else "assistant",
-                    content=request.message,
-                )
-                logger.info(f"[STREAM] Saving user message to session {session_id}")
-                is_duplicate_message = (
-                    await append_and_save_message(session_id, message)
-                ) is None
-                logger.info(f"[STREAM] User message saved for session {session_id}")
-                if not is_duplicate_message and request.is_user_message:
-                    track_user_message(
-                        user_id=user_id,
-                        session_id=session_id,
-                        message_length=len(request.message),
-                    )
-
-            # For duplicate messages, skip create_session entirely so the
-            # infra-retry client subscribes to the *existing* turn's
-            # Redis stream and receives the in-progress executor output
-            # rather than an empty stream.
-            turn_id = "" if is_duplicate_message else str(uuid4())
-            if turn_id:
-                log_meta["turn_id"] = turn_id
-                # Shared with session_waiter / AutoPilotBlock /
-                # run_sub_session via ``schedule_turn`` (which is
-                # acquire_turn_slot + dispatch_turn). The HTTP route
-                # opens its own slot context manager because it must
-                # save the user message *inside* the slot before
-                # dispatching, but the create-session + enqueue + keep
-                # sequence is the shared layer.
-                await dispatch_turn(
-                    slot,
-                    session_id=session_id,
-                    user_id=user_id,
-                    turn_id=turn_id,
-                    message=request.message,
-                    is_user_message=request.is_user_message,
-                    context=request.context,
-                    file_ids=sanitized_file_ids,
-                    mode=request.mode,
-                    model=request.model,
-                    permissions=builder_permissions,
-                    request_arrival_at=request_arrival_at,
-                )
-            # Duplicate-message branch: no turn was scheduled. If this
-            # caller refreshed an existing reservation (the normal retry
-            # path), the context manager's exit is a no-op — the
-            # original turn's slot stays held. If this caller newly
-            # admitted the slot somehow (shouldn't happen for a dup
-            # message_id but defended by the admit/refresh distinction),
-            # the context manager releases it on exit.
+            user_id=user_id,
+            sanitized_file_ids=sanitized_file_ids,
+            builder_permissions=builder_permissions,
+            request_arrival_at=request_arrival_at,
+            log_meta=log_meta,
+        )
     except ConcurrentTurnLimitError as exc:
         raise HTTPException(
             status_code=429, detail=concurrent_turn_limit_message()
         ) from exc
 
-    if is_duplicate_message:
+    if turn_id is None:
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )

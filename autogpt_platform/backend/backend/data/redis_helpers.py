@@ -93,7 +93,7 @@ return redis.call('LLEN', KEYS[2])
 #   ARGV[3]  stale-cutoff score (slots with score <= this are dropped)
 #   ARGV[4]  capacity (max concurrent slots before reservation is refused)
 #   ARGV[5]  TTL seconds applied to the pool key on every successful reserve
-_TRY_RESERVE_SLOT_LUA = """
+_TRY_ACQUIRE_CONCURRENCY_SLOT_LUA = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[3])
 local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
 if existing then
@@ -226,8 +226,8 @@ async def capped_rpush_if_hash_field(
     return None if length < 0 else length
 
 
-class SlotReservation(IntEnum):
-    """Result of :func:`try_reserve_slot`.
+class SlotAdmission(IntEnum):
+    """Result of :func:`try_acquire_concurrency_slot`.
 
     Distinguishes a fresh admission from a re-entrant refresh so callers
     that automatically release on exit (e.g. context managers) only do
@@ -239,7 +239,7 @@ class SlotReservation(IntEnum):
     REFRESHED = 2  # slot was already in the pool; score bumped only
 
 
-async def try_reserve_slot(
+async def try_acquire_concurrency_slot(
     redis: AsyncRedisClient,
     *,
     pool_key: str,
@@ -248,7 +248,7 @@ async def try_reserve_slot(
     capacity: int,
     stale_before_score: float,
     ttl_seconds: int,
-) -> SlotReservation:
+) -> SlotAdmission:
     """Atomically reserve one of *capacity* slots in a Redis-backed pool.
 
     Use this whenever you need a distributed concurrency cap — "this
@@ -260,13 +260,13 @@ async def try_reserve_slot(
        holder crashed without releasing don't permanently consume capacity.
     2. If ``slot_id`` is already in the pool, refresh its score
        (re-reservation is idempotent — same holder, same logical slot)
-       and return :attr:`SlotReservation.REFRESHED`.
+       and return :attr:`SlotAdmission.REFRESHED`.
     3. Otherwise, reserve only if the post-sweep slot count is below
-       ``capacity`` and return :attr:`SlotReservation.ADMITTED`.
+       ``capacity`` and return :attr:`SlotAdmission.ADMITTED`.
     4. On a successful reserve, set ``ttl_seconds`` on the pool key as a
        belt-and-braces TTL for the case where the sweep ever stops.
 
-    Returns the :class:`SlotReservation` outcome — ``ADMITTED`` (newly
+    Returns the :class:`SlotAdmission` outcome — ``ADMITTED`` (newly
     added), ``REFRESHED`` (already held, score bumped), or ``REJECTED``
     (pool full).
 
@@ -282,7 +282,7 @@ async def try_reserve_slot(
     result = await cast(
         "Any",
         redis.eval(
-            _TRY_RESERVE_SLOT_LUA,
+            _TRY_ACQUIRE_CONCURRENCY_SLOT_LUA,
             1,
             pool_key,
             slot_id,
@@ -292,7 +292,7 @@ async def try_reserve_slot(
             str(ttl_seconds),
         ),
     )
-    return SlotReservation(int(result))
+    return SlotAdmission(int(result))
 
 
 async def hash_compare_and_set(

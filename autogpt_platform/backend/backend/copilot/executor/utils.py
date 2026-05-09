@@ -6,17 +6,14 @@ Defines two exchanges and queues following the graph executor pattern:
 """
 
 import logging
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from backend.copilot.active_turns import TurnSlot, acquire_turn_slot
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
-
-if TYPE_CHECKING:
-    from backend.copilot.active_turns import TurnSlot
 
 logger = logging.getLogger(__name__)
 
@@ -320,19 +317,7 @@ async def schedule_turn(
     * On success the slot is *kept*: ownership transfers to
       ``mark_session_completed``, which releases it when the turn ends.
     """
-    # Local imports to keep the cold-start path of this module light and
-    # avoid importing copilot.active_turns / stream_registry into modules
-    # that only need the queue-config dataclasses.
-    from backend.copilot.active_turns import (
-        acquire_turn_slot,
-        get_concurrent_turn_limit,
-    )
-
-    async with acquire_turn_slot(
-        user_id=user_id,
-        session_id=session_id,
-        limit=get_concurrent_turn_limit(),
-    ) as slot:
+    async with acquire_turn_slot(user_id, session_id) as slot:
         await dispatch_turn(
             slot,
             session_id=session_id,
@@ -352,7 +337,7 @@ async def schedule_turn(
 
 
 async def dispatch_turn(
-    slot: "TurnSlot",
+    slot: TurnSlot,
     *,
     session_id: str,
     user_id: str | None,
@@ -383,6 +368,8 @@ async def dispatch_turn(
     ``slot.keep()`` is never reached, so the context manager that owns
     ``slot`` releases it on exit — no leak.
     """
+    # Local import: stream_registry imports executor.utils (the
+    # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
     await stream_registry.create_session(
