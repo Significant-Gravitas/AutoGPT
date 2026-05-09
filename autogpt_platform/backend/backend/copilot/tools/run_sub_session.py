@@ -27,6 +27,7 @@ import logging
 import time
 from typing import Any
 
+from backend.copilot.active_turns import concurrent_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
@@ -238,8 +239,6 @@ def response_from_outcome(
         # concurrent-turn cap rejected before ``create_session`` ran.
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
-        from backend.copilot.active_turns import concurrent_turn_limit_message
-
         return SubSessionStatusResponse(
             message=concurrent_turn_limit_message(),
             session_id=parent_session_id,
