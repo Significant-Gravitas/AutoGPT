@@ -7,8 +7,8 @@ describe("exportChatAsMarkdown", () => {
   let anchor: {
     href: string;
     download: string;
-    click: () => void;
-    remove: () => void;
+    click: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
