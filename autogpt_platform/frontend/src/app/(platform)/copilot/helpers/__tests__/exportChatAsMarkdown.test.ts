@@ -4,7 +4,12 @@ import { exportChatAsMarkdown } from "../exportChatAsMarkdown";
 describe("exportChatAsMarkdown", () => {
   let clickSpy: ReturnType<typeof vi.fn>;
   let removeSpy: ReturnType<typeof vi.fn>;
-  let anchor: { href: string; download: string; click: () => void; remove: () => void };
+  let anchor: {
+    href: string;
+    download: string;
+    click: () => void;
+    remove: () => void;
+  };
 
   beforeEach(() => {
     clickSpy = vi.fn();
