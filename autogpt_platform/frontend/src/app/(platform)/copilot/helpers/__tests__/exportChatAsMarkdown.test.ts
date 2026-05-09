@@ -119,6 +119,48 @@ describe("exportChatAsMarkdown", () => {
     expect(anchor.download).not.toContain("/");
   });
 
+  it("falls back to 'Untitled chat' when title is undefined", () => {
+    exportChatAsMarkdown("session-1", undefined, []);
+    expect(anchor.download).toContain("Untitled chat");
+  });
+
+  it("uses 'unknown_tool' when tool call has no function name", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ function: { name: undefined, arguments: "{}" } }],
+      },
+    ];
+    exportChatAsMarkdown("session-1", "Test", messages);
+
+    const blob: Blob = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    return blob.text().then((text) => {
+      expect(text).toContain("unknown_tool");
+    });
+  });
+
+  it("handles invalid JSON in tool call arguments gracefully", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { function: { name: "my_tool", arguments: "not-valid-json" } },
+        ],
+      },
+    ];
+    exportChatAsMarkdown("session-1", "Test", messages);
+
+    const blob: Blob = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    return blob.text().then((text) => {
+      expect(text).toContain("my_tool");
+      expect(text).toContain("not-valid-json");
+    });
+  });
+
   it("includes export date in the markdown body", () => {
     exportChatAsMarkdown("session-1", "Test", []);
 
