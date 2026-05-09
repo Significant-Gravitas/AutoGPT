@@ -49,12 +49,12 @@ describe("exportChatAsMarkdown", () => {
 
   it("includes the chat title in the filename", () => {
     exportChatAsMarkdown("session-1", "My Chat", []);
-    expect(anchor.download).toContain("My-Chat");
+    expect(anchor.download).toContain("My Chat");
   });
 
-  it("falls back to 'Untitled-chat' when title is null", () => {
+  it("falls back to 'Untitled chat' when title is null", () => {
     exportChatAsMarkdown("session-1", null, []);
-    expect(anchor.download).toContain("Untitled-chat");
+    expect(anchor.download).toContain("Untitled chat");
   });
 
   it("renders user and assistant messages with headers", () => {
