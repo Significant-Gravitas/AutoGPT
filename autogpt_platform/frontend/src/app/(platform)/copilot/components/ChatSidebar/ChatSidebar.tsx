@@ -1,6 +1,7 @@
 "use client";
 import {
   getGetV2ListSessionsQueryKey,
+  getV2GetSession,
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -25,6 +26,7 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   CircleNotch,
+  DownloadSimple,
   DotsThree,
   PlusCircleIcon,
   PlusIcon,
@@ -39,6 +41,7 @@ import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import { exportChatAsMarkdown } from "../../helpers/exportChatAsMarkdown";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
@@ -150,6 +153,31 @@ export function ChatSidebar() {
   ) {
     e.stopPropagation();
     requestDelete(id, title);
+  }
+
+  async function handleExportClick(
+    e: React.MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) {
+    e.stopPropagation();
+    try {
+      const response = await getV2GetSession(id, { limit: 2000 });
+      if (response.status !== 200) throw new Error("Failed to fetch session");
+      const messages = (response.data.messages ?? []) as {
+        role: string;
+        content: string | null;
+        tool_calls: unknown[] | null;
+      }[];
+      exportChatAsMarkdown(id, title, messages);
+      toast({ title: "Chat exported" });
+    } catch {
+      toast({
+        title: "Export failed",
+        description: "Could not export this chat. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   function formatDate(dateString: string) {
@@ -378,6 +406,14 @@ export function ChatSidebar() {
                             }
                           >
                             Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) =>
+                              handleExportClick(e, session.id, session.title)
+                            }
+                          >
+                            <DownloadSimple className="mr-2 h-4 w-4" />
+                            Export chat
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) =>
