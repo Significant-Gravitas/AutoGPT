@@ -81,19 +81,8 @@ export function exportChatAsMarkdown(
 export async function fetchAndExportChat(
   id: string,
   title: string | null | undefined,
-  fetchSession: (
-    id: string,
-    opts: { limit: number },
-  ) => Promise<{
-    status: number;
-    data: {
-      messages?: Array<{
-        role: string;
-        content: string | null;
-        tool_calls: unknown[] | null;
-      }> | null;
-    };
-  }>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fetchSession: (id: string, opts: { limit: number }) => Promise<any>,
 ): Promise<void> {
   const response = await fetchSession(id, { limit: 2000 });
   if (response.status !== 200) throw new Error("Failed to fetch session");
