@@ -25,7 +25,6 @@ from backend.copilot.baseline.service import (
     _mark_tools_with_cache_control,
     _supports_prompt_cache_markers,
 )
-from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
     StreamReasoningDelta,
@@ -35,6 +34,7 @@ from backend.copilot.response_model import (
     StreamTextEnd,
     StreamTextStart,
 )
+from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
