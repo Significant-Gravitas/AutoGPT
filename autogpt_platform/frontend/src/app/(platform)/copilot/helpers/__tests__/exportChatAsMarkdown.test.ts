@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { exportChatAsMarkdown } from "../exportChatAsMarkdown";
+import {
+  exportChatAsMarkdown,
+  fetchAndExportChat,
+} from "../exportChatAsMarkdown";
 
 describe("exportChatAsMarkdown", () => {
   let clickSpy: ReturnType<typeof vi.fn>;
@@ -169,5 +172,69 @@ describe("exportChatAsMarkdown", () => {
     return blob.text().then((text) => {
       expect(text).toMatch(/_Exported: \d{4}-\d{2}-\d{2}_/);
     });
+  });
+});
+
+describe("fetchAndExportChat", () => {
+  let clickSpy: ReturnType<typeof vi.fn>;
+  let anchor: {
+    href: string;
+    download: string;
+    click: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    clickSpy = vi.fn();
+    anchor = { href: "", download: "", click: clickSpy, remove: vi.fn() };
+
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn().mockReturnValue("blob:fake-url"),
+        revokeObjectURL: vi.fn(),
+      }),
+    );
+
+    vi.spyOn(document, "createElement").mockReturnValue(
+      anchor as unknown as HTMLAnchorElement,
+    );
+
+    vi.spyOn(document.body, "appendChild").mockImplementation(
+      (node) => node as ChildNode,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("calls exportChatAsMarkdown when fetch succeeds", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        messages: [{ role: "user", content: "Hello", tool_calls: null }],
+      },
+    });
+    await fetchAndExportChat("session-1", "My Chat", mockFetch);
+    expect(clickSpy).toHaveBeenCalled();
+    expect(anchor.download).toMatch(/\.md$/);
+  });
+
+  it("throws when fetch returns non-200 status", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ status: 404, data: {} });
+    await expect(
+      fetchAndExportChat("session-1", "My Chat", mockFetch),
+    ).rejects.toThrow("Failed to fetch session");
+  });
+
+  it("handles null messages array gracefully", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { messages: null },
+    });
+    await fetchAndExportChat("session-1", "My Chat", mockFetch);
+    expect(clickSpy).toHaveBeenCalled();
   });
 });

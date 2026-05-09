@@ -41,7 +41,7 @@ import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
-import { exportChatAsMarkdown } from "../../helpers/exportChatAsMarkdown";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
@@ -162,14 +162,7 @@ export function ChatSidebar() {
   ) {
     e.stopPropagation();
     try {
-      const response = await getV2GetSession(id, { limit: 2000 });
-      if (response.status !== 200) throw new Error("Failed to fetch session");
-      const messages = (response.data.messages ?? []) as {
-        role: string;
-        content: string | null;
-        tool_calls: unknown[] | null;
-      }[];
-      exportChatAsMarkdown(id, title, messages);
+      await fetchAndExportChat(id, title, getV2GetSession);
       toast({ title: "Chat exported" });
     } catch {
       toast({
