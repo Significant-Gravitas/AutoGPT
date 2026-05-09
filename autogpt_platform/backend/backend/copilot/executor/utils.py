@@ -395,6 +395,85 @@ async def dispatch_turn(
     slot.keep()
 
 
+async def schedule_chat_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    message_id: str | None = None,
+    is_user_message: bool = True,
+    context: dict[str, str] | None = None,
+    file_ids: list[str] | None = None,
+    mode: CopilotMode | None = None,
+    model: CopilotLlmModel | None = None,
+    permissions: CopilotPermissions | None = None,
+    request_arrival_at: float = 0.0,
+) -> str | None:
+    """HTTP-chat-flavoured :func:`schedule_turn`: acquires the user's
+    concurrency slot, persists the user message *inside* the slot, then
+    dispatches the turn — atomically, in that order.
+
+    Returns the new ``turn_id`` on a fresh dispatch, or ``None`` if the
+    inbound message was a duplicate of one already saved (caller should
+    subscribe to the existing in-flight turn's stream instead of opening
+    a new one).
+
+    Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
+    when the user is at the configured cap. Caller maps that to HTTP 429.
+
+    Acquire-before-persist is intentional: a 429 must not leave a ghost
+    user-message in chat history with no answer ever scheduled. The
+    re-acquire path of :func:`acquire_turn_slot` keeps same-session
+    network retries safe — the existing slot's score is bumped, no new
+    slot is admitted, and exiting without :meth:`TurnSlot.keep` does not
+    release the slot held by the original turn.
+    """
+    # Deferred so the executor module stays a leaf for the queue dataclasses
+    # (only the chat HTTP path persists user messages this way).
+    from uuid import uuid4
+
+    from backend.copilot.model import ChatMessage, append_and_save_message
+    from backend.copilot.tracking import track_user_message
+
+    async with acquire_turn_slot(user_id, session_id) as slot:
+        is_duplicate = False
+        if message:
+            chat_message = ChatMessage(
+                id=message_id,
+                role="user" if is_user_message else "assistant",
+                content=message,
+            )
+            is_duplicate = (
+                await append_and_save_message(session_id, chat_message)
+            ) is None
+            if not is_duplicate and is_user_message:
+                track_user_message(
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_length=len(message),
+                )
+
+        if is_duplicate:
+            return None
+
+        turn_id = str(uuid4())
+        await dispatch_turn(
+            slot,
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=message,
+            is_user_message=is_user_message,
+            context=context,
+            file_ids=file_ids,
+            mode=mode,
+            model=model,
+            permissions=permissions,
+            request_arrival_at=request_arrival_at,
+        )
+        return turn_id
+
+
 async def enqueue_cancel_task(session_id: str) -> None:
     """Publish a cancel request for a running CoPilot session.
 

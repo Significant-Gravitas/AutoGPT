@@ -15,18 +15,15 @@ from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
-    acquire_turn_slot,
     concurrent_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
-from backend.copilot.executor.utils import dispatch_turn, enqueue_cancel_task
+from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.model import (
-    ChatMessage,
     ChatSession,
     ChatSessionMetadata,
-    append_and_save_message,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
@@ -41,7 +38,6 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import peek_pending_messages
-from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -93,7 +89,6 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
-from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -117,76 +112,6 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
-
-
-async def _persist_and_dispatch_chat_turn(
-    *,
-    request: "StreamChatRequest",
-    session_id: str,
-    user_id: str,
-    sanitized_file_ids: list[str] | None,
-    builder_permissions: CopilotPermissions | None,
-    request_arrival_at: float,
-    log_meta: dict[str, str],
-) -> str | None:
-    """Acquire the user's concurrency slot, persist the user message, and
-    dispatch the turn to the executor — atomically, in that order.
-
-    Returns the new ``turn_id`` if a fresh turn was scheduled, or
-    ``None`` if the inbound message was a duplicate of one already
-    saved (caller subscribes to the existing in-flight turn's stream
-    instead).
-
-    Raises :class:`ConcurrentTurnLimitError` when the user is at the
-    configured cap. Caller maps that to HTTP 429.
-
-    Acquire-before-persist is intentional: a 429 must not leave a ghost
-    user-message in chat history with no answer ever scheduled. The
-    re-acquire path of :func:`acquire_turn_slot` keeps same-session
-    network retries safe — the existing slot's score is bumped, no new
-    slot is admitted, and exiting without :meth:`TurnSlot.keep` does
-    not release the slot held by the original turn.
-    """
-    async with acquire_turn_slot(user_id, session_id) as slot:
-        is_duplicate_message = False
-        if request.message:
-            message = ChatMessage(
-                id=request.message_id,
-                role="user" if request.is_user_message else "assistant",
-                content=request.message,
-            )
-            logger.info(f"[STREAM] Saving user message to session {session_id}")
-            is_duplicate_message = (
-                await append_and_save_message(session_id, message)
-            ) is None
-            logger.info(f"[STREAM] User message saved for session {session_id}")
-            if not is_duplicate_message and request.is_user_message:
-                track_user_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    message_length=len(request.message),
-                )
-
-        if is_duplicate_message:
-            return None
-
-        turn_id = str(uuid4())
-        log_meta["turn_id"] = turn_id
-        await dispatch_turn(
-            slot,
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=request.message,
-            is_user_message=request.is_user_message,
-            context=request.context,
-            file_ids=sanitized_file_ids,
-            mode=request.mode,
-            model=request.model,
-            permissions=builder_permissions,
-            request_arrival_at=request_arrival_at,
-        )
-        return turn_id
 
 
 router = APIRouter(
@@ -1128,14 +1053,18 @@ async def stream_chat_post(
     # reaches this point is starting a fresh turn, so we always mint a
     # ``turn_id`` unless ``append_and_save_message`` reports a duplicate.
     try:
-        turn_id = await _persist_and_dispatch_chat_turn(
-            request=request,
+        turn_id = await schedule_chat_turn(
             session_id=session_id,
             user_id=user_id,
-            sanitized_file_ids=sanitized_file_ids,
-            builder_permissions=builder_permissions,
+            message=request.message,
+            message_id=request.message_id,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=sanitized_file_ids,
+            mode=request.mode,
+            model=request.model,
+            permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
-            log_meta=log_meta,
         )
     except ConcurrentTurnLimitError as exc:
         raise HTTPException(
@@ -1146,6 +1075,8 @@ async def stream_chat_post(
         logger.info(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )
+    else:
+        log_meta["turn_id"] = turn_id
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
