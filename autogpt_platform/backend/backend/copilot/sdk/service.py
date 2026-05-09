@@ -5,6 +5,7 @@
 import asyncio
 import base64
 import functools
+from copy import copy
 import json
 import logging
 import os
@@ -40,6 +41,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -50,12 +52,15 @@ from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
-    STOPPED_BY_USER_MARKER,
+    STREAM_ERROR_MARKER,
+    STREAM_INCOMPLETE_MARKER,
+    STREAM_LOCK_PREFIX,
     is_transient_api_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..model_normalize import normalize_model_for_transport
 from ..model_router import resolve_model
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
@@ -100,6 +105,7 @@ from ..response_model import (
     StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
+    StreamTextStart,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
@@ -130,6 +136,7 @@ from ..transcript import (
     compact_transcript,
     download_transcript,
     extract_context_messages,
+    next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
     strip_for_upload,
@@ -792,8 +799,7 @@ async def _consume_sdk_until_done(
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
-                    "%s Intermediate flush: %d messages "
-                    "(msgs_since=%d, elapsed=%.1fs)",
+                    "%s Intermediate flush: %d messages (msgs_since=%d, elapsed=%.1fs)",
                     ctx.log_prefix,
                     len(ctx.session.messages),
                     loop_state.msgs_since_flush,
@@ -1344,6 +1350,25 @@ def _is_error_marker(msg: ChatMessage) -> bool:
     )
 
 
+def _has_trailing_marker(session: ChatSession | None) -> bool:
+    """True when the session's last message is a copilot system/error marker.
+
+    Used to guard against double-persisting markers when multiple guards
+    (StreamError dispatch, post-stream STREAM_ERROR_MARKER append, retry-loop
+    ``_append_error_marker``) fire on the same turn.
+    """
+    if session is None or not session.messages:
+        return False
+    last = session.messages[-1]
+    if last.role != "assistant" or not last.content:
+        return False
+    return (
+        _is_error_marker(last)
+        or last.content == STREAM_INCOMPLETE_MARKER
+        or last.content == STREAM_ERROR_MARKER
+    )
+
+
 @dataclass
 class _InterruptedAttempt:
     """Captured state of a failed SDK attempt, carried across the retry loop.
@@ -1379,10 +1404,15 @@ class _InterruptedAttempt:
         Trailing error markers appended inside ``_run_stream_attempt`` (idle
         timeout, circuit breaker) are stripped: re-attaching them would make
         the post-loop restore replay a stale marker before adding its own,
-        leaving duplicate error bubbles.
+        leaving duplicate error bubbles.  ``STREAM_ERROR_MARKER`` is treated
+        the same way — the post-loop ``finalize`` calls
+        ``_append_error_marker`` which writes a fresh COPILOT_*_PREFIX row
+        with the final display message.
         """
         tail = list(session.messages[pre_attempt_msg_count:])
-        while tail and _is_error_marker(tail[-1]):
+        while tail and (
+            _is_error_marker(tail[-1]) or tail[-1].content == STREAM_ERROR_MARKER
+        ):
             tail.pop()
         self.partial = tail
         session.messages = session.messages[:pre_attempt_msg_count]
@@ -1573,9 +1603,6 @@ _SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
 _HEARTBEAT_INTERVAL = 10.0  # seconds
 
 
-STREAM_LOCK_PREFIX = "copilot:stream:lock:"
-
-
 async def _safe_close_sdk_client(
     sdk_client: ClaudeSDKClient,
     log_prefix: str,
@@ -1686,48 +1713,13 @@ async def _iter_sdk_messages(
 
 
 def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the **actual** SDK CLI transport.
+    """Normalize per the SDK's own ``config`` reference.
 
-    Three transports (see ``ChatConfig.effective_transport``):
-
-    1. **OpenRouter** — the canonical OpenRouter slug is
-       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4-6"``,
-       ``"moonshotai/kimi-k2-6"``).  Pass the prefixed name through
-       unchanged so OpenRouter can route to the correct provider.  Anthropic
-       names happen to also resolve when stripped, but non-Anthropic vendors
-       (Moonshot, Google, etc.) do not — keeping the prefix is the only form
-       that works for every model in the catalog.
-    2. **Subscription / Direct Anthropic** — strip the OpenRouter
-       ``anthropic/`` prefix and convert dots to hyphens
-       (``"claude-opus-4.6"`` → ``"claude-opus-4-6"``).  The CLI subprocess
-       (subscription mode) and the Anthropic Messages API both reject the
-       prefix and dot-separated versions.  Raises ``ValueError`` when a
-       non-Anthropic vendor slug is paired with these transports — silently
-       stripping ``moonshotai/`` would send ``kimi-k2-6`` to the Anthropic
-       API / CLI and produce an opaque ``model_not_found`` error far from
-       the misconfiguration source.
-
-    Gating on the **actual transport** (not just config shape) matters
-    because subscription mode and OpenRouter config can coexist —
-    ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
-    ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
-    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4-7``
-    to the CLI subprocess, which the CLI rejects.
+    Thin wrapper so ``backend.copilot.sdk.service.config`` (the
+    monkeypatch target used by every SDK-side test) drives the decision
+    instead of ``model_normalize``'s default config.
     """
-    if config.effective_transport == "openrouter":
-        return raw_model
-    model = raw_model
-    if "/" in model:
-        vendor, model = model.split("/", 1)
-        if vendor != "anthropic":
-            raise ValueError(
-                f"{config.effective_transport!r} transport requires an "
-                f"Anthropic model, got vendor={vendor!r} from "
-                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
-                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
-                f"enable OpenRouter."
-            )
-    return model.replace(".", "-")
+    return normalize_model_for_transport(raw_model, config)
 
 
 def _resolve_sdk_model() -> str | None:
@@ -2577,6 +2569,76 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
+        # Cap-engaged: the windowed ``prior`` doesn't start at absolute sequence
+        # 0, so any index-based slice ``prior[transcript_msg_count:]`` is wrong
+        # regardless of whether the watermark fits inside ``len(prior)``.  Two
+        # signals indicate cap engagement:
+        # 1. transcript_msg_count >= len(prior) — watermark beyond the window
+        # 2. prior[0].sequence > 0 — window starts above absolute sequence 0
+        # Either condition means the index-based path silently mis-slices
+        # (or returns []), so route through the sequence-based gap detection.
+        # ``transcript_msg_count`` IS the next uncovered DB sequence, so
+        # filtering ``sequence >= transcript_msg_count`` reads it directly.
+        cap_engaged = transcript_msg_count >= len(prior) or (
+            bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+        )
+        if cap_engaged and prior and prior[0].sequence is not None:
+            window_gap = [
+                m
+                for m in prior
+                if m.sequence is not None and m.sequence >= transcript_msg_count
+            ]
+            window_start_seq = (
+                min(m.sequence for m in window_gap if m.sequence is not None)
+                if window_gap
+                else None
+            )
+            hole: list[ChatMessage] = []
+            if window_start_seq is not None and window_start_seq > transcript_msg_count:
+                try:
+                    hole_page = await chat_db().get_chat_messages_paginated(
+                        session_id,
+                        limit=window_start_seq - transcript_msg_count,
+                        after_sequence=transcript_msg_count,
+                        before_sequence=window_start_seq,
+                    )
+                    if hole_page:
+                        hole = [m for m in hole_page.messages if m.role != "reasoning"]
+                except Exception as e:
+                    logger.warning(
+                        "[SDK] [%s] hole-fill DB fetch failed (range=[%d,%d)):"
+                        " %s — sending gap without hole",
+                        session_id[:8],
+                        transcript_msg_count,
+                        window_start_seq,
+                        e,
+                    )
+            gap = hole + window_gap
+            compressed, was_compressed = await _compress_messages(gap, target_tokens)
+            gap_context = _format_conversation_context(compressed)
+            if gap_context:
+                logger.info(
+                    "[SDK] [%s] Cap-engaged stale watermark (%d) — sequence-"
+                    "based gap=%d msgs from windowed view (compressed=%s, "
+                    "context_bytes=%d)",
+                    session_id[:8],
+                    transcript_msg_count,
+                    len(gap),
+                    was_compressed,
+                    len(gap_context),
+                )
+                return (
+                    f"{gap_context}\n\nNow, the user says:\n{current_message}",
+                    was_compressed,
+                )
+            logger.warning(
+                "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
+                " not contain post-watermark rows (transcript=%d, db=%d)",
+                session_id[:8],
+                transcript_msg_count,
+                msg_count,
+            )
+            return current_message, False
         if transcript_msg_count < effective_count - 1:
             # Sanity-check the watermark: the last covered position should be
             # an assistant turn.  A user-role message here means the count is
@@ -3171,7 +3233,8 @@ async def _run_stream_attempt(
 
     Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
     heartbeat timeouts, dispatches adapter responses, and performs post-stream
-    cleanup (safety-net flush, stopped-by-user handling).
+    cleanup (safety-net flush, CLI-side end-of-stream notice when the
+    iterator drains without a ``ResultMessage``).
 
     Yields stream events.  On stream error the exception propagates to the
     caller so the retry loop can rollback and retry.
@@ -3231,7 +3294,7 @@ async def _run_stream_attempt(
         # seconds on cold-starts or large contexts. The frontend prefers
         # this over the generic "Thinking…" copy; fast turns replace it
         # with content immediately.
-        yield StreamStatus(message="Contacting the model\u2026")
+        yield StreamStatus(message="Reading your message\u2026")
 
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
@@ -3356,22 +3419,43 @@ async def _run_stream_attempt(
             yield response
 
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
+        # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
+        # branch means the CLI hung up — per-query budget exhausted, max_turns,
+        # OOM, or crash — without ever emitting a ResultMessage.
         logger.info(
-            "%s Stream ended without ResultMessage (stopped by user)",
+            "%s Stream ended without ResultMessage — likely CLI-side kill "
+            "(budget/turns/crash)",
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
         state.adapter._end_text_if_open(closing_responses)
         for r in closing_responses:
             yield r
+        notice_block_id = str(uuid.uuid4())
+        yield StreamTextStart(id=notice_block_id)
+        yield StreamTextDelta(id=notice_block_id, delta=STREAM_INCOMPLETE_MARKER)
+        yield StreamTextEnd(id=notice_block_id)
         ctx.session.messages.append(
-            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
+            ChatMessage(role="assistant", content=STREAM_INCOMPLETE_MARKER)
         )
 
     if (
         acc.assistant_response.content or acc.assistant_response.tool_calls
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
+
+    # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
+    # with ``ended_with_stream_error=True`` and no prior marker is on the
+    # tail.  The on-wire StreamError dies with the SSE connection (client
+    # disconnect, network) — this row keeps the chat history honest on
+    # reload, even if the outer retry loop's ``interrupted.finalize`` later
+    # appends its own COPILOT_ERROR_PREFIX entry on the post-rollback
+    # restore.  The capture/restore cycle pops trailing error markers
+    # before re-attaching, so this row is never double-rendered.
+    if loop_state.ended_with_stream_error and not _has_trailing_marker(ctx.session):
+        ctx.session.messages.append(
+            ChatMessage(role="assistant", content=STREAM_ERROR_MARKER)
+        )
 
     # Raise so the outer retry loop can rollback session messages.
     # already_yielded=False for transient_api_error: StreamError was NOT
@@ -3520,7 +3604,11 @@ async def _restore_cli_session_for_turn(
     # Build context from transcript content + gap, falling back to full DB.
     # extract_context_messages handles both: non-None baseline_download uses
     # the compacted transcript + gap; None falls back to all prior DB messages.
-    context_msgs = extract_context_messages(result.baseline_download, session.messages)
+    context_msgs = await extract_context_messages(
+        result.baseline_download,
+        session.messages,
+        session_id=session.session_id,
+    )
     result.context_messages = context_msgs
     result.transcript_msg_count = (
         result.baseline_download.message_count
@@ -3618,8 +3706,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user LaunchDarkly targeting.
     """
-    _ = mode  # SDK path ignores the requested mode.
-
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -3806,9 +3892,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             return
         # --- Run independent async I/O operations in parallel ---
-        # E2B sandbox setup, system prompt build (Langfuse + DB), and transcript
-        # download are independent network calls.  Running them concurrently
-        # saves ~200-500ms compared to sequential execution.
+        # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
+        # warm-context, and CLI session restore are all independent network
+        # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
@@ -3839,15 +3925,30 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
             return sandbox
 
-        e2b_sandbox, (base_system_prompt, understanding) = await asyncio.gather(
+        (
+            e2b_sandbox,
+            (base_system_prompt, understanding),
+            (graphiti_enabled, warm_ctx),
+            _restore,
+        ) = await asyncio.gather(
             _setup_e2b(),
             _build_system_prompt(user_id if not has_history else None),
+            _fetch_graphiti_context(user_id, session, message),
+            # Restore CLI session — single GCS round-trip covers both
+            # --resume and builder state.  message_count watermark lives
+            # in the companion .meta.json alongside the session file.
+            _restore_cli_session_for_turn(
+                user_id,
+                session_id,
+                session,
+                sdk_cwd,
+                transcript_builder,
+                log_prefix,
+            ),
         )
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
-
-        graphiti_enabled = await is_enabled_for_user(user_id)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         # Append the builder-session block (graph id+name + full building
@@ -3863,21 +3964,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + builder_session_suffix
         )
 
-        # Warm context: pre-load relevant facts from Graphiti on first turn.
-        # Stored here and injected into the first user message (not the system
-        # prompt) so the system prompt stays identical across all users and
-        # sessions, enabling cross-session Anthropic prompt-cache hits.
-        warm_ctx = ""
-        if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from ..graphiti.context import fetch_warm_context
-
-            warm_ctx = await fetch_warm_context(user_id, message or "") or ""
-
-        # Restore CLI session — single GCS round-trip covers both --resume and builder state.
-        # message_count watermark lives in the companion .meta.json alongside the session file.
-        _restore = await _restore_cli_session_for_turn(
-            user_id, session_id, session, sdk_cwd, transcript_builder, log_prefix
-        )
         transcript_content = _restore.transcript_content
         transcript_covers_prefix = _restore.transcript_covers_prefix
         use_resume = _restore.use_resume
@@ -3974,47 +4060,52 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
-        sdk_options_kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt_value,
-            "mcp_servers": {"copilot": mcp_server},
-            "allowed_tools": allowed,
-            "disallowed_tools": disallowed,
-            "hooks": security_hooks,
-            "cwd": sdk_cwd,
-            "max_buffer_size": config.claude_agent_max_buffer_size,
-            "stderr": _on_stderr,
+        sdk_options = ClaudeAgentOptions(
+            system_prompt=system_prompt_value,
+            mcp_servers={"copilot": mcp_server},
+            allowed_tools=allowed,
+            disallowed_tools=disallowed,
+            hooks=security_hooks,
+            cwd=sdk_cwd,
+            max_buffer_size=config.claude_agent_max_buffer_size,
+            stderr=_on_stderr,
             # --- P0 guardrails ---
             # fallback_model: SDK auto-retries with this cheaper model on
             # 529 (overloaded) errors, avoiding user-visible failures.
-            "fallback_model": fallback_model,
+            fallback_model=fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
-            "max_turns": config.agent_max_turns,
+            max_turns=config.agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             # Sized to the smaller of the configured per-query default and
             # the user's *actual* remaining daily/weekly USD cap so the
             # CLI's "wrap up gracefully" reminder fires when they're close
             # to the real limit, not the static $10 default.
-            "max_budget_usd": await _resolve_dynamic_max_budget_usd(user_id),
-        }
-        # max_thinking_tokens: cap extended thinking output per LLM call.
-        # Thinking tokens are billed at output rate ($75/M for Opus) and
-        # account for ~54% of total cost.  8192 is the default.
-        # Intentionally sent for all models including Sonnet — the CLI
-        # silently ignores this field for non-Opus models (those without
-        # native extended thinking), so it is safe to pass unconditionally.
-        # Setting to 0 acts as the kill switch (same as baseline): omit the
-        # kwarg so the CLI falls back to its default (extended thinking off).
+            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
+            # thinking: specify extended thinking mode. Thinking tokens are
+            # billed at output rate ($75/M for Opus) and account for ~54%
+            # of total cost.  The CLI silently ignores this field for
+            # models without native extended thinking, so it is safe to
+            # pass unconditionally.
+            # NOTE: Claude 4.7+ does not support capped thinking token
+            # budget: use `effort` instead to steer thinking effort.
+            thinking={"type": "adaptive"},
+            # effort: applies to models with extended thinking (Sonnet,
+            # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
+            # extension (#12871).
+            effort=(
+                "medium"
+                if mode == "fast"
+                else (config.claude_agent_thinking_effort or "high")
+            ),
+        )
+        # max_thinking_tokens: legacy cost cap retained for non-4.7 models
+        # and Kimi K2.6.  Setting to 0 acts as the kill switch (same as
+        # baseline): omit the kwarg so the CLI falls back to its default.
         if config.claude_agent_max_thinking_tokens > 0:
-            sdk_options_kwargs["max_thinking_tokens"] = (
-                config.claude_agent_max_thinking_tokens
-            )
-        # effort: only set for models with extended thinking (Opus).
-        # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
-        if config.claude_agent_thinking_effort:
-            sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
+            sdk_options.max_thinking_tokens = config.claude_agent_max_thinking_tokens
         if sdk_model:
-            sdk_options_kwargs["model"] = sdk_model
+            sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
             # Opt into per-token streaming — the CLI emits raw Anthropic
             # ``content_block_delta`` events as ``StreamEvent`` messages
@@ -4025,15 +4116,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # only the tail diff from the subsequent summary, so content
             # never double-emits and a summary-only short block still
             # reaches the UI.
-            sdk_options_kwargs["include_partial_messages"] = True
+            sdk_options.include_partial_messages = True
 
         if sdk_env:
-            sdk_options_kwargs["env"] = sdk_env
+            sdk_options.env = sdk_env
         if use_resume and resume_file:
             # --resume {uuid} implies the session UUID — do NOT also pass
             # --session-id here.  CLI >=2.1.97 rejects the combination of
             # --session-id + --resume unless --fork-session is also given.
-            sdk_options_kwargs["resume"] = resume_file
+            sdk_options.resume = resume_file
         else:
             # Set session_id whenever NOT resuming so the CLI writes the
             # native session file to a predictable path for
@@ -4047,15 +4138,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             #     None), so no conflict with an existing file.
             # When --resume is active the session_id is already implied by
             # the resume file; passing it again would be rejected by the CLI.
-            sdk_options_kwargs["session_id"] = session_id
+            sdk_options.session_id = session_id
         # Optional explicit Claude Code CLI binary path (decouples the
         # bundled SDK version from the CLI version we run — needed because
         # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
         # back to the bundled binary when unset.
         if config.claude_agent_cli_path:
-            sdk_options_kwargs["cli_path"] = config.claude_agent_cli_path
-
-        options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
+            sdk_options.cli_path = config.claude_agent_cli_path
 
         adapter = SDKResponseAdapter(
             message_id=message_id,
@@ -4182,6 +4271,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.messages,
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
+                user_id=user_id,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -4308,7 +4398,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         fallback_notified_per_attempt = False
 
         state = _RetryState(
-            options=options,
+            options=sdk_options,
             query_message=query_message,
             was_compacted=was_compacted,
             use_resume=use_resume,
@@ -4368,10 +4458,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     skip_transcript_upload = True
 
                 # Rebuild SDK options and query for the reduced context
-                sdk_options_kwargs_retry = dict(sdk_options_kwargs)
+                sdk_options_retry = copy(sdk_options)
                 if ctx.use_resume and ctx.resume_file:
-                    sdk_options_kwargs_retry["resume"] = ctx.resume_file
-                    sdk_options_kwargs_retry.pop("session_id", None)
+                    sdk_options_retry.resume = ctx.resume_file
+                    sdk_options_retry.session_id = None
                 else:
                     # No --resume on this retry. Whether we entered with
                     # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
@@ -4385,16 +4475,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # guaranteeing the next turn re-trips prompt-too-long.
                     if sdk_cwd:
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
-                    sdk_options_kwargs_retry.pop("resume", None)
-                    sdk_options_kwargs_retry["session_id"] = session_id
+                    sdk_options_retry.resume = None
+                    sdk_options_retry.session_id = session_id
                 # Recompute system_prompt for retry — the preset is safe on
-                # every turn (requires CLI ≥ 2.1.98, installed in the Docker
-                # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).
-                sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
+                # every turn (requires CLI ≥ 2.1.98, bundled in
+                # claude-agent-sdk >= 0.1.64).
+                sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
                     cross_user_cache=config.claude_agent_cross_user_prompt_cache,
                 )
-                state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
+                state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
@@ -5011,27 +5101,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
                     #
-                    # Mid-turn follow-up user rows (persisted via the
-                    # StreamToolOutputAvailable handler) are NOT part of the CLI
-                    # JSONL — the CLI only knows them as embedded text inside a
-                    # tool_result, and even that embedding can be stripped by
-                    # the CLI's internal tool_result size cap.  Deduct them
-                    # from the watermark so detect_gap on the next turn
-                    # treats them as gap-fill entries and the model sees them
-                    # as real user messages instead of missing text.
+                    # Watermark = next uncovered DB sequence.  Mid-turn
+                    # follow-up user rows (StreamToolOutputAvailable) are
+                    # persisted to DB but not to the CLI's JSONL, so we step
+                    # the watermark back by their count — detect_gap on the
+                    # next turn re-injects them as the model would otherwise
+                    # only see them embedded in the tool_result (and the CLI's
+                    # internal tool_result size cap can strip that embedding).
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    # ``role="reasoning"`` rows are persisted to session.messages
-                    # for frontend replay but never appear in the CLI JSONL
-                    # (extended_thinking lives embedded in assistant entries, not
-                    # as standalone rows).  Exclude them from the watermark so
-                    # ``detect_gap`` on the next turn doesn't skip real
-                    # user/assistant rows.  See sentry comment 3106186683.
-                    _non_reasoning_count = sum(
-                        1 for m in session.messages if m.role != "reasoning"
+                    _jsonl_covered = max(
+                        0,
+                        next_uncovered_sequence(session.messages) - _midturn_offset,
                     )
-                    _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
@@ -5140,3 +5223,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 raise
             if _auto_requeued:
                 return
+
+
+async def _fetch_graphiti_context(
+    user_id: str | None,
+    session: ChatSession,
+    message: str | None,
+) -> tuple[bool, str]:
+    """Check Graphiti flag and fetch warm context in one shot.
+
+    Returns ``(graphiti_enabled, warm_ctx)`` where ``warm_ctx`` is a
+    pre-loaded fact bundle injected into the first user message (not the
+    system prompt) so the system prompt stays identical across users and
+    sessions, enabling cross-session Anthropic prompt-cache hits.  Skips
+    the fetch on follow-up turns (history > 1 message) and when the user
+    is anonymous.
+    """
+    enabled = await is_enabled_for_user(user_id)
+    if not enabled:
+        return False, ""
+    if not (user_id and len(session.messages) <= 1):
+        return True, ""
+
+    from ..graphiti.context import fetch_warm_context
+
+    ctx = await fetch_warm_context(user_id, message or "") or ""
+    return True, ctx

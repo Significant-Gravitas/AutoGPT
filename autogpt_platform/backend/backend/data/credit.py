@@ -144,6 +144,7 @@ class UserCreditBase(ABC):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         """
         Spend the credits for the user based on the cost.
@@ -152,6 +153,12 @@ class UserCreditBase(ABC):
             user_id (str): The user ID.
             cost (int): The cost to spend.
             metadata (UsageTransactionMetadata): The metadata of the transaction.
+            fail_insufficient_credits (bool): When True (default) raise
+                InsufficientBalanceError if the wallet can't cover the spend.
+                When False the spend is recorded unconditionally and the
+                balance may go negative — used by post-flight reconciliation
+                so a delta charge that exceeds the wallet is captured as
+                debt instead of silently leaking.
 
         Returns:
             int: The remaining balance.
@@ -673,6 +680,7 @@ class UserCredit(UserCreditBase):
         user_id: str,
         cost: int,
         metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
     ) -> int:
         if cost == 0:
             return 0
@@ -682,6 +690,7 @@ class UserCredit(UserCreditBase):
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
             metadata=SafeJson(metadata.model_dump()),
+            fail_insufficient_credits=fail_insufficient_credits,
         )
 
         # Auto top-up if balance is below threshold.
@@ -1087,6 +1096,9 @@ class UserCredit(UserCreditBase):
             success_url=base_url + "/settings/billing?topup=success",
             cancel_url=base_url + "/settings/billing?topup=cancel",
             allow_promotion_codes=True,
+            automatic_tax={"enabled": True},
+            billing_address_collection="auto",
+            customer_update={"address": "auto"},
         )
 
         await self._add_transaction(
@@ -2247,6 +2259,84 @@ async def get_subscription_price_id(
     return price_id if isinstance(price_id, str) and price_id else None
 
 
+async def _expire_open_subscription_sessions(customer_id: str) -> None:
+    """Expire open subscription checkout sessions for the customer.
+
+    An abandoned subscription session leaves an incomplete subscription + open invoice
+    in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
+    invoice, so the user is not shown phantom charges on their billing page.
+    """
+    try:
+        starting_after: str | None = None
+        while True:
+            list_kwargs: dict = {
+                "customer": customer_id,
+                "status": "open",
+                "limit": 100,
+            }
+            if starting_after:
+                list_kwargs["starting_after"] = starting_after
+            sessions = await stripe.checkout.Session.list_async(**list_kwargs)
+            for s in sessions.data:
+                if s.mode == "subscription":
+                    try:
+                        await stripe.checkout.Session.expire_async(s.id)
+                    except stripe.StripeError:
+                        logger.warning(
+                            "create_subscription_checkout: could not expire session %s",
+                            s.id,
+                        )
+            if not sessions.has_more or not sessions.data:
+                break
+            starting_after = sessions.data[-1].id
+    except Exception:
+        logger.warning(
+            "create_subscription_checkout: could not list open sessions for %s",
+            customer_id,
+        )
+
+
+async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
+    """Check Stripe for an active subscription and sync tier if found.
+
+    Called as a lazy fallback when a user is on NO_TIER to recover from
+    missed webhooks. Returns True if an active subscription was found and
+    synced. Does NOT create a Stripe customer — only checks existing ones.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except Exception:
+        logger.warning(
+            "reconcile_stripe_tier_for_user: Stripe lookup failed for user %s",
+            user_id[:8],
+        )
+        return False
+    if sub is None:
+        return False
+    await sync_subscription_from_stripe(dict(sub))
+    return True
+
+
+async def sync_tier_from_checkout_session(data_object: dict) -> None:
+    """Sync subscription tier from a checkout.session.completed event payload.
+
+    Retrieves the Stripe subscription and calls sync_subscription_from_stripe so
+    the tier is set immediately without waiting for customer.subscription.created.
+    No-op when mode != "subscription" or subscription ID is absent.
+    Raises stripe.StripeError if the subscription cannot be retrieved.
+    """
+    if data_object.get("mode") != "subscription":
+        return
+    sub_id = data_object.get("subscription")
+    if not sub_id:
+        return
+    sub = await stripe.Subscription.retrieve_async(sub_id)
+    await sync_subscription_from_stripe(dict(sub))
+
+
 async def create_subscription_checkout(
     user_id: str,
     tier: SubscriptionTier,
@@ -2259,6 +2349,7 @@ async def create_subscription_checkout(
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
+    await _expire_open_subscription_sessions(customer_id)
     session = await run_in_threadpool(
         stripe.checkout.Session.create,
         customer=customer_id,
@@ -2274,6 +2365,9 @@ async def create_subscription_checkout(
             }
         },
         allow_promotion_codes=True,
+        automatic_tax={"enabled": True},
+        billing_address_collection="auto",
+        customer_update={"address": "auto"},
     )
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it

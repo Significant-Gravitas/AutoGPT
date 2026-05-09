@@ -42,6 +42,11 @@ class MessageContext:
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
+    # Users the bot is allowed to @-mention back in this turn — populated
+    # from the inbound platform message's mentions (excluding the bot itself).
+    # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
+    # get pinged even if the LLM produces `@theirname` in its output.
+    mentionable_users: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_dm(self) -> bool:
@@ -65,7 +70,22 @@ class PlatformAdapter(ABC):
     async def stop(self) -> None: ...
 
     @abstractmethod
-    async def send_message(self, channel_id: str, text: str) -> None: ...
+    async def send_message(
+        self,
+        channel_id: str,
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> None:
+        """Send `text` to `channel_id`.
+
+        `mentionable_users` is the allowlist of `(display_name, user_id)` pairs
+        the bot may ping in this message. Adapters should resolve `@DisplayName`
+        in the text to a real platform mention only for users on this list — a
+        defence against the LLM hallucinating mentions or pinging unrelated
+        users it learned about elsewhere. Default empty = render mentions as
+        plain text.
+        """
+        ...
 
     @abstractmethod
     async def send_link(
@@ -80,7 +100,11 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     async def send_reply(
-        self, channel_id: str, text: str, reply_to_message_id: str
+        self,
+        channel_id: str,
+        text: str,
+        reply_to_message_id: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None: ...
 
     @abstractmethod
@@ -101,6 +125,11 @@ class PlatformAdapter(ABC):
         """Create a thread from a message. Returns the thread ID, or None if
         the platform doesn't support threads or creation failed.
         """
+        ...
+
+    @abstractmethod
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        """Rename a platform thread/conversation when supported."""
         ...
 
     @property

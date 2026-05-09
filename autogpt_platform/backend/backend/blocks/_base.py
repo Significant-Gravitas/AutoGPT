@@ -479,8 +479,17 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
     # --8<-- [end:BlockWebhookConfig]
 
 
+# Default wall-clock cap on a single block-run invocation. Leaf compute blocks
+# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# instance attribute to None to opt out. The executor consults
+# `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
+# the value is not None.
+DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS: int = 30 * 60
+
+
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
+    execution_timeout_seconds: int | None = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     def __init__(
         self,

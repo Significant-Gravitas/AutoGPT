@@ -412,12 +412,15 @@ async def requeue_single_execution(
 
     execution = executions[0]
 
-    # Use add_graph_execution in requeue mode
+    # Use add_graph_execution in requeue mode. ``bypass_paywall=True``
+    # because admins are recovering stuck executions on behalf of users
+    # who may now be on NO_TIER — the original run was already gated.
     await add_graph_execution(
         graph_id=execution.graph_id,
         user_id=execution.user_id,
         graph_version=execution.graph_version,
         graph_exec_id=request.execution_id,  # Requeue existing execution
+        bypass_paywall=True,
     )
 
     return RequeueExecutionResponse(
@@ -466,7 +469,9 @@ async def requeue_multiple_executions(
             message="No QUEUED executions found to requeue",
         )
 
-    # Requeue all executions in parallel using add_graph_execution
+    # Requeue all executions in parallel using add_graph_execution.
+    # ``bypass_paywall=True``: admin recovery on behalf of users who may
+    # be on NO_TIER — original runs were already gated.
     async def requeue_one(exec) -> bool:
         try:
             await add_graph_execution(
@@ -474,6 +479,7 @@ async def requeue_multiple_executions(
                 user_id=exec.user_id,
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
+                bypass_paywall=True,
             )
             return True
         except Exception as e:
@@ -905,7 +911,9 @@ async def requeue_all_stuck_executions(
         statuses=[AgentExecutionStatus.QUEUED],
     )
 
-    # Requeue all in parallel using add_graph_execution
+    # Requeue all in parallel using add_graph_execution.
+    # ``bypass_paywall=True``: admin recovery on behalf of users who may
+    # be on NO_TIER — original runs were already gated.
     async def requeue_one(exec) -> bool:
         try:
             await add_graph_execution(
@@ -913,6 +921,7 @@ async def requeue_all_stuck_executions(
                 user_id=exec.user_id,
                 graph_version=exec.graph_version,
                 graph_exec_id=exec.id,  # Requeue existing
+                bypass_paywall=True,
             )
             return True
         except Exception as e:

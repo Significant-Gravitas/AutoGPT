@@ -1,5 +1,6 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
+import asyncio
 import logging
 import math
 import re
@@ -7,7 +8,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
 import ollama
@@ -15,6 +16,8 @@ import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -53,6 +56,14 @@ fmt = TextFormatter(autoescape=False)
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
+
+# Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
+# Messages calls finish in seconds; anything past this is almost certainly a
+# stalled socket (server keeping connection alive but starving response bytes,
+# which the SDK's read-timeout doesn't reliably detect on its own). Lower than
+# the SDK defaults (typically 600s) so retries-on-timeout don't compound into
+# multi-hour worst cases when a block makes many sequential calls.
+LLM_REQUEST_TIMEOUT_SECONDS = 120
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
@@ -816,32 +827,29 @@ def convert_openai_tool_fmt_to_anthropic(
 
 
 def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
-    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+    """Extract OpenRouter's per-request USD cost from a chat-completion response.
 
-    OpenRouter returns the per-request USD cost in a response header. The
-    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
-    attribute. We use try/except AttributeError so that if the SDK ever drops
-    or renames that attribute, the warning is visible in logs rather than
-    silently degrading to no cost tracking.
+    OpenRouter populates a ``cost`` field on the standard ``usage`` object (a
+    USD float) when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we read
+    it off ``model_extra`` (pydantic v2's typed extras container) — no
+    ``getattr``. Mirrors backend/executor/simulator.py::_extract_cost_usd —
+    keep the two aligned.
     """
-    try:
-        raw_resp = response._response  # type: ignore[attr-defined]
-    except AttributeError:
-        logger.warning(
-            "OpenAI SDK response missing _response attribute"
-            " — OpenRouter cost tracking unavailable"
-        )
+    usage = response.usage
+    if usage is None:
+        return None
+    extras = usage.model_extra or {}
+    cost = extras.get("cost")
+    if cost is None:
         return None
     try:
-        cost_header = raw_resp.headers.get("x-total-cost")
-        if not cost_header:
-            return None
-        cost = float(cost_header)
-        if not math.isfinite(cost) or cost < 0:
-            return None
-        return cost
-    except (ValueError, TypeError, AttributeError):
+        cost_f = float(cost)
+    except (TypeError, ValueError):
         return None
+    if not math.isfinite(cost_f) or cost_f < 0:
+        return None
+    return cost_f
 
 
 def extract_openai_reasoning(response) -> str | None:
@@ -903,6 +911,41 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
+    """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
+    so that no single request can park an executor thread indefinitely."""
+    try:
+        return await asyncio.wait_for(
+            _llm_call(
+                credentials=credentials,
+                llm_model=llm_model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                force_json_output=force_json_output,
+                tools=tools,
+                ollama_host=ollama_host,
+                parallel_tool_calls=parallel_tool_calls,
+                compress_prompt_to_fit=compress_prompt_to_fit,
+            ),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as e:
+        raise TimeoutError(
+            f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
+            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled."
+        ) from e
+
+
+async def _llm_call(
+    credentials: APIKeyCredentials,
+    llm_model: LlmModel,
+    prompt: list[dict],
+    max_tokens: int | None,
+    force_json_output: bool = False,
+    tools: list[dict] | None = None,
+    ollama_host: str = "localhost:11434",
+    parallel_tool_calls=None,
+    compress_prompt_to_fit: bool = True,
+) -> LLMResponse:
     """
     Make a call to a language model.
 
@@ -925,21 +968,6 @@ async def llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
-
-    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter API key
-    # is configured, route direct-Anthropic models through OpenRouter instead. This
-    # gives us the x-total-cost header for free, so provider_cost is always populated
-    # without manual token-rate arithmetic.
-    or_key = settings.secrets.open_router_api_key
-    or_model_id: str | None = None
-    if provider == "anthropic" and or_key:
-        provider = "open_router"
-        credentials = APIKeyCredentials(
-            provider=ProviderName.OPEN_ROUTER,
-            title="OpenRouter (auto)",
-            api_key=SecretStr(or_key),
-        )
-        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
@@ -994,6 +1022,7 @@ async def llm_call(
             ),
             text=text_config,  # type: ignore[arg-type]
             store=False,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         raw_tool_calls = extract_responses_tool_calls(response)
@@ -1068,7 +1097,7 @@ async def llm_call(
             # equivalent to not including the key at all — no `tools` field is
             # sent to the API in that case.
             tools=an_tools,
-            timeout=600,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if sysprompt.strip():
             # Wrap the system prompt in a single cacheable text block.
@@ -1144,6 +1173,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if not response.choices:
             raise ValueError("Groq returned empty choices in response")
@@ -1165,7 +1195,9 @@ async def llm_call(
             ollama_host, trusted_hostnames=[settings.config.ollama_host]
         )
 
-        client = ollama.AsyncClient(host=ollama_host)
+        client = ollama.AsyncClient(
+            host=ollama_host, timeout=LLM_REQUEST_TIMEOUT_SECONDS
+        )
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
         response = await client.generate(
@@ -1184,7 +1216,6 @@ async def llm_call(
             reasoning=None,
         )
     elif provider == "open_router":
-        tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1199,11 +1230,22 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=or_model_id or llm_model.value,
-            messages=prompt,  # type: ignore
+            # Ask OpenRouter to include the per-request USD cost on the usage
+            # object. Same shape used by simulator.py — keep aligned.
+            extra_body={"usage": {"include": True}},
+            model=llm_model.value,
+            messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
+            tools=(
+                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
+            ),
             parallel_tool_calls=parallel_tool_calls_param,
+            response_format=(
+                ResponseFormatJSONObject(type="json_object")
+                if force_json_output
+                else openai.omit
+            ),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1243,6 +1285,7 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1261,7 +1304,7 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "aiml_api":
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
             default_headers={
@@ -1271,10 +1314,11 @@ async def llm_call(
             },
         )
 
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if not completion.choices:
             raise ValueError("AI/ML API returned empty choices in response")
@@ -1312,6 +1356,7 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1671,8 +1716,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     logger.warning(f"Error calling LLM: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
                     break
-                else:
-                    logger.exception(f"Error calling LLM: {e}")
+                if isinstance(e, TimeoutError):
+                    # A request that hung once will most likely hang again on
+                    # retry — the underlying issue (server-side starvation,
+                    # network partition, etc.) doesn't clear on a fresh socket.
+                    # Skip retries to avoid the N×timeout wait cascade.
+                    logger.warning(f"LLM call timed out, not retrying: {e}")
+                    error_feedback_message = f"Error calling LLM: {e}"
+                    break
+                logger.exception(f"Error calling LLM: {e}")
                 if (
                     "maximum context length" in str(e).lower()
                     or "token limit" in str(e).lower()

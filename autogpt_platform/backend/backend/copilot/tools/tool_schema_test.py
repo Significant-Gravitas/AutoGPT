@@ -36,7 +36,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # for parity with the Claude Code SDK's built-in (PR #12879). The new
 # schema adds ~600 chars; description already trimmed to the minimum
 # viable copy.
-_CHAR_BUDGET = 34_000
+# Bumped 34000 -> 35000 on PR #12740 for the schedule management tools
+# (list_schedules, delete_schedule) needed by the trigger-agent flow.
+# Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
+# (returns trigger agents + webhook presets for a parent agent so
+# AutoPilot can inspect/manage them).
+_CHAR_BUDGET = 35_500
 
 
 @pytest.fixture(scope="module")
