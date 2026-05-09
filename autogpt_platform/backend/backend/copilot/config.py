@@ -414,15 +414,15 @@ class ChatConfig(BaseSettings):
         "(same pattern as `api_key` / `base_url`).",
     )
     use_openrouter: bool = Field(
-        default=False,
+        default=True,
         description="Route copilot LLM calls through the OpenRouter proxy. "
-        "Default is ``False``: main path goes direct to api.anthropic.com "
-        "via the OpenAI-compat endpoint (requires ``CHAT_DIRECT_ANTHROPIC_API_KEY`` "
-        "or ``ANTHROPIC_API_KEY``).  Set ``CHAT_USE_OPENROUTER=true`` (with "
-        "``CHAT_API_KEY`` + ``CHAT_BASE_URL=https://openrouter.ai/api/v1``) "
-        "to keep using OpenRouter.  The actual decision also requires the "
-        "credentials to be valid — use the ``openrouter_active`` property "
-        "for the final answer.",
+        "Default is ``True`` so all turns (main + aux: title, simulation, "
+        "future builder helpers) flow through OpenRouter for unified "
+        "observability and cost broadcasting.  Set ``CHAT_USE_OPENROUTER=false`` "
+        "(with ``CHAT_DIRECT_ANTHROPIC_API_KEY`` or ``ANTHROPIC_API_KEY``) to "
+        "route the main path direct to api.anthropic.com.  The actual decision "
+        "also requires the credentials to be valid — use the ``openrouter_active`` "
+        "property for the final answer.",
     )
     use_claude_code_subscription: bool = Field(
         default=False,
