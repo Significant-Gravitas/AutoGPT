@@ -78,14 +78,38 @@ export function exportChatAsMarkdown(
   URL.revokeObjectURL(url);
 }
 
+const EXPORT_PAGE_SIZE = 200;
+const EXPORT_MAX_PAGES = 100;
+
 export async function fetchAndExportChat(
   id: string,
   title: string | null | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  fetchSession: (id: string, opts: { limit: number }) => Promise<any>,
+  fetchSession: (
+    id: string,
+    opts: { limit: number; before_sequence?: number },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) => Promise<any>,
 ): Promise<void> {
-  const response = await fetchSession(id, { limit: 2000 });
-  if (response.status !== 200) throw new Error("Failed to fetch session");
-  const messages = (response.data.messages ?? []) as SessionChatMessage[];
-  exportChatAsMarkdown(id, title, messages);
+  const allMessages: SessionChatMessage[] = [];
+  let beforeSequence: number | undefined = undefined;
+
+  for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
+    const opts: { limit: number; before_sequence?: number } = {
+      limit: EXPORT_PAGE_SIZE,
+    };
+    if (beforeSequence !== undefined) opts.before_sequence = beforeSequence;
+
+    const response = await fetchSession(id, opts);
+    if (response.status !== 200) throw new Error("Failed to fetch session");
+
+    const pageMessages = (response.data.messages ?? []) as SessionChatMessage[];
+    allMessages.unshift(...pageMessages);
+
+    const hasMore = !!response.data.has_more_messages;
+    const oldestSeq = response.data.oldest_sequence;
+    if (!hasMore || oldestSeq == null) break;
+    beforeSequence = oldestSeq;
+  }
+
+  exportChatAsMarkdown(id, title, allMessages);
 }

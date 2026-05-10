@@ -237,4 +237,57 @@ describe("fetchAndExportChat", () => {
     await fetchAndExportChat("session-1", "My Chat", mockFetch);
     expect(clickSpy).toHaveBeenCalled();
   });
+
+  it("paginates via before_sequence until has_more_messages is false", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          messages: [
+            { role: "user", content: "page2-msg-a", tool_calls: null },
+            { role: "assistant", content: "page2-msg-b", tool_calls: null },
+          ],
+          has_more_messages: true,
+          oldest_sequence: 42,
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          messages: [
+            { role: "user", content: "page1-msg-a", tool_calls: null },
+            { role: "assistant", content: "page1-msg-b", tool_calls: null },
+          ],
+          has_more_messages: false,
+          oldest_sequence: 1,
+        },
+      });
+
+    await fetchAndExportChat("session-1", "My Chat", mockFetch);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, "session-1", { limit: 200 });
+    expect(mockFetch).toHaveBeenNthCalledWith(2, "session-1", {
+      limit: 200,
+      before_sequence: 42,
+    });
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it("stops paginating when oldest_sequence is null even if has_more is true", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        messages: [{ role: "user", content: "Hello", tool_calls: null }],
+        has_more_messages: true,
+        oldest_sequence: null,
+      },
+    });
+
+    await fetchAndExportChat("session-1", "My Chat", mockFetch);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalled();
+  });
 });
