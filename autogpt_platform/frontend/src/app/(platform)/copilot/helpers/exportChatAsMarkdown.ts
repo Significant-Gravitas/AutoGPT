@@ -100,7 +100,8 @@ export async function fetchAndExportChat(
       throw new Error(`Failed to fetch session (status: ${response.status})`);
     }
 
-    const pageMessages = (response.data.messages ?? []) as SessionChatMessage[];
+    const pageMessages = (response.data.messages ??
+      []) as unknown as SessionChatMessage[];
     allMessages.unshift(...pageMessages);
 
     const hasMore = !!response.data.has_more_messages;
