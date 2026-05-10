@@ -275,6 +275,23 @@ describe("fetchAndExportChat", () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
+  it("throws when pagination cap is hit while has_more is still true", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        messages: [{ role: "user", content: "msg", tool_calls: null }],
+        has_more_messages: true,
+        oldest_sequence: 1,
+      },
+    });
+
+    await expect(
+      fetchAndExportChat("session-1", "My Chat", mockFetch),
+    ).rejects.toThrow(/exceeded \d+ messages/);
+
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
   it("stops paginating when oldest_sequence is null even if has_more is true", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       status: 200,

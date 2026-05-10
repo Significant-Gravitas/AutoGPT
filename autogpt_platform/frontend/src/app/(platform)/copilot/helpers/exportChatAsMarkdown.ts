@@ -88,6 +88,7 @@ export async function fetchAndExportChat(
 ): Promise<void> {
   const allMessages: SessionChatMessage[] = [];
   let beforeSequence: number | undefined = undefined;
+  let truncated = false;
 
   for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
     const opts: { limit: number; before_sequence?: number } = {
@@ -107,7 +108,17 @@ export async function fetchAndExportChat(
     const hasMore = !!response.data.has_more_messages;
     const oldestSeq = response.data.oldest_sequence;
     if (!hasMore || oldestSeq == null) break;
+    if (page === EXPORT_MAX_PAGES - 1) {
+      truncated = true;
+      break;
+    }
     beforeSequence = oldestSeq;
+  }
+
+  if (truncated) {
+    throw new Error(
+      `Chat export exceeded ${EXPORT_MAX_PAGES * EXPORT_PAGE_SIZE} messages. Please contact support to export this chat.`,
+    );
   }
 
   exportChatAsMarkdown(id, title, allMessages);
