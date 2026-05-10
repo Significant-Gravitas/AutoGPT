@@ -81,22 +81,10 @@ export function exportChatAsMarkdown(
 const EXPORT_PAGE_SIZE = 200;
 const EXPORT_MAX_PAGES = 100;
 
-interface SessionPageResponse {
-  status: number;
-  data: {
-    messages?: SessionChatMessage[] | null;
-    has_more_messages?: boolean | null;
-    oldest_sequence?: number | null;
-  };
-}
-
 export async function fetchAndExportChat(
   id: string,
   title: string | null | undefined,
-  fetchSession: (
-    id: string,
-    opts: { limit: number; before_sequence?: number },
-  ) => Promise<SessionPageResponse>,
+  fetchSession: typeof import("@/app/api/__generated__/endpoints/chat/chat").getV2GetSession,
 ): Promise<void> {
   const allMessages: SessionChatMessage[] = [];
   let beforeSequence: number | undefined = undefined;
