@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   CircleNotch,
-  DownloadSimple,
+  DownloadSimpleIcon,
   DotsThree,
   PlusCircleIcon,
   PlusIcon,
@@ -164,10 +164,14 @@ export function ChatSidebar() {
     try {
       await fetchAndExportChat(id, title, getV2GetSession);
       toast({ title: "Chat exported" });
-    } catch {
+    } catch (error) {
+      console.error("Failed to export chat:", { id, title, error });
       toast({
         title: "Export failed",
-        description: "Could not export this chat. Please try again.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Could not export this chat. Please try again.",
         variant: "destructive",
       });
     }
@@ -405,7 +409,7 @@ export function ChatSidebar() {
                               handleExportClick(e, session.id, session.title)
                             }
                           >
-                            <DownloadSimple className="mr-2 h-4 w-4" />
+                            <DownloadSimpleIcon className="mr-2 h-4 w-4" />
                             Export chat
                           </DropdownMenuItem>
                           <DropdownMenuItem

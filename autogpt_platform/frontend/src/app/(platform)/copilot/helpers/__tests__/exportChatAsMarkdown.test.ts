@@ -222,11 +222,11 @@ describe("fetchAndExportChat", () => {
     expect(anchor.download).toMatch(/\.md$/);
   });
 
-  it("throws when fetch returns non-200 status", async () => {
+  it("throws when fetch returns non-200 status (includes status code)", async () => {
     const mockFetch = vi.fn().mockResolvedValue({ status: 404, data: {} });
     await expect(
       fetchAndExportChat("session-1", "My Chat", mockFetch),
-    ).rejects.toThrow("Failed to fetch session");
+    ).rejects.toThrow("Failed to fetch session (status: 404)");
   });
 
   it("handles null messages array gracefully", async () => {
