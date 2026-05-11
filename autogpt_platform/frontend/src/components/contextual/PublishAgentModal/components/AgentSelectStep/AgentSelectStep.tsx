@@ -285,17 +285,17 @@ function PaginationBar({
   const pages = buildPageRange(page, totalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-2 pb-3 pt-1 text-zinc-500 sm:flex-row">
+    <div className="flex flex-col items-center justify-between gap-3 pb-3 pt-1 text-zinc-500 sm:flex-row">
       <Text variant="small" className="text-zinc-500">
         {start}–{end} of {totalItems}
       </Text>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           aria-label="Previous page"
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
-          className="flex size-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <CaretLeftIcon size={14} weight="bold" />
         </button>
@@ -303,7 +303,7 @@ function PaginationBar({
           entry === "…" ? (
             <span
               key={`gap-${idx}`}
-              className="px-1 text-xs text-zinc-400"
+              className="px-1 text-sm text-zinc-400"
               aria-hidden
             >
               …
@@ -315,10 +315,10 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "flex size-8 items-center justify-center rounded-full border text-xs font-medium transition",
+                "flex size-9 items-center justify-center rounded-full text-sm font-medium transition",
                 entry === page
-                  ? "border-purple-500 bg-purple-500 text-white"
-                  : "border-zinc-200 text-zinc-600 hover:border-zinc-300",
+                  ? "bg-purple-500 text-white shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
+                  : "border border-zinc-200 text-zinc-700 hover:border-zinc-300",
               )}
             >
               {entry}
@@ -330,7 +330,7 @@ function PaginationBar({
           aria-label="Next page"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
-          className="flex size-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <CaretRightIcon size={14} weight="bold" />
         </button>

@@ -29,7 +29,7 @@ interface UseAgentSelectStepProps {
   ) => void;
 }
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 10;
 
 export function useAgentSelectStep({
   onSelect,
