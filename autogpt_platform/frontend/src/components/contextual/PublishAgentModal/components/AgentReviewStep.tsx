@@ -274,7 +274,7 @@ export function AgentReviewStep({
       ) : null}
 
       {status !== SubmissionStatus.REJECTED ? (
-        <motion.ol
+        <motion.div
           initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
@@ -283,47 +283,61 @@ export function AgentReviewStep({
           <Text variant="body-medium" as="span" className="text-textBlack">
             What happens next
           </Text>
-          <li className="flex items-start gap-3">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-purple-50 text-purple-600">
-              <PaperPlaneTiltIcon size={14} weight="bold" />
-            </span>
-            <div className="flex min-w-0 flex-col">
-              <Text variant="small-medium" as="span" className="text-textBlack">
-                Submitted for review
-              </Text>
-              <Text variant="small" className="text-zinc-500">
-                Your listing is queued in the marketplace review pipeline.
-              </Text>
-            </div>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-              <ClockIcon size={14} weight="bold" />
-            </span>
-            <div className="flex min-w-0 flex-col">
-              <Text variant="small-medium" as="span" className="text-textBlack">
-                Reviewed soon
-              </Text>
-              <Text variant="small" className="text-zinc-500">
-                Our team checks the details, media, and safety of your agent.
-              </Text>
-            </div>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
-              <RocketLaunchIcon size={14} weight="bold" />
-            </span>
-            <div className="flex min-w-0 flex-col">
-              <Text variant="small-medium" as="span" className="text-textBlack">
-                Approved listings go live
-              </Text>
-              <Text variant="small" className="text-zinc-500">
-                You&apos;ll get an email; rejected listings come back with
-                feedback.
-              </Text>
-            </div>
-          </li>
-        </motion.ol>
+          <ol className="flex flex-col gap-3">
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+                <PaperPlaneTiltIcon size={14} weight="bold" />
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <Text
+                  variant="small-medium"
+                  as="span"
+                  className="text-textBlack"
+                >
+                  Submitted for review
+                </Text>
+                <Text variant="small" className="text-zinc-500">
+                  Your listing is queued in the marketplace review pipeline.
+                </Text>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                <ClockIcon size={14} weight="bold" />
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <Text
+                  variant="small-medium"
+                  as="span"
+                  className="text-textBlack"
+                >
+                  Reviewed soon
+                </Text>
+                <Text variant="small" className="text-zinc-500">
+                  Our team checks the details, media, and safety of your agent.
+                </Text>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                <RocketLaunchIcon size={14} weight="bold" />
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <Text
+                  variant="small-medium"
+                  as="span"
+                  className="text-textBlack"
+                >
+                  Approved listings go live
+                </Text>
+                <Text variant="small" className="text-zinc-500">
+                  You&apos;ll get an email; rejected listings come back with
+                  feedback.
+                </Text>
+              </div>
+            </li>
+          </ol>
+        </motion.div>
       ) : null}
 
       <div className="mt-8 w-full">
