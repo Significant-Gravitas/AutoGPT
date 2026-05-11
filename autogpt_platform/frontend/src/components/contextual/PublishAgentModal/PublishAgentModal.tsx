@@ -157,11 +157,7 @@ export function PublishAgentModal({
               }}
               className="overflow-hidden"
             >
-              <AnimatePresence
-                mode="wait"
-                initial={false}
-                custom={direction}
-              >
+              <AnimatePresence mode="wait" initial={false} custom={direction}>
                 <motion.div
                   key={user ? currentState.step : "auth"}
                   custom={direction}

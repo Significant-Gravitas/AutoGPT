@@ -174,10 +174,7 @@ export function AgentInfoStep({
             onValueChange={setOpenAccordion}
             className="overflow-hidden rounded-[14px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-zinc-200"
           >
-            <AccordionItem
-              value="basics"
-              className="border-0 px-4"
-            >
+            <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
                   <StorefrontIcon
@@ -275,10 +272,7 @@ export function AgentInfoStep({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem
-              value="thumbnails"
-              className="border-0 px-4"
-            >
+            <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
                   <ImagesIcon
@@ -313,10 +307,7 @@ export function AgentInfoStep({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem
-              value="experience"
-              className="border-0 px-4"
-            >
+            <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
                   <SparkleIcon
@@ -420,11 +411,7 @@ export function AgentInfoStep({
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-1">
-                          <Text
-                            variant="body"
-                            as="span"
-                            className="text-black"
-                          >
+                          <Text variant="body" as="span" className="text-black">
                             Recommended schedule
                           </Text>
                           <InformationTooltip

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { createPortal } from "react-dom";
 
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
@@ -87,39 +86,16 @@ export function AgentReviewStep({
   const HeroIcon = hero.Icon;
   const shouldReduceMotion = useReducedMotion();
   const isPending =
-    status !== SubmissionStatus.APPROVED && status !== SubmissionStatus.REJECTED;
+    status !== SubmissionStatus.APPROVED &&
+    status !== SubmissionStatus.REJECTED;
 
   const showCelebration = status !== SubmissionStatus.REJECTED;
-  const [portalTarget, setPortalTarget] = React.useState<HTMLElement | null>(
-    null,
-  );
-  React.useEffect(() => {
-    const target = document.querySelector(
-      "[data-dialog-content]",
-    ) as HTMLElement | null;
-    setPortalTarget(target);
-  }, []);
 
   return (
     <div
       aria-labelledby="modal-title"
       className="relative flex flex-col items-center pb-4 pt-10"
     >
-      {portalTarget
-        ? createPortal(
-            <>
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-48 rounded-t-2xlarge bg-gradient-to-b from-purple-200/70 via-purple-100/40 to-transparent"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -top-16 left-1/2 -z-10 size-64 -translate-x-1/2 rounded-full bg-purple-300/40 blur-3xl"
-              />
-            </>,
-            portalTarget,
-          )
-        : null}
       {showCelebration ? (
         <Confetti
           options={{
@@ -199,7 +175,9 @@ export function AgentReviewStep({
             className="absolute inset-1 rounded-full bg-white/10"
           />
           <motion.span
-            initial={shouldReduceMotion ? { opacity: 0 } : { scale: 0.4, opacity: 0 }}
+            initial={
+              shouldReduceMotion ? { opacity: 0 } : { scale: 0.4, opacity: 0 }
+            }
             animate={{ scale: 1, opacity: 1 }}
             transition={
               shouldReduceMotion
@@ -219,9 +197,7 @@ export function AgentReviewStep({
       </div>
 
       <motion.div
-        initial={
-          shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }
-        }
+        initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.24, ease: "easeOut", delay: 0.12 }}
         className="mt-5 flex max-w-md flex-col items-center gap-2 px-2 text-center"
@@ -240,9 +216,7 @@ export function AgentReviewStep({
       </motion.div>
 
       <motion.div
-        initial={
-          shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }
-        }
+        initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.24, ease: "easeOut", delay: 0.18 }}
         className="mt-6 flex w-full max-w-md items-center gap-3 rounded-[14px] border border-zinc-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]"
@@ -300,9 +274,7 @@ export function AgentReviewStep({
 
       {status !== SubmissionStatus.REJECTED ? (
         <motion.ol
-          initial={
-            shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }
-          }
+          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
           className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
@@ -345,7 +317,8 @@ export function AgentReviewStep({
                 Approved listings go live
               </Text>
               <Text variant="small" className="text-zinc-500">
-                You&apos;ll get an email; rejected listings come back with feedback.
+                You&apos;ll get an email; rejected listings come back with
+                feedback.
               </Text>
             </div>
           </li>
@@ -353,29 +326,29 @@ export function AgentReviewStep({
       ) : null}
 
       <div className="mt-8 w-full">
-      <StepFooter
-        secondary={
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={onDone}
-            className="w-full sm:w-auto"
-          >
-            Done
-          </Button>
-        }
-        primary={
-          <Button
-            size="small"
-            onClick={onViewProgress}
-            className="w-full sm:w-auto"
-            rightIcon={<ArrowRightIcon size={14} weight="bold" />}
-            data-testid="view-progress-button"
-          >
-            {isDashboardPage ? "View progress" : "Go to Creator Dashboard"}
-          </Button>
-        }
-      />
+        <StepFooter
+          secondary={
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={onDone}
+              className="w-full sm:w-auto"
+            >
+              Done
+            </Button>
+          }
+          primary={
+            <Button
+              size="small"
+              onClick={onViewProgress}
+              className="w-full sm:w-auto"
+              rightIcon={<ArrowRightIcon size={14} weight="bold" />}
+              data-testid="view-progress-button"
+            >
+              {isDashboardPage ? "View progress" : "Go to Creator Dashboard"}
+            </Button>
+          }
+        />
       </div>
     </div>
   );

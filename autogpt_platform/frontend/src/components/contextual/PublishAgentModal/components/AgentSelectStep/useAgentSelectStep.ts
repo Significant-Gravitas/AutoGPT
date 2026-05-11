@@ -46,6 +46,8 @@ export function useAgentSelectStep({
   } = useGetV2GetMyAgents(undefined, {
     query: {
       enabled: isLoggedIn,
+      refetchOnMount: "always",
+      staleTime: 0,
       select: (res) =>
         okData(res)
           ?.agents.map(
