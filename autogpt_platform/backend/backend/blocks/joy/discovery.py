@@ -18,6 +18,8 @@ discover agents that can help with specific tasks, filtered by trust score.
 4. Use the top agent or iterate through results
 """
 
+from typing import Any
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -79,7 +81,7 @@ class JoyDiscoverAgentsBlock(Block):
     class Output(BlockSchemaOutput):
         """Output schema for JoyDiscoverAgentsBlock."""
 
-        agents: list = SchemaField(
+        agents: list[dict[str, Any]] = SchemaField(
             description="List of matching agents with their trust profiles"
         )
         count: int = SchemaField(description="Number of agents returned")
@@ -97,7 +99,7 @@ class JoyDiscoverAgentsBlock(Block):
     def __init__(self) -> None:
         """Initialize JoyDiscoverAgentsBlock with test configuration."""
         super().__init__(
-            id="f0a1b2c3-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
+            id="e9f54a6c-3d8f-4c0d-99ef-0c3aed0e1e86",
             description="Discover agents by capability or search query. Find trusted agents for specific tasks.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -154,7 +156,7 @@ class JoyDiscoverAgentsBlock(Block):
         capability: str | None,
         limit: int,
         credentials: APIKeyCredentials | None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Mockable wrapper for Joy API discovery."""
         return await _discover_agents(
             query=query, capability=capability, limit=limit, credentials=credentials
@@ -168,32 +170,40 @@ class JoyDiscoverAgentsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         """Execute agent discovery and yield matching results."""
-        result = await self.discover_agents(
-            query=input_data.query or None,
-            capability=input_data.capability or None,
-            limit=input_data.limit,
-            credentials=credentials,
-        )
+        try:
+            result = await self.discover_agents(
+                query=input_data.query or None,
+                capability=input_data.capability or None,
+                limit=input_data.limit,
+                credentials=credentials,
+            )
 
-        agents = result.get("agents", [])
+            agents = result.get("agents", [])
 
-        # Filter by min_trust_score if specified
-        if input_data.min_trust_score > 0:
-            agents = [
-                a
-                for a in agents
-                if a.get("trust_score", 0) >= input_data.min_trust_score
-            ]
+            # Filter by min_trust_score if specified
+            if input_data.min_trust_score > 0:
+                agents = [
+                    a
+                    for a in agents
+                    if a.get("trust_score", 0) >= input_data.min_trust_score
+                ]
 
-        yield "agents", agents
-        yield "count", len(agents)
+            yield "agents", agents
+            yield "count", len(agents)
 
-        if agents:
-            top = agents[0]
-            yield "top_agent_id", top.get("agent_id", "")
-            yield "top_agent_name", top.get("name", "")
-            yield "top_agent_score", top.get("trust_score", 0.0)
-        else:
+            if agents:
+                top = agents[0]
+                yield "top_agent_id", top.get("agent_id", "")
+                yield "top_agent_name", top.get("name", "")
+                yield "top_agent_score", top.get("trust_score", 0.0)
+            else:
+                yield "top_agent_id", ""
+                yield "top_agent_name", ""
+                yield "top_agent_score", 0.0
+        except Exception as e:
+            yield "error", str(e)
+            yield "agents", []
+            yield "count", 0
             yield "top_agent_id", ""
             yield "top_agent_name", ""
             yield "top_agent_score", 0.0
