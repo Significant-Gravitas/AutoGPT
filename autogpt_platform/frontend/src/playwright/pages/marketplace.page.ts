@@ -266,7 +266,7 @@ export class MarketplacePage extends BasePage {
     await submitButton.click();
 
     await expect(
-      publishAgentModal.getByText("Agent is awaiting review"),
+      publishAgentModal.getByText("Submission received"),
     ).toBeVisible();
     await expect(
       publishAgentModal.getByTestId("view-progress-button"),
