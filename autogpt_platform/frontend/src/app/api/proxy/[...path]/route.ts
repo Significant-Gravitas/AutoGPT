@@ -1,15 +1,10 @@
 import {
-  ApiError,
-  getServerAuthToken,
-  makeAuthenticatedFileUpload,
-  makeAuthenticatedRequest,
-} from "@/lib/autogpt-server-api/helpers";
+  API_KEY_HEADER_NAME,
+  IMPERSONATION_HEADER_NAME,
+} from "@/lib/constants";
+import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
-
-// Increase body size limit to 256MB to match backend file upload limit
-export const maxDuration = 300; // 5 minutes timeout for large uploads
-export const dynamic = "force-dynamic";
 
 import {
   fetchWorkspaceDownloadWithRetry,
@@ -17,22 +12,92 @@ import {
   isWorkspaceDownloadRequest,
 } from "./route.helpers";
 
+// 5 minutes for large uploads. Most calls finish in well under a second.
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+
+const FORWARDED_REQUEST_HEADERS: ReadonlyArray<string> = [
+  "content-type",
+  "content-length",
+  "accept",
+  "accept-language",
+  IMPERSONATION_HEADER_NAME.toLowerCase(),
+  API_KEY_HEADER_NAME.toLowerCase(),
+  "sentry-trace",
+  "baggage",
+];
+
+// Browsers advertise `zstd` in Accept-Encoding, but undici (Node 22's fetch)
+// only auto-decompresses gzip/deflate/br. If we forwarded the browser value,
+// Cloudflare in front of the backend would pick zstd, Node would hand us raw
+// zstd bytes, the response handler would strip Content-Encoding, and Vercel's
+// edge would then brotli-wrap those bytes — leaving the browser to decode br
+// over zstd and fail JSON.parse on a 200 response.
+const BACKEND_ACCEPT_ENCODING = "gzip, deflate, br";
+
+// Headers that must not be forwarded from the backend to the client.
+// Hop-by-hop entries are listed in RFC 7230 §6.1; content-encoding and
+// content-length are stripped because Node's fetch auto-decompresses the
+// backend body when reading response.body, so the streamed payload's actual
+// byte length and encoding no longer match what the backend advertised.
+// Letting Node recompute framing (via Transfer-Encoding: chunked) keeps
+// HTTP parsing on the client side correct.
+// `set-cookie` is stripped defensively so any backend cookie without an
+// explicit Domain attribute can't attach to the frontend origin.
+const STRIPPED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "content-encoding",
+  "content-length",
+  "set-cookie",
+]);
+
 function buildBackendUrl(path: string[], queryString: string): string {
-  const backendPath = path.join("/");
-  return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
+  return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
 }
 
-/**
- * Handle workspace file download requests with proper binary response streaming.
- */
-async function handleWorkspaceDownload(
-  req: NextRequest,
-  backendUrl: string,
-): Promise<NextResponse> {
-  const token = await getServerAuthToken();
+function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
+  const headers = new Headers();
+  for (const name of FORWARDED_REQUEST_HEADERS) {
+    const value = req.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+  return headers;
+}
 
+function filterResponseHeaders(src: Headers): Headers {
+  const out = new Headers();
+  src.forEach((value, key) => {
+    if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) {
+      out.set(key, value);
+    }
+  });
+  return out;
+}
+
+const METHODS_WITHOUT_BODY: ReadonlySet<string> = new Set([
+  "GET",
+  "HEAD",
+  "DELETE",
+  "OPTIONS",
+]);
+
+async function handleWorkspaceDownload(
+  backendUrl: string,
+  token: string | null,
+): Promise<NextResponse> {
   const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
+  if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
@@ -47,7 +112,7 @@ async function handleWorkspaceDownload(
     return await createWorkspaceDownloadErrorResponse(response);
   }
 
-  // Fully buffer the response before forwarding.  Passing response.body as a
+  // Fully buffer the response before forwarding. Passing response.body as a
   // ReadableStream causes silent truncation in Next.js / Vercel — the last
   // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
   const buffer = await response.arrayBuffer();
@@ -99,152 +164,16 @@ async function createWorkspaceDownloadErrorResponse(
   }
 }
 
-async function handleJsonRequest(
-  req: NextRequest,
-  method: string,
-  backendUrl: string,
-): Promise<any> {
-  let payload;
-
-  try {
-    payload = await req.json();
-  } catch (error) {
-    // Handle cases where request body is empty, invalid JSON, or already consumed
-    console.warn("Failed to parse JSON from request body:", error);
-    payload = null;
-  }
-
-  return await makeAuthenticatedRequest(
-    method,
-    backendUrl,
-    payload,
-    "application/json",
-    req,
-  );
-}
-
-async function handleFormDataRequest(
-  req: NextRequest,
-  backendUrl: string,
-): Promise<any> {
-  const formData = await req.formData();
-  return await makeAuthenticatedFileUpload(backendUrl, formData, req);
-}
-
-async function handleUrlEncodedRequest(
-  req: NextRequest,
-  method: string,
-  backendUrl: string,
-): Promise<any> {
-  const textPayload = await req.text();
-  const params = new URLSearchParams(textPayload);
-  const payload = Object.fromEntries(params.entries());
-  return await makeAuthenticatedRequest(
-    method,
-    backendUrl,
-    payload,
-    "application/x-www-form-urlencoded",
-    req,
-  );
-}
-
-async function handleGetDeleteRequest(
-  method: string,
-  backendUrl: string,
-  req: NextRequest,
-): Promise<any> {
-  return await makeAuthenticatedRequest(
-    method,
-    backendUrl,
-    undefined,
-    "application/json",
-    req,
-  );
-}
-
-function createUnsupportedContentTypeResponse(
-  contentType: string | null,
-): NextResponse {
-  return NextResponse.json(
-    {
-      error:
-        "Unsupported Content-Type for proxying with authentication helpers.",
-      receivedContentType: contentType,
-      supportedContentTypes: [
-        "application/json",
-        "multipart/form-data",
-        "application/x-www-form-urlencoded",
-      ],
-    },
-    { status: 415 },
-  );
-}
-
-function createResponse(
-  responseBody: any,
-  responseStatus: number,
-  responseHeaders: Record<string, string>,
-): NextResponse {
-  if (responseStatus === 204) {
-    return new NextResponse(null, { status: responseStatus });
-  } else {
-    return NextResponse.json(responseBody, {
-      status: responseStatus,
-      headers: responseHeaders,
-    });
-  }
-}
-
-function createErrorResponse(
-  error: unknown,
-  path: string,
-  method: string,
-): NextResponse {
-  if (
-    error &&
-    typeof error === "object" &&
-    "status" in error &&
-    [401, 403].includes(error.status as number)
-  ) {
-    // Log this since it indicates a potential frontend bug
-    console.warn(
-      `Authentication error in API proxy for ${method} ${path}:`,
-      "message" in error ? error.message : error,
-    );
-  }
-
-  // If it's our custom ApiError, preserve the original status and response
-  if (error instanceof ApiError) {
-    return NextResponse.json(error.response || { error: error.message }, {
-      status: error.status,
-    });
-  }
-
-  // For JSON parsing errors, provide more context
-  if (error instanceof SyntaxError && error.message.includes("JSON")) {
-    return NextResponse.json(
-      {
-        error: "Invalid response from backend",
-        detail: error.message ?? "Backend returned non-JSON response",
-      },
-      { status: 502 },
-    );
-  }
-
-  // For other errors, use generic response
-  const detail =
-    error instanceof Error ? error.message : "An unknown error occurred";
-  return NextResponse.json(
-    { error: "Proxy request failed", detail },
-    { status: 500 },
-  );
-}
-
 /**
- * A simple proxy route that forwards requests to the backend API.
- * It injects the server-side authentication token into the Authorization header.
- * It uses the makeAuthenticatedRequest and makeAuthenticatedFileUpload helpers
- * to handle request body parsing and authentication.
+ * Forwards browser API requests to the backend with the JWT pulled from
+ * httpOnly cookies attached to the Authorization header.
+ *
+ * Body and response are streamed end-to-end so JSON / FormData / SSE bodies
+ * pass through without parse → re-serialise round-trips. Status codes and
+ * non-hop-by-hop response headers are preserved.
+ *
+ * Workspace file downloads have a dedicated buffering path because Vercel's
+ * stream forwarding silently truncates large binary responses.
  */
 async function handler(
   req: NextRequest,
@@ -254,39 +183,41 @@ async function handler(
   const url = new URL(req.url);
   const queryString = url.search;
   const backendUrl = buildBackendUrl(path, queryString);
-
   const method = req.method;
-  const contentType = req.headers.get("Content-Type");
-
-  let responseBody: any;
-  const responseHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
 
   try {
-    // Handle workspace file downloads separately (binary response)
+    const token = await getServerAuthToken();
+
     if (method === "GET" && isWorkspaceDownloadRequest(path)) {
-      return await handleWorkspaceDownload(req, backendUrl);
+      return await handleWorkspaceDownload(backendUrl, token);
     }
 
-    if (method === "GET" || method === "DELETE") {
-      responseBody = await handleGetDeleteRequest(method, backendUrl, req);
-    } else if (contentType?.includes("application/json")) {
-      responseBody = await handleJsonRequest(req, method, backendUrl);
-    } else if (contentType?.includes("multipart/form-data")) {
-      responseBody = await handleFormDataRequest(req, backendUrl);
-    } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-      responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
-    } else {
-      return createUnsupportedContentTypeResponse(contentType);
-    }
+    const headers = buildForwardHeaders(req, token);
+    const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
-    return createResponse(responseBody, 200, responseHeaders);
-  } catch (error) {
-    return createErrorResponse(
-      error,
-      path.map((s) => `/${s}`).join(""),
+    const backendResponse = await fetch(backendUrl, {
       method,
+      headers,
+      body: hasBody ? req.body : undefined,
+      // `duplex: "half"` is required by Node's fetch when sending a
+      // ReadableStream body. Cast because TS lib types haven't caught up.
+      ...(hasBody ? ({ duplex: "half" } as RequestInit) : {}),
+      redirect: "manual",
+    });
+
+    return new NextResponse(backendResponse.body, {
+      status: backendResponse.status,
+      statusText: backendResponse.statusText,
+      headers: filterResponseHeaders(backendResponse.headers),
+    });
+  } catch (error) {
+    console.error(`Proxy error for ${method} /${path.join("/")}:`, error);
+    return NextResponse.json(
+      {
+        error: "Proxy request failed",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 502 },
     );
   }
 }
