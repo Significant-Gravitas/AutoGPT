@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   CaretLeftIcon,
   CaretRightIcon,
@@ -57,12 +58,15 @@ export function AgentSelectStep({
     totalItems,
     pageSize,
     sortBy,
+    pageDirection,
     handleAgentClick,
     handleNext,
     handleSortChange,
     goToPage,
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
+
+  const shouldReduceMotion = useReducedMotion();
 
   if (error) {
     return (
@@ -119,7 +123,7 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="mt-2 flex items-center justify-start pb-1">
+          <div className="mt-2 flex items-center justify-start pb-0">
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
@@ -162,67 +166,104 @@ export function AgentSelectStep({
                   ))}
                 </div>
               ) : (
-                <div
-                  className={cn(
-                    "grid grid-cols-1 gap-2 p-1 transition-opacity sm:grid-cols-2",
-                    isFetching && "opacity-60",
-                  )}
+                <AnimatePresence
+                  mode="wait"
+                  initial={false}
+                  custom={pageDirection}
                 >
-                  {myAgents.map((agent) => {
-                    const isSelected = selectedAgentId === agent.id;
-                    return (
-                      <button
-                        type="button"
-                        key={agent.id}
-                        data-testid="agent-card"
-                        className={cn(
-                          "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
-                          isSelected
-                            ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
-                            : "border-zinc-200",
-                        )}
-                        onClick={() =>
-                          handleAgentClick(agent.name, agent.id, agent.version)
-                        }
-                        aria-pressed={isSelected}
-                      >
-                        <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <div className="flex min-w-0 items-center gap-2">
+                  <motion.div
+                    key={page}
+                    custom={pageDirection}
+                    variants={{
+                      enter: (dir: number) => ({
+                        opacity: 0,
+                        x: shouldReduceMotion ? 0 : dir * 16,
+                      }),
+                      center: {
+                        opacity: 1,
+                        x: 0,
+                        transition: {
+                          duration: shouldReduceMotion ? 0 : 0.2,
+                          ease: [0.16, 1, 0.3, 1],
+                        },
+                      },
+                      exit: (dir: number) => ({
+                        opacity: 0,
+                        x: shouldReduceMotion ? 0 : dir * -16,
+                        transition: {
+                          duration: shouldReduceMotion ? 0 : 0.12,
+                          ease: [0.4, 0, 1, 1],
+                        },
+                      }),
+                    }}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    className={cn(
+                      "grid grid-cols-1 gap-2 p-1 sm:grid-cols-2",
+                      isFetching && "opacity-90",
+                    )}
+                  >
+                    {myAgents.map((agent) => {
+                      const isSelected = selectedAgentId === agent.id;
+                      return (
+                        <button
+                          type="button"
+                          key={agent.id}
+                          data-testid="agent-card"
+                          className={cn(
+                            "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                            isSelected
+                              ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
+                              : "border-zinc-200",
+                          )}
+                          onClick={() =>
+                            handleAgentClick(
+                              agent.name,
+                              agent.id,
+                              agent.version,
+                            )
+                          }
+                          aria-pressed={isSelected}
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Text
+                                variant="body-medium"
+                                as="span"
+                                className="truncate text-textBlack"
+                              >
+                                {agent.name}
+                              </Text>
+                              <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                                v{agent.version}
+                              </span>
+                            </div>
                             <Text
-                              variant="body-medium"
+                              variant="small"
                               as="span"
-                              className="truncate text-textBlack"
+                              className="truncate text-zinc-500"
                             >
-                              {agent.name}
+                              {agent.description
+                                ? agent.description
+                                : `Edited ${agent.lastEdited}`}
                             </Text>
-                            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
-                              v{agent.version}
-                            </span>
                           </div>
-                          <Text
-                            variant="small"
-                            as="span"
-                            className="truncate text-zinc-500"
-                          >
-                            {agent.description
-                              ? agent.description
-                              : `Edited ${agent.lastEdited}`}
-                          </Text>
-                        </div>
-                        {isSelected ? (
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
-                            <CheckCircleIcon size={14} weight="fill" />
-                          </span>
-                        ) : (
-                          <span
-                            aria-hidden
-                            className="size-5 shrink-0 rounded-full border border-zinc-300"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                          {isSelected ? (
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
+                              <CheckCircleIcon size={14} weight="fill" />
+                            </span>
+                          ) : (
+                            <span
+                              aria-hidden
+                              className="size-5 shrink-0 rounded-full border border-zinc-300"
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
               )}
             </div>
           </div>
@@ -315,13 +356,21 @@ function PaginationBar({
               onClick={() => onChange(entry)}
               aria-current={entry === page ? "page" : undefined}
               className={cn(
-                "flex size-9 items-center justify-center rounded-full text-sm font-medium transition",
+                "relative flex size-9 items-center justify-center rounded-full text-sm font-medium transition",
                 entry === page
-                  ? "bg-purple-500 text-white shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
+                  ? "text-white"
                   : "border border-zinc-200 text-zinc-700 hover:border-zinc-300",
               )}
             >
-              {entry}
+              {entry === page ? (
+                <motion.span
+                  layoutId="pagination-active-pill"
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-purple-500 shadow-[0_4px_10px_-4px_rgba(119,51,245,0.55)]"
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                />
+              ) : null}
+              <span className="relative">{entry}</span>
             </button>
           ),
         )}

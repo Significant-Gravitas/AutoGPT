@@ -42,6 +42,7 @@ export function useAgentSelectStep({
     number | null
   >(null);
   const [page, setPage] = React.useState(1);
+  const [pageDirection, setPageDirection] = React.useState<1 | -1>(1);
   const [sortBy, setSortBy] = React.useState<MyAgentsSortBy>(
     MyAgentsSortBy.most_recent,
   );
@@ -118,6 +119,7 @@ export function useAgentSelectStep({
 
   function goToPage(next: number) {
     if (next < 1 || (totalPages > 0 && next > totalPages)) return;
+    setPageDirection(next > page ? 1 : -1);
     setPage(next);
   }
 
@@ -132,6 +134,7 @@ export function useAgentSelectStep({
     totalItems,
     pageSize: PAGE_SIZE,
     sortBy,
+    pageDirection,
     handleAgentClick,
     handleNext,
     handleSortChange,
