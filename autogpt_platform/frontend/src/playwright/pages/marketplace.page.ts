@@ -242,18 +242,22 @@ export class MarketplacePage extends BasePage {
       .getByLabel("Subheader")
       .fill("A deterministic marketplace submission");
     await publishAgentModal.getByLabel("Slug").fill(agentSlug);
-    await publishAgentModal
-      .getByLabel("YouTube video link")
-      .fill("https://www.youtube.com/watch?v=test123");
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
     await this.page.getByRole("option", { name: "Other" }).click();
+
+    await publishAgentModal
+      .getByRole("button", { name: /Experience details/ })
+      .click();
 
     await publishAgentModal
       .getByLabel("Description")
       .fill(
         "A deterministic publish flow for consolidated Playwright coverage.",
       );
+    await publishAgentModal
+      .getByLabel("YouTube video link")
+      .fill("https://www.youtube.com/watch?v=test123");
 
     const submitButton = publishAgentModal.getByRole("button", {
       name: "Submit for review",

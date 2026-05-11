@@ -345,7 +345,7 @@ export function AgentReviewStep({
                 Approved listings go live
               </Text>
               <Text variant="small" className="text-zinc-500">
-                You'll get an email; rejected listings come back with feedback.
+                You&apos;ll get an email; rejected listings come back with feedback.
               </Text>
             </div>
           </li>
