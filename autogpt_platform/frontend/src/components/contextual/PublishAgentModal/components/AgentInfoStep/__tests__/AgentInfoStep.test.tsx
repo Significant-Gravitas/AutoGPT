@@ -8,12 +8,9 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
-vi.mock(
-  "@/components/contextual/CronScheduler/cron-scheduler-dialog",
-  () => ({
-    CronExpressionDialog: () => null,
-  }),
-);
+vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
+  CronExpressionDialog: () => null,
+}));
 
 vi.mock("./components/ThumbnailImages", () => ({
   ThumbnailImages: () => <div data-testid="thumbnail-images-mock" />,
@@ -58,9 +55,8 @@ describe("AgentInfoStep", () => {
 
   it("mounts cleanly when the submissions API would error (handler installed)", async () => {
     server.use(
-      http.post(
-        "http://localhost:3000/api/proxy/api/store/submissions",
-        () => HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      http.post("http://localhost:3000/api/proxy/api/store/submissions", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
     render(<AgentInfoStep {...baseProps} />);

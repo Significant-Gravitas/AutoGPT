@@ -64,9 +64,7 @@ describe("AgentReviewStep", () => {
       />,
     );
     expect(screen.getByText("Agent needs changes")).toBeDefined();
-    expect(
-      screen.getByText("Please clarify your description."),
-    ).toBeDefined();
+    expect(screen.getByText("Please clarify your description.")).toBeDefined();
     expect(screen.queryByText("What happens next")).toBeNull();
   });
 });

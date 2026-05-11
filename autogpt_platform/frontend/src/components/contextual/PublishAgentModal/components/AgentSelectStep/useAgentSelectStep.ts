@@ -41,6 +41,10 @@ export function useAgentSelectStep({
   const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
     number | null
   >(null);
+  // Capture the selected agent's full payload at click time so pagination
+  // doesn't drop it off the current page before the user hits Continue.
+  const [selectedAgentSnapshot, setSelectedAgentSnapshot] =
+    React.useState<Agent | null>(null);
   const [page, setPage] = React.useState(1);
   const [pageDirection, setPageDirection] = React.useState<1 | -1>(1);
   const [sortBy, setSortBy] = React.useState<MyAgentsSortBy>(
@@ -94,23 +98,24 @@ export function useAgentSelectStep({
   const totalItems = agentsData?.pagination?.total_items ?? 0;
 
   function handleAgentClick(_: string, agentId: string, agentVersion: number) {
+    const clicked = myAgents.find((a) => a.id === agentId) ?? null;
     setSelectedAgentId(agentId);
     setSelectedAgentVersion(agentVersion);
+    setSelectedAgentSnapshot(clicked);
     onSelect(agentId, agentVersion);
   }
 
   function handleNext() {
-    if (selectedAgentId && selectedAgentVersion) {
-      const selectedAgent = myAgents.find((a) => a.id === selectedAgentId);
-      if (selectedAgent) {
-        onNext(selectedAgentId, selectedAgentVersion, {
-          name: selectedAgent.name,
-          description: selectedAgent.description,
-          imageSrc: selectedAgent.imageSrc,
-          recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
-        });
-      }
-    }
+    if (!selectedAgentId || !selectedAgentVersion) return;
+    const selectedAgent =
+      myAgents.find((a) => a.id === selectedAgentId) ?? selectedAgentSnapshot;
+    if (!selectedAgent) return;
+    onNext(selectedAgentId, selectedAgentVersion, {
+      name: selectedAgent.name,
+      description: selectedAgent.description,
+      imageSrc: selectedAgent.imageSrc,
+      recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
+    });
   }
 
   function handleSortChange(value: string) {

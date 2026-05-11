@@ -93,16 +93,14 @@ describe("AgentSelectStep", () => {
       />,
     );
 
-    const card = await screen.findByText(
-      "Agent 1",
-      {},
-      { timeout: 3000 },
-    );
+    const card = await screen.findByText("Agent 1", {}, { timeout: 3000 });
     fireEvent.click(card);
     expect(onSelect).toHaveBeenCalledWith("graph-1", 1);
 
     const continueBtn = screen.getByRole("button", { name: "Continue" });
-    await waitFor(() => expect(continueBtn).not.toHaveProperty("disabled", true));
+    await waitFor(() =>
+      expect(continueBtn).not.toHaveProperty("disabled", true),
+    );
 
     fireEvent.click(continueBtn);
     expect(onNext).toHaveBeenCalledWith(

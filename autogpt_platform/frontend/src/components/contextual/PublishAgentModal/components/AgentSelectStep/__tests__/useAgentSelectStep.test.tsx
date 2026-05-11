@@ -42,8 +42,9 @@ function buildAgent(idx: number) {
 
 function mockResponse(total: number, page: number, pageSize: number) {
   const start = (page - 1) * pageSize;
-  const agents = Array.from({ length: Math.min(pageSize, total - start) }, (_, i) =>
-    buildAgent(start + i + 1),
+  const agents = Array.from(
+    { length: Math.min(pageSize, total - start) },
+    (_, i) => buildAgent(start + i + 1),
   );
   return {
     status: 200,
@@ -63,9 +64,7 @@ function wrap(children: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
 describe("useAgentSelectStep", () => {
@@ -103,7 +102,9 @@ describe("useAgentSelectStep", () => {
 
   it("handleAgentClick selects an agent and forwards to onSelect", async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.myAgents.length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(result.current.myAgents.length).toBeGreaterThan(0),
+    );
     act(() => {
       result.current.handleAgentClick("Agent 1", "graph-1", 1);
     });
@@ -114,7 +115,9 @@ describe("useAgentSelectStep", () => {
 
   it("handleNext invokes onNext only when an agent is selected", async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.myAgents.length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(result.current.myAgents.length).toBeGreaterThan(0),
+    );
 
     act(() => {
       result.current.handleNext();
@@ -130,7 +133,10 @@ describe("useAgentSelectStep", () => {
     expect(onNext).toHaveBeenCalledWith(
       "graph-1",
       1,
-      expect.objectContaining({ name: "Agent 1", description: "Description 1" }),
+      expect.objectContaining({
+        name: "Agent 1",
+        description: "Description 1",
+      }),
     );
   });
 
