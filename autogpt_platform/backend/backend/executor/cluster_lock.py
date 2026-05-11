@@ -6,10 +6,25 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 logger = logging.getLogger(__name__)
+
+# Transient redis errors retried internally by the client; if they still
+# surface here, retries are exhausted — log at warning to keep Sentry quiet
+# during rotation windows. AttributeError is included because redis-py's
+# reconnect path dereferences `.host` on plain ConnectionError.
+_TRANSIENT_LOCK_ERRORS: tuple[type[BaseException], ...] = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    ClusterDownError,
+    AttributeError,
+)
 
 # CAS release: DEL only when the stored owner still matches — guards against
 # wiping a successor's lock after an external force-release.
@@ -61,6 +76,12 @@ class ClusterLock:
             # Key doesn't exist but we failed to set it - race condition or Redis issue
             return None
 
+        except _TRANSIENT_LOCK_ERRORS as e:
+            logger.warning(
+                f"ClusterLock.try_acquire transient redis error for key {self.key}: "
+                f"{type(e).__name__}: {e}"
+            )
+            return None
         except Exception as e:
             logger.error(f"ClusterLock.try_acquire failed for key {self.key}: {e}")
             return None
@@ -118,6 +139,14 @@ class ClusterLock:
                 self._last_refresh = 0
             return False
 
+        except _TRANSIENT_LOCK_ERRORS as e:
+            logger.warning(
+                f"ClusterLock.refresh transient redis error for key {self.key}: "
+                f"{type(e).__name__}: {e}"
+            )
+            with self._refresh_lock:
+                self._last_refresh = 0
+            return False
         except Exception as e:
             logger.error(f"ClusterLock.refresh failed for key {self.key}: {e}")
             with self._refresh_lock:
@@ -187,6 +216,12 @@ class AsyncClusterLock:
             # Key doesn't exist but we failed to set it - race condition or Redis issue
             return None
 
+        except _TRANSIENT_LOCK_ERRORS as e:
+            logger.warning(
+                f"AsyncClusterLock.try_acquire transient redis error for key "
+                f"{self.key}: {type(e).__name__}: {e}"
+            )
+            return None
         except Exception as e:
             logger.error(f"AsyncClusterLock.try_acquire failed for key {self.key}: {e}")
             return None
@@ -244,6 +279,14 @@ class AsyncClusterLock:
                 self._last_refresh = 0
             return False
 
+        except _TRANSIENT_LOCK_ERRORS as e:
+            logger.warning(
+                f"AsyncClusterLock.refresh transient redis error for key "
+                f"{self.key}: {type(e).__name__}: {e}"
+            )
+            async with self._refresh_lock:
+                self._last_refresh = 0
+            return False
         except Exception as e:
             logger.error(f"AsyncClusterLock.refresh failed for key {self.key}: {e}")
             async with self._refresh_lock:
