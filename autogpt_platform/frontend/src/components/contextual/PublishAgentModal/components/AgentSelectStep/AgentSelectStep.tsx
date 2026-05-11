@@ -133,7 +133,7 @@ export function AgentSelectStep({
                 value={sortBy}
                 onValueChange={handleSortChange}
                 options={SORT_OPTIONS}
-                wrapperClassName="mb-0"
+                wrapperClassName="mb-2"
               />
             </div>
           </div>
