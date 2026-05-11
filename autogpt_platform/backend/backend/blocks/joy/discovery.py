@@ -46,6 +46,8 @@ class JoyDiscoverAgentsBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyDiscoverAgentsBlock."""
+
         credentials: CredentialsMetaInput = joy_trust.credentials_field(
             description="Joy API key (optional, increases rate limits)"
         )
@@ -75,6 +77,8 @@ class JoyDiscoverAgentsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyDiscoverAgentsBlock."""
+
         agents: list = SchemaField(
             description="List of matching agents with their trust profiles"
         )
@@ -90,7 +94,8 @@ class JoyDiscoverAgentsBlock(Block):
         )
         error: str = SchemaField(description="Error message if discovery failed")
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize JoyDiscoverAgentsBlock with test configuration."""
         super().__init__(
             id="f0a1b2c3-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
             description="Discover agents by capability or search query. Find trusted agents for specific tasks.",
@@ -162,6 +167,7 @@ class JoyDiscoverAgentsBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
+        """Execute agent discovery and yield matching results."""
         result = await self.discover_agents(
             query=input_data.query or None,
             capability=input_data.capability or None,

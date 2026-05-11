@@ -51,6 +51,8 @@ class JoyVerifyTrustBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyVerifyTrustBlock."""
+
         credentials: CredentialsMetaInput = joy_trust.credentials_field(
             description="Joy API key (optional, increases rate limits)"
         )
@@ -67,6 +69,8 @@ class JoyVerifyTrustBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyVerifyTrustBlock."""
+
         meets_threshold: bool = SchemaField(
             description="True if agent's trust score meets or exceeds the minimum threshold"
         )
@@ -79,7 +83,8 @@ class JoyVerifyTrustBlock(Block):
         )
         error: str = SchemaField(description="Error message if verification failed")
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize JoyVerifyTrustBlock with test configuration."""
         super().__init__(
             id="d8e9f0a1-2b3c-4d5e-8f7a-8b9c0d1e2f3a",
             description="Verify if an agent meets minimum trust threshold before delegating tasks. Use as a safety gate in multi-agent workflows.",
@@ -121,6 +126,7 @@ class JoyVerifyTrustBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
+        """Execute trust verification and yield results."""
         agent = await self.get_agent(input_data.agent_id, credentials)
         raw_score = agent.get("trust_score")
         trust_score = 0.0 if raw_score is None else float(raw_score)
@@ -148,6 +154,8 @@ class JoyGetTrustScoreBlock(Block):
     """
 
     class Input(BlockSchemaInput):
+        """Input schema for JoyGetTrustScoreBlock."""
+
         credentials: CredentialsMetaInput = joy_trust.credentials_field(
             description="Joy API key (optional, increases rate limits)"
         )
@@ -157,6 +165,8 @@ class JoyGetTrustScoreBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for JoyGetTrustScoreBlock."""
+
         agent_id: str = SchemaField(description="The agent's unique identifier")
         name: str = SchemaField(description="The agent's display name")
         trust_score: float = SchemaField(description="Trust score (0-5 scale)")
@@ -169,7 +179,8 @@ class JoyGetTrustScoreBlock(Block):
         result: dict = SchemaField(description="Complete agent profile")
         error: str = SchemaField(description="Error message if lookup failed")
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize JoyGetTrustScoreBlock with test configuration."""
         super().__init__(
             id="e9f0a1b2-3c4d-4e5f-9a8b-9c0d1e2f3a4b",
             description="Get detailed trust profile for an agent including score, verification status, and capabilities.",
@@ -228,6 +239,7 @@ class JoyGetTrustScoreBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
+        """Execute trust score lookup and yield full agent profile."""
         agent = await self.get_agent(input_data.agent_id, credentials)
         raw_score = agent.get("trust_score")
         trust_score = 0.0 if raw_score is None else float(raw_score)
