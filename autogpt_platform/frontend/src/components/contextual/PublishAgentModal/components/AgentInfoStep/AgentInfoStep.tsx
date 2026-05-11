@@ -28,39 +28,11 @@ import * as React from "react";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { ThumbnailImages } from "./components/ThumbnailImages";
+import { CharCountedTextarea } from "./components/CharCountedTextarea";
 import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 
 const DESCRIPTION_MAX = 1000;
 const INSTRUCTIONS_MAX = 2000;
-
-interface CharCountedTextareaProps {
-  max: number;
-  value: string;
-  children: React.ReactNode;
-}
-
-function CharCountedTextarea({
-  max,
-  value,
-  children,
-}: CharCountedTextareaProps) {
-  const length = value.length;
-  const over = length > max;
-  return (
-    <div className="relative">
-      <span
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute right-0 top-0 z-10 text-xs tabular-nums",
-          over ? "text-rose-600" : "text-zinc-400",
-        )}
-      >
-        {length} / {max}
-      </span>
-      {children}
-    </div>
-  );
-}
 
 export function AgentInfoStep({
   onBack,
