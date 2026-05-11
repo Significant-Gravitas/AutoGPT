@@ -119,7 +119,7 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="mt-2 flex items-center justify-end pb-3">
+          <div className="mt-2 flex items-center justify-start pb-1">
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
