@@ -32,10 +32,18 @@ export function useThumbnailImages({
   const initialImagesKey = JSON.stringify(initialImages);
 
   useEffect(() => {
-    if (initialImages.length > 0) {
-      setImages(initialImages);
-      setSelectedImage(initialSelectedImage || initialImages[0]);
+    if (initialImages.length === 0) {
+      setImages([]);
+      setSelectedImage(null);
+      return;
     }
+
+    const nextSelectedImage = initialSelectedImage || initialImages[0];
+    setImages([
+      nextSelectedImage,
+      ...initialImages.filter((image) => image !== nextSelectedImage),
+    ]);
+    setSelectedImage(nextSelectedImage);
   }, [initialImagesKey, initialSelectedImage]);
 
   useEffect(() => {

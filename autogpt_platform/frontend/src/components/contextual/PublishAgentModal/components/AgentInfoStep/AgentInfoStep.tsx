@@ -64,7 +64,9 @@ export function AgentInfoStep({
     React.useState(false);
   const [openAccordion, setOpenAccordion] = React.useState("");
   React.useEffect(() => {
-    const timer = window.setTimeout(() => setOpenAccordion("basics"), 320);
+    const timer = window.setTimeout(() => {
+      setOpenAccordion((current) => current || "basics");
+    }, 320);
     return () => window.clearTimeout(timer);
   }, []);
 

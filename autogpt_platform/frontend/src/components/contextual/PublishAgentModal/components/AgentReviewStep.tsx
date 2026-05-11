@@ -90,13 +90,14 @@ export function AgentReviewStep({
     status !== SubmissionStatus.REJECTED;
 
   const showCelebration = status !== SubmissionStatus.REJECTED;
+  const showConfetti = showCelebration && !shouldReduceMotion;
 
   return (
     <div
       aria-labelledby="modal-title"
       className="relative flex flex-col items-center pb-4 pt-10"
     >
-      {showCelebration ? (
+      {showConfetti ? (
         <Confetti
           options={{
             particleCount: 80,
