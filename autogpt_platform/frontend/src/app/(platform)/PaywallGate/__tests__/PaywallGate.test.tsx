@@ -26,9 +26,8 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
 }));
 
 // Mock PaywallModal — actual rendering depends on Radix portals + the full
-// SubscriptionTierSection, neither of which behave well under jsdom. Stand-in
-// placeholder lets us assert the gate-vs-no-gate decision without booting the
-// real modal.
+// PlanCard tree, which don't behave well under jsdom. Stand-in placeholder
+// lets us assert the gate-vs-no-gate decision without booting the real modal.
 vi.mock("../PaywallModal", () => ({
   PaywallModal: () => <div data-testid="paywall-modal">paywall</div>,
 }));

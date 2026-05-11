@@ -10,7 +10,6 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 
 import { RefundModal } from "./RefundModal";
-import { SubscriptionTierSection } from "./components/SubscriptionTierSection/SubscriptionTierSection";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 import { StorageBar } from "@/app/(platform)/copilot/components/UsageLimits/StorageBar";
 import { UsageBar } from "@/app/(platform)/copilot/components/UsageLimits/UsageBar";
@@ -154,13 +153,8 @@ export default function CreditsPage() {
   return (
     <div className="w-full px-4 sm:px-8 md:min-w-[800px]">
       <h1 className="mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
-        Billing
+        Credits
       </h1>
-
-      {/* Subscription Tier */}
-      <div className="mb-8">
-        <SubscriptionTierSection />
-      </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Top-up Form */}

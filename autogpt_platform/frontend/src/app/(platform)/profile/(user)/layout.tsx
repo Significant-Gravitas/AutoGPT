@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         ...(isPaymentEnabled
           ? [
               {
-                text: "Billing",
+                text: "Credits",
                 href: "/profile/credits",
                 icon: <CoinsIcon className="size-5" />,
               },
