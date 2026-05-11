@@ -301,7 +301,7 @@ export function AgentReviewStep({
             </span>
             <div className="flex min-w-0 flex-col">
               <Text variant="small-medium" as="span" className="text-textBlack">
-                Reviewed within 1–2 business days
+                Reviewed soon
               </Text>
               <Text variant="small" className="text-zinc-500">
                 Our team checks the details, media, and safety of your agent.
