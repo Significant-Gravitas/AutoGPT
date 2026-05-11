@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import Profile, SubmissionStats
+from .model import MyAgentsSortBy, Profile, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -605,8 +605,6 @@ async def test_get_my_agents_default_sort_most_recent(mocker):
     mock_library.return_value.find_many = find_many
     mock_library.return_value.count = count
 
-    from .model import MyAgentsSortBy
-
     result = await db.get_my_agents(user_id="user-id", page=1, page_size=10)
 
     assert result.pagination.total_items == 3
@@ -633,8 +631,6 @@ async def test_get_my_agents_sort_by_name(mocker):
     mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library.return_value.find_many = AsyncMock(return_value=[])
     mock_library.return_value.count = AsyncMock(return_value=0)
-
-    from .model import MyAgentsSortBy
 
     result = await db.get_my_agents(
         user_id="user-id",
