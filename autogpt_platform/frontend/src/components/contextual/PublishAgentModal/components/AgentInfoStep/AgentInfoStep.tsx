@@ -378,7 +378,7 @@ export function AgentInfoStep({
                         label="Description"
                         labelTooltip="What the agent does and the outcome users get."
                         type="textarea"
-                        rows={4}
+                        rows={2}
                         placeholder="Describe the outcome this agent creates"
                         error={form.formState.errors.description?.message}
                         {...field}
@@ -401,7 +401,7 @@ export function AgentInfoStep({
                         label="Instructions"
                         labelTooltip="Steps users should follow to set up and run the agent."
                         type="textarea"
-                        rows={4}
+                        rows={2}
                         placeholder="Explain inputs, setup, and what to expect after a run"
                         error={form.formState.errors.instructions?.message}
                         {...field}
