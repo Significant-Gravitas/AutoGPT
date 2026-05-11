@@ -1190,23 +1190,79 @@ async def update_profile(
         raise DatabaseError("Failed to update profile") from e
 
 
+def _status_clause(status: store_model.MyAgentsStatusFilter) -> dict:
+    """Map a status filter to an AgentGraph where-clause (matches LibraryAgent.AgentGraph)."""
+    live_published = {
+        "isAvailable": True,
+        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        "StoreListing": {"is": {"isDeleted": False}},
+    }
+    match status:
+        case store_model.MyAgentsStatusFilter.PUBLISHED:
+            return {"StoreListingVersions": {"some": live_published}}
+        case store_model.MyAgentsStatusFilter.SUBMITTED:
+            # Pending review and no version already live.
+            return {
+                "StoreListingVersions": {
+                    "some": {
+                        "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+                    }
+                },
+                "AND": [
+                    {"StoreListingVersions": {"none": live_published}},
+                ],
+            }
+        case store_model.MyAgentsStatusFilter.DRAFT:
+            # Has a draft listing version, nothing pending or live.
+            return {
+                "StoreListingVersions": {
+                    "some": {
+                        "submissionStatus": prisma.enums.SubmissionStatus.DRAFT,
+                    }
+                },
+                "AND": [
+                    {
+                        "StoreListingVersions": {
+                            "none": {
+                                "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+                            }
+                        }
+                    },
+                    {"StoreListingVersions": {"none": live_published}},
+                ],
+            }
+        case store_model.MyAgentsStatusFilter.NEVER_SUBMITTED:
+            return {"StoreListingVersions": {"none": {}}}
+
+
 async def get_my_agents(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
     sort_by: store_model.MyAgentsSortBy = store_model.MyAgentsSortBy.MOST_RECENT,
+    statuses: list[store_model.MyAgentsStatusFilter] | None = None,
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(
         f"Getting my agents for user {user_id}, page={page}, "
-        f"sort_by={sort_by.value}"
+        f"sort_by={sort_by.value}, statuses={statuses}"
     )
 
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            # Filter for unpublished agents only:
-            "AgentGraph": {
+            "isArchived": False,
+            "isDeleted": False,
+        }
+
+        if statuses:
+            search_filter["AgentGraph"] = {
+                "is": {"OR": [_status_clause(s) for s in statuses]}
+            }
+        else:
+            # No filter selected → preserve legacy behaviour: exclude
+            # agents that already have a live published listing.
+            search_filter["AgentGraph"] = {
                 "is": {
                     "StoreListingVersions": {
                         "none": {
@@ -1215,10 +1271,7 @@ async def get_my_agents(
                         }
                     }
                 }
-            },
-            "isArchived": False,
-            "isDeleted": False,
-        }
+            }
 
         if sort_by == store_model.MyAgentsSortBy.NAME:
             order: list = [

@@ -8592,7 +8592,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "List the authenticated user's unpublished agents",
+        "description": "List the authenticated user's agents.\n\nWhen `status` is supplied (any combination of draft / submitted /\npublished / never_submitted) the result is filtered to that union;\notherwise the legacy behaviour is preserved (already-published\nagents are excluded so the publish-flow first step keeps working\nout of the box).",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -8625,6 +8625,23 @@
             "schema": {
               "$ref": "#/components/schemas/MyAgentsSortBy",
               "default": "most_recent"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyAgentsStatusFilter"
+                  }
+                },
+                { "type": "null" }
+              ],
+              "title": "Status"
             }
           }
         ],
@@ -13596,6 +13613,11 @@
         "type": "string",
         "enum": ["most_recent", "name"],
         "title": "MyAgentsSortBy"
+      },
+      "MyAgentsStatusFilter": {
+        "type": "string",
+        "enum": ["draft", "submitted", "published", "never_submitted"],
+        "title": "MyAgentsStatusFilter"
       },
       "MyUnpublishedAgent": {
         "properties": {

@@ -334,13 +334,22 @@ async def get_my_unpublished_agents(
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
+    status: list[store_model.MyAgentsStatusFilter] | None = Query(default=None),
 ) -> store_model.MyUnpublishedAgentsResponse:
-    """List the authenticated user's unpublished agents"""
+    """List the authenticated user's agents.
+
+    When `status` is supplied (any combination of draft / submitted /
+    published / never_submitted) the result is filtered to that union;
+    otherwise the legacy behaviour is preserved (already-published
+    agents are excluded so the publish-flow first step keeps working
+    out of the box).
+    """
     agents = await store_db.get_my_agents(
         user_id,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
+        statuses=status,
     )
     return agents
 

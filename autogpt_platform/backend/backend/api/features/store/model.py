@@ -22,6 +22,13 @@ class MyAgentsSortBy(str, enum.Enum):
     NAME = "name"
 
 
+class MyAgentsStatusFilter(str, enum.Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    PUBLISHED = "published"
+    NEVER_SUBMITTED = "never_submitted"
+
+
 class MyUnpublishedAgent(pydantic.BaseModel):
     graph_id: str
     graph_version: int
