@@ -23,6 +23,9 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
+        # these tests target SDK behavior, not the aux check.
+        "aux_api_key": "or-aux-key",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)

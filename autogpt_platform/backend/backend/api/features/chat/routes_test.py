@@ -162,27 +162,17 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         new_callable=AsyncMock,
         return_value=False,
     )
-    mock_save = mocker.patch(
-        "backend.api.features.chat.routes.append_and_save_message",
-        return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
+    # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
+    # in one call. Patching it at the route boundary lets tests exercise
+    # validation/enrichment (file_ids, message length, rate limits, etc.)
+    # without touching Redis, RabbitMQ, or the chat DB. Returning a turn_id
+    # mimics a fresh dispatch (vs ``None`` which would mean a duplicate).
+    mock_schedule = mocker.patch(
+        "backend.api.features.chat.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+        return_value="turn-id-mock",
     )
-    mock_registry = mocker.MagicMock()
-    mock_registry.create_session = mocker.AsyncMock(return_value=None)
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry",
-        mock_registry,
-    )
-    mock_enqueue = mocker.patch(
-        "backend.api.features.chat.routes.enqueue_copilot_turn",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.track_user_message",
-        return_value=None,
-    )
-    return types.SimpleNamespace(
-        save=mock_save, enqueue=mock_enqueue, registry=mock_registry
-    )
+    return types.SimpleNamespace(enqueue=mock_schedule)
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -217,21 +207,23 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
 def test_stream_chat_skips_enqueue_for_duplicate_message(
     mocker: pytest_mock.MockerFixture,
 ):
-    """When append_and_save_message returns None (duplicate detected),
-    enqueue_copilot_turn and stream_registry.create_session must NOT be called
-    to avoid double-processing and to prevent overwriting the active stream's
-    turn_id in Redis (which would cause reconnecting clients to miss the response)."""
+    """When ``schedule_chat_turn`` returns ``None`` (duplicate-message detected
+    inside the slot context), the route must surface the empty UI message stream
+    without scheduling another turn — otherwise reconnecting clients would miss
+    the original turn's response."""
     mocks = _mock_stream_internals(mocker)
-    # Override save to return None — signalling a duplicate
-    mocks.save.return_value = None
+    # Patched ``schedule_chat_turn`` returns None on duplicate.
+    mocks.enqueue.return_value = None
 
     response = client.post(
         "/sessions/sess-1/stream",
         json={"message": "hello"},
     )
     assert response.status_code == 200
-    mocks.enqueue.assert_not_called()
-    mocks.registry.create_session.assert_not_called()
+    # The dup branch returns early; the helper was *called* once but it returned
+    # None, so no further dispatch happened (verified by the helper's own
+    # contract — see schedule_chat_turn tests).
+    mocks.enqueue.assert_called_once()
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────

@@ -60,6 +60,7 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..model_normalize import normalize_model_for_transport
 from ..model_router import resolve_model
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
@@ -1712,48 +1713,13 @@ async def _iter_sdk_messages(
 
 
 def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the **actual** SDK CLI transport.
+    """Normalize per the SDK's own ``config`` reference.
 
-    Three transports (see ``ChatConfig.effective_transport``):
-
-    1. **OpenRouter** — the canonical OpenRouter slug is
-       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4-6"``,
-       ``"moonshotai/kimi-k2-6"``).  Pass the prefixed name through
-       unchanged so OpenRouter can route to the correct provider.  Anthropic
-       names happen to also resolve when stripped, but non-Anthropic vendors
-       (Moonshot, Google, etc.) do not — keeping the prefix is the only form
-       that works for every model in the catalog.
-    2. **Subscription / Direct Anthropic** — strip the OpenRouter
-       ``anthropic/`` prefix and convert dots to hyphens
-       (``"claude-opus-4.6"`` → ``"claude-opus-4-6"``).  The CLI subprocess
-       (subscription mode) and the Anthropic Messages API both reject the
-       prefix and dot-separated versions.  Raises ``ValueError`` when a
-       non-Anthropic vendor slug is paired with these transports — silently
-       stripping ``moonshotai/`` would send ``kimi-k2-6`` to the Anthropic
-       API / CLI and produce an opaque ``model_not_found`` error far from
-       the misconfiguration source.
-
-    Gating on the **actual transport** (not just config shape) matters
-    because subscription mode and OpenRouter config can coexist —
-    ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
-    ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
-    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4-7``
-    to the CLI subprocess, which the CLI rejects.
+    Thin wrapper so ``backend.copilot.sdk.service.config`` (the
+    monkeypatch target used by every SDK-side test) drives the decision
+    instead of ``model_normalize``'s default config.
     """
-    if config.effective_transport == "openrouter":
-        return raw_model
-    model = raw_model
-    if "/" in model:
-        vendor, model = model.split("/", 1)
-        if vendor != "anthropic":
-            raise ValueError(
-                f"{config.effective_transport!r} transport requires an "
-                f"Anthropic model, got vendor={vendor!r} from "
-                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
-                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
-                f"enable OpenRouter."
-            )
-    return model.replace(".", "-")
+    return normalize_model_for_transport(raw_model, config)
 
 
 def _resolve_sdk_model() -> str | None:

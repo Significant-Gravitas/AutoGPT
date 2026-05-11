@@ -78,6 +78,7 @@ from backend.data.credit import (
     set_subscription_tier,
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
+    sync_tier_from_checkout_session,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -1322,6 +1323,7 @@ async def stripe_webhook(request: Request):
             )
             return Response(status_code=200)
         await UserCredit().fulfill_checkout(session_id=session_id)
+        await sync_tier_from_checkout_session(data_object)
 
     if event_type in (
         "customer.subscription.created",

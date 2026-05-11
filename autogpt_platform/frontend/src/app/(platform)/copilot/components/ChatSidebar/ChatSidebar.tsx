@@ -1,6 +1,7 @@
 "use client";
 import {
   getGetV2ListSessionsQueryKey,
+  getV2GetSession,
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -25,9 +26,12 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   CircleNotch,
+  DownloadSimpleIcon,
   DotsThree,
+  PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
+  TrashIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -39,6 +43,7 @@ import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
@@ -66,6 +71,9 @@ export function ChatSidebar() {
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [exportingSessionIds, setExportingSessionIds] = useState<Set<string>>(
+    new Set(),
+  );
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
 
@@ -150,6 +158,36 @@ export function ChatSidebar() {
   ) {
     e.stopPropagation();
     requestDelete(id, title);
+  }
+
+  async function handleExportClick(
+    e: React.MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) {
+    e.stopPropagation();
+    if (exportingSessionIds.has(id)) return;
+    setExportingSessionIds((prev) => new Set(prev).add(id));
+    try {
+      await fetchAndExportChat(id, title, getV2GetSession);
+      toast({ title: "Chat exported" });
+    } catch (error) {
+      console.error("Failed to export chat:", { id, title, error });
+      toast({
+        title: "Export failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Could not export this chat. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   function formatDate(dateString: string) {
@@ -305,7 +343,12 @@ export function ChatSidebar() {
                     ) : (
                       <button
                         onClick={() => handleSelectSession(session.id)}
-                        className="w-full px-3 py-2.5 pr-10 text-left"
+                        className={cn(
+                          "w-full px-3 py-2.5 text-left",
+                          exportingSessionIds.has(session.id)
+                            ? "pr-[68px]"
+                            : "pr-10",
+                        )}
                       >
                         <div className="flex min-w-0 max-w-full items-center gap-2">
                           <div className="min-w-0 flex-1">
@@ -360,6 +403,18 @@ export function ChatSidebar() {
                         </div>
                       </button>
                     )}
+                    {exportingSessionIds.has(session.id) && (
+                      <div
+                        className="pointer-events-none absolute right-9 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-sm"
+                        aria-label="Exporting chat"
+                        title="Exporting chat…"
+                      >
+                        <div className="relative h-7 w-7">
+                          <div className="absolute inset-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
+                          <DownloadSimpleIcon className="absolute inset-0 m-auto h-3.5 w-3.5" />
+                        </div>
+                      </div>
+                    )}
                     {editingSessionId !== session.id && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -377,7 +432,30 @@ export function ChatSidebar() {
                               handleRenameClick(e, session.id, session.title)
                             }
                           >
+                            <PencilSimpleIcon className="mr-2 h-4 w-4" />
                             Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) =>
+                              handleExportClick(e, session.id, session.title)
+                            }
+                            onSelect={(e) => {
+                              if (exportingSessionIds.has(session.id))
+                                e.preventDefault();
+                            }}
+                            disabled={exportingSessionIds.has(session.id)}
+                          >
+                            {exportingSessionIds.has(session.id) ? (
+                              <CircleNotch
+                                className="mr-2 h-4 w-4 animate-spin"
+                                weight="bold"
+                              />
+                            ) : (
+                              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                            )}
+                            {exportingSessionIds.has(session.id)
+                              ? "Exporting…"
+                              : "Export chat"}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) =>
@@ -386,6 +464,7 @@ export function ChatSidebar() {
                             disabled={isDeleting}
                             className="text-red-600 focus:bg-red-50 focus:text-red-600"
                           >
+                            <TrashIcon className="mr-2 h-4 w-4" />
                             Delete chat
                           </DropdownMenuItem>
                         </DropdownMenuContent>

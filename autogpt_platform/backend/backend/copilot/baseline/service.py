@@ -24,11 +24,15 @@ import orjson
 from langfuse import propagate_attributes
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
+from backend.copilot.anthropic_rate_card import (
+    compute_anthropic_cost_usd,
+    get_max_output_tokens,
+)
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
+    anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
 from backend.copilot.builder_context import (
@@ -45,6 +49,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import resolve_model
 from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
@@ -76,7 +81,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import (
     _build_system_prompt,
-    _get_openai_client,
+    _get_main_client,
     _update_title_async,
     config,
     inject_user_context,
@@ -84,7 +89,10 @@ from backend.copilot.service import (
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
-from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.token_tracking import (
+    _extract_cache_creation_tokens,
+    persist_and_record_usage,
+)
 from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
@@ -226,40 +234,6 @@ def _extract_usage_cost(usage: CompletionUsage) -> float | None:
         logger.error("[Baseline] usage.cost is non-finite or negative: %r", val)
         return None
     return val
-
-
-def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
-    """Return cache-write token count from an OpenAI-compatible
-    ``PromptTokensDetails``, handling provider-specific field names and
-    SDK-version shape differences.
-
-    Two shapes we care about:
-
-    - **OpenRouter** (our primary baseline provider) streams the cache-write
-      count as ``cache_write_tokens``.  Newer ``openai-python`` versions
-      declare this as a typed attribute on ``PromptTokensDetails``; older
-      versions expose it only in ``model_extra``.  Verified empirically:
-      cold-cache request returns ``cache_write_tokens`` > 0, warm-cache
-      request returns ``cached_tokens`` > 0 and ``cache_write_tokens`` = 0.
-    - **Direct Anthropic API** uses ``cache_creation_input_tokens`` —
-      never a typed attribute on the OpenAI SDK, always lives in
-      ``model_extra``.
-
-    Lookup order: typed attr → ``model_extra`` (OpenRouter) → ``model_extra``
-    (Anthropic-native).  ``getattr`` handles both the typed-attr case
-    (newer SDK) and the no-such-attr case (older SDK) — we can't only use
-    ``model_extra`` because when the field is typed it's filtered out of
-    ``model_extra``, leaving us at 0 on the modern happy path.
-    """
-    typed_val = getattr(ptd, "cache_write_tokens", None)
-    if typed_val:
-        return int(typed_val)
-    extras = ptd.model_extra or {}
-    return int(
-        extras.get("cache_write_tokens")
-        or extras.get("cache_creation_input_tokens")
-        or 0
-    )
 
 
 async def _prepare_baseline_attachments(
@@ -630,30 +604,10 @@ async def _baseline_llm_caller(
 
     round_text = ""
     try:
-        client = _get_openai_client()
-        # Cache markers are accepted by Anthropic AND Moonshot (via OR's
-        # Anthropic-compat endpoint).  OpenAI/Grok/Gemini 400 on the
-        # unknown ``cache_control`` field — tools were precomputed in
-        # stream_chat_completion_baseline via _mark_tools_with_cache_control
-        # with the same gate, so on unsupported routes tools ship
-        # unmarked too.
-        #
-        # The ``anthropic-beta`` header is only emitted for genuinely
-        # Anthropic routes (see :func:`_is_anthropic_model`) — Moonshot
-        # doesn't need the beta header; sending it is a no-op but we
-        # keep the check strict for clarity.
-        #
-        # `extra_body` `usage.include=true` asks OpenRouter to embed the
-        # real generation cost into the final usage chunk — required by
-        # the cost-based rate limiter in routes.py.  Separate from the
-        # caching headers, always sent.
+        client = _get_main_client()
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
-            # Build the cached system dict once per session and splice it in
-            # on each round.  The full ``messages`` list grows with every
-            # tool call, so copying the entire list just to mutate index 0
-            # scales with conversation length (sentry flagged this); this
-            # splice touches only list slots, not message contents.
+            # Build cached system message once; splice on each round to avoid O(n) list copy.
             if (
                 state.cached_system_message is None
                 and messages
@@ -673,19 +627,36 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
-        extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
-        reasoning_param = reasoning_extra_body(
-            state.model, config.claude_agent_max_thinking_tokens
-        )
-        if reasoning_param:
-            extra_body.update(reasoning_param)
+        # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning; use native thinking param in direct mode.
+        if config.openrouter_active:
+            extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
+            reasoning_param = reasoning_extra_body(
+                state.model, config.claude_agent_max_thinking_tokens
+            )
+            if reasoning_param:
+                extra_body.update(reasoning_param)
+        else:
+            extra_body = {}
+            thinking_param = anthropic_thinking_extra_body(
+                state.model, config.claude_agent_max_thinking_tokens
+            )
+            if thinking_param:
+                extra_body.update(thinking_param)
         create_kwargs: dict[str, Any] = {
             "model": state.model,
             "messages": typed_messages,
             "stream": True,
-            "stream_options": {"include_usage": True},
             "extra_body": extra_body,
         }
+        # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
+        if config.openrouter_active:
+            create_kwargs["stream_options"] = {"include_usage": True}
+        # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
+        if not config.openrouter_active and "thinking" in extra_body:
+            model_max = get_max_output_tokens(state.model)
+            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+            extra_body["thinking"]["budget_tokens"] = budget
+            create_kwargs["max_tokens"] = min(budget + 4096, model_max)
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers
         if tools:
@@ -709,17 +680,28 @@ async def _baseline_llm_caller(
                             _extract_cache_creation_tokens(ptd)
                         )
                     cost = _extract_usage_cost(chunk.usage)
+                    direct_mode = not config.openrouter_active
+                    if cost is None and direct_mode:
+                        # Direct mode: no usage.cost field (OR extension); compute from rate card.
+                        ptd = chunk.usage.prompt_tokens_details
+                        cost = compute_anthropic_cost_usd(
+                            model=state.model,
+                            prompt_tokens=chunk.usage.prompt_tokens or 0,
+                            completion_tokens=chunk.usage.completion_tokens or 0,
+                            cache_read_tokens=(ptd.cached_tokens or 0) if ptd else 0,
+                            cache_creation_tokens=(
+                                _extract_cache_creation_tokens(ptd) if ptd else 0
+                            ),
+                            cache_ttl=config.baseline_prompt_cache_ttl,
+                        )
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
                     elif (
-                        "cost" not in (chunk.usage.model_extra or {})
+                        not direct_mode
+                        and "cost" not in (chunk.usage.model_extra or {})
                         and not state.cost_missing_logged
                     ):
-                        # Field absent (non-OpenRouter route, or OpenRouter
-                        # misconfigured) — warn once per stream so error
-                        # monitoring picks up persistent misses without
-                        # flooding. Invalid values already logged inside
-                        # _extract_usage_cost, so no duplicate warning here.
+                        # OR with cost field absent — warn once so monitoring catches persistent misses.
                         logger.warning(
                             "[Baseline] usage chunk missing cost (model=%s, "
                             "prompt=%s, completion=%s) — rate-limit will "
@@ -1099,7 +1081,7 @@ async def _compress_session_messages(
         result = await compress_context(
             messages=messages_dict,
             model=model,
-            client=_get_openai_client(),
+            client=_get_main_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
@@ -1418,7 +1400,43 @@ async def stream_chat_completion_baseline(
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
     # baseline (fast) path; ``mode`` is accepted for logging parity only.
-    active_model = await _resolve_baseline_model(model, user_id)
+    # Normalize immediately so EVERY downstream helper (E2B context,
+    # ``_compress_session_messages``, the streaming caller) sees the
+    # transport-correct slug — otherwise compaction in direct-Anthropic
+    # mode silently falls back to the non-LLM path because the OR slug
+    # would be rejected by the direct client.  Pass the baseline-side
+    # ``config`` so monkeypatch fixtures targeting this module's
+    # ``config`` symbol drive the decision.
+    resolved_model = await _resolve_baseline_model(model, user_id)
+    try:
+        active_model = normalize_model_for_transport(resolved_model, config)
+    except ValueError as exc:
+        # Mirror SDK's LD-reject soft-fallback (see ``copilot.sdk.service``):
+        # a per-user LD ``copilot-model-routing`` cell can pin a non-Anthropic
+        # slug (e.g. ``moonshotai/kimi-*``) on a direct-Anthropic deployment
+        # where the baseline transport rejects it.  Fall back to the
+        # TIER-SPECIFIC config default so the request still streams instead
+        # of erroring at the user.  Re-raises the original error if the
+        # config default is also invalid (deployment-level misconfig caught
+        # by the ``model_validator`` at startup).
+        tier_default = (
+            config.fast_advanced_model
+            if model == "advanced"
+            else config.fast_standard_model
+        )
+        try:
+            active_model = normalize_model_for_transport(tier_default, config)
+        except ValueError:
+            raise exc
+        logger.warning(
+            "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
+            "back to tier default %s",
+            session_id[:12] if session_id else "?",
+            resolved_model,
+            "advanced" if model == "advanced" else "standard",
+            exc,
+            active_model,
+        )
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
@@ -2092,10 +2110,10 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # Count the full message list (system + history + turn) since
-        # each API call sends the complete context window.
-        # NOTE: This estimates one round's prompt tokens. Multi-round tool-calling
-        # turns consume prompt tokens on each API call, so the total is underestimated.
+        # ``openai_messages`` is mutated in-place by tool_call_loop so it
+        # contains the full accumulated conversation (system + history + all
+        # tool-call rounds) by this point — the estimate covers the complete
+        # prompt, not just the final round.
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
         if (
@@ -2115,15 +2133,27 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Persist token usage to session and record for rate limiting.
-        # When prompt_tokens_details.cached_tokens is reported, subtract
-        # them from prompt_tokens to get the uncached count so the cost
-        # breakdown stays accurate.
-        uncached_prompt = state.turn_prompt_tokens
-        if state.turn_cache_read_tokens > 0:
-            uncached_prompt = max(
-                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
+        # Safety net: recover cost from rate card if usage chunk was dropped (truncated SSE).
+        # OR mode skips recovery — OR's markup differs from raw Anthropic pricing.
+        if state.cost_usd is None and not config.openrouter_active:
+            recovered = compute_anthropic_cost_usd(
+                model=active_model,
+                prompt_tokens=state.turn_prompt_tokens,
+                completion_tokens=state.turn_completion_tokens,
+                cache_read_tokens=state.turn_cache_read_tokens,
+                cache_creation_tokens=state.turn_cache_creation_tokens,
+                cache_ttl=config.baseline_prompt_cache_ttl,
             )
+            if recovered is not None:
+                state.cost_usd = recovered
+
+        # OAI-compat prompt_tokens includes cache buckets; subtract to keep the three buckets disjoint.
+        uncached_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
@@ -2134,6 +2164,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
+            provider="open_router" if config.openrouter_active else "anthropic",
         )
 
         # Persist structured tool-call history (assistant + tool messages)
@@ -2216,9 +2247,16 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
-        # Report uncached prompt tokens to match what was billed — cached tokens
-        # are excluded so the frontend display is consistent with cost_usd.
-        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
+        # Report uncached prompt tokens to match what was billed — both
+        # cache_read and cache_creation are excluded so the three
+        # buckets emitted on ``StreamUsage`` are disjoint and the
+        # frontend can sum them without double-counting cache writes.
+        billed_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         yield StreamUsage(
             prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,

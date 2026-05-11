@@ -2,7 +2,7 @@
 
 import pytest
 
-from .config import ChatConfig
+from .config import ChatConfig, _host_matches
 
 # Env vars that the ChatConfig validators read — must be cleared so they don't
 # override the explicit constructor values we pass in each test.  Includes the
@@ -19,6 +19,10 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CHAT_AUX_API_KEY",
+    "CHAT_AUX_BASE_URL",
+    "CHAT_DIRECT_ANTHROPIC_API_KEY",
     "CHAT_BASE_URL",
     "OPENROUTER_BASE_URL",
     "OPENAI_BASE_URL",
@@ -32,6 +36,8 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_MODEL",
     "CHAT_ADVANCED_MODEL",
     "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
+    "CHAT_TITLE_MODEL",
+    "CHAT_SIMULATION_MODEL",
     "CHAT_RENDER_REASONING_IN_UI",
     "CHAT_STREAM_REPLAY_COUNT",
 )
@@ -49,11 +55,16 @@ def _make_direct_safe_config(**kwargs) -> ChatConfig:
 
     Pins ``thinking_standard_model``/``thinking_advanced_model`` to anthropic/*
     so the construction passes ``_validate_sdk_model_vendor_compatibility``
-    without each test having to repeat the override.
+    without each test having to repeat the override.  Also sets
+    ``aux_api_key`` so the new aux-credentials validator passes by
+    default — tests that target that specific check should pass
+    ``aux_api_key=None`` (and clear ``api_key``/``base_url``) to opt
+    in to its trip.
     """
     defaults: dict = {
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        "aux_api_key": "or-aux-key",
     }
     defaults.update(kwargs)
     return ChatConfig(**defaults)
@@ -223,6 +234,11 @@ class TestSdkModelVendorCompatibility:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            # Aux key satisfies the aux-credential validator (this test
+            # focuses on the SDK-vendor validator); without it the
+            # default ``openai/gpt-4o-mini`` title model trips the new
+            # aux check.
+            aux_api_key="or-aux-key",
         )
         assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
 
@@ -241,11 +257,18 @@ class TestSdkModelVendorCompatibility:
     def test_subscription_mode_skips_check(self):
         """Subscription path resolves the model to None and bypasses
         ``_normalize_model_name``, so the slug check is skipped."""
+        # ``direct_anthropic_api_key`` + Anthropic ``title_model`` keep the
+        # separate aux-client validator (``_validate_aux_client_for_direct_main``)
+        # happy — without those, subscription mode + use_openrouter=False
+        # would trip the aux-401 / non-Anthropic-title trap before the SDK
+        # check we're targeting here runs.
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
             base_url=None,
+            direct_anthropic_api_key="sk-ant-test",
             use_claude_code_subscription=True,
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.use_claude_code_subscription is True
 
@@ -276,6 +299,64 @@ class TestSdkModelVendorCompatibility:
                 claude_agent_fallback_model="moonshotai/kimi-k2.6",
             )
 
+    def test_fast_standard_model_also_validated(self):
+        """Baseline (fast) tier slugs flow through the same
+        ``normalize_model_for_transport``, so the validator must catch
+        non-Anthropic fast-path slugs at boot — otherwise they'd fail
+        per-turn at runtime when LD or env serves them."""
+        with pytest.raises(Exception, match="fast_standard_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                fast_standard_model="moonshotai/kimi-k2.6",
+            )
+
+    def test_bare_non_claude_slug_rejected(self):
+        """Bare slugs without the ``vendor/`` prefix must start with
+        ``claude-`` — otherwise the runtime ``normalize_model_for_transport``
+        would 500 every request.  Pre-fix, a bare ``gpt-4o-mini`` slug
+        slipped through the ``"/" not in value`` short-circuit."""
+        with pytest.raises(Exception, match="thinking_standard_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="gpt-4o-mini",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                aux_api_key="or-aux-key",
+            )
+
+    def test_bare_claude_slug_accepted(self):
+        """Bare ``claude-*`` slugs (the Anthropic Messages API's native
+        form, e.g. ``claude-3-5-sonnet-20241022``) must pass."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="claude-sonnet-4-20250514",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.thinking_standard_model == "claude-sonnet-4-20250514"
+
+    def test_fast_advanced_model_also_validated(self):
+        with pytest.raises(Exception, match="fast_advanced_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                fast_advanced_model="openai/gpt-5",
+            )
+
     def test_empty_fallback_skipped(self):
         """Empty ``claude_agent_fallback_model`` (no fallback configured)
         must not trip the validator — the fallback-disabled state is
@@ -288,6 +369,7 @@ class TestSdkModelVendorCompatibility:
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
             claude_agent_fallback_model="",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_fallback_model == ""
 
@@ -325,3 +407,364 @@ class TestStreamReplayCount:
         """count=0 would make XREAD replay nothing — rejected via ge=1."""
         with pytest.raises(Exception):
             ChatConfig(stream_replay_count=0)
+
+
+class TestMainClientCredentials:
+    """``main_client_credentials`` picks the right (api_key, base_url) per transport."""
+
+    def test_openrouter_mode_returns_main_creds(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        assert cfg.main_client_credentials == (
+            "or-key",
+            "https://openrouter.ai/api/v1",
+        )
+
+    def test_direct_mode_returns_anthropic_creds(self):
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key="or-key-leftover",
+        )
+        api_key, base_url = cfg.main_client_credentials
+        assert api_key == "anthropic-key"
+        assert base_url == "https://api.anthropic.com/v1/"
+
+
+class TestAuxClientCredentials:
+    """``aux_client_credentials`` keeps aux calls on OpenRouter even in direct mode."""
+
+    def test_default_falls_back_to_main_creds(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            aux_api_key=None,
+            aux_base_url=None,
+        )
+        # Single-key deployment: aux mirrors main.
+        assert cfg.aux_client_credentials == (
+            "or-key",
+            "https://openrouter.ai/api/v1",
+        )
+
+    def test_leftover_or_env_does_not_force_aux_to_or_in_direct_mode(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Migration scenario: deployment was on OR (env still has
+        # ``OPEN_ROUTER_API_KEY``), now flipped to direct-Anthropic
+        # without explicit aux split.  The aux key validator must NOT
+        # auto-pull the leftover OR env (would 401 vs Anthropic URL);
+        # aux must inherit ``main_client_credentials`` (Anthropic).
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "leftover-or-key")
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        api_key, base_url = cfg.aux_client_credentials
+        assert api_key == "anthropic-key"
+        assert base_url == "https://api.anthropic.com/v1/"
+        assert cfg.aux_provider_label == "anthropic"
+
+    def test_unset_aux_falls_back_to_main_client_creds_in_direct_mode(self):
+        # Single-key direct-Anthropic deployment: aux env vars unset
+        # → aux must inherit ``main_client_credentials`` (Anthropic),
+        # NOT the raw ``api_key`` / ``base_url`` which default to OR
+        # with no key.  Otherwise aux silently gets
+        # ``(None, https://openrouter.ai/api/v1)`` and 401s on every
+        # title call.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        api_key, base_url = cfg.aux_client_credentials
+        assert api_key == "anthropic-key"
+        assert base_url == "https://api.anthropic.com/v1/"
+        assert cfg.aux_uses_openrouter is False
+        assert cfg.aux_provider_label == "anthropic"
+
+    def test_explicit_aux_overrides_main(self):
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            aux_api_key="or-aux-key",
+            aux_base_url="https://openrouter.ai/api/v1",
+        )
+        # Direct main + OR aux: aux client stays on OpenRouter.
+        assert cfg.aux_client_credentials == (
+            "or-aux-key",
+            "https://openrouter.ai/api/v1",
+        )
+
+    def test_aux_uses_openrouter_true_for_or_url(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        assert cfg.aux_uses_openrouter is True
+
+    def test_aux_uses_openrouter_false_for_other_url(self):
+        # Anthropic-pointed aux + Anthropic title — valid pure-Anthropic
+        # deployment.  Title must be Anthropic per the new validator.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key="anthropic-key",
+            base_url="https://api.anthropic.com/v1/",
+            aux_base_url="https://api.anthropic.com/v1/",
+            aux_api_key="anthropic-key",
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        assert cfg.aux_uses_openrouter is False
+
+
+class TestAuxProviderLabel:
+    """``aux_provider_label`` tracks the aux client's actual transport for cost-log rows."""
+
+    def test_openrouter_url_returns_open_router(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        assert cfg.aux_provider_label == "open_router"
+
+    def test_anthropic_url_returns_anthropic(self):
+        # Single-key direct-Anthropic deployment: aux inherits the
+        # main creds (Anthropic-pointed).  Cost row must land under
+        # "anthropic", not the misleading "openai" fallback.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key="anthropic-key",
+            base_url="https://api.anthropic.com/v1/",
+            aux_api_key=None,
+            aux_base_url=None,
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        assert cfg.aux_provider_label == "anthropic"
+
+    def test_other_url_returns_openai(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="key",
+            base_url="https://api.openai.com/v1",
+            aux_api_key=None,
+            aux_base_url=None,
+        )
+        assert cfg.aux_provider_label == "openai"
+
+
+class TestAuxClientForDirectMainValidator:
+    """``_validate_aux_client_for_direct_main`` fails fast at boot when
+    direct-main mode + non-Anthropic aux model would land on a
+    credential-less aux client."""
+
+    def test_direct_main_with_non_anthropic_title_and_no_aux_key_raises(self):
+        # OpenRouter off, no aux key, no fallback ``api_key`` → aux
+        # client would 401 on every title call.  Validator must reject
+        # at boot.  Pydantic wraps ValueError in ValidationError, so
+        # match against ``Exception`` for parity with the SDK-vendor
+        # validator tests above.
+        with pytest.raises(Exception, match="title_model=.*is non-Anthropic"):
+            _make_direct_safe_config(
+                use_openrouter=False,
+                direct_anthropic_api_key="anthropic-key",
+                api_key=None,
+                base_url=None,
+                aux_api_key=None,
+                aux_base_url=None,
+                title_model="openai/gpt-4o-mini",
+            )
+
+    def test_direct_main_with_anthropic_title_passes(self):
+        # Anthropic title model — aux can fall back to direct creds.
+        # ``simulation_model`` is no longer validated here (it has its
+        # own client acquisition path) so its default non-Anthropic
+        # value doesn't trip the check.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        assert cfg.title_model == "anthropic/claude-haiku-4-5"
+
+    def test_simulation_model_not_validated(self):
+        # Non-Anthropic ``simulation_model`` does NOT trip the
+        # validator — the simulator uses its own platform-level OR key
+        # (``util.clients.get_openai_client(prefer_openrouter=True)``)
+        # which is independent of ChatConfig aux settings.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            title_model="anthropic/claude-haiku-4-5",
+            simulation_model="google/gemini-2.5-flash-lite",
+        )
+        assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
+
+    def test_direct_main_with_explicit_aux_key_passes(self):
+        # Non-Anthropic title is fine when aux has its own creds.
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            aux_api_key="or-key",
+            title_model="openai/gpt-4o-mini",
+        )
+        assert cfg.aux_api_key == "or-key"
+
+    def test_openrouter_main_skips_validator(self):
+        # OR main mode — aux follows main, no special check needed.
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            aux_api_key=None,
+            title_model="openai/gpt-4o-mini",
+        )
+        assert cfg.title_model == "openai/gpt-4o-mini"
+
+    def test_or_main_with_explicit_anthropic_aux_and_non_anthropic_title_raises(
+        self,
+    ):
+        # Sentry: even when ``use_openrouter=True`` for the main client,
+        # an operator can still misconfigure aux to point at Anthropic
+        # (e.g. setting CHAT_AUX_BASE_URL=https://api.anthropic.com).
+        # In that shape, default ``title_model="openai/gpt-4o-mini"`` is
+        # stripped to ``gpt-4o-mini`` and 404s on Anthropic.  Validator
+        # must catch this regardless of the main flag.
+        with pytest.raises(Exception, match="title_model=.*is non-Anthropic"):
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+                aux_api_key="sk-ant-aux",
+                aux_base_url="https://api.anthropic.com/v1/",
+                title_model="openai/gpt-4o-mini",
+            )
+
+    def test_subscription_mode_no_aux_no_direct_key_raises(self):
+        # Subscription mode (SDK uses OAuth, no api_key needed) but the
+        # aux client still runs the baseline OpenAI-compat path for title
+        # generation.  When CHAT_AUX_API_KEY and CHAT_DIRECT_ANTHROPIC_API_KEY
+        # are both unset, aux_client_credentials returns
+        # ``(None, api.anthropic.com)`` and 401s every title call.
+        # Validator must reject at boot rather than silently 401 forever.
+        with pytest.raises(Exception, match="Subscription mode"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                aux_api_key=None,
+                aux_base_url=None,
+                direct_anthropic_api_key=None,
+                use_claude_code_subscription=True,
+            )
+
+    def test_subscription_mode_with_direct_anthropic_key_passes(self):
+        # Subscription + direct_anthropic_api_key set — aux can reach
+        # Anthropic with valid creds.  Title must be on Anthropic for
+        # the inheritance path to be valid, which is the same constraint
+        # as the direct-mode-non-subscription case.
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            aux_api_key=None,
+            aux_base_url=None,
+            direct_anthropic_api_key="sk-ant-test",
+            use_claude_code_subscription=True,
+            title_model="anthropic/claude-haiku-4-5",
+        )
+        assert cfg.use_claude_code_subscription is True
+
+    def test_subscription_mode_with_explicit_aux_key_passes(self):
+        # Subscription + explicit aux key — aux routes to its own
+        # endpoint (typically OpenRouter for cheap title model).
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            aux_api_key="or-key",
+            aux_base_url="https://openrouter.ai/api/v1",
+            direct_anthropic_api_key=None,
+            use_claude_code_subscription=True,
+            title_model="openai/gpt-4o-mini",
+        )
+        assert cfg.aux_api_key == "or-key"
+
+    def test_direct_main_with_aux_base_url_no_key_raises_even_for_anthropic_title(
+        self,
+    ):
+        # Operator typo: ``CHAT_AUX_BASE_URL`` set but ``CHAT_AUX_API_KEY``
+        # forgotten.  Even when ``title_model`` is Anthropic the aux client
+        # would still route to the explicit ``aux_base_url`` with no creds
+        # and 401 every title call — the Anthropic-title short-circuit
+        # only applies when aux falls back to direct Anthropic, which
+        # requires ``aux_base_url`` to be unset.
+        with pytest.raises(Exception, match="CHAT_AUX_BASE_URL"):
+            _make_direct_safe_config(
+                use_openrouter=False,
+                direct_anthropic_api_key="anthropic-key",
+                api_key=None,
+                base_url=None,
+                aux_api_key=None,
+                aux_base_url="https://openrouter.ai/api/v1",
+                title_model="anthropic/claude-haiku-4-5",
+            )
+
+
+class TestHostMatches:
+    """``_host_matches`` parses the URL and compares the actual host —
+    rejects substring tricks that pass the loose ``"x" in url`` check.
+    """
+
+    def test_exact_host(self):
+        assert _host_matches("https://api.anthropic.com/v1/", "anthropic.com")
+        assert _host_matches("https://openrouter.ai/api/v1", "openrouter.ai")
+
+    def test_subdomain_matches_via_dot_suffix(self):
+        assert _host_matches("https://api.openrouter.ai/v1", "openrouter.ai")
+
+    def test_substring_in_path_does_not_match(self):
+        # The loose ``"anthropic.com" in base_url`` check would say yes
+        # to attacker-controlled URLs that embed the suffix in the path.
+        assert not _host_matches(
+            "https://attacker.example/anthropic.com/v1", "anthropic.com"
+        )
+        assert not _host_matches("https://evil.test/openrouter.ai/api", "openrouter.ai")
+
+    def test_substring_in_host_without_dot_does_not_match(self):
+        # ``api.anthropic.com.attacker.test`` ends with ``.test`` not
+        # ``.anthropic.com`` — the dot-suffix check rejects the spoof.
+        assert not _host_matches(
+            "https://anthropic.com.attacker.test/v1", "anthropic.com"
+        )
+
+    def test_empty_url(self):
+        assert not _host_matches(None, "anthropic.com")
+        assert not _host_matches("", "anthropic.com")
+
+    def test_case_insensitive(self):
+        assert _host_matches("https://API.ANTHROPIC.COM/", "anthropic.com")

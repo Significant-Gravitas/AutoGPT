@@ -2685,7 +2685,7 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit or call-frequency cap exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
           },
           "503": {
             "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."

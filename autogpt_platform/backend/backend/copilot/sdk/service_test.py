@@ -352,6 +352,7 @@ class TestNormalizeModelName:
             # _validate_sdk_model_vendor_compatibility allows construction.
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
@@ -383,6 +384,7 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert (
@@ -439,6 +441,7 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
@@ -489,6 +492,12 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` now also runs in
+            # subscription mode (see PR #13034 review).  Provide an
+            # Anthropic title model + direct key so the aux 401-trap
+            # validator passes — orthogonal to what this test checks.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() is None
@@ -504,6 +513,7 @@ class TestResolveSdkModel:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
@@ -529,6 +539,7 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -586,6 +597,7 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -652,6 +664,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -682,6 +696,8 @@ class TestResolveSdkModelForRequestLdFallback:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -891,6 +907,7 @@ class TestSystemPromptPreset:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
 
@@ -904,6 +921,7 @@ class TestSystemPromptPreset:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
 
