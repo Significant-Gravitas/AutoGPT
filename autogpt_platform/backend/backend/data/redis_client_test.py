@@ -80,9 +80,11 @@ def test_address_remap_passthrough_when_use_announced_address() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connect_async_configures_retry_and_retry_on_error() -> None:
-    """Async RedisCluster supports both ``retry`` and ``retry_on_error``; both
-    must be wired so transient errors retry internally on the async path too."""
+async def test_connect_async_configures_retry() -> None:
+    """Async RedisCluster must carry an ``AsyncRetry`` keyed on the same
+    transient errors as the sync path. ``retry_on_error`` is intentionally
+    omitted — redis-py 6.x ignores it for cluster operations (the cluster
+    retry path uses a hardcoded {Timeout, Connection, ClusterDown} set)."""
     with patch.object(redis_client, "AsyncRedisCluster", autospec=True) as mock_cluster:
         fake = MagicMock(spec=AsyncRedisCluster)
         fake.ping = AsyncMock()
@@ -99,11 +101,8 @@ async def test_connect_async_configures_retry_and_retry_on_error() -> None:
     assert RedisConnectionError in supported
     assert RedisTimeoutError in supported
     assert ClusterDownError in supported
-
-    retry_on_error = set(kwargs["retry_on_error"])
-    assert RedisConnectionError in retry_on_error
-    assert RedisTimeoutError in retry_on_error
-    assert ClusterDownError in retry_on_error
+    # No `retry_on_error` kwarg — it's ineffective on AsyncRedisCluster.
+    assert "retry_on_error" not in kwargs
 
 
 @pytest.mark.asyncio

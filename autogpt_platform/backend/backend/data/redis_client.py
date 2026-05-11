@@ -139,8 +139,10 @@ async def connect_async() -> AsyncRedisClient:
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
         address_remap=_address_remap,
+        # redis-py 6.x AsyncRedisCluster ignores `retry_on_error` — the cluster
+        # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.
+        # Pass `retry` only to match the sync RedisCluster call above.
         retry=_build_async_retry(),
-        retry_on_error=list(TRANSIENT_REDIS_ERRORS),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
     try:

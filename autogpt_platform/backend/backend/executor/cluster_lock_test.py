@@ -611,6 +611,25 @@ class TestClusterLockTransientErrorHandling:
         assert records, "expected a try_acquire log record"
         assert any(r.levelno == logging.ERROR for r in records)
 
+    def test_try_acquire_unrelated_attribute_error_logs_at_error(self, caplog):
+        """A bare ``AttributeError`` whose message doesn't match the redis-py
+        reconnect signature must surface at ERROR — a typo on a ClusterLock
+        attribute would otherwise be silently swallowed as a 'transient' error."""
+        fake_redis = MagicMock()
+        fake_redis.set.side_effect = AttributeError(
+            "'ClusterLock' object has no attribute 'tymeout'"
+        )
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = ClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+
+        with caplog.at_level(logging.WARNING):
+            assert lock.try_acquire() is None
+
+        records = [r for r in caplog.records if "try_acquire" in r.getMessage()]
+        assert records, "expected a try_acquire log record"
+        assert any(r.levelno == logging.ERROR for r in records)
+        assert not any(r.levelno == logging.WARNING for r in records)
+
 
 class TestAsyncClusterLockTransientErrorHandling:
     """Async sibling of ``TestClusterLockTransientErrorHandling``."""
