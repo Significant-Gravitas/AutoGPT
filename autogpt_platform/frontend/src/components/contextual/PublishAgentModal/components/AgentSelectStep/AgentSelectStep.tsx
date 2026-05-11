@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  CaretLeftIcon,
+  CaretRightIcon,
   CheckCircleIcon,
   PlusIcon,
   WarningCircleIcon,
@@ -8,12 +10,14 @@ import {
 
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
+import { Select } from "../../../../atoms/Select/Select";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
+import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -31,6 +35,11 @@ interface Props {
   onOpenBuilder: () => void;
 }
 
+const SORT_OPTIONS = [
+  { value: MyAgentsSortBy.most_recent, label: "Sort by: Most recent" },
+  { value: MyAgentsSortBy.name, label: "Sort by: Name" },
+];
+
 export function AgentSelectStep({
   onSelect,
   onCancel,
@@ -38,45 +47,22 @@ export function AgentSelectStep({
   onOpenBuilder,
 }: Props) {
   const {
-    // Data
     myAgents,
     isLoading,
+    isFetching,
     error,
-    // State
     selectedAgentId,
-    // Handlers
+    page,
+    totalPages,
+    totalItems,
+    pageSize,
+    sortBy,
     handleAgentClick,
     handleNext,
-    // Computed
+    handleSortChange,
+    goToPage,
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
-
-  if (isLoading) {
-    return (
-      <div className="mx-auto flex w-full flex-col">
-        <StepHeader
-          title="Choose an agent"
-          description="Pick the saved agent version you want to send to marketplace review."
-          currentStep="select"
-        />
-        <div className="flex-grow pb-5">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 rounded-[12px] border border-zinc-200 bg-white p-3"
-              >
-                <div className="flex flex-1 flex-col gap-2">
-                  <Skeleton className="h-4 w-1/3" />
-                  <Skeleton className="h-3 w-2/3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -107,6 +93,8 @@ export function AgentSelectStep({
     );
   }
 
+  const showEmpty = !isLoading && totalItems === 0 && myAgents.length === 0;
+
   return (
     <div className="mx-auto flex w-full flex-col">
       <StepHeader
@@ -115,7 +103,7 @@ export function AgentSelectStep({
         currentStep="select"
       />
 
-      {myAgents.length === 0 ? (
+      {showEmpty ? (
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
           <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
             <PlusIcon size={20} weight="bold" />
@@ -131,77 +119,123 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="flex-grow overflow-hidden pb-5">
+          <div className="mt-2 flex items-center justify-end pb-3">
+            <div className="w-full sm:w-[220px]">
+              <Select
+                id="agent-sort"
+                label="Sort agents"
+                hideLabel
+                size="small"
+                value={sortBy}
+                onValueChange={handleSortChange}
+                options={SORT_OPTIONS}
+              />
+            </div>
+          </div>
+
+          <div className="flex-grow overflow-hidden pb-3">
             <h3 className="sr-only">List of agents</h3>
             <div
               className={cn(
                 scrollbarStyles,
-                "max-h-[48vh] min-h-[280px] overflow-y-auto pr-2",
+                "max-h-[44vh] min-h-[280px] overflow-y-auto pr-2",
               )}
               role="region"
               aria-labelledby="agentListHeading"
+              aria-busy={isFetching}
             >
               <div id="agentListHeading" className="sr-only">
                 Scrollable list of agents
               </div>
-              <div className="grid grid-cols-1 gap-2 p-1 sm:grid-cols-2">
-                {myAgents.map((agent) => {
-                  const isSelected = selectedAgentId === agent.id;
-                  return (
-                    <button
-                      type="button"
-                      key={agent.id}
-                      data-testid="agent-card"
-                      className={cn(
-                        "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
-                        isSelected
-                          ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
-                          : "border-zinc-200",
-                      )}
-                      onClick={() =>
-                        handleAgentClick(agent.name, agent.id, agent.version)
-                      }
-                      aria-pressed={isSelected}
+              {isLoading ? (
+                <div className="grid grid-cols-1 gap-2 p-1 sm:grid-cols-2">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-[12px] border border-zinc-200 bg-white p-3"
                     >
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <Text
-                            variant="body-medium"
-                            as="span"
-                            className="truncate text-textBlack"
-                          >
-                            {agent.name}
-                          </Text>
-                          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
-                            v{agent.version}
-                          </span>
-                        </div>
-                        <Text
-                          variant="small"
-                          as="span"
-                          className="truncate text-zinc-500"
-                        >
-                          {agent.description
-                            ? agent.description
-                            : `Edited ${agent.lastEdited}`}
-                        </Text>
+                      <div className="flex flex-1 flex-col gap-2">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-3 w-2/3" />
                       </div>
-                      {isSelected ? (
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
-                          <CheckCircleIcon size={14} weight="fill" />
-                        </span>
-                      ) : (
-                        <span
-                          aria-hidden
-                          className="size-5 shrink-0 rounded-full border border-zinc-300"
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-2 p-1 transition-opacity sm:grid-cols-2",
+                    isFetching && "opacity-60",
+                  )}
+                >
+                  {myAgents.map((agent) => {
+                    const isSelected = selectedAgentId === agent.id;
+                    return (
+                      <button
+                        type="button"
+                        key={agent.id}
+                        data-testid="agent-card"
+                        className={cn(
+                          "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                          isSelected
+                            ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
+                            : "border-zinc-200",
+                        )}
+                        onClick={() =>
+                          handleAgentClick(agent.name, agent.id, agent.version)
+                        }
+                        aria-pressed={isSelected}
+                      >
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Text
+                              variant="body-medium"
+                              as="span"
+                              className="truncate text-textBlack"
+                            >
+                              {agent.name}
+                            </Text>
+                            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                              v{agent.version}
+                            </span>
+                          </div>
+                          <Text
+                            variant="small"
+                            as="span"
+                            className="truncate text-zinc-500"
+                          >
+                            {agent.description
+                              ? agent.description
+                              : `Edited ${agent.lastEdited}`}
+                          </Text>
+                        </div>
+                        {isSelected ? (
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
+                            <CheckCircleIcon size={14} weight="fill" />
+                          </span>
+                        ) : (
+                          <span
+                            aria-hidden
+                            className="size-5 shrink-0 rounded-full border border-zinc-300"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
+
+          {totalPages > 1 ? (
+            <PaginationBar
+              page={page}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onChange={goToPage}
+            />
+          ) : null}
 
           <StepFooter
             secondary={
@@ -229,4 +263,92 @@ export function AgentSelectStep({
       )}
     </div>
   );
+}
+
+interface PaginationBarProps {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onChange: (page: number) => void;
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  onChange,
+}: PaginationBarProps) {
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalItems);
+  const pages = buildPageRange(page, totalPages);
+
+  return (
+    <div className="flex flex-col items-center justify-between gap-2 pb-3 pt-1 text-zinc-500 sm:flex-row">
+      <Text variant="small" className="text-zinc-500">
+        {start}–{end} of {totalItems}
+      </Text>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="Previous page"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+          className="flex size-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <CaretLeftIcon size={14} weight="bold" />
+        </button>
+        {pages.map((entry, idx) =>
+          entry === "…" ? (
+            <span
+              key={`gap-${idx}`}
+              className="px-1 text-xs text-zinc-400"
+              aria-hidden
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={entry}
+              type="button"
+              onClick={() => onChange(entry)}
+              aria-current={entry === page ? "page" : undefined}
+              className={cn(
+                "flex size-8 items-center justify-center rounded-full border text-xs font-medium transition",
+                entry === page
+                  ? "border-purple-500 bg-purple-500 text-white"
+                  : "border-zinc-200 text-zinc-600 hover:border-zinc-300",
+              )}
+            >
+              {entry}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          aria-label="Next page"
+          disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
+          className="flex size-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <CaretRightIcon size={14} weight="bold" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function buildPageRange(current: number, total: number): (number | "…")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | "…")[] = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push("…");
+  for (let i = left; i <= right; i += 1) pages.push(i);
+  if (right < total - 1) pages.push("…");
+  pages.push(total);
+  return pages;
 }

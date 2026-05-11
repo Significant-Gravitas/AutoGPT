@@ -8617,6 +8617,15 @@
               "default": 20,
               "title": "Page Size"
             }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MyAgentsSortBy",
+              "default": "most_recent"
+            }
           }
         ],
         "responses": {
@@ -13582,6 +13591,11 @@
         "type": "object",
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
+      },
+      "MyAgentsSortBy": {
+        "type": "string",
+        "enum": ["most_recent", "name"],
+        "title": "MyAgentsSortBy"
       },
       "MyUnpublishedAgent": {
         "properties": {
