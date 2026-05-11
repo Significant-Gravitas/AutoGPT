@@ -98,7 +98,7 @@ anthropic_credentials = APIKeyCredentials(
     expires_at=None,
 )
 avian_credentials = APIKeyCredentials(
-    id="a3b7c9d1-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+    id="4d75ff34-88cf-42fc-96c0-f12d782465ca",
     provider="avian",
     api_key=SecretStr(settings.secrets.avian_api_key),
     title="Use Credits for Avian",

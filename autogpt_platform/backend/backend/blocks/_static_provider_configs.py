@@ -23,6 +23,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     # LLM providers that share blocks/llm.py
     "aiml_api": ("Unified access to 100+ AI models", ("api_key",)),
     "anthropic": ("Claude language models", ("api_key",)),
+    "avian": ("Fast LLM inference via Avian", ("api_key",)),
     "groq": ("Fast LLM inference", ("api_key",)),
     "llama_api": ("Llama model hosting", ("api_key",)),
     "ollama": ("Run open-source LLMs locally", ("api_key",)),
