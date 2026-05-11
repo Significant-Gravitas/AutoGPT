@@ -3,7 +3,6 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
-import { MyAgentsStatusFilter } from "@/app/api/__generated__/models/myAgentsStatusFilter";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 export interface Agent {
@@ -46,12 +45,11 @@ export function useAgentSelectStep({
   const [sortBy, setSortBy] = React.useState<MyAgentsSortBy>(
     MyAgentsSortBy.most_recent,
   );
-  const [statuses, setStatuses] = React.useState<MyAgentsStatusFilter[]>([]);
   const { isLoggedIn } = useSupabase();
 
   React.useEffect(() => {
     setPage(1);
-  }, [sortBy, statuses]);
+  }, [sortBy]);
 
   const {
     data: agentsData,
@@ -63,7 +61,6 @@ export function useAgentSelectStep({
       page,
       page_size: PAGE_SIZE,
       sort_by: sortBy,
-      ...(statuses.length > 0 ? { status: statuses } : {}),
     },
     {
       query: {
@@ -94,8 +91,6 @@ export function useAgentSelectStep({
   const myAgents = agentsData?.agents ?? [];
   const totalPages = agentsData?.pagination?.total_pages ?? 0;
   const totalItems = agentsData?.pagination?.total_items ?? 0;
-  const hasNoResults =
-    !isLoading && !isFetching && myAgents.length === 0 && statuses.length > 0;
 
   function handleAgentClick(_: string, agentId: string, agentVersion: number) {
     setSelectedAgentId(agentId);
@@ -121,18 +116,6 @@ export function useAgentSelectStep({
     setSortBy(value as MyAgentsSortBy);
   }
 
-  function toggleStatus(status: MyAgentsStatusFilter) {
-    setStatuses((prev) =>
-      prev.includes(status)
-        ? prev.filter((s) => s !== status)
-        : [...prev, status],
-    );
-  }
-
-  function clearStatuses() {
-    setStatuses([]);
-  }
-
   function goToPage(next: number) {
     if (next < 1 || (totalPages > 0 && next > totalPages)) return;
     setPage(next);
@@ -149,13 +132,9 @@ export function useAgentSelectStep({
     totalItems,
     pageSize: PAGE_SIZE,
     sortBy,
-    statuses,
-    hasNoResults,
     handleAgentClick,
     handleNext,
     handleSortChange,
-    toggleStatus,
-    clearStatuses,
     goToPage,
     isNextDisabled: !selectedAgentId || !selectedAgentVersion,
   };

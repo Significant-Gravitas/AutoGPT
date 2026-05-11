@@ -4,7 +4,6 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CheckCircleIcon,
-  FunnelIcon,
   PlusIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
@@ -15,17 +14,10 @@ import { Select } from "../../../../atoms/Select/Select";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/molecules/Popover/Popover";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
-import { MyAgentsStatusFilter } from "@/app/api/__generated__/models/myAgentsStatusFilter";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -48,13 +40,6 @@ const SORT_OPTIONS = [
   { value: MyAgentsSortBy.name, label: "Sort by: Alphabetical" },
 ];
 
-const FILTER_OPTIONS: { value: MyAgentsStatusFilter; label: string }[] = [
-  { value: MyAgentsStatusFilter.never_submitted, label: "Never submitted" },
-  { value: MyAgentsStatusFilter.draft, label: "Draft" },
-  { value: MyAgentsStatusFilter.submitted, label: "Submitted / In review" },
-  { value: MyAgentsStatusFilter.published, label: "Published" },
-];
-
 export function AgentSelectStep({
   onSelect,
   onCancel,
@@ -72,13 +57,9 @@ export function AgentSelectStep({
     totalItems,
     pageSize,
     sortBy,
-    statuses,
-    hasNoResults,
     handleAgentClick,
     handleNext,
     handleSortChange,
-    toggleStatus,
-    clearStatuses,
     goToPage,
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
@@ -112,12 +93,7 @@ export function AgentSelectStep({
     );
   }
 
-  const hasActiveFilters = statuses.length > 0;
-  const showEmpty =
-    !isLoading &&
-    !hasActiveFilters &&
-    totalItems === 0 &&
-    myAgents.length === 0;
+  const showEmpty = !isLoading && totalItems === 0 && myAgents.length === 0;
 
   return (
     <div className="mx-auto flex w-full flex-col">
@@ -143,7 +119,7 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 pb-3">
+          <div className="mt-2 flex items-center justify-end pb-3">
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
@@ -155,69 +131,6 @@ export function AgentSelectStep({
                 options={SORT_OPTIONS}
               />
             </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-1",
-                    hasActiveFilters
-                      ? "border-purple-300 bg-purple-50 text-purple-700"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300",
-                  )}
-                >
-                  <FunnelIcon size={14} weight="bold" />
-                  Filter
-                  {hasActiveFilters ? (
-                    <span className="inline-flex size-5 items-center justify-center rounded-full bg-purple-500 text-[11px] font-semibold text-white">
-                      {statuses.length}
-                    </span>
-                  ) : null}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-60 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <Text
-                    variant="small-medium"
-                    as="span"
-                    className="text-textBlack"
-                  >
-                    Filter by status
-                  </Text>
-                  {hasActiveFilters ? (
-                    <button
-                      type="button"
-                      onClick={clearStatuses}
-                      className="text-xs font-medium text-purple-600 hover:text-purple-700"
-                    >
-                      Clear
-                    </button>
-                  ) : null}
-                </div>
-                <ul className="flex flex-col gap-1">
-                  {FILTER_OPTIONS.map((option) => {
-                    const checked = statuses.includes(option.value);
-                    return (
-                      <li key={option.value}>
-                        <label
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-50",
-                            checked && "text-textBlack",
-                          )}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => toggleStatus(option.value)}
-                            aria-label={option.label}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </PopoverContent>
-            </Popover>
           </div>
 
           <div className="flex-grow overflow-hidden pb-3">
@@ -247,22 +160,6 @@ export function AgentSelectStep({
                       </div>
                     </div>
                   ))}
-                </div>
-              ) : hasNoResults ? (
-                <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-zinc-200 px-6 py-8 text-center">
-                  <Text variant="body-medium" className="text-textBlack">
-                    No agents match the selected filters
-                  </Text>
-                  <Text variant="small" className="text-zinc-500">
-                    Try a different combination or clear all filters.
-                  </Text>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onClick={clearStatuses}
-                  >
-                    Clear filters
-                  </Button>
                 </div>
               ) : (
                 <div
