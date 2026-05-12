@@ -32,15 +32,25 @@ describe("ReasoningCollapse", () => {
     expect(screen.queryByTestId("reasoning-body")).toBeNull();
   });
 
-  it("applies a pulse animation class to the trigger", () => {
-    render(
+  it("applies a pulse animation class to the trigger ONLY while active", () => {
+    const inactive = render(
       <ReasoningCollapse>
         <span>thought</span>
       </ReasoningCollapse>,
     );
+    expect(
+      inactive.getByRole("button", { name: /reasoning/i }).className,
+    ).not.toContain("animate-pulse");
+    inactive.unmount();
 
-    const trigger = screen.getByRole("button", { name: /reasoning/i });
-    expect(trigger.className).toContain("animate-pulse");
+    const active = render(
+      <ReasoningCollapse isActive>
+        <span>thought</span>
+      </ReasoningCollapse>,
+    );
+    expect(
+      active.getByRole("button", { name: /reasoning/i }).className,
+    ).toContain("animate-pulse");
   });
 
   it("renders no chevron / extra svg inside the trigger", () => {

@@ -109,8 +109,14 @@ export function MessagePartRenderer({
       const reasoningText =
         "text" in part && typeof part.text === "string" ? part.text : "";
       if (!reasoningText.trim()) return null;
+      // AI SDK reasoning parts carry an optional `state: "streaming" | "done"`.
+      // We pulse the indicator only while streaming so a finalized reasoning
+      // block doesn't keep looking like the model is still thinking.
+      const reasoningState =
+        "state" in part && typeof part.state === "string" ? part.state : null;
+      const isActive = reasoningState === "streaming";
       return (
-        <ReasoningCollapse key={key}>
+        <ReasoningCollapse key={key} isActive={isActive}>
           <pre className="whitespace-pre-wrap text-sm text-zinc-700">
             {reasoningText}
           </pre>
