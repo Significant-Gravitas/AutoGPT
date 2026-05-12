@@ -23,7 +23,9 @@ function cost(overrides: Partial<BlockCost>): BlockCost {
 
 describe("NodeCost", () => {
   beforeEach(() => {
-    useNodeStore.setState({ getHardCodedValues: () => ({}) } as any);
+    useNodeStore.setState({
+      getHardCodedValues: () => ({}),
+    } as Partial<ReturnType<typeof useNodeStore.getState>>);
   });
 
   it("renders fixed /run label for RUN cost type", () => {
@@ -241,7 +243,7 @@ describe("NodeCost", () => {
   it("returns null when no matching blockCost found", () => {
     useNodeStore.setState({
       getHardCodedValues: () => ({ provider: "openai" }),
-    } as any);
+    } as Partial<ReturnType<typeof useNodeStore.getState>>);
     const { container } = render(
       <NodeCost
         blockCosts={[
