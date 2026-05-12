@@ -24,6 +24,7 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -62,6 +63,7 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  sessionChatStatus,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -170,6 +172,7 @@ export const ChatContainer = ({
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}

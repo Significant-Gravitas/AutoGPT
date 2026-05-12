@@ -205,3 +205,9 @@ copilot-session-switch-qa/
 tmp/
 screenshots/
 test-screenshots/
+# Local scratch convention: anything starting with ``.ign`` is gitignored
+# wherever it lives — directories (e.g. ``.ign/``), per-process log tees
+# (``.ign.application.logs``, ``.ign.frontend.logs``), lock files
+# (``.ign.testing.lock``), and any future ``.ign*`` variant.
+.ign*
+**/.ign*

@@ -9,7 +9,13 @@ import logging
 
 from pydantic import BaseModel
 
-from backend.copilot.active_turns import TurnSlot, acquire_turn_slot
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    TurnSlot,
+    acquire_turn_slot,
+    get_inflight_turn_limit,
+    inflight_turn_limit_message,
+)
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
@@ -316,8 +322,28 @@ async def schedule_turn(
       a RabbitMQ blip cannot leak a slot until the stale-cutoff sweep.
     * On success the slot is *kept*: ownership transfers to
       ``mark_session_completed``, which releases it when the turn ends.
+
+    Capacity is the *inflight* cap (default 15) rather than the running
+    cap (default 5): non-HTTP callers (``run_sub_session``,
+    ``AutoPilotBlock``) have no FIFO queue fallback, so applying the
+    soft running cap here would regress concurrency below the prior
+    SECRT-2335 hotfix behaviour.
+
+    The user's queued turns from the chat HTTP route DO count against
+    the inflight cap — pre-check ``running + queued`` here so a user
+    with 5 running + 10 queued can't slip a 16th task through this
+    path; ``acquire_turn_slot`` only sees the running pool.
     """
-    async with acquire_turn_slot(user_id, session_id) as slot:
+    if user_id:
+        from backend.copilot.turn_queue import count_inflight_turns
+
+        inflight_cap = get_inflight_turn_limit()
+        if await count_inflight_turns(user_id) >= inflight_cap:
+            raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+
+    async with acquire_turn_slot(
+        user_id, session_id, capacity=get_inflight_turn_limit()
+    ) as slot:
         await dispatch_turn(
             slot,
             session_id=session_id,
@@ -379,20 +405,42 @@ async def dispatch_turn(
         tool_name=tool_name,
         turn_id=turn_id,
     )
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=user_id,
-        message=message,
-        turn_id=turn_id,
-        is_user_message=is_user_message,
-        context=context,
-        file_ids=file_ids,
-        mode=mode,
-        model=model,
-        permissions=permissions,
-        request_arrival_at=request_arrival_at,
-    )
-    slot.keep()
+
+    # Once ``create_session`` has written Redis meta, EVERY exit path
+    # from this point on must either (a) commit the turn (``slot.keep()``
+    # + RabbitMQ message enqueued) or (b) tear the Redis meta down — or
+    # a future read will see ``status='running'`` with no consumer.
+    # ``finally`` catches CancelledError as well (which ``except
+    # Exception`` would miss); the ``committed`` flag distinguishes the
+    # happy path from any failure / cancellation.
+    committed = False
+    try:
+        await enqueue_copilot_turn(
+            session_id=session_id,
+            user_id=user_id,
+            message=message,
+            turn_id=turn_id,
+            is_user_message=is_user_message,
+            context=context,
+            file_ids=file_ids,
+            mode=mode,
+            model=model,
+            permissions=permissions,
+            request_arrival_at=request_arrival_at,
+        )
+        slot.keep()
+        committed = True
+    finally:
+        if not committed:
+            try:
+                await stream_registry.delete_session_meta(session_id)
+            except BaseException:
+                # Already in a failure path — log + swallow so the
+                # original exception/cancellation isn't masked.
+                logger.exception(
+                    "dispatch_turn: redis meta cleanup failed for session=%s",
+                    session_id,
+                )
 
 
 async def schedule_chat_turn(

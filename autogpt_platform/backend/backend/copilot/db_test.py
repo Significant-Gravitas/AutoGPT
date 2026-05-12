@@ -61,6 +61,7 @@ def _make_session(
         totalCompletionTokens=0,
         title=None,
         metadata={},
+        chatStatus="idle",
         Messages=messages or [],
     )
     return session
@@ -615,3 +616,175 @@ async def test_update_message_content_by_sequence_sanitizes_content():
 # ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
 # Cap-hit + tool-pair boundary behaviour is now covered by the paginated tests
 # above and the integration coverage in ``model_test.py``.
+
+
+# ChatSession lifecycle primitives + add_chat_message.
+
+
+@pytest.mark.asyncio
+async def test_count_chat_sessions_by_status_filters_by_user_and_status() -> None:
+    from backend.copilot.db import count_chat_sessions_by_status
+
+    count = AsyncMock(return_value=3)
+    with patch.object(PrismaChatSession, "prisma", return_value=AsyncMock(count=count)):
+        result = await count_chat_sessions_by_status(user_id="u1", status="running")
+    assert result == 3
+    where = count.call_args.kwargs["where"]
+    assert where == {"userId": "u1", "chatStatus": "running"}
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() -> None:
+    """Returns RPC-safe ``ChatSessionInfo`` rows (not raw Prisma) so the
+    function can serve the dispatcher across the DatabaseManager RPC
+    boundary from the CoPilotExecutor subprocess."""
+    from backend.copilot.db import list_chat_sessions_by_status
+
+    now = datetime.now(UTC)
+    rows = [
+        PrismaChatSession(
+            id="s1",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+        ),
+        PrismaChatSession(
+            id="s2",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+        ),
+    ]
+    find_many = AsyncMock(return_value=rows)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
+    ):
+        result = await list_chat_sessions_by_status(user_id="u1", status="queued")
+    assert [r.session_id for r in result] == ["s1", "s2"]
+    assert all(r.chat_status == "queued" for r in result)
+    kwargs = find_many.call_args.kwargs
+    assert kwargs["where"] == {"userId": "u1", "chatStatus": "queued"}
+    assert kwargs["order"] == {"updatedAt": "asc"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_owner_gated_returns_true_on_match() -> None:
+    """User-initiated transition (cancel) gates on both ``chatStatus``
+    AND ``userId`` — both guards in one atomic update."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1",
+            expect_status="queued",
+            status="idle",
+            user_id="u1",
+        )
+    assert ok is True
+    kwargs = update_many.call_args.kwargs
+    assert kwargs["where"] == {"id": "s1", "chatStatus": "queued", "userId": "u1"}
+    assert kwargs["data"] == {"chatStatus": "idle"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_returns_false_when_cas_fails() -> None:
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="idle"
+        )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_dispatcher_path_omits_user_gate() -> None:
+    """Dispatcher-initiated transitions (claim / restore / release) don't
+    pass ``user_id`` — they act on the session regardless of owner."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="running"
+        )
+    where = update_many.call_args.kwargs["where"]
+    assert "userId" not in where
+    assert where == {"id": "s1", "chatStatus": "queued"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_serialises_metadata_via_safejson() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata={"mode": "extended_thinking"},
+        )
+    data = create.call_args.kwargs["data"]
+    assert data["id"] == "m1"
+    metadata = data["metadata"]
+    inner = getattr(metadata, "data", metadata)
+    assert inner == {"mode": "extended_thinking"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_omits_metadata_when_none() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata=None,
+        )
+    data = create.call_args.kwargs["data"]
+    assert "metadata" not in data

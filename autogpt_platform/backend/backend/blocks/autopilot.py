@@ -19,7 +19,7 @@ from backend.blocks._base import (
 )
 from backend.copilot.active_turns import (
     MAX_TURN_LIFETIME_SECONDS,
-    concurrent_turn_limit_message,
+    running_turn_limit_message,
 )
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
@@ -368,7 +368,7 @@ class AutoPilotBlock(Block):
                 # cap rejected before ``create_session`` ran. Surface a
                 # message that points at the actionable cause rather
                 # than the empty transcript.
-                raise RuntimeError(concurrent_turn_limit_message())
+                raise RuntimeError(running_turn_limit_message())
             if outcome == "failed":
                 raise RuntimeError(
                     "AutoPilot turn failed — see the session's transcript"

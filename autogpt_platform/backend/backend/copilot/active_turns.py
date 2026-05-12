@@ -1,145 +1,139 @@
-"""Per-user concurrent AutoPilot turn tracking.
+"""Per-user concurrent AutoPilot turn tracking, backed entirely by Postgres.
 
-Caps how many copilot chat turns a single user can have running
-concurrently so a single API key cannot spawn hundreds of simultaneous
-turns and exhaust shared infrastructure.
-
-This module is the **domain wrapper** over the generic
-:func:`backend.data.redis_helpers.try_acquire_concurrency_slot` primitive
-— it supplies the per-user pool keying, the cap-from-Settings lookup,
-the user-facing error message, and the
-:func:`acquire_turn_slot` context manager that drives the slot's
-admit / release / refresh lifecycle.
+Each :class:`prisma.models.ChatSession` carries a ``chatStatus`` text
+enum: ``"idle"`` (no turn in flight, the 99% case), ``"queued"``
+(waiting for a running slot to free), ``"running"`` (a turn is being
+processed).  The cap and queue queries are both ``count`` / ``find_many``
+on ``ChatSession`` by ``chatStatus``.
 
 Public API
 ----------
 
-* :func:`acquire_turn_slot` — async context manager every entry point
-  (HTTP route, ``run_sub_session`` tool, ``AutoPilotBlock``) wraps around
-  the create-session + enqueue dance. Raises
-  :class:`ConcurrentTurnLimitError` on rejection.
-* :func:`release_turn_slot` — invoked by ``mark_session_completed``
-  when a turn ends, freeing the slot for the next admission.
-* :func:`get_concurrent_turn_limit` /
-  :func:`concurrent_turn_limit_message` — operator-tunable cap and the
-  matching user-facing 429 detail.
+* :func:`acquire_turn_slot` — async context manager. Counts the user's
+  ``"running"`` sessions, raises :class:`ConcurrentTurnLimitError` at
+  the cap, otherwise flips the session to ``"running"`` and yields a
+  handle whose release transfers to ``mark_session_completed`` via
+  :meth:`TurnSlot.keep`.
+* :func:`release_turn_slot` — flips the session back to ``"idle"``.
+  Called from ``mark_session_completed`` when the turn ends.
+* :func:`count_running_turns` / :func:`get_running_session_ids` —
+  used by the queue layer (in-flight = running + queued) and the
+  dispatcher's busy-session check.
+
+Cap admission is a *non-locked* count-then-update. Two concurrent
+submits from the same user can both pass the count and both update,
+leaving the user briefly one or two over the cap. This is the same
+trade-off the graph-execution credit rate-limit accepts on its
+``INCRBY`` path: the cap is a safeguard, not a budget.
+
+DB access goes through :func:`backend.data.db_accessors.chat_db` so
+the dispatcher works from both the HTTP server (Prisma directly) and
+the copilot_executor process (RPC via DatabaseManager).
 """
 
-import logging
-import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from redis.exceptions import RedisClusterException, RedisError
-
-from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import SlotAdmission, try_acquire_concurrency_slot
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    CHAT_STATUS_RUNNING,
+)
+from backend.data.db_accessors import chat_db
 from backend.util.settings import Settings
 
-logger = logging.getLogger(__name__)
-
-
-# Upper bound on a single AutoPilot turn's wall-clock duration. Beyond
-# this we treat the turn as abandoned: the slot is reclaimed by the
-# stale-cutoff sweep (so a crashed turn doesn't hold a slot forever) and
-# the :class:`AutoPilotBlock` execution wait gives up. Far exceeds typical
-# chat turn duration (seconds-minutes) so legitimate long-running tool
-# calls (E2B sandbox, deep web crawls, etc.) aren't penalised. The normal
-# release path is ``mark_session_completed``; this is the safety net.
+# Upper bound on a single AutoPilot turn's wall-clock duration.  Re-exported
+# for callers (e.g. ``backend.blocks.autopilot``) that need a sensible
+# upper-wait timeout.  Stale running sessions older than this are an
+# operational concern surfaced via metrics + manual recovery, not
+# enforced at read time.
 MAX_TURN_LIFETIME_SECONDS = 6 * 60 * 60
 
-_USER_ACTIVE_TURNS_KEY_PREFIX = "copilot:user_active_turns:"
+
+def get_running_turn_limit() -> int:
+    """Configured soft cap on concurrently *running* turns per user."""
+    return Settings().config.max_running_copilot_turns_per_user
 
 
-def get_concurrent_turn_limit() -> int:
-    """Resolve the configured per-user concurrent-turn cap at call time.
-
-    Reading at call time (rather than module load) lets operators retune
-    the cap by editing the env-backed Settings without redeploying the
-    code that imports this module.
-    """
-    return Settings().config.max_concurrent_copilot_turns_per_user
+def get_inflight_turn_limit() -> int:
+    """Configured hard cap on in-flight (running + queued) turns per user."""
+    return Settings().config.max_inflight_copilot_turns_per_user
 
 
-def concurrent_turn_limit_message(limit: int | None = None) -> str:
-    """User-facing 429 detail string. Pass ``limit`` if you already
-    resolved it; otherwise we read the configured value."""
-    resolved = get_concurrent_turn_limit() if limit is None else limit
+def inflight_turn_limit_message(limit: int | None = None) -> str:
+    """User-facing 429 detail when the in-flight cap is hit."""
+    resolved = get_inflight_turn_limit() if limit is None else limit
     return (
-        f"You've reached the limit of {resolved} active tasks. Please wait "
-        f"for one of your current tasks to finish before starting a new one."
+        f"You've reached the limit of {resolved} active tasks (running + queued). "
+        "Please wait for one of your current tasks to finish before starting a new one."
+    )
+
+
+def running_turn_limit_message(limit: int | None = None) -> str:
+    """Default :class:`ConcurrentTurnLimitError` detail when the
+    *running* cap is hit on a path that does not queue (e.g.
+    ``AutoPilotBlock``, ``run_sub_session``).  The HTTP route catches
+    the error before it surfaces and replaces the message with the
+    inflight one."""
+    resolved = get_running_turn_limit() if limit is None else limit
+    return (
+        f"You have {resolved} AutoPilot tasks already running. "
+        "Please wait for one of them to finish before starting a new one."
+    )
+
+
+def queued_turn_message() -> str:
+    """User-facing message rendered when a turn is queued instead of
+    starting immediately because the running cap is full."""
+    return (
+        "Your task has been queued and will start automatically when one of "
+        "your current tasks finishes."
     )
 
 
 class ConcurrentTurnLimitError(Exception):
-    """User has reached the configured concurrent in-flight AutoPilot
-    turn cap. Maps to HTTP 429 in the API layer.
-    """
+    """User has reached the configured running AutoPilot turn cap."""
 
     def __init__(self, message: str | None = None) -> None:
-        super().__init__(message or concurrent_turn_limit_message())
+        super().__init__(message or running_turn_limit_message())
 
 
-def _user_pool_key(user_id: str) -> str:
-    # Hash-tag braces ensure all keys for a single user co-locate on the
-    # same Redis Cluster slot — required for any future Lua that touches
-    # multiple per-user keys atomically.
-    return f"{_USER_ACTIVE_TURNS_KEY_PREFIX}{{{user_id}}}"
+async def count_running_turns(user_id: str) -> int:
+    """User's current running-turn count."""
+    return await chat_db().count_chat_sessions_by_status(
+        user_id=user_id, status=CHAT_STATUS_RUNNING
+    )
 
 
-async def _try_admit_user_turn(user_id: str, session_id: str) -> SlotAdmission:
-    """Atomic admit/refresh against the user's active-turn pool.
-
-    Fails open (returns ``ADMITTED``) on Redis errors so a brown-out
-    doesn't 429 every user — the cap is a safeguard, not a budget.
-    """
-    try:
-        redis = await get_redis_async()
-        now = time.time()
-        return await try_acquire_concurrency_slot(
-            redis,
-            pool_key=_user_pool_key(user_id),
-            slot_id=session_id,
-            capacity=get_concurrent_turn_limit(),
-            score=now,
-            stale_before_score=now - MAX_TURN_LIFETIME_SECONDS,
-            ttl_seconds=MAX_TURN_LIFETIME_SECONDS,
-        )
-    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
-        logger.warning(
-            "concurrent-turn cap: Redis unavailable for user=%s; failing open: %s",
-            user_id,
-            exc,
-        )
-        return SlotAdmission.ADMITTED
+async def get_running_session_ids(user_id: str) -> set[str]:
+    """Set of the user's session IDs currently running a turn."""
+    rows = await chat_db().list_chat_sessions_by_status(
+        user_id=user_id, status=CHAT_STATUS_RUNNING
+    )
+    return {r.session_id for r in rows}
 
 
 async def release_turn_slot(user_id: str, session_id: str) -> None:
-    """Free ``user_id``'s slot for ``session_id``. Idempotent.
-
-    Best-effort — a Redis error only delays release until the next
-    stale-cutoff sweep.
-    """
-    try:
-        redis = await get_redis_async()
-        await redis.zrem(_user_pool_key(user_id), session_id)
-    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
-        logger.warning(
-            "release_turn_slot: Redis unavailable for user=%s session=%s: %s",
-            user_id,
-            session_id,
-            exc,
-        )
+    """Flip the session back to ``"idle"``.  Idempotent — the CAS on
+    ``chatStatus='running'`` is a no-op when the status has already
+    changed (e.g. a parallel cancel)."""
+    if not user_id:
+        return
+    await chat_db().update_chat_session_status(
+        session_id=session_id,
+        expect_status=CHAT_STATUS_RUNNING,
+        status=CHAT_STATUS_IDLE,
+        user_id=user_id,
+    )
 
 
 class TurnSlot:
     """Handle yielded by :func:`acquire_turn_slot`.
 
     Call :meth:`keep` once a turn has been successfully scheduled to
-    transfer ownership to ``mark_session_completed`` (the release path).
-    Without ``keep``, the context manager auto-releases on exit — but
-    only when *this* caller admitted the slot. A re-entrant refresh
-    leaves the slot alone, since some earlier caller still owns it.
+    transfer release ownership to ``mark_session_completed``.  Without
+    ``keep``, the context manager auto-releases on exit — but only when
+    *this* caller admitted the slot.
     """
 
     __slots__ = ("user_id", "session_id", "admitted", "_kept")
@@ -151,9 +145,7 @@ class TurnSlot:
         self._kept = False
 
     def keep(self) -> None:
-        """Transfer slot ownership out of this context. Caller is now
-        responsible for ensuring ``mark_session_completed`` releases the
-        slot (or accepts the stale-cutoff fallback)."""
+        """Transfer slot ownership out of this context."""
         self._kept = True
 
 
@@ -161,34 +153,66 @@ class TurnSlot:
 async def acquire_turn_slot(
     user_id: str | None,
     session_id: str,
+    capacity: int | None = None,
 ) -> AsyncIterator[TurnSlot]:
     """Reserve a turn slot for the duration of the ``async with`` block.
 
     Three branches on entry:
 
-    * **Admitted** — fresh slot acquired; ``keep()`` transfers ownership
-      to ``mark_session_completed``, otherwise the slot is released on
-      exit.
-    * **Refreshed** — same-``session_id`` re-entry (network retry,
-      duplicate request); the existing slot's score is bumped but this
-      caller does NOT own its release. Exiting without ``keep`` is a
-      no-op.
-    * **Rejected** — pool is at the configured cap; raises
-      :class:`ConcurrentTurnLimitError` (caller maps to HTTP 429).
+    * **Admitted** — user below the cap; ``chatStatus`` flips to
+      ``"running"``.  Exit auto-releases unless :meth:`TurnSlot.keep`
+      was called.
+    * **Refreshed** — same ``session_id`` is already ``"running"``
+      (network retry, duplicate request); status stays as-is and this
+      caller does NOT own the release.
+    * **Rejected** — at the cap; raises :class:`ConcurrentTurnLimitError`.
 
-    Anonymous sessions (``user_id`` falsy) bypass the gate entirely and
-    yield a no-op handle.
+    Anonymous sessions (``user_id`` falsy) bypass the cap entirely.
     """
     handle = TurnSlot(user_id or "", session_id)
-    if user_id:
-        outcome = await _try_admit_user_turn(user_id, session_id)
-        if outcome is SlotAdmission.REJECTED:
-            raise ConcurrentTurnLimitError()
-        if outcome is SlotAdmission.ADMITTED:
-            handle.admitted = True
+    if not user_id:
+        yield handle
+        return
+
+    resolved_capacity = capacity if capacity is not None else get_running_turn_limit()
+    db = chat_db()
+
+    # Try fresh admit: promote idle → running in one CAS-gated update.
+    if await db.update_chat_session_status(
+        session_id=session_id,
+        expect_status=CHAT_STATUS_IDLE,
+        status=CHAT_STATUS_RUNNING,
+        user_id=user_id,
+    ):
+        # Fresh admit: enforce the cap by counting AFTER the flip.
+        # Reading after-write is OK because over-admit just briefly
+        # exceeds the cap — the user gets one extra slot at most under
+        # burst, same trade-off as the prior count-then-update path.
+        if await count_running_turns(user_id) > resolved_capacity:
+            # Roll back our flip; the caller falls through to the queue.
+            await release_turn_slot(user_id, session_id)
+            raise ConcurrentTurnLimitError(
+                running_turn_limit_message(resolved_capacity)
+            )
+        handle.admitted = True
+    else:
+        # CAS failed: session was not idle.  Disambiguate by reading
+        # the current status — running (legitimate SSE-retry refresh)
+        # vs queued (this user already has a pending task for this
+        # session; the route must fall through to the queue path
+        # instead of double-dispatching).
+        current = await db.get_chat_session_status(session_id)
+        if current == CHAT_STATUS_QUEUED:
+            raise ConcurrentTurnLimitError(
+                running_turn_limit_message(resolved_capacity)
+            )
+        # Any other state (running, or unexpectedly idle from a
+        # parallel transition) is treated as refresh: no admit, no
+        # release ownership, no error.  Caller's dispatch path is
+        # idempotent on duplicate message_ids via the ChatMessage PK.
 
     try:
         yield handle
     finally:
         if handle.admitted and not handle._kept:
-            await release_turn_slot(handle.user_id, handle.session_id)
+            await release_turn_slot(user_id, session_id)

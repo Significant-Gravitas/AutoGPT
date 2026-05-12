@@ -338,8 +338,18 @@ async def add_chat_message(
     refusal: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
     function_call: dict[str, Any] | None = None,
+    *,
+    message_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ChatMessage:
-    """Add a message to a chat session."""
+    """Add a message to a chat session.
+
+    Pass ``message_id`` to use an explicit PK (e.g. when the queue
+    layer needs to reference the row before promotion) — otherwise
+    Prisma generates one.  ``metadata`` is a generic per-row JSONB bag
+    used by the queue path to stash dispatcher payload on the user
+    row that triggered a queued turn.
+    """
     # Build ChatMessageCreateInput with only non-None values
     # (Prisma TypedDict rejects optional fields set to None)
     data: ChatMessageCreateInput = {
@@ -347,6 +357,9 @@ async def add_chat_message(
         "role": role,
         "sequence": sequence,
     }
+
+    if message_id is not None:
+        data["id"] = message_id
 
     # Add optional string fields — sanitize to strip PostgreSQL-incompatible
     # control characters (null bytes etc.) that may appear in tool outputs.
@@ -364,6 +377,8 @@ async def add_chat_message(
         data["toolCalls"] = SafeJson(tool_calls)
     if function_call is not None:
         data["functionCall"] = SafeJson(function_call)
+    if metadata is not None:
+        data["metadata"] = SafeJson(metadata)
 
     # Run message create and session timestamp update in parallel for lower latency
     _, message = await asyncio.gather(
@@ -693,3 +708,83 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
                     msg.duration_ms = duration_ms
                     break
             await cache_chat_session(session)
+
+
+# Session lifecycle primitives.  Callers pass the ``CHAT_STATUS_*``
+# constants from ``model``.  Counting and listing by ``chatStatus``
+# covers both the per-user soft running cap (status='running') and the
+# cross-session queue (status='queued').  Adding a new state is a
+# code-only change at call sites.
+
+
+async def count_chat_sessions_by_status(*, user_id: str, status: str) -> int:
+    """Count user's ChatSession rows whose ``chatStatus`` matches."""
+    return await PrismaChatSession.prisma().count(
+        where={"userId": user_id, "chatStatus": status},
+    )
+
+
+async def list_chat_sessions_by_status(
+    *, user_id: str, status: str
+) -> list[ChatSessionInfo]:
+    """User's ChatSession rows with the given status, oldest-first.
+
+    Returns application-model :class:`ChatSessionInfo` instances so the
+    function is RPC-safe — ``mark_session_completed`` invokes the
+    dispatcher from the CoPilotExecutor subprocess (no direct Prisma
+    connection), and ``DatabaseManagerAsyncClient``'s response
+    serializer rejects raw Prisma rows."""
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"userId": user_id, "chatStatus": status},
+        order={"updatedAt": "asc"},
+    )
+    return [ChatSessionInfo.from_db(r) for r in rows]
+
+
+async def get_latest_user_message_in_session(
+    session_id: str,
+) -> ChatMessage | None:
+    """Return the most recent ``role='user'`` ChatMessage in the given
+    session, or ``None`` if there are none.  Used by the queue dispatcher
+    to recover the submit-time payload from ``metadata`` when promoting
+    a queued session."""
+    row = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "user"},
+        order={"sequence": "desc"},
+    )
+    return ChatMessage.from_db(row) if row else None
+
+
+async def get_chat_session_status(session_id: str) -> str | None:
+    """Return ``ChatSession.chatStatus`` for ``session_id``, or ``None``
+    if the row doesn't exist.  Used by in-flight gates that need to
+    distinguish queued from running (the CAS-only ``update`` path can't
+    tell them apart on its own)."""
+    row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    return row.chatStatus if row else None
+
+
+async def update_chat_session_status(
+    *,
+    session_id: str,
+    status: str,
+    expect_status: str | None = None,
+    user_id: str | None = None,
+) -> bool:
+    """Update ``ChatSession.chatStatus`` to ``status``.
+
+    Pass ``expect_status`` to CAS-gate the update on the current
+    value — required for race-safe cancel/claim/restore (so two
+    concurrent transitions can't both win).  Pass ``user_id`` to
+    enforce ownership in the same statement (used by the user-initiated
+    cancel path).  Returns True iff the row was matched and updated.
+    """
+    where: ChatSessionWhereInput = {"id": session_id}
+    if expect_status is not None:
+        where["chatStatus"] = expect_status
+    if user_id is not None:
+        where["userId"] = user_id
+    updated = await PrismaChatSession.prisma().update_many(
+        where=where, data={"chatStatus": status}
+    )
+    return updated > 0
