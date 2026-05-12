@@ -90,7 +90,7 @@ describe("NodeCost", () => {
     expect(screen.getByText(/\/ 5 items/)).toBeTruthy();
   });
 
-  it("renders '· by USD' for COST_USD and shows approximate prefix for positive floor", () => {
+  it("renders 'Pay-as-you-go' for COST_USD without a published rate", () => {
     render(
       <NodeCost
         blockCosts={[
@@ -99,23 +99,70 @@ describe("NodeCost", () => {
         nodeId="n1"
       />,
     );
-    expect(screen.getByText(/~\$2\.00/)).toBeTruthy();
-    expect(screen.getByText(/· by USD/)).toBeTruthy();
+    expect(screen.getByText("Pay-as-you-go")).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
   });
 
-  it("renders em-dash when dynamic cost has zero floor", () => {
+  it("renders explicit in/out USD pair for COST_USD when published rate is provided", () => {
     render(
       <NodeCost
         blockCosts={[
-          cost({ cost_type: BlockCostType.cost_usd, cost_amount: 0 }),
+          cost({
+            cost_type: BlockCostType.cost_usd,
+            cost_amount: 150,
+            input_usd_per_1m: 0.3,
+            output_usd_per_1m: 1.2,
+          }),
         ]}
         nodeId="n1"
       />,
     );
-    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByText("$0.30 in / $1.20 out")).toBeTruthy();
+    expect(screen.getByText(/per 1M tokens/)).toBeTruthy();
   });
 
-  it("renders '· by tokens' with floor hint for TOKENS", () => {
+  it("includes cache rates in the tooltip when present", () => {
+    render(
+      <NodeCost
+        blockCosts={[
+          cost({
+            cost_type: BlockCostType.tokens,
+            cost_amount: 14,
+            input_usd_per_1m: 5,
+            output_usd_per_1m: 25,
+            cache_read_usd_per_1m: 0.5,
+            cache_creation_usd_per_1m: 6.25,
+          }),
+        ]}
+        nodeId="n1"
+      />,
+    );
+    const tooltipHost = screen
+      .getByText("$5.00 in / $25.00 out")
+      .closest("div");
+    expect(tooltipHost?.getAttribute("title")).toMatch(/Cached input: \$0\.50/);
+    expect(tooltipHost?.getAttribute("title")).toMatch(/Cache write: \$6\.25/);
+  });
+
+  it("renders explicit in/out USD pair for TOKENS with published rates", () => {
+    render(
+      <NodeCost
+        blockCosts={[
+          cost({
+            cost_type: BlockCostType.tokens,
+            cost_amount: 14,
+            input_usd_per_1m: 5,
+            output_usd_per_1m: 25,
+          }),
+        ]}
+        nodeId="n1"
+      />,
+    );
+    expect(screen.getByText("$5.00 in / $25.00 out")).toBeTruthy();
+    expect(screen.getByText(/per 1M tokens/)).toBeTruthy();
+  });
+
+  it("falls back to flat /run for TOKENS without published rates", () => {
     render(
       <NodeCost
         blockCosts={[
@@ -124,8 +171,19 @@ describe("NodeCost", () => {
         nodeId="n1"
       />,
     );
-    expect(screen.getByText(/~\$1\.50/)).toBeTruthy();
-    expect(screen.getByText(/· by tokens/)).toBeTruthy();
+    expect(screen.getByText("$1.50")).toBeTruthy();
+    expect(screen.getByText(/\/run/)).toBeTruthy();
+  });
+
+  it("renders 'Free' for RUN cost type with zero amount", () => {
+    render(
+      <NodeCost
+        blockCosts={[cost({ cost_type: BlockCostType.run, cost_amount: 0 })]}
+        nodeId="n1"
+      />,
+    );
+    expect(screen.getByText("Free")).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
   });
 
   it("renders /byte suffix for BYTE cost type", () => {

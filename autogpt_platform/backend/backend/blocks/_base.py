@@ -140,6 +140,15 @@ class BlockCost(BaseModel):
     # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
     # "1 credit per 10 seconds of walltime".
     cost_divisor: int = 1
+    # Per-1M-token USD rates surfaced to the builder UI so node cards can
+    # show real provider pricing instead of the internal credit number.
+    # Populated for entries whose model has a TOKEN_COST rate; None
+    # elsewhere. cache_read / cache_creation are populated only when the
+    # provider publishes a distinct cached-token rate (Anthropic).
+    input_usd_per_1m: Optional[float] = None
+    output_usd_per_1m: Optional[float] = None
+    cache_read_usd_per_1m: Optional[float] = None
+    cache_creation_usd_per_1m: Optional[float] = None
 
     def __init__(
         self,

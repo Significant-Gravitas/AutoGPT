@@ -91,6 +91,7 @@ from backend.integrations.credentials_store import (
     llama_api_credentials,
     mem0_credentials,
     nvidia_credentials,
+    ollama_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
@@ -256,6 +257,9 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.CLAUDE_4_6_OPUS: TokenRate(
         input=750, output=3750, cache_read=75, cache_creation=938
     ),
+    LlmModel.CLAUDE_4_7_OPUS: TokenRate(
+        input=750, output=3750, cache_read=75, cache_creation=938
+    ),
     LlmModel.CLAUDE_4_5_OPUS: TokenRate(
         input=750, output=3750, cache_read=75, cache_creation=938
     ),
@@ -397,42 +401,75 @@ def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
         return None
 
 
+# TOKEN_COST stores credits per 1M tokens at a uniform 1.5x margin over the
+# published provider price (1 credit ≈ $0.01). Convert back to the public USD
+# rate for UI display so the builder shows real provider pricing instead of
+# the internal credit number. 150 = 100 cr/$ × 1.5x margin.
+_USD_PER_1M_DIVISOR = 150
+
+
+def _token_usd_rates(
+    model: LlmModel,
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """Return (input, output, cache_read, cache_creation) USD/1M for `model`,
+    or all None if the model has no TOKEN_COST entry. cache_* are None when
+    the provider doesn't bill cached tokens at a distinct rate (most non-
+    Anthropic) — i.e. the corresponding TOKEN_COST field is zero.
+    """
+    rate = TOKEN_COST.get(model)
+    if rate is None:
+        return None, None, None, None
+    cache_read = rate.cache_read / _USD_PER_1M_DIVISOR if rate.cache_read else None
+    cache_creation = (
+        rate.cache_creation / _USD_PER_1M_DIVISOR if rate.cache_creation else None
+    )
+    return (
+        rate.input / _USD_PER_1M_DIVISOR,
+        rate.output / _USD_PER_1M_DIVISOR,
+        cache_read,
+        cache_creation,
+    )
+
+
+def _tokens_llm_cost(model: LlmModel, credentials) -> BlockCost:
+    """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
+    public per-1M-token USD rates when the model has a TOKEN_COST entry.
+    """
+    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
+    return BlockCost(
+        cost_type=BlockCostType.TOKENS,
+        cost_filter={
+            "model": model,
+            "credentials": {
+                "id": credentials.id,
+                "provider": credentials.provider,
+                "type": credentials.type,
+            },
+        },
+        cost_amount=MODEL_COST[model],
+        input_usd_per_1m=input_usd,
+        output_usd_per_1m=output_usd,
+        cache_read_usd_per_1m=cache_read_usd,
+        cache_creation_usd_per_1m=cache_creation_usd,
+    )
+
+
 LLM_COST = (
     # Anthropic Models
     [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": anthropic_credentials.id,
-                    "provider": anthropic_credentials.provider,
-                    "type": anthropic_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, anthropic_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "anthropic"
     ]
     # OpenAI Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, openai_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "openai"
     ]
-    # Groq Models
+    # Groq Models (credentials filter intentionally only uses id; rate-table
+    # lookup keys on model, so omitting provider/type avoids breaking older
+    # graphs that stored just the id).
     + [
         BlockCost(
             cost_type=BlockCostType.TOKENS,
@@ -440,15 +477,22 @@ LLM_COST = (
                 "model": model,
                 "credentials": {"id": groq_credentials.id},
             },
-            cost_amount=cost,
+            cost_amount=MODEL_COST[model],
+            input_usd_per_1m=_token_usd_rates(model)[0],
+            output_usd_per_1m=_token_usd_rates(model)[1],
+            cache_read_usd_per_1m=_token_usd_rates(model)[2],
+            cache_creation_usd_per_1m=_token_usd_rates(model)[3],
         )
-        for model, cost in MODEL_COST.items()
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "groq"
     ]
     # Open Router Models: OpenRouter returns x-total-cost on every
     # response. Bill 150 cr/$ (1.5x margin) against the authoritative
     # USD value instead of maintaining per-model TOKEN_COST rates —
-    # provider pricing drift is handled upstream.
+    # provider pricing drift is handled upstream. We still surface
+    # input/output_usd_per_1m for display so the builder UI shows the
+    # same "$X / $Y per 1M" pair as direct-billed providers — final
+    # charge still settles against x-total-cost regardless.
     + [
         BlockCost(
             cost_type=BlockCostType.COST_USD,
@@ -461,60 +505,50 @@ LLM_COST = (
                 },
             },
             cost_amount=150,
+            input_usd_per_1m=_token_usd_rates(model)[0],
+            output_usd_per_1m=_token_usd_rates(model)[1],
+            cache_read_usd_per_1m=_token_usd_rates(model)[2],
+            cache_creation_usd_per_1m=_token_usd_rates(model)[3],
         )
         for model in MODEL_COST.keys()
         if MODEL_METADATA[model].provider == "open_router"
     ]
     # Llama API Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": llama_api_credentials.id,
-                    "provider": llama_api_credentials.provider,
-                    "type": llama_api_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, llama_api_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "llama_api"
     ]
     # v0 by Vercel Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": v0_credentials.id,
-                    "provider": v0_credentials.provider,
-                    "type": v0_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, v0_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "v0"
     ]
     # AI/ML Api Models
     + [
+        _tokens_llm_cost(model, aiml_api_credentials)
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "aiml_api"
+    ]
+    # Ollama: self-hosted, no provider charge. Explicit zero-cost entry so
+    # the builder UI can render "Free" instead of an empty cost label (which
+    # the user reads as "unknown" / missing data).
+    + [
         BlockCost(
-            cost_type=BlockCostType.TOKENS,
+            cost_type=BlockCostType.RUN,
+            cost_amount=0,
             cost_filter={
                 "model": model,
                 "credentials": {
-                    "id": aiml_api_credentials.id,
-                    "provider": aiml_api_credentials.provider,
-                    "type": aiml_api_credentials.type,
+                    "id": ollama_credentials.id,
+                    "provider": ollama_credentials.provider,
+                    "type": ollama_credentials.type,
                 },
             },
-            cost_amount=cost,
         )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "aiml_api"
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "ollama"
     ]
 )
 

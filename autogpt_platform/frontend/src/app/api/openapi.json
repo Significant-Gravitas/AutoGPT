@@ -10273,6 +10273,22 @@
             "type": "integer",
             "title": "Cost Divisor",
             "default": 1
+          },
+          "input_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Input Usd Per 1M"
+          },
+          "output_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
           }
         },
         "type": "object",
