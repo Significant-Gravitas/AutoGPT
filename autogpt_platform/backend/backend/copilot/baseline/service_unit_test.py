@@ -2338,7 +2338,6 @@ class TestBuildBudgetExhaustedFallbackEvents:
         assert events_a[0].id != events_b[0].id
 
 
-
 class TestNaturalFinishEmptyNoticeText:
     """Fallback decision when the model finished naturally (under budget)
     but the terminal round produced no visible text — the baseline
