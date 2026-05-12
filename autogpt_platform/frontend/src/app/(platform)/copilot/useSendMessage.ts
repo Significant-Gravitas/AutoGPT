@@ -1,7 +1,6 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import * as Sentry from "@sentry/nextjs";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
@@ -108,11 +107,11 @@ export function useSendMessage({
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
     if (prebuiltParts.length > 0) {
-      await sendMessage({ text, files: prebuiltParts });
+      sendMessage({ text, files: prebuiltParts });
       return;
     }
     if (files.length === 0) {
-      await sendMessage({ text });
+      sendMessage({ text });
       return;
     }
     setIsUploadingFiles(true);
@@ -127,7 +126,7 @@ export function useSendMessage({
         throw new Error("All file uploads failed");
       }
       const fileParts = buildFileParts(uploaded);
-      await sendMessage({
+      sendMessage({
         text,
         files: fileParts.length > 0 ? fileParts : undefined,
       });
@@ -149,21 +148,7 @@ export function useSendMessage({
       .getState()
       .takePendingFirstSend();
     if (!send) return;
-    // Toast so the user sees feedback; capture explicitly because the catch
-    // handler consumes the rejection, hiding it from unhandledrejection.
-    dispatchRef
-      .current(sessionId, send.text, send.files, parts)
-      .catch((err: unknown) => {
-        Sentry.captureException(err, {
-          tags: { copilot_flow: "pending-first-send-flush" },
-          extra: { sessionId, textLength: send.text.length },
-        });
-        toast({
-          title: "Couldn't send your message",
-          description: "Please try again.",
-          variant: "destructive",
-        });
-      });
+    void dispatchRef.current(sessionId, send.text, send.files, parts);
   }, [sessionId]);
 
   async function onSend(message: string, files?: File[]) {

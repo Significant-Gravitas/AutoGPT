@@ -9,11 +9,6 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => mockToast(...args),
 }));
 
-const mockSentryCaptureException = vi.fn();
-vi.mock("@sentry/nextjs", () => ({
-  captureException: (...args: unknown[]) => mockSentryCaptureException(...args),
-}));
-
 vi.mock("@/lib/direct-upload", () => ({
   uploadFileDirect: vi.fn(),
 }));
@@ -47,7 +42,6 @@ describe("useSendMessage", () => {
   beforeEach(() => {
     resetStore();
     mockToast.mockReset();
-    mockSentryCaptureException.mockReset();
     vi.useFakeTimers();
   });
 
@@ -80,39 +74,6 @@ describe("useSendMessage", () => {
 
       expect(sendMessage).toHaveBeenCalledWith({ text: "hello" });
       expect(useCopilotStreamStore.getState().pendingFirstSend).toBeNull();
-    });
-
-    it("captures + toasts when the dispatch fails", async () => {
-      const sendMessage = vi.fn(() => {
-        throw new Error("transport not ready");
-      });
-      const createSession = vi.fn();
-
-      useCopilotStreamStore.getState().setPendingFirstSend({
-        text: "hello",
-        files: [],
-      });
-
-      const { rerender } = renderHook(
-        ({ sessionId }) =>
-          useTestHarness({ sessionId, sendMessage, createSession }),
-        { initialProps: { sessionId: null as string | null } },
-      );
-
-      await act(async () => {
-        rerender({ sessionId: "new-session-id" });
-        await Promise.resolve();
-      });
-
-      expect(mockSentryCaptureException).toHaveBeenCalledTimes(1);
-      const [err, ctx] = mockSentryCaptureException.mock.calls[0];
-      expect((err as Error).message).toBe("transport not ready");
-      expect(ctx).toMatchObject({
-        tags: { copilot_flow: "pending-first-send-flush" },
-      });
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: "destructive" }),
-      );
     });
 
     it("does nothing when sessionId arrives without a pending send", async () => {
