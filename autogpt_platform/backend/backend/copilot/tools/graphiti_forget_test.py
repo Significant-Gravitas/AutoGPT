@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.tools.graphiti_forget import _hard_delete_edges, _soft_delete_edges
+from backend.copilot.tools.graphiti_forget import (
+    _hard_delete_edges,
+    _retract_edges,
+    _soft_delete_edges,
+    invalidate_entity_direct_neighbors,
+    mark_edges_superseded,
+)
 
 
 class TestSoftDeleteOverReportsSuccess:
@@ -75,3 +81,126 @@ class TestHardDeleteBasicFlow:
         assert failed == ["nonexistent-uuid"]
         # Only the delete query should run — cleanup skipped
         assert driver.execute_query.call_count == 1
+
+
+class TestRetractEdgesSnodgrass:
+    """`_retract_edges` is the system-retraction soft delete — must set
+    ONLY `expired_at`, never `invalid_at`. Conflating the two breaks the
+    bi-temporal model (see graphiti audit §6.13)."""
+
+    @pytest.mark.asyncio
+    async def test_retract_sets_only_expired_at(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        await _retract_edges(driver, ["u1"], "test-user")
+
+        query = driver.execute_query.call_args.args[0]
+        assert "e.expired_at = datetime()" in query
+        # Critical contract: must NOT touch invalid_at
+        assert "invalid_at" not in query
+
+    @pytest.mark.asyncio
+    async def test_retract_reports_failure_on_no_match(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+
+        deleted, failed = await _retract_edges(driver, ["missing"], "test-user")
+        assert deleted == []
+        assert failed == ["missing"]
+
+
+class TestSoftDeleteContradictionPath:
+    """`_soft_delete_edges` is reserved for the contradiction detector
+    and MUST still set both expired_at AND invalid_at."""
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_sets_both_timestamps(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        await _soft_delete_edges(driver, ["u1"], "test-user")
+
+        query = driver.execute_query.call_args.args[0]
+        assert "e.invalid_at = datetime()" in query
+        assert "e.expired_at = datetime()" in query
+
+
+class TestMarkEdgesSuperseded:
+    @pytest.mark.asyncio
+    async def test_sets_status_and_reason(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        deleted, failed = await mark_edges_superseded(
+            driver,
+            ["u1"],
+            reason="stale_fact",
+            new_status="superseded",
+            user_id="abc",
+        )
+
+        assert deleted == ["u1"]
+        assert failed == []
+        call_kwargs = driver.execute_query.call_args.kwargs
+        assert call_kwargs["new_status"] == "superseded"
+        assert call_kwargs["reason"] == "stale_fact"
+        query = driver.execute_query.call_args.args[0]
+        assert "e.status = $new_status" in query
+        assert "e.expiration_reason = $reason" in query
+        assert "e.expired_at = datetime()" in query
+
+    @pytest.mark.asyncio
+    async def test_default_status_is_superseded(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+        await mark_edges_superseded(driver, ["u1"], reason="x")
+        assert driver.execute_query.call_args.kwargs["new_status"] == "superseded"
+
+    @pytest.mark.asyncio
+    async def test_contradicted_status_supported(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+        await mark_edges_superseded(
+            driver, ["u1"], reason="x", new_status="contradicted"
+        )
+        assert driver.execute_query.call_args.kwargs["new_status"] == "contradicted"
+
+
+class TestInvalidateEntityDirectNeighbors:
+    """Single-hop demotion. The instinct to write [r:RELATES_TO*1..N] is
+    exactly the runaway-demotion bug. This test pins single-hop discipline."""
+
+    @pytest.mark.asyncio
+    async def test_single_hop_pattern_in_cypher(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = (
+            [{"edge_uuid": "e1"}, {"edge_uuid": "e2"}],
+            None,
+            None,
+        )
+
+        result = await invalidate_entity_direct_neighbors(
+            driver, group_id="user_x", entity_uuid="entity-1", reason="dead_client"
+        )
+
+        assert result == ["e1", "e2"]
+        query = driver.execute_query.call_args.args[0]
+        # MUST be single-hop: bare relationship, no quantifier
+        assert "[r:RELATES_TO]" in query
+        # MUST NOT be multi-hop: variable-length pattern would propagate
+        assert "*1.." not in query
+        assert "*0.." not in query
+        # MUST set status + reason for audit trail
+        assert "r.status = 'superseded'" in query
+        assert "r.expiration_reason = $reason" in query
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_error(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = RuntimeError("boom")
+
+        result = await invalidate_entity_direct_neighbors(
+            driver, group_id="user_x", entity_uuid="entity-1", reason="x"
+        )
+        assert result == []
