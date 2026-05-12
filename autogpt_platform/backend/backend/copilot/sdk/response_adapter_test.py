@@ -1886,3 +1886,263 @@ def test_emitted_visible_content_property_combines_signals():
 
     adapter.prior_attempt_emitted_visible_content = True
     assert adapter.emitted_visible_content is True
+
+
+def test_empty_completion_suppressed_when_real_tool_result_already_seen():
+    """Regression: a long turn that successfully resolved tool results earlier
+    (real ToolResultBlock content via UserMessage) then ends with a trailing
+    empty AssistantMessage plus an orphan flush must NOT fire the
+    empty_completion error — the user already received content earlier in
+    the turn (dev session b0e8ca83).
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Stage 1: model emits a tool_use and the SDK returns a real tool_result.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-real",
+                    name=f"{MCP_TOOL_PREFIX}find_block",
+                    input={"query": "linkedin"},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(
+                    tool_use_id="t-real",
+                    content='{"blocks": [{"id": "abc", "name": "PostToLinkedInBlock"}]}',
+                )
+            ],
+        )
+    )
+    assert adapter._any_real_tool_result_seen is True
+    assert adapter.emitted_real_content_to_wire is True
+
+    # Stage 2: model emits another tool_use that never resolves (orphan).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={"block_id": "abc"},
+                )
+            ],
+            model="test",
+        )
+    )
+
+    # Stage 3: empty trailing AssistantMessage (no flush triggered yet —
+    # empty content is_tool_only-vacuously-true).
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    assert adapter._last_assistant_had_empty_content is True
+
+    # Stage 4: ResultMessage success with empty result. The ResultMessage
+    # branch flushes the orphan t-orphan (stash empty → empty-fallback
+    # emitted) which sets _any_orphan_flush_seen=True. Without the
+    # emitted_real_content_to_wire gate, path B fires
+    # (_any_orphan_flush_seen + _last_assistant_had_empty_content) and
+    # emits a spurious "model returned an empty response" overlay on top
+    # of the working find_block widget the user already saw.
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert adapter._any_orphan_flush_seen is True
+    # The critical guarantee: NO empty-completion StreamError is emitted on
+    # top of the user's working content. The success branch may either emit
+    # StreamFinish directly or hand off to the thinking-only-reprompt path
+    # (which returns early without StreamFinish) — both are correct outcomes;
+    # the bug is specifically the spurious error overlay.
+    assert "StreamError" not in types
+
+
+def test_empty_completion_still_fires_on_orphan_with_only_empty_fallbacks():
+    """Counter-test: the SECRT-2333 guard must still fire when the orphan
+    flush only emitted empty fallbacks (no real tool result ever reached the
+    wire) and the trailing AssistantMessage was also empty. The fix only
+    suppresses the overlay when real content was seen.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Model emits tool_use that never produces a real tool_result.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={"block_id": "abc"},
+                )
+            ],
+            model="test",
+        )
+    )
+    # Empty trailing AssistantMessage — sets _last_assistant_had_empty_content.
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    assert adapter._any_real_tool_result_seen is False
+    assert adapter.emitted_real_content_to_wire is False
+    # ResultMessage success — flush at ResultMessage time emits empty
+    # fallback for t-orphan (stash empty), sets _any_orphan_flush_seen.
+    # SECRT-2333 path B fires (orphan + empty last) because the gate
+    # doesn't suppress (no real content was seen).
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    assert adapter._any_orphan_flush_seen is True
+    err = next((r for r in results if isinstance(r, StreamError)), None)
+    assert err is not None
+    assert err.code == "empty_completion"
+
+
+def test_empty_completion_suppressed_when_text_already_streamed():
+    """Counter-test for the text path: a turn that emitted text early then
+    ends with an empty AssistantMessage + orphan flush must not fire the
+    overlay either. has_started_text alone is enough.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="here's what I found:")], model="test")
+    )
+    assert adapter.has_started_text is True
+    # Orphan tool_use + empty trailing AssistantMessage + flush of empty stash.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # Same as the prior test: success branch may hand off to thinking-only-
+    # reprompt instead of emitting StreamFinish directly; the critical bug
+    # we're guarding against is the spurious empty-completion overlay.
+    assert "StreamError" not in types
+
+
+def test_real_tool_result_flag_set_by_stashed_flush():
+    """The flush path must set _any_real_tool_result_seen=True when it pops
+    REAL stashed output, but NOT when it has to emit an empty fallback.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Initialise the stash ContextVar (normally done by set_execution_context).
+    _pto.set({})
+    # Simulate PostToolUse hook stashing real output for a built-in tool.
+    _stash("ReadFile", "file content here")
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="t-real", name="ReadFile", input={"path": "/x"})],
+            model="test",
+        )
+    )
+    # AssistantMessage with non-tool content triggers flush
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="done")], model="test")
+    )
+    assert adapter._any_real_tool_result_seen is True
+    assert adapter._any_orphan_flush_seen is True
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+
+
+def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
+    """When the SDK ends a turn with subtype=``error_max_budget_usd``, the
+    user-facing error must be the specific budget-exhausted message — even
+    if the orphan-flush guard would otherwise have fired the generic
+    empty-completion overlay.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Mimic 835da550 prefix: tool_use with no real result, empty trailing
+    # AssistantMessage, then a budget-exhausted ResultMessage.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-budget",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    msg = ResultMessage(
+        subtype="error_max_budget_usd",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=1,
+        session_id="s1",
+        result="budget exhausted",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    errors = [r for r in results if isinstance(r, StreamError)]
+    assert len(errors) == 1
+    assert errors[0].code == "max_budget_exhausted"
+    assert "budget" in errors[0].errorText.lower()
+    # Must NOT shadow with empty_completion overlay.
+    assert all(e.code != "empty_completion" for e in errors)
+
+
+def test_error_max_turns_surfaces_specific_error():
+    """``error_max_turns`` should similarly route to its own message."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="error_max_turns",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=999,
+        session_id="s1",
+        result="hit cap",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next((r for r in results if isinstance(r, StreamError)), None)
+    assert err is not None
+    assert err.code == "max_turns_exhausted"
