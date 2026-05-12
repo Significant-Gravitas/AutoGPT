@@ -81,6 +81,7 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.graph import GraphSettings
+from backend.data.redis_client import get_redis_async
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -1269,6 +1270,38 @@ async def update_subscription_tier(
     return status
 
 
+async def _claim_stripe_event(event_id: str) -> bool:
+    """Mark a Stripe webhook event as claimed via Redis SETNX.
+
+    Returns ``True`` when the caller acquired the claim (first time we've seen
+    ``event_id``) and should proceed with handler dispatch. Returns ``False``
+    when the event was already processed in a prior delivery — Stripe retries
+    the same ``event.id`` on non-2xx responses, and we don't want downstream
+    handlers (some of which only carry per-resource idempotency) to fire twice.
+
+    TTL of 24h comfortably exceeds Stripe's retry window. On Redis failure we
+    fall open and let processing continue — better to risk a rare duplicate
+    than to drop a real event.
+    """
+    if not event_id:
+        # Malformed event without an id — fall open so the rest of the
+        # handler can decide what to do (it'll log and 200 anyway).
+        return True
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            f"stripe_webhook_event:{event_id}", "1", nx=True, ex=86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup claim failed for event %s; processing anyway",
+            event_id,
+            exc_info=True,
+        )
+        return True
+
+
 @v1_router.post(
     path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
 )
@@ -1302,7 +1335,20 @@ async def stripe_webhook(request: Request):
     # AFTER signature verification — which Stripe interprets as a delivery
     # failure and retries forever, while spamming Sentry with no useful info.
     # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
+            event_type,
+        )
+        return Response(status_code=200)
+
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):

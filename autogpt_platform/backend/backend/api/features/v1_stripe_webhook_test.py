@@ -67,6 +67,51 @@ def test_stripe_webhook_checkout_calls_sync_tier_helper(
     mock_sync.assert_called_once()
 
 
+def test_stripe_webhook_skips_handlers_on_replayed_event(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A second delivery of the same Stripe event.id must short-circuit.
+
+    Stripe retries the same event on non-2xx responses, and not every
+    downstream handler is independently idempotent (e.g. ``fulfill_checkout``
+    relies on a checkout-state flag that races on concurrent retries). The
+    webhook dedupes by event.id so retries don't re-run any handler.
+    """
+    event = _make_checkout_event("subscription", "sub_dedup")
+    event["id"] = "evt_already_seen"
+    mocker.patch(
+        "stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    # Simulate "this event was already processed".
+    mocker.patch(
+        "backend.api.features.v1._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mock_fulfill = mocker.patch(
+        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+    )
+    mock_sync = mocker.patch(
+        "backend.api.features.v1.sync_tier_from_checkout_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+
+    assert response.status_code == 200
+    mock_fulfill.assert_not_called()
+    mock_sync.assert_not_called()
+
+
 def test_stripe_webhook_checkout_propagates_sync_failure(
     mocker: pytest_mock.MockFixture,
 ) -> None:
