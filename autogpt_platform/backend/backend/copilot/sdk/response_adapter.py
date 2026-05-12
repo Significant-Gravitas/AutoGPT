@@ -83,6 +83,10 @@ class SDKResponseAdapter:
         self.has_started_reasoning = False
         self.has_ended_reasoning = True
         self.render_reasoning_in_ui = render_reasoning_in_ui
+        # Service layer forwards this from the prior adapter on a retry-recreate
+        # so the empty-completion guard doesn't false-fire on a benign empty
+        # trailing ResultMessage when the prior attempt already streamed content.
+        self.prior_attempt_emitted_visible_content = False
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
@@ -155,6 +159,21 @@ class SDKResponseAdapter:
     def has_unresolved_tool_calls(self) -> bool:
         """True when there are tool calls that haven't received output yet."""
         return bool(self.current_tool_calls.keys() - self.resolved_tool_calls)
+
+    @property
+    def emitted_visible_content(self) -> bool:
+        """True when this adapter (or a prior attempt it inherited from) has
+        already streamed user-visible content — text, reasoning, or a tool
+        result — onto the wire. Used by the retry path so the new adapter
+        can carry forward the prior attempt's visibility state without
+        reaching into private flags.
+        """
+        return (
+            self.has_started_text
+            or self.has_started_reasoning
+            or self._any_tool_results_seen
+            or self.prior_attempt_emitted_visible_content
+        )
 
     def convert_message(self, sdk_message: Message) -> list[StreamBaseResponse]:
         """Convert a single SDK message to Vercel AI SDK format."""
@@ -600,6 +619,9 @@ class SDKResponseAdapter:
         if self.current_tool_calls:
             return False
         if self._any_tool_results_seen:
+            return False
+        # Retry adapter — prior attempt already streamed content to the wire.
+        if self.prior_attempt_emitted_visible_content:
             return False
         usage = msg.usage or {}
         output_tokens = usage.get("output_tokens") or 0

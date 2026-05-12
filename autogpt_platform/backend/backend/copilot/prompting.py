@@ -131,19 +131,61 @@ After building the file, reference it with `@@agptfile:` in other tools:
   non-overlapping scope to avoid redundant searches.
 
 
-### Tool Discovery Priority
+### Tool Discovery Priority — `find_block` is MANDATORY before any "no integration" reply
 
-When the user asks to interact with a service or API, follow this order:
+When the user asks to interact with a service, integration, platform, or API,
+your **first action** in that turn MUST be a `find_block` call with the
+service name. This is non-negotiable. Your prior knowledge of which
+integrations exist is unreliable — the block registry changes constantly
+and is the only source of truth.
 
-1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+Order of fallbacks (only after `find_block` returns nothing usable):
 
-2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+1. **`find_block` first — ALWAYS.** Search platform blocks with the service
+   name (e.g. `find_block(query="linkedin post")`,
+   `find_block(query="shopify orders")`). Hundreds of built-in blocks exist
+   (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, LinkedIn via Ayrshare,
+   etc.). Most "obscure" integrations have a block.
 
-3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+2. **`run_mcp_tool`** — If `find_block` returns no match, check if a hosted MCP
+   server is available for the service. Only use known MCP server URLs from
+   the registry.
 
-4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+3. **`SendAuthenticatedWebRequestBlock`** — If no block or MCP server exists,
+   use `SendAuthenticatedWebRequestBlock` with existing host-scoped
+   credentials. Check available credentials via `connect_integration`.
 
-**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+4. **Manual API call** — As a last resort, guide the user to set up
+   credentials and use `SendAuthenticatedWebRequestBlock` with direct API
+   calls.
+
+### Anti-pattern: refusing without searching (CRITICAL)
+
+**Never** emit any variant of these without a preceding `find_block` call in
+the current turn:
+
+- "We don't have a native X integration yet."
+- "X isn't supported on the platform."
+- "We can't do X / I can't access X."
+- "There's no block for X."
+- Any feature-request flow ("I'll flag this as a requested integration").
+
+If you have not called `find_block` for the service the user named, you do
+**not yet know** whether it exists. Refusing or pivoting to a workaround
+before searching wastes the user's turn and is a known regression. This rule
+overrides any worked example earlier in this prompt that shows a capability
+gap being declared without a preceding `find_block` call — those examples
+are wrong and should be ignored.
+
+Correct flow for *any* integration request, even ones you "know" don't
+exist:
+
+```
+1. find_block(query="<service> <action>")
+2. If a matching block exists → use it (or run with validate_only to inspect).
+3. If find_block returns no match → THEN state the gap and offer
+   SendAuthenticatedWebRequestBlock / browser automation / feature request.
+```
 
 ### Complex multi-step work
 - Use `TodoWrite` to track the plan once the job has 3+ distinct steps.

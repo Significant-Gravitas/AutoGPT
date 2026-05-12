@@ -4507,6 +4507,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.query_message = await _maybe_prepend_builder_context(
                     session, user_id, is_user_message, state.query_message
                 )
+                prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
                     session_id=session_id,
@@ -4515,6 +4516,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
                 state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
+                # Forward prior visibility so the empty-completion guard on this
+                # retry adapter doesn't false-fire on top of content the user
+                # already received.
+                if prior_adapter.emitted_visible_content:
+                    state.adapter.prior_attempt_emitted_visible_content = True
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.
                 state.usage.reset()
