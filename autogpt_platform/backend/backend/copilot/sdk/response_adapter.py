@@ -99,6 +99,12 @@ class SDKResponseAdapter:
         # case so the turn renders as cleanly complete.
         self._text_since_last_tool_result = False
         self._any_tool_results_seen = False
+        # Like ``_any_tool_results_seen`` but excludes empty-fallback flushes
+        # (orphan tool_use blocks whose stash was empty at flush time). The
+        # empty-completion guard uses this to distinguish a turn where real
+        # tool output actually reached the wire from one where only synthetic
+        # empty placeholders were emitted for tools that never returned.
+        self._any_real_tool_result_seen = False
         # Set by the ResultMessage branch when a thinking-only final turn is
         # detected and we have not yet asked the model for a closing TextBlock.
         # The driver in ``service.py`` reads this after ``_iter_sdk_messages``
@@ -172,6 +178,23 @@ class SDKResponseAdapter:
             self.has_started_text
             or self.has_started_reasoning
             or self._any_tool_results_seen
+            or self.prior_attempt_emitted_visible_content
+        )
+
+    @property
+    def emitted_real_content_to_wire(self) -> bool:
+        """Stricter variant of ``emitted_visible_content`` for the empty-
+        completion guard.
+
+        Includes text, real (non-empty-fallback) tool results, and the
+        retry-recreate forwarded flag. **Excludes** ``has_started_reasoning``:
+        a turn that emitted only ``ThinkingBlock``s without ever producing
+        text or a tool result is itself the failure mode the empty-completion
+        guard is meant to catch.
+        """
+        return (
+            self.has_started_text
+            or self._any_real_tool_result_seen
             or self.prior_attempt_emitted_visible_content
         )
 
@@ -417,6 +440,9 @@ class SDKResponseAdapter:
                 # ``ResultMessage`` time stays accurate.
                 self._text_since_last_tool_result = False
                 self._any_tool_results_seen = True
+                # Real tool result from the SDK — distinct from the orphan-
+                # flush empty-fallback path.
+                self._any_real_tool_result_seen = True
                 # Stale thinking from before this tool call must not
                 # contaminate the post-tool fallback — only the model's
                 # NEXT thinking block (after seeing the tool result)
@@ -596,6 +622,14 @@ class SDKResponseAdapter:
           the time the ResultMessage lands, ``current_tool_calls`` looks
           fully resolved even though the actual tool_results were synthetic.
         """
+        # If real user-visible content has already reached the wire this turn
+        # (or a prior attempt), an empty trailing ResultMessage is not a ghost
+        # finish from the user's perspective — surfacing the overlay would
+        # render on top of working output. Excludes the orphan-flush empty-
+        # fallback case (``_any_real_tool_result_seen`` is False there) so the
+        # SECRT-2333 guard below still fires for truly silent tool failures.
+        if self.emitted_real_content_to_wire:
+            return False
         if msg.subtype == "success" and self._is_empty_completion(msg):
             return True
         had_orphan_tool_use = (
@@ -943,6 +977,9 @@ class SDKResponseAdapter:
                 )
                 self.resolved_tool_calls.add(tool_id)
                 flushed = True
+                # Real stashed output recovered — distinct from the empty-
+                # fallback branch below.
+                self._any_real_tool_result_seen = True
                 logger.info(
                     "[SDK] [%s] Flushed stashed output for %s (call %s, %d chars)",
                     sid,
