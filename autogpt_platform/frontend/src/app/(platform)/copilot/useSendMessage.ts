@@ -108,11 +108,11 @@ export function useSendMessage({
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
     if (prebuiltParts.length > 0) {
-      sendMessage({ text, files: prebuiltParts });
+      await sendMessage({ text, files: prebuiltParts });
       return;
     }
     if (files.length === 0) {
-      sendMessage({ text });
+      await sendMessage({ text });
       return;
     }
     setIsUploadingFiles(true);
@@ -127,7 +127,7 @@ export function useSendMessage({
         throw new Error("All file uploads failed");
       }
       const fileParts = buildFileParts(uploaded);
-      sendMessage({
+      await sendMessage({
         text,
         files: fileParts.length > 0 ? fileParts : undefined,
       });
@@ -209,12 +209,6 @@ export function useSendMessage({
     isCreatingSessionRef.current = true;
     const slot = { text: trimmed, files: files ?? [] };
     useCopilotStreamStore.getState().setPendingFirstSend(slot);
-    Sentry.addBreadcrumb({
-      category: "copilot.first-send",
-      level: "info",
-      message: "stored pending first send; awaiting session create",
-      data: { textLength: trimmed.length, fileCount: files?.length ?? 0 },
-    });
     try {
       await createSession();
       // Identity check against the same slot — a later setPendingFirstSend
@@ -223,14 +217,6 @@ export function useSendMessage({
         const store = useCopilotStreamStore.getState();
         if (store.pendingFirstSend !== slot) return;
         store.setPendingFirstSend(null);
-        Sentry.captureMessage(
-          "Pending first send not flushed after session create",
-          {
-            level: "warning",
-            tags: { copilot_flow: "pending-first-send-stalled" },
-            extra: { textLength: slot.text.length },
-          },
-        );
         toast({
           title: "Couldn't send your message",
           description: "Please try again.",

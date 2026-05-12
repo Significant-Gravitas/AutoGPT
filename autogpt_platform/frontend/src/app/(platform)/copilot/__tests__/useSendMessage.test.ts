@@ -10,12 +10,8 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const mockSentryCaptureException = vi.fn();
-const mockSentryCaptureMessage = vi.fn();
-const mockSentryBreadcrumb = vi.fn();
 vi.mock("@sentry/nextjs", () => ({
   captureException: (...args: unknown[]) => mockSentryCaptureException(...args),
-  captureMessage: (...args: unknown[]) => mockSentryCaptureMessage(...args),
-  addBreadcrumb: (...args: unknown[]) => mockSentryBreadcrumb(...args),
 }));
 
 vi.mock("@/lib/direct-upload", () => ({
@@ -52,8 +48,6 @@ describe("useSendMessage", () => {
     resetStore();
     mockToast.mockReset();
     mockSentryCaptureException.mockReset();
-    mockSentryCaptureMessage.mockReset();
-    mockSentryBreadcrumb.mockReset();
     vi.useFakeTimers();
   });
 
@@ -140,7 +134,7 @@ describe("useSendMessage", () => {
   });
 
   describe("stalled-flush detection", () => {
-    it("captures a warning and toasts if the flush never runs within the timeout", async () => {
+    it("toasts and clears the slot if the flush never runs within the timeout", async () => {
       const sendMessage = vi.fn();
       const createSession = vi.fn().mockResolvedValue("new-session-id");
 
@@ -162,20 +156,13 @@ describe("useSendMessage", () => {
         vi.advanceTimersByTime(5000);
       });
 
-      expect(mockSentryCaptureMessage).toHaveBeenCalledTimes(1);
-      const [msg, ctx] = mockSentryCaptureMessage.mock.calls[0];
-      expect(msg).toMatch(/not flushed after session create/i);
-      expect(ctx).toMatchObject({
-        tags: { copilot_flow: "pending-first-send-stalled" },
-        level: "warning",
-      });
       expect(useCopilotStreamStore.getState().pendingFirstSend).toBeNull();
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ variant: "destructive" }),
       );
     });
 
-    it("does not fire the stalled warning when the flush effect consumes the slot", async () => {
+    it("does not toast when the flush effect consumes the slot", async () => {
       const sendMessage = vi.fn();
       const createSession = vi.fn().mockResolvedValue("new-session-id");
 
@@ -200,10 +187,10 @@ describe("useSendMessage", () => {
         vi.advanceTimersByTime(5000);
       });
 
-      expect(mockSentryCaptureMessage).not.toHaveBeenCalled();
+      expect(mockToast).not.toHaveBeenCalled();
     });
 
-    it("does not fire the stalled warning when a subsequent send overwrites the slot", async () => {
+    it("does not toast when a subsequent send overwrites the slot", async () => {
       const sendMessage = vi.fn();
       const createSession = vi.fn().mockResolvedValue("new-session-id");
 
@@ -232,7 +219,7 @@ describe("useSendMessage", () => {
         vi.advanceTimersByTime(5000);
       });
 
-      expect(mockSentryCaptureMessage).not.toHaveBeenCalled();
+      expect(mockToast).not.toHaveBeenCalled();
       // The second slot is still there — its own timer hasn't elapsed.
       expect(useCopilotStreamStore.getState().pendingFirstSend?.text).toBe(
         "second",
