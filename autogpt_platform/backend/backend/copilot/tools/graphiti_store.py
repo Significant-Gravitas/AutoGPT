@@ -214,13 +214,25 @@ class MemoryStoreTool(BaseTool):
         except ValueError:
             resolved_kind = MemoryKind.fact
 
+        # Richer provenance grain so the ratification loop can find the
+        # originating message, not just the originating session
+        # (audit §6.12 / §6.15 #6).  The latest message in the session
+        # is the user turn that triggered the tool call.
+        latest_seq: int | None = None
+        if session.messages:
+            latest_seq = session.messages[-1].sequence
+        if latest_seq is not None:
+            provenance = f"session:{session.session_id}#msg:{latest_seq}"
+        else:
+            provenance = f"session:{session.session_id}"
+
         envelope = MemoryEnvelope(
             content=content,
             source_kind=resolved_source,
             scope=scope,
             memory_kind=resolved_kind,
             status=MemoryStatus.active,
-            provenance=session.session_id,
+            provenance=provenance,
             rule=rule_model,
             procedure=procedure_model,
         )
