@@ -4,12 +4,9 @@ import { SetupRequirementsCard } from "../SetupRequirementsCard";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 
 const mockOnSend = vi.fn();
-vi.mock(
-  "../../../../../components/CopilotChatActionsProvider/useCopilotChatActions",
-  () => ({
-    useCopilotChatActions: () => ({ onSend: mockOnSend }),
-  }),
-);
+vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
+  useCopilotChatActions: () => ({ onSend: mockOnSend }),
+}));
 
 vi.mock(
   "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView",
@@ -77,7 +74,7 @@ function makeOutput(
   } as SetupRequirementsResponse;
 }
 
-describe("SetupRequirementsCard", () => {
+describe("SetupRequirementsCard (edit mode)", () => {
   it("renders the setup message", () => {
     render(<SetupRequirementsCard output={makeOutput()} />);
     expect(screen.getByText("Please configure credentials")).toBeDefined();
@@ -243,5 +240,101 @@ describe("SetupRequirementsCard", () => {
   it("does not render Proceed when neither credentials nor inputs are needed", () => {
     render(<SetupRequirementsCard output={makeOutput()} />);
     expect(screen.queryByText("Proceed")).toBeNull();
+  });
+});
+
+describe("SetupRequirementsCard (preview mode)", () => {
+  it("renders inputs as read-only list, not a form", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            {
+              name: "query",
+              title: "Search Query",
+              type: "string",
+              required: true,
+              description: "What to search for",
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("form-renderer")).toBeNull();
+    expect(screen.getByText("Expected inputs")).toBeDefined();
+    expect(screen.getByText("Search Query")).toBeDefined();
+    expect(screen.getByText("Required")).toBeDefined();
+  });
+
+  it("labels credentials section as 'Agent credentials' by default", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("Agent credentials")).toBeDefined();
+  });
+
+  it("does not render advanced toggle even when advanced inputs exist", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            {
+              name: "debug",
+              title: "Debug",
+              type: "boolean",
+              advanced: true,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.queryByText("Show advanced fields")).toBeNull();
+  });
+
+  it("does not render Proceed when only inputs exist (no credentials)", () => {
+    // In preview mode the inputs aren't user-fillable, so there's nothing
+    // to Proceed with unless credentials need configuring.
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            { name: "query", title: "Query", type: "string", required: true },
+          ],
+        })}
+      />,
+    );
+    const proceed = screen.queryByText("Proceed");
+    // Proceed is rendered when needsCredentials || needsInputs — preserves
+    // legacy run_agent behaviour where Proceed is shown alongside the input
+    // preview and gated only by credentials.
+    expect(proceed).not.toBeNull();
+    expect(proceed!.closest("button")?.disabled).toBe(false);
+  });
+
+  it("sends the legacy run_agent message on Proceed", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            { name: "query", title: "Query", type: "string", required: true },
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByText("Proceed"));
+    expect(mockOnSend).toHaveBeenCalledWith(
+      "Please proceed with running the agent.",
+    );
   });
 });

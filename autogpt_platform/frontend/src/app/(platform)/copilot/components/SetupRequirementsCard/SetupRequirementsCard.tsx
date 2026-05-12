@@ -7,10 +7,16 @@ import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useEffect, useMemo, useState } from "react";
-import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
+import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import {
+  ContentBadge,
+  ContentCardDescription,
+  ContentCardTitle,
+  ContentMessage,
+} from "../ToolAccordion/AccordionContent";
 import {
   buildExpectedInputsSchema,
+  buildPreviewRunMessage,
   buildRunMessage,
   buildSiblingInputsFromCredentials,
   checkAllCredentialsComplete,
@@ -22,10 +28,24 @@ import {
   mergeInputValues,
 } from "./helpers";
 
+/**
+ * Single credential/setup card rendered inline in copilot chats.
+ *
+ * Used by the run_block, run_agent and connect_integration tool renderers.
+ * MCP has its own card (different OAuth route) and lives separately.
+ *
+ * - `inputsMode = "edit"` (default): renders inputs as an editable RJSF form,
+ *   and `Proceed` sends the form values back to the chat. Used by run_block
+ *   and connect_integration.
+ * - `inputsMode = "preview"`: renders inputs as a read-only list
+ *   (name • type, Required/Optional badge). Used by run_agent because graph
+ *   inputs are set in the graph definition, not from the chat.
+ */
 interface Props {
   output: SetupRequirementsResponse;
   retryInstruction?: string;
   credentialsLabel?: string;
+  inputsMode?: "edit" | "preview";
   onComplete?: () => void;
 }
 
@@ -33,6 +53,7 @@ export function SetupRequirementsCard({
   output,
   retryInstruction,
   credentialsLabel,
+  inputsMode = "edit",
   onComplete,
 }: Props) {
   const { onSend } = useCopilotChatActions();
@@ -66,19 +87,27 @@ export function SetupRequirementsCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
   }, [initialValuesKey]);
 
-  const hasAdvancedFields = expectedInputs.some((i) => i.advanced);
-  const inputSchema = buildExpectedInputsSchema(expectedInputs, showAdvanced);
+  const isEditMode = inputsMode === "edit";
 
-  // Build siblingInputs for credential modal host prefill.
-  // Prefer discriminator_values from the credential response, but also
-  // include values from input_data (e.g. url field) so the host pattern
-  // can be extracted even when discriminator_values is empty.
+  const hasAdvancedFields =
+    isEditMode && expectedInputs.some((i) => i.advanced);
+  const inputSchema = isEditMode
+    ? buildExpectedInputsSchema(expectedInputs, showAdvanced)
+    : null;
+
+  // Build siblingInputs for credential modal host prefill. In edit mode we also
+  // include the live form values; in preview mode there is no form so only
+  // discriminator-derived values contribute.
   const siblingInputs = useMemo(() => {
     const fromCreds = buildSiblingInputsFromCredentials(
       output.setup_info.user_readiness?.missing_credentials,
     );
-    return { ...inputValues, ...fromCreds };
-  }, [output.setup_info.user_readiness?.missing_credentials, inputValues]);
+    return isEditMode ? { ...inputValues, ...fromCreds } : fromCreds;
+  }, [
+    output.setup_info.user_readiness?.missing_credentials,
+    inputValues,
+    isEditMode,
+  ]);
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -91,7 +120,9 @@ export function SetupRequirementsCard({
   );
 
   const needsInputs = expectedInputs.length > 0;
-  const isAllInputsDone = checkAllInputsComplete(expectedInputs, inputValues);
+  const isAllInputsDone = isEditMode
+    ? checkAllInputsComplete(expectedInputs, inputValues)
+    : true;
 
   if (hasSent) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
@@ -106,15 +137,16 @@ export function SetupRequirementsCard({
   function handleRun() {
     setHasSent(true);
     onComplete?.();
-    onSend(
-      buildRunMessage(
-        needsCredentials,
-        needsInputs,
-        inputValues,
-        retryInstruction,
-      ),
-    );
-    setInputValues({});
+    const message = isEditMode
+      ? buildRunMessage(
+          needsCredentials,
+          needsInputs,
+          inputValues,
+          retryInstruction,
+        )
+      : buildPreviewRunMessage(needsCredentials);
+    onSend(message);
+    if (isEditMode) setInputValues({});
   }
 
   return (
@@ -124,7 +156,8 @@ export function SetupRequirementsCard({
       {needsCredentials && (
         <div className="rounded-2xl border bg-background p-3">
           <Text variant="small" className="w-fit border-b text-zinc-500">
-            {credentialsLabel ?? "Credentials"}
+            {credentialsLabel ??
+              (isEditMode ? "Credentials" : "Agent credentials")}
           </Text>
           <div className="mt-6">
             <CredentialsGroupedView
@@ -138,7 +171,7 @@ export function SetupRequirementsCard({
         </div>
       )}
 
-      {(inputSchema || hasAdvancedFields) && (
+      {isEditMode && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             Inputs
@@ -169,6 +202,32 @@ export function SetupRequirementsCard({
               {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
             </button>
           )}
+        </div>
+      )}
+
+      {!isEditMode && expectedInputs.length > 0 && (
+        <div className="rounded-2xl border bg-background p-3">
+          <ContentCardTitle className="text-xs">
+            Expected inputs
+          </ContentCardTitle>
+          <div className="mt-2 grid gap-2">
+            {expectedInputs.map((input) => (
+              <div key={input.name} className="rounded-xl border p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <ContentCardTitle className="text-xs">
+                    {input.title}
+                  </ContentCardTitle>
+                  <ContentBadge>
+                    {input.required ? "Required" : "Optional"}
+                  </ContentBadge>
+                </div>
+                <ContentCardDescription className="mt-1">
+                  {input.name} &bull; {input.type}
+                  {input.description ? ` • ${input.description}` : ""}
+                </ContentCardDescription>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

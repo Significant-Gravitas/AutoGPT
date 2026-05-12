@@ -5,7 +5,7 @@ import type { ToolUIPart } from "ai";
 import { useState } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ContentMessage } from "../../components/ToolAccordion/AccordionContent";
-import { SetupRequirementsCard } from "../RunBlock/components/SetupRequirementsCard/SetupRequirementsCard";
+import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 
 type Props = {
   part: ToolUIPart;

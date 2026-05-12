@@ -78,9 +78,6 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
  * SendAuthenticatedWebRequestBlock), it adds the target URL to
  * `discriminator_values`.  The credential modal uses `siblingInputs`
  * to extract the host and prefill the "Host Pattern" field.
- *
- * This function builds that mapping from the `discriminator` field name
- * and the first `discriminator_values` entry for each credential.
  */
 export function buildSiblingInputsFromCredentials(
   rawMissingCredentials: unknown,
@@ -110,7 +107,7 @@ export function buildSiblingInputsFromCredentials(
   return result;
 }
 
-interface ExpectedInput {
+export interface ExpectedInput {
   name: string;
   title: string;
   type: string;
@@ -120,8 +117,7 @@ interface ExpectedInput {
   value?: unknown;
   // Any additional JSON-schema fields (format, json_schema_extra entries,
   // custom widget configs, etc.) are preserved verbatim so the generic
-  // custom-field dispatch on the frontend can read them. Keeps this
-  // layer free of widget-specific knowledge.
+  // custom-field dispatch on the frontend can read them.
   [key: string]: unknown;
 }
 
@@ -164,9 +160,6 @@ export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
     if (input.value !== undefined && input.value !== null) {
       item.value = input.value;
     }
-    // Preserve any additional schema fields (format, custom widget
-    // configs, etc.) verbatim — dispatch is handled by the generic
-    // custom-field layer in FormRenderer.
     for (const [key, value] of Object.entries(input)) {
       if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
       if (value === undefined) continue;
@@ -180,11 +173,10 @@ export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
 
 /**
  * Build an RJSF schema from expected inputs so they can be rendered
- * as a dynamic form via FormRenderer.
+ * as a dynamic form via FormRenderer (used in "edit" mode).
  *
  * When ``showAdvanced`` is false (default), fields marked ``advanced``
- * are excluded — matching the builder behaviour where advanced fields
- * are hidden behind a toggle.
+ * are excluded — matching the builder behaviour.
  */
 export function buildExpectedInputsSchema(
   expectedInputs: ExpectedInput[],
@@ -218,8 +210,6 @@ export function buildExpectedInputsSchema(
     };
     if (input.description) prop.description = input.description;
     if (input.value !== undefined) prop.default = input.value;
-    // Pass through any additional schema fields (format, custom widget
-    // configs, etc.) so the generic custom-field dispatch can use them.
     for (const [key, value] of Object.entries(input)) {
       if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
       if (value === undefined) continue;
@@ -236,10 +226,6 @@ export function buildExpectedInputsSchema(
   };
 }
 
-/**
- * Extract initial form values from expected inputs that have a
- * prefilled ``value`` from the backend.
- */
 export function extractInitialValues(
   expectedInputs: ExpectedInput[],
 ): Record<string, unknown> {
@@ -323,4 +309,15 @@ export function buildRunMessage(
   }
 
   return parts.join(" ");
+}
+
+/**
+ * Message variant for "preview" mode (run_agent): graph inputs are defined
+ * inside the graph and not editable from the chat, so the message just
+ * confirms credential setup and asks the agent to proceed.
+ */
+export function buildPreviewRunMessage(needsCredentials: boolean): string {
+  return needsCredentials
+    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
+    : "Please proceed with running the agent.";
 }
