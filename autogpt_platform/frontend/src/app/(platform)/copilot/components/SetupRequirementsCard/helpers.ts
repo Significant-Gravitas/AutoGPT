@@ -72,6 +72,28 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
 }
 
 /**
+ * Extract the unique provider slugs the card is asking the user to connect.
+ *
+ * Used by the session-scoped connected-providers store to decide whether a
+ * later card in the same chat can self-dismiss because the user has already
+ * connected every provider it requires.
+ */
+export function getRequestedProviders(
+  credentialFields: CredentialField[],
+): string[] {
+  const providers = new Set<string>();
+  for (const [, schema] of credentialFields) {
+    const provs = (schema as { credentials_provider?: unknown })
+      .credentials_provider;
+    if (!Array.isArray(provs)) continue;
+    for (const p of provs) {
+      if (typeof p === "string" && p) providers.add(p);
+    }
+  }
+  return [...providers];
+}
+
+/**
  * Build a sibling-inputs dict from the missing_credentials discriminator values.
  *
  * When the backend resolves credentials for host-scoped blocks (e.g.

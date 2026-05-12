@@ -7,6 +7,10 @@ import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useEffect, useMemo, useState } from "react";
+import {
+  useAreAllConnected,
+  useConnectedProvidersStore,
+} from "../../connectedProvidersStore";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   ContentBadge,
@@ -25,6 +29,7 @@ import {
   coerceCredentialFields,
   coerceExpectedInputs,
   extractInitialValues,
+  getRequestedProviders,
   mergeInputValues,
 } from "./helpers";
 
@@ -124,7 +129,18 @@ export function SetupRequirementsCard({
     ? checkAllInputsComplete(expectedInputs, inputValues)
     : true;
 
-  if (hasSent) {
+  // Session-scoped dismissal: when an earlier card in the same chat already
+  // satisfied every provider this card asks for, treat it as already sent so
+  // the user doesn't see a stale duplicate card after a stream remount or
+  // after a parallel `connect_integration` flow.
+  const sessionID = output.session_id ?? null;
+  const requestedProviders = useMemo(
+    () => getRequestedProviders(credentialFields),
+    [credentialFields],
+  );
+  const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
+
+  if (hasSent || (needsCredentials && alreadyConnected)) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
@@ -136,6 +152,11 @@ export function SetupRequirementsCard({
 
   function handleRun() {
     setHasSent(true);
+    if (sessionID && requestedProviders.length > 0) {
+      useConnectedProvidersStore
+        .getState()
+        .markConnected({ sessionID, providers: requestedProviders });
+    }
     onComplete?.();
     const message = isEditMode
       ? buildRunMessage(

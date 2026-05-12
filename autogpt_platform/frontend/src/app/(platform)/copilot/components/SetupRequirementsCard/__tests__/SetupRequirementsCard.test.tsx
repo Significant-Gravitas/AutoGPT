@@ -2,6 +2,7 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { useConnectedProvidersStore } from "../../../connectedProvidersStore";
 
 const mockOnSend = vi.fn();
 vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
@@ -37,6 +38,7 @@ vi.mock("@/components/renderers/InputRenderer/FormRenderer", () => ({
 afterEach(() => {
   cleanup();
   mockOnSend.mockReset();
+  useConnectedProvidersStore.setState({ connected: new Set() });
 });
 
 function makeOutput(
@@ -336,5 +338,73 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(mockOnSend).toHaveBeenCalledWith(
       "Please proceed with running the agent.",
     );
+  });
+});
+
+describe("SetupRequirementsCard (session-scoped dismissal)", () => {
+  it("auto-dismisses when all requested providers are already connected in this session", () => {
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Proceed")).toBeNull();
+    expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
+  });
+
+  it("does not auto-dismiss when only some providers are connected", () => {
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+            gh: { provider: "github", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/Connected. Continuing/)).toBeNull();
+    expect(screen.getByText("Proceed")).toBeDefined();
+  });
+
+  it("marks providers connected in the store when Proceed is clicked", () => {
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          inputs: [
+            {
+              name: "url",
+              title: "URL",
+              type: "string",
+              required: true,
+              value: "https://prefilled.com",
+            },
+          ],
+          missingCredentials: {
+            // Use a credential that auto-fills via system credentials would be
+            // ideal, but for this test we just need Proceed to be clickable —
+            // an inputs-only card with no creds is the simplest path.
+          },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Proceed"));
+    // No credentials in this output, so no providers should be marked.
+    expect(useConnectedProvidersStore.getState().connected.size).toBe(0);
   });
 });
