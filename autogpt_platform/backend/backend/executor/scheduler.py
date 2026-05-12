@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -246,6 +247,29 @@ def cleanup_expired_files():
     """Clean up expired files from cloud storage."""
     # Wait for completion
     run_async(cleanup_expired_files_async())
+
+
+def execute_community_rebuild(user_id: str):
+    """Per-user Graphiti community rebuild (P-1.7).
+
+    Sync wrapper around the async ``rebuild_communities_for_user`` so it
+    can run on the APScheduler thread pool. Failures are caught inside
+    the coroutine; this wrapper logs the outcome.
+    """
+    result = run_async(rebuild_communities_for_user(user_id))
+    if result.get("error"):
+        logger.warning(
+            "Community rebuild errored for user %s: %s",
+            user_id[:12],
+            result["error"],
+        )
+    else:
+        logger.info(
+            "Community rebuild completed for user %s in %.1fs: %s",
+            user_id[:12],
+            result.get("elapsed_seconds") or 0.0,
+            result.get("communities_built"),
+        )
 
 
 def cleanup_oauth_tokens():
@@ -833,6 +857,66 @@ class Scheduler(AppService):
         """Manually trigger embedding backfill for approved store agents."""
         return ensure_embeddings_coverage()
 
+    # --- Graphiti community detection (P-1.7) ---
+    #
+    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``
+    # at the call sites. The scheduler unconditionally accepts the
+    # registration call; callers gate on the flag. Rebuilds run weekly at
+    # user-local 04:00 Sunday to avoid the Leiden cost spike during active
+    # hours (and to stagger from a future per-user dream pass at 03:00).
+
+    @expose
+    def add_community_rebuild_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a weekly community rebuild for one user."""
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"community_rebuild_{user_id}"
+        job = self.scheduler.add_job(
+            execute_community_rebuild,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 4 * * 0", timezone=user_timezone),
+            id=job_id,
+            name=f"Graphiti community rebuild for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered community rebuild job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_community_rebuild_schedule(self, user_id: str) -> bool:
+        """Remove the weekly community rebuild for one user."""
+        job_id = f"community_rebuild_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        logger.info("Removed community rebuild job for user %s", user_id[:12])
+        return True
+
+    @expose
+    def execute_community_rebuild_pass(self, user_id: str) -> dict:
+        """Manually trigger a community rebuild for one user (bypasses cron)."""
+        return run_async(rebuild_communities_for_user(user_id))
+
 
 class SchedulerClient(AppServiceClient):
     @classmethod
@@ -842,3 +926,13 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
     get_execution_schedules = endpoint_to_async(Scheduler.get_graph_execution_schedules)
+
+    add_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.add_community_rebuild_schedule
+    )
+    delete_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.delete_community_rebuild_schedule
+    )
+    execute_community_rebuild_pass = endpoint_to_async(
+        Scheduler.execute_community_rebuild_pass
+    )
