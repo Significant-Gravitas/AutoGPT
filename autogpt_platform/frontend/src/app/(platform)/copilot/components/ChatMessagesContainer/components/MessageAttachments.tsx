@@ -21,6 +21,11 @@ import { filePartToArtifactRef } from "../helpers";
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
+  /** Force the artifact-card rendering path regardless of the
+   *  ``ARTIFACTS`` flag.  The public share viewer passes this so
+   *  anonymous readers always get the rich treatment — the flag
+   *  defaults off and we don't want it to gate the viewer UX. */
+  forceArtifacts?: boolean;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -41,8 +46,9 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({ files, isUser }: Props) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+export function MessageAttachments({ files, isUser, forceArtifacts }: Props) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
   if (files.length === 0) return null;
 
   return (

@@ -70,3 +70,22 @@ class TestExtractWorkspaceFileIds:
             "url": ["https://example.com"],
         }
         assert extract_workspace_file_ids(outputs) == {"real-file"}
+
+    def test_extracts_file_id_from_attached_files_block(self):
+        """``[Attached files]`` blocks in user messages embed
+        ``file_id=<uuid>`` tokens — those need to make the allowlist
+        too so the public viewer can render them as artifacts."""
+        content = (
+            "Please review this.\n\n[Attached files]\n"
+            "- report.pdf (application/pdf, 191.0 KB), "
+            "file_id=550e8400-e29b-41d4-a716-446655440000\n"
+            "Use read_workspace_file with the file_id to access file contents."
+        )
+        assert extract_workspace_file_ids(content) == {
+            "550e8400-e29b-41d4-a716-446655440000"
+        }
+
+    def test_attached_files_uuid_pattern_rejects_non_uuids(self):
+        """``file_id=`` followed by a non-UUID is ignored."""
+        content = "see file_id=not-a-uuid here"
+        assert extract_workspace_file_ids(content) == set()

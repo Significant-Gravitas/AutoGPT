@@ -58,10 +58,17 @@ export function useSharedChatPage(token: string) {
     const converted = convertChatSessionMessagesToUiMessages(
       sessionQuery.data.id,
       messagesQuery.data.messages,
-      { isComplete: true },
+      {
+        isComplete: true,
+        // Route file URLs through the public allowlist-gated download
+        // endpoint so anonymous viewers can render attachments without
+        // hitting the auth-protected workspace download.
+        fileUrlBuilder: (fileId) =>
+          `/api/proxy/api/public/shared/chats/${token}/files/${fileId}/download`,
+      },
     );
     return { uiMessages: converted.messages, turnStats: converted.stats };
-  }, [sessionQuery.data, messagesQuery.data]);
+  }, [sessionQuery.data, messagesQuery.data, token]);
 
   return {
     session: sessionQuery.data,

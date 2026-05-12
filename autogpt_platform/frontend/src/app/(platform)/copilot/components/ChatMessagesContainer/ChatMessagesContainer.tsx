@@ -614,6 +614,7 @@ export function ChatMessagesContainer({
                 <MessageAttachments
                   files={fileParts}
                   isUser={message.role === "user"}
+                  forceArtifacts={readOnly}
                 />
               )}
               {!readOnly && showActions && (
@@ -621,6 +622,11 @@ export function ChatMessagesContainer({
                   message={message}
                   sessionID={sessionID ?? null}
                 />
+              )}
+              {readOnly && showActions && (
+                <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
+                </MessageActions>
               )}
             </Message>
           );

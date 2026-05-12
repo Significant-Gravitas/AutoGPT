@@ -1,20 +1,33 @@
-"""Extract ``workspace://<file_id>`` references from arbitrary nested data.
+"""Extract workspace file references from arbitrary nested data.
 
 Both execution-output sharing and chat-message sharing need to build an
-allowlist of workspace files exposed by a share.  The scan logic is
-identical — only the input shape differs (execution output dicts vs.
-chat message content/tool-call payloads) — so a single recursive walker
-handles both.
+allowlist of workspace files exposed by a share.  Two reference shapes
+appear in real payloads:
 
-Only plain strings that *start* with ``workspace://`` are matched; the
-URI cannot appear as a substring inside other text.  This mirrors the
-output of :func:`backend.util.file.store_media_file` and prevents false
-positives from quoted strings in narrative content.
+1. ``workspace://<uuid>`` URI strings — emitted by
+   :func:`backend.util.file.store_media_file`, used by blocks and tool
+   outputs.  Anchored prefix match keeps mid-text occurrences intact.
+2. ``file_id=<uuid>`` substrings in ``[Attached files]`` blocks the
+   copilot appends to user messages (see
+   ``backend/copilot/pending_messages.py``).  These show up inside
+   ChatMessage.content for user uploads — the viewer would not be able
+   to render those as artifacts without the allowlist entry.
+
+Both forms are handled by a single recursive walker.
 """
 
+import re
 from typing import Any
 
 _WORKSPACE_PREFIX = "workspace://"
+
+# Matches the ``file_id=<uuid>`` token that appears in the
+# ``[Attached files]`` block appended to user messages.  Anchored on the
+# ``file_id=`` literal so we don't pick up random hex strings.  The
+# ``\b`` after the UUID prevents trailing characters from sneaking in.
+_FILE_ID_RE = re.compile(
+    r"file_id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+)
 
 
 def extract_workspace_file_ids(value: Any) -> set[str]:
@@ -22,7 +35,8 @@ def extract_workspace_file_ids(value: Any) -> set[str]:
 
     Accepts any JSON-shaped value: strings, lists, dicts, primitives.
     Non-string leaves are ignored.  Returns the unique set of file IDs
-    (the part between ``workspace://`` and an optional ``#fragment``).
+    referenced by either ``workspace://<id>`` URIs or ``file_id=<uuid>``
+    tokens (from ``[Attached files]`` blocks).
     """
     file_ids: set[str] = set()
     _scan(value, file_ids)
@@ -39,6 +53,11 @@ def _scan(value: Any, sink: set[str]) -> None:
             # file ID only.
             if file_ref and not file_ref.startswith("/"):
                 sink.add(file_ref)
+        # Also pick up ``file_id=<uuid>`` tokens from [Attached files]
+        # blocks — these show up inside arbitrary message content, not
+        # as standalone leaves, so the substring scan is required.
+        for match in _FILE_ID_RE.finditer(value):
+            sink.add(match.group(1))
         return
     if isinstance(value, list):
         for item in value:

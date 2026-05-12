@@ -47,8 +47,11 @@ export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
 }
 
+// Matches the workspace-file or public-share file download URL shapes.
+// Both end in ``/files/<uuid>/download`` and only differ in the path
+// prefix.  Anchoring on UUID format avoids matching arbitrary paths.
 const WORKSPACE_FILE_PATTERN =
-  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9-]+)\/download/;
+  /\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
