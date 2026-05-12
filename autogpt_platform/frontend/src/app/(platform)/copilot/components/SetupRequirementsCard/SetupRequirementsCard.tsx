@@ -130,17 +130,19 @@ export function SetupRequirementsCard({
     : true;
 
   // Session-scoped dismissal: when an earlier card in the same chat already
-  // satisfied every provider this card asks for, treat it as already sent so
-  // the user doesn't see a stale duplicate card after a stream remount or
-  // after a parallel `connect_integration` flow.
+  // satisfied every provider this card asks for AND the card has nothing
+  // else for the user to do, treat it as already sent. The `hasUserActionableInputs`
+  // gate keeps the card visible when there are RJSF inputs the user still
+  // needs to fill in (edit mode) — otherwise the chat hangs because
+  // `handleRun` never fires and no message gets sent.
   const sessionID = output.session_id ?? null;
-  const requestedProviders = useMemo(
-    () => getRequestedProviders(credentialFields),
-    [credentialFields],
-  );
+  const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
+  const hasUserActionableInputs = isEditMode && needsInputs;
+  const canAutoDismiss =
+    needsCredentials && alreadyConnected && !hasUserActionableInputs;
 
-  if (hasSent || (needsCredentials && alreadyConnected)) {
+  if (hasSent || canAutoDismiss) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 

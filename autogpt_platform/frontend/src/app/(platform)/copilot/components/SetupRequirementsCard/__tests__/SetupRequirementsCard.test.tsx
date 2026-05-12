@@ -428,4 +428,54 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // No credentials in this output, so no providers should be marked.
     expect(useConnectedProvidersStore.getState().connected.size).toBe(0);
   });
+
+  it("does NOT auto-dismiss when the card has user-fillable inputs pending", () => {
+    // Regression: a run_block card with both already-connected creds AND
+    // unfilled user inputs must keep showing the form — otherwise handleRun
+    // never fires and the chat hangs waiting for input that can't be sent.
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          inputs: [
+            { name: "url", title: "URL", type: "string", required: true },
+          ],
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/Connected. Continuing/)).toBeNull();
+    expect(screen.getByText("Proceed")).toBeDefined();
+  });
+
+  it("still auto-dismisses in preview mode even when inputs exist (read-only)", () => {
+    // Preview-mode inputs aren't user-fillable, so a creds-only "Proceed"
+    // would just be confirming pre-set values — auto-dismiss is still the
+    // right call to avoid duplicate prompts.
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            { name: "url", title: "URL", type: "string", required: true },
+          ],
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
+  });
 });
