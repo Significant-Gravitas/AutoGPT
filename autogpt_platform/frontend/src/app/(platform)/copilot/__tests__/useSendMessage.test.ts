@@ -9,11 +9,9 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => mockToast(...args),
 }));
 
-const mockSentryCaptureException = vi.fn();
 const mockSentryCaptureMessage = vi.fn();
 const mockSentryBreadcrumb = vi.fn();
 vi.mock("@sentry/nextjs", () => ({
-  captureException: (...args: unknown[]) => mockSentryCaptureException(...args),
   captureMessage: (...args: unknown[]) => mockSentryCaptureMessage(...args),
   addBreadcrumb: (...args: unknown[]) => mockSentryBreadcrumb(...args),
 }));
@@ -51,7 +49,6 @@ describe("useSendMessage", () => {
   beforeEach(() => {
     resetStore();
     mockToast.mockReset();
-    mockSentryCaptureException.mockReset();
     mockSentryCaptureMessage.mockReset();
     mockSentryBreadcrumb.mockReset();
     vi.useFakeTimers();
@@ -88,40 +85,6 @@ describe("useSendMessage", () => {
       expect(useCopilotStreamStore.getState().pendingFirstSend).toBeNull();
     });
 
-    it("captures dispatch errors to Sentry and toasts the user", async () => {
-      const sendMessage = vi.fn(() => {
-        throw new Error("transport not ready");
-      });
-      const createSession = vi.fn();
-
-      useCopilotStreamStore.getState().setPendingFirstSend({
-        text: "hello",
-        files: [],
-      });
-
-      const { rerender } = renderHook(
-        ({ sessionId }) =>
-          useTestHarness({ sessionId, sendMessage, createSession }),
-        { initialProps: { sessionId: null as string | null } },
-      );
-
-      await act(async () => {
-        rerender({ sessionId: "new-session-id" });
-        // Let the catch handler run.
-        await Promise.resolve();
-      });
-
-      expect(mockSentryCaptureException).toHaveBeenCalledTimes(1);
-      const [err, ctx] = mockSentryCaptureException.mock.calls[0];
-      expect((err as Error).message).toBe("transport not ready");
-      expect(ctx).toMatchObject({
-        tags: { copilot_flow: "pending-first-send-flush" },
-      });
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: "destructive" }),
-      );
-    });
-
     it("does nothing when sessionId arrives without a pending send", async () => {
       const sendMessage = vi.fn();
       const createSession = vi.fn();
@@ -137,7 +100,6 @@ describe("useSendMessage", () => {
       });
 
       expect(sendMessage).not.toHaveBeenCalled();
-      expect(mockSentryCaptureException).not.toHaveBeenCalled();
     });
   });
 

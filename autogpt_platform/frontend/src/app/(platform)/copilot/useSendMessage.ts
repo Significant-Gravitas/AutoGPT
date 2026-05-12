@@ -149,30 +149,8 @@ export function useSendMessage({
       .getState()
       .takePendingFirstSend();
     if (!send) return;
-    Sentry.addBreadcrumb({
-      category: "copilot.first-send",
-      level: "info",
-      message: "flush pending first send on sessionId change",
-      data: {
-        sessionId,
-        textLength: send.text.length,
-        fileCount: send.files.length,
-        partCount: parts.length,
-      },
-    });
-    dispatchRef
-      .current(sessionId, send.text, send.files, parts)
-      .catch((err: unknown) => {
-        Sentry.captureException(err, {
-          tags: { copilot_flow: "pending-first-send-flush" },
-          extra: { sessionId, textLength: send.text.length },
-        });
-        toast({
-          title: "Couldn't send your message",
-          description: "Please try again.",
-          variant: "destructive",
-        });
-      });
+    // Don't catch — Sentry's unhandledrejection handler picks up async throws.
+    void dispatchRef.current(sessionId, send.text, send.files, parts);
   }, [sessionId]);
 
   async function onSend(message: string, files?: File[]) {
