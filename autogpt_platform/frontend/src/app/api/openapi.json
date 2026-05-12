@@ -10285,26 +10285,6 @@
         "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
       },
-      "TokenRateDisplay": {
-        "properties": {
-          "input_usd_per_1m": { "type": "number", "title": "Input Usd Per 1M" },
-          "output_usd_per_1m": {
-            "type": "number",
-            "title": "Output Usd Per 1M"
-          },
-          "cache_read_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Cache Read Usd Per 1M"
-          },
-          "cache_creation_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Cache Creation Usd Per 1M"
-          }
-        },
-        "type": "object",
-        "required": ["input_usd_per_1m", "output_usd_per_1m"],
-        "title": "TokenRateDisplay"
-      },
       "BlockCostEstimateRow": {
         "properties": {
           "block_id": { "type": "string", "title": "Block Id" },
@@ -17813,6 +17793,27 @@
         "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": { "type": "number", "title": "Input Usd Per 1M" },
+          "output_usd_per_1m": {
+            "type": "number",
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
+          }
+        },
+        "type": "object",
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay",
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {
