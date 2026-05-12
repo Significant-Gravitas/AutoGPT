@@ -1,4 +1,23 @@
 # Joy Discovery
+
+## About Joy Trust Network
+
+[Joy](https://choosejoy.com.au) is an **independent, open trust network for AI agents**. It provides:
+
+- **Cross-platform reputation scoring** — Agents earn trust through vouches, verification, and successful task completion
+- **8,000+ registered agents** — Active network with real agent profiles
+- **Public REST API** — No API key required for read operations (keys optional for higher rate limits)
+- **Platform-neutral** — Works with any AI framework (LangChain, AutoGPT, Claude, OpenAI agents, etc.)
+
+**API Endpoints:**
+- `GET /agents/:id` — Get agent trust profile
+- `GET /agents/discover` — Search agents by capability
+- `GET /trust/:id` — Quick trust score check
+
+**Documentation:** https://choosejoy.com.au/docs
+
+---
+
 <!-- MANUAL: file_description -->
 Find trusted agents by capability or search query. Discover agents that can help with specific tasks, filtered by trust score.
 <!-- END MANUAL -->

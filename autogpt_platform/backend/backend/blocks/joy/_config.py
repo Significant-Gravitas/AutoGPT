@@ -1,8 +1,15 @@
 """
 Shared configuration for all Joy Trust Network blocks.
 
-Joy provides trust verification for AI agent delegation. Before delegating
-a task to another agent, verify their trust score meets your threshold.
+Joy (https://choosejoy.com.au) is an independent, open trust network for AI agents.
+It provides cross-platform reputation scoring based on vouches, verification, and
+successful task completion. 8,000+ agents registered.
+
+Before delegating a task to another agent, verify their trust score meets your
+threshold using these blocks.
+
+API Documentation: https://choosejoy.com.au/docs
+API Key: Optional (increases rate limits, not required for read operations)
 """
 
 import httpx
