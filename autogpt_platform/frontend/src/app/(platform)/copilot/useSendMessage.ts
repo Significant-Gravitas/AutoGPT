@@ -149,8 +149,21 @@ export function useSendMessage({
       .getState()
       .takePendingFirstSend();
     if (!send) return;
-    // Don't catch — Sentry's unhandledrejection handler picks up async throws.
-    void dispatchRef.current(sessionId, send.text, send.files, parts);
+    // Toast so the user sees feedback; capture explicitly because the catch
+    // handler consumes the rejection, hiding it from unhandledrejection.
+    dispatchRef
+      .current(sessionId, send.text, send.files, parts)
+      .catch((err: unknown) => {
+        Sentry.captureException(err, {
+          tags: { copilot_flow: "pending-first-send-flush" },
+          extra: { sessionId, textLength: send.text.length },
+        });
+        toast({
+          title: "Couldn't send your message",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      });
   }, [sessionId]);
 
   async function onSend(message: string, files?: File[]) {
