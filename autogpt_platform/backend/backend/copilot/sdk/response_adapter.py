@@ -83,6 +83,13 @@ class SDKResponseAdapter:
         self.has_started_reasoning = False
         self.has_ended_reasoning = True
         self.render_reasoning_in_ui = render_reasoning_in_ui
+        # Set by the service layer when a retry adapter is constructed mid-turn
+        # and the prior attempt already streamed text/tool results to the wire.
+        # The empty-completion guard ignores its local "no content this attempt"
+        # signal in that case — the user already received content from a
+        # previous attempt, so surfacing "The model returned an empty response."
+        # on top would be a false-positive.
+        self.prior_attempt_emitted_visible_content = False
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
@@ -600,6 +607,14 @@ class SDKResponseAdapter:
         if self.current_tool_calls:
             return False
         if self._any_tool_results_seen:
+            return False
+        # When this adapter is a retry adapter constructed after a prior attempt
+        # already streamed text/tools to the wire, an empty ResultMessage on
+        # this attempt is not a "ghost finish" from the user's perspective —
+        # they already received content. Firing the error here would render
+        # a "model returned an empty response" overlay on top of working
+        # output.
+        if self.prior_attempt_emitted_visible_content:
             return False
         usage = msg.usage or {}
         output_tokens = usage.get("output_tokens") or 0

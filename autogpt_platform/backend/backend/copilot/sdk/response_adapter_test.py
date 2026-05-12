@@ -1811,3 +1811,53 @@ def test_summary_walk_skips_fully_streamed_text():
     summary_deltas = [r for r in summary if isinstance(r, StreamTextDelta)]
     assert len(partial_deltas) == 1
     assert summary_deltas == []
+
+
+def test_retry_adapter_with_prior_emitted_content_suppresses_empty_completion():
+    """Regression: when the service layer recreates the adapter for a retry
+    after the prior attempt already streamed text/tools to the wire, an empty
+    success ResultMessage on the retry must NOT surface as an empty_completion
+    StreamError — the user already received content from the prior attempt
+    and would otherwise see a spurious "model returned an empty response"
+    overlay on top of working output.
+    """
+    adapter = _adapter()
+    adapter.prior_attempt_emitted_visible_content = True
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
+def test_retry_adapter_without_prior_content_still_surfaces_empty_completion():
+    """Counter-test: when prior_attempt_emitted_visible_content is False (the
+    default — first attempt), the SECRT-2252 guard must still fire on a
+    ghost-finished success.
+    """
+    adapter = _adapter()
+    assert adapter.prior_attempt_emitted_visible_content is False
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
