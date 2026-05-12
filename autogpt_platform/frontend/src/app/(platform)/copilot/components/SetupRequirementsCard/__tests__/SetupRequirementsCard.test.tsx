@@ -266,7 +266,28 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByTestId("form-renderer")).toBeNull();
     expect(screen.getByText("Expected inputs")).toBeDefined();
     expect(screen.getByText("Search Query")).toBeDefined();
+    expect(screen.getByText("What to search for")).toBeDefined();
     expect(screen.getByText("Required")).toBeDefined();
+    // Technical bits — internal field name and JSON-schema type — must NOT
+    // leak into the user-facing preview.
+    expect(screen.queryByText(/query/)).toBeNull();
+    expect(screen.queryByText(/string/)).toBeNull();
+  });
+
+  it("omits the description block entirely when no description is provided", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            { name: "url", title: "URL", type: "string", required: true },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("URL")).toBeDefined();
+    // No "url • string" leakage and no empty description container.
+    expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
   it("labels credentials section as 'Agent credentials' by default", () => {

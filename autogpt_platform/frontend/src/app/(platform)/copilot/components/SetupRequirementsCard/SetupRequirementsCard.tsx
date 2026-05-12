@@ -242,10 +242,11 @@ export function SetupRequirementsCard({
                     {input.required ? "Required" : "Optional"}
                   </ContentBadge>
                 </div>
-                <ContentCardDescription className="mt-1">
-                  {input.name} &bull; {input.type}
-                  {input.description ? ` • ${input.description}` : ""}
-                </ContentCardDescription>
+                {input.description && (
+                  <ContentCardDescription className="mt-1">
+                    {input.description}
+                  </ContentCardDescription>
+                )}
               </div>
             ))}
           </div>
