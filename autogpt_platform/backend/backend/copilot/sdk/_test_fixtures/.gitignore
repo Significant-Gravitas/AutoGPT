@@ -1,4 +1,0 @@
-# Trace fixtures (langfuse-captured prod sessions) — local debugging only.
-# Do NOT commit: they contain user data (prompts, tool inputs/outputs).
-# Drop your own fixtures here and the replay tests will pick them up.
-*.json
