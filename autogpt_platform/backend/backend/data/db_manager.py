@@ -397,6 +397,14 @@ class DatabaseManager(AppService):
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     set_turn_duration = _(chat_db.set_turn_duration)
+    # ChatSession lifecycle primitives.  Three functions cover the
+    # cap-count + cross-session queue (count/list/transition).
+    count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
+    list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
+    update_chat_session_status = _(chat_db.update_chat_session_status)
+    get_chat_session_status = _(chat_db.get_chat_session_status)
+    get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+    add_chat_message = _(chat_db.add_chat_message)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -623,3 +631,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_message_content_by_sequence = d.update_message_content_by_sequence
     update_chat_session_title = d.update_chat_session_title
     set_turn_duration = d.set_turn_duration
+    count_chat_sessions_by_status = d.count_chat_sessions_by_status
+    list_chat_sessions_by_status = d.list_chat_sessions_by_status
+    update_chat_session_status = d.update_chat_session_status
+    get_chat_session_status = d.get_chat_session_status
+    get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    add_chat_message = d.add_chat_message

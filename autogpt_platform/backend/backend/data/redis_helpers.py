@@ -20,6 +20,7 @@ application code, add a helper here first — callers should not touch
 this module can cover.
 """
 
+from enum import IntEnum
 from typing import Any, cast
 
 from backend.data.redis_client import AsyncRedisClient, RedisClient
@@ -65,6 +66,48 @@ redis.call('RPUSH', KEYS[2], ARGV[3])
 redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
 return redis.call('LLEN', KEYS[2])
+"""
+
+# Atomically: sweep stale slots, refresh an existing slot's claim or add
+# a new slot iff the pool is under capacity, then set the pool key's TTL.
+# Returns 1 when a NEW slot was admitted, 2 when an EXISTING slot's claim
+# was refreshed (no change to slot count), 0 when reservation was refused
+# (pool full and slot wasn't already held).
+#
+# The new-vs-refreshed distinction lets callers tell apart a "fresh
+# admission" (caller now owns the slot's release) from a "re-entrant
+# touch" (someone else owns the release, caller is just bumping the
+# heartbeat). Without it, a refresh path would `release_turn_slot` on
+# context-manager exit and prematurely free a slot held by another
+# concurrent caller for the same session_id.
+#
+# Used for distributed per-actor concurrency caps. A "pool" is a Redis
+# sorted set whose members are active slot ids and whose scores are the
+# slot's reservation timestamp. Stale slots (owner crashed without
+# release) are reclaimed by the sweep so a one-time leak cannot
+# permanently consume capacity.
+#
+#   KEYS[1]  pool key (sorted set)
+#   ARGV[1]  slot id (member)
+#   ARGV[2]  reservation score (typically now)
+#   ARGV[3]  stale-cutoff score (slots with score <= this are dropped)
+#   ARGV[4]  capacity (max concurrent slots before reservation is refused)
+#   ARGV[5]  TTL seconds applied to the pool key on every successful reserve
+_TRY_ACQUIRE_CONCURRENCY_SLOT_LUA = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[3])
+local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if existing then
+    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+    redis.call('EXPIRE', KEYS[1], ARGV[5])
+    return 2
+end
+local count = redis.call('ZCARD', KEYS[1])
+if count >= tonumber(ARGV[4]) then
+    return 0
+end
+redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+return 1
 """
 
 
@@ -181,6 +224,75 @@ async def capped_rpush_if_hash_field(
     )
     length = int(result)
     return None if length < 0 else length
+
+
+class SlotAdmission(IntEnum):
+    """Result of :func:`try_acquire_concurrency_slot`.
+
+    Distinguishes a fresh admission from a re-entrant refresh so callers
+    that automatically release on exit (e.g. context managers) only do
+    so for slots they actually admitted, not slots they just touched.
+    """
+
+    REJECTED = 0  # pool was full and slot wasn't already held
+    ADMITTED = 1  # slot newly added to the pool
+    REFRESHED = 2  # slot was already in the pool; score bumped only
+
+
+async def try_acquire_concurrency_slot(
+    redis: AsyncRedisClient,
+    *,
+    pool_key: str,
+    slot_id: str,
+    score: float,
+    capacity: int,
+    stale_before_score: float,
+    ttl_seconds: int,
+) -> SlotAdmission:
+    """Atomically reserve one of *capacity* slots in a Redis-backed pool.
+
+    Use this whenever you need a distributed concurrency cap — "this
+    actor may have at most N of X in flight at the same time". The pool
+    is a sorted set whose members are active slot ids and whose scores
+    are reservation timestamps; on every call we:
+
+    1. Sweep slots with ``score <= stale_before_score`` — slots whose
+       holder crashed without releasing don't permanently consume capacity.
+    2. If ``slot_id`` is already in the pool, refresh its score
+       (re-reservation is idempotent — same holder, same logical slot)
+       and return :attr:`SlotAdmission.REFRESHED`.
+    3. Otherwise, reserve only if the post-sweep slot count is below
+       ``capacity`` and return :attr:`SlotAdmission.ADMITTED`.
+    4. On a successful reserve, set ``ttl_seconds`` on the pool key as a
+       belt-and-braces TTL for the case where the sweep ever stops.
+
+    Returns the :class:`SlotAdmission` outcome — ``ADMITTED`` (newly
+    added), ``REFRESHED`` (already held, score bumped), or ``REJECTED``
+    (pool full).
+
+    Why a Lua script: the reservation is conditional on the post-sweep
+    count, and ``MULTI/EXEC`` cannot branch on intermediate replies.
+    Without atomicity, two concurrent callers both read ``count =
+    capacity - 1`` and both add, ending up over capacity.
+
+    Redis Cluster: only ``KEYS[1]`` is touched, so callers are free to
+    hash-tag *pool_key* (e.g. ``foo:{user_id}``) to colocate the pool
+    on one shard without CROSSSLOT issues.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _TRY_ACQUIRE_CONCURRENCY_SLOT_LUA,
+            1,
+            pool_key,
+            slot_id,
+            str(score),
+            str(stale_before_score),
+            str(capacity),
+            str(ttl_seconds),
+        ),
+    )
+    return SlotAdmission(int(result))
 
 
 async def hash_compare_and_set(

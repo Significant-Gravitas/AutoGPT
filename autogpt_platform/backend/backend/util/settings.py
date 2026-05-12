@@ -174,6 +174,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    max_inflight_copilot_turns_per_user: int = Field(
+        default=15,
+        ge=1,
+        le=1000,
+        description=(
+            "Hard cap on in-flight (running + queued) AutoPilot/CoPilot "
+            "chat turns per user. Once running >= "
+            "``max_running_copilot_turns_per_user`` and the queue brings the "
+            "total to this number, ``POST /chat/stream`` returns 429. "
+            "Reached from the chat HTTP route, the AutoPilotBlock, and "
+            "run_sub_session — all funnel through schedule_chat_turn / "
+            "schedule_turn and share this cap."
+        ),
+    )
+    max_running_copilot_turns_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "Soft cap on concurrently *running* AutoPilot/CoPilot chat "
+            "turns per user. Tasks submitted while the user is at this cap "
+            "are queued in ``CopilotTaskQueue`` (FIFO) up to "
+            "``max_inflight_copilot_turns_per_user`` total in-flight. "
+            "Must be <= the in-flight cap; default 5 keeps shared-infra "
+            "concurrency predictable while letting users batch-submit."
+        ),
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,

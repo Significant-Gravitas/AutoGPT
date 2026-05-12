@@ -44,6 +44,15 @@ def _get_session_cache_key(session_id: str) -> str:
     return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
 
 
+# ChatSession.chatStatus lifecycle values.  Open enum: future states
+# (e.g. ``"errored"``, ``"paused"``) can be added without a migration.
+# Within a session, turns are serialized so at most one task is in
+# flight at a time — the status sits at session scope, not message.
+CHAT_STATUS_IDLE = "idle"
+CHAT_STATUS_QUEUED = "queued"
+CHAT_STATUS_RUNNING = "running"
+
+
 # ===================== Chat data models ===================== #
 
 
@@ -83,6 +92,15 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Owning session id and generic per-row JSONB bag.  Today the
+    # dispatcher uses ``metadata`` to preserve the submit-time payload
+    # (file_ids / mode / model / permissions / context / arrival_at)
+    # on the user row that triggered a queued turn, so a later
+    # promotion can replay the turn faithfully.  Generic so future
+    # per-row state can land here without a migration.
+    session_id: str | None = None
+    metadata: dict | None = None
+
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
@@ -98,6 +116,8 @@ class ChatMessage(BaseModel):
             sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
+            session_id=prisma_message.sessionId,
+            metadata=_parse_json_field(prisma_message.metadata),
         )
 
 
@@ -164,6 +184,8 @@ class ChatSessionInfo(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
+    chat_status: str = "idle"
 
     @property
     def dry_run(self) -> bool:
@@ -212,6 +234,7 @@ class ChatSessionInfo(BaseModel):
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
+            chat_status=prisma_session.chatStatus,
         )
 
 
@@ -792,17 +815,19 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-        # Back-fill sequence numbers on the in-memory ChatMessage objects so
-        # that downstream callers (inject_user_context) can persist updates
-        # by sequence rather than falling back to index-based writes.
         for i, msg in enumerate(new_messages):
-            msg.sequence = existing_message_count + i
+            msg.sequence = actual_start + i
 
 
 async def append_and_save_message(
