@@ -378,6 +378,53 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
 
     expect(screen.queryByText("Proceed")).toBeNull();
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
+    // Auto-dismiss must also fire onSend, otherwise the AI's tool call sits
+    // unanswered and the chat hangs (regression: Sentry bug prediction).
+    expect(mockOnSend).toHaveBeenCalledOnce();
+  });
+
+  it("auto-dismiss in preview mode sends the legacy run_agent message", () => {
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <SetupRequirementsCard
+        inputsMode="preview"
+        output={makeOutput({
+          inputs: [
+            { name: "url", title: "URL", type: "string", required: true },
+          ],
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    expect(mockOnSend).toHaveBeenCalledWith(
+      "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+    );
+  });
+
+  it("auto-dismiss invokes onComplete callback", () => {
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+    const onComplete = vi.fn();
+
+    render(
+      <SetupRequirementsCard
+        output={makeOutput({
+          missingCredentials: {
+            api_key: { provider: "openai", types: ["api_key"] },
+          },
+        })}
+        onComplete={onComplete}
+      />,
+    );
+
+    expect(onComplete).toHaveBeenCalledOnce();
   });
 
   it("does not auto-dismiss when only some providers are connected", () => {

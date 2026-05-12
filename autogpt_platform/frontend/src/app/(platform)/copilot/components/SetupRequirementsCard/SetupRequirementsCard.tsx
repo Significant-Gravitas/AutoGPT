@@ -142,6 +142,14 @@ export function SetupRequirementsCard({
   const canAutoDismiss =
     needsCredentials && alreadyConnected && !hasUserActionableInputs;
 
+  // Auto-send when dismissing so the AI receives the run message and the
+  // chat doesn't hang waiting for a confirmation that the user can no longer
+  // provide (the Proceed button is hidden behind the early return below).
+  useEffect(() => {
+    if (canAutoDismiss && !hasSent) handleRun();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; hasSent guards re-entry
+  }, [canAutoDismiss, hasSent]);
+
   if (hasSent || canAutoDismiss) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
