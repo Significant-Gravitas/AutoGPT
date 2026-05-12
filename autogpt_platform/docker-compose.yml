@@ -124,9 +124,6 @@ services:
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
       - CLAMD_CONF_TCPAddr=0.0.0.0
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --version || exit 1"]
       interval: 30s
@@ -139,17 +136,12 @@ services:
       file: ./docker-compose.platform.yml
       service: frontend
 
-  # Supabase services (minimal: auth + db + kong).
-  # depends_on rabbitmq:service_healthy gates concurrent infra start to dodge
-  # the E2B Docker concurrent-create race described in docker-compose.platform.yml.
+  # Supabase services (minimal: auth + db + kong)
   kong:
     <<: *supabase-services
     extends:
       file: ./db/docker/docker-compose.yml
       service: kong
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
 
   auth:
     <<: *supabase-services
@@ -158,10 +150,13 @@ services:
       service: auth
     environment:
       GOTRUE_MAILER_AUTOCONFIRM: true
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
 
+  # `db` waits for rabbitmq:service_healthy as a workaround for an E2B Docker
+  # concurrent-create race that surfaces as `Error when reading
+  # /var/lib/rabbitmq/.erlang.cookie: eacces` at RabbitMQ boot. Every supabase
+  # service depends_on db:service_healthy upstream, so cascading through db
+  # gives rabbit an isolated create+start cycle without scattering fake deps
+  # across the file. Locally this just adds ~5s to first-time startup.
   db:
     <<: *supabase-services
     extends:
@@ -181,9 +176,6 @@ services:
     extends:
       file: ./db/docker/docker-compose.yml
       service: meta
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
 
   studio:
     <<: *supabase-services
@@ -194,8 +186,6 @@ services:
       service: studio
     depends_on:
       meta:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     # environment:
     #   NEXT_PUBLIC_ENABLE_LOGS: false  # Disable analytics/logging features

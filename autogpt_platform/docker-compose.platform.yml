@@ -68,8 +68,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     <<: *backend-env-files
     environment:
       <<: *backend-env
@@ -99,21 +97,12 @@ services:
   # and host-native clients (handled by the backend's ``address_remap``)
   # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002
   # sit well clear of FalkorDB on host 6380.
-  # Gate concurrent infra containers on rabbitmq health: E2B's Docker
-  # exhibits a race when many containers (12+) are created in parallel,
-  # surfacing as `Error when reading /var/lib/rabbitmq/.erlang.cookie:
-  # eacces` at RabbitMQ boot. Forcing rabbit to become healthy before
-  # peers start gives it an isolated create+start cycle. Locally this just
-  # adds a few seconds to first-time startup and is otherwise a no-op.
   redis-0:
     <<: *redis-node
     hostname: redis-0
     command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-0 --cluster-announce-port 17000 --cluster-announce-bus-port 27000 --cluster-preferred-endpoint-type hostname
     ports:
       - "17000:17000"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     healthcheck:
       test:
         [
@@ -129,18 +118,12 @@ services:
     command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-1 --cluster-announce-port 17001 --cluster-announce-bus-port 27001 --cluster-preferred-endpoint-type hostname
     ports:
       - "17001:17001"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
   redis-2:
     <<: *redis-node
     hostname: redis-2
     command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-2 --cluster-announce-port 17002 --cluster-announce-bus-port 27002 --cluster-preferred-endpoint-type hostname
     ports:
       - "17002:17002"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
   # The ``|| cluster create`` short-circuit makes this idempotent within the
   # lifetime of a single compose project: a re-``up`` without ``down`` leaves
   # the already-formed cluster untouched. A ``down`` + ``up`` wipes every
@@ -169,9 +152,6 @@ services:
       - falkordb_data:/data
     networks:
       - app-network
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
     healthcheck:
       # redis-cli ping is the real readiness signal - the app only talks
       # FalkorDB over the redis protocol on 6379. The previous version also
