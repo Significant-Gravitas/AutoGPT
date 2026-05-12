@@ -17796,17 +17796,22 @@
       },
       "TokenRateDisplay": {
         "properties": {
-          "input_usd_per_1m": { "type": "number", "title": "Input Usd Per 1M" },
+          "input_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Input Usd Per 1M"
+          },
           "output_usd_per_1m": {
             "type": "number",
+            "minimum": 0.0,
             "title": "Output Usd Per 1M"
           },
           "cache_read_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
             "title": "Cache Read Usd Per 1M"
           },
           "cache_creation_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
             "title": "Cache Creation Usd Per 1M"
           }
         },

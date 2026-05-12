@@ -18,7 +18,7 @@ from typing import (
 
 import jsonref
 import jsonschema
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.model import (
@@ -138,10 +138,10 @@ class TokenRateDisplay(BaseModel):
     internal credit math in `BlockCost.cost_amount`.
     """
 
-    input_usd_per_1m: float
-    output_usd_per_1m: float
-    cache_read_usd_per_1m: Optional[float] = None
-    cache_creation_usd_per_1m: Optional[float] = None
+    input_usd_per_1m: float = Field(ge=0)
+    output_usd_per_1m: float = Field(ge=0)
+    cache_read_usd_per_1m: Optional[float] = Field(default=None, ge=0)
+    cache_creation_usd_per_1m: Optional[float] = Field(default=None, ge=0)
 
 
 class BlockCost(BaseModel):
