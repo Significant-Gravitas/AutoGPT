@@ -7,9 +7,9 @@ message stream the adapter would have seen (AssistantMessage / UserMessage /
 ResultMessage), and prints whether ``StreamError(code="empty_completion")``
 would fire — with the current adapter code in this checkout.
 
-Usage:
+Usage (must be run as a module so package imports resolve):
     LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=... LANGFUSE_HOST=... \
-        poetry run python scripts/replay_session_trace.py <session_id> [<session_id> ...]
+        poetry run python -m scripts.replay_session_trace <session_id> [<session_id> ...]
 
 Optional flags:
     --subtype <subtype>   ResultMessage subtype to cap the stream with
@@ -28,9 +28,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from claude_agent_sdk import (  # noqa: E402
+from claude_agent_sdk import (
     AssistantMessage,
     ContentBlock,
     ResultMessage,
@@ -42,8 +40,8 @@ from claude_agent_sdk import (  # noqa: E402
     UserMessage,
 )
 
-from backend.copilot.response_model import StreamError  # noqa: E402
-from backend.copilot.sdk.response_adapter import SDKResponseAdapter  # noqa: E402
+from backend.copilot.response_model import StreamError
+from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 
 
 def _block_from_dict(b: dict) -> ContentBlock | None:
@@ -93,7 +91,13 @@ def _fetch_observations(session_id: str) -> list[dict]:
             output = o.output
             if not isinstance(output, str):
                 output = json.dumps(output) if output is not None else ""
-            out.append({"kind": "tool_result", "name": o.name, "output": output})
+            # Capture the input so the replay can match this tool_result to
+            # the right pending ToolUseBlock when multiple same-name calls
+            # are outstanding (e.g. two parallel ``find_block`` calls).
+            inp = o.input if isinstance(o.input, dict) else {}
+            out.append(
+                {"kind": "tool_result", "name": o.name, "input": inp, "output": output}
+            )
     return out
 
 
@@ -107,7 +111,11 @@ def replay_session(session_id: str, result_subtype: str = "success") -> dict:
     events: list = []
     events.extend(adapter.convert_message(SystemMessage(subtype="init", data={})))
 
-    unresolved_by_name: dict[str, list[str]] = {}
+    # Map name -> list of (tool_use_id, input_dict) for outstanding calls.
+    # Match tool_results by (name, input) when possible — same-name parallel
+    # calls (e.g. two ``find_block`` with different queries) would otherwise
+    # be replayed against the wrong ToolUseBlock under FIFO-by-name.
+    unresolved: dict[str, list[tuple[str, dict]]] = {}
     for step in sequence:
         if step["kind"] == "assistant":
             blocks: list[ContentBlock] = []
@@ -116,16 +124,25 @@ def replay_session(session_id: str, result_subtype: str = "success") -> dict:
                 if block is None:
                     continue
                 if isinstance(block, ToolUseBlock):
-                    unresolved_by_name.setdefault(block.name, []).append(block.id)
+                    unresolved.setdefault(block.name, []).append(
+                        (block.id, block.input or {})
+                    )
                 blocks.append(block)
             events.extend(
                 adapter.convert_message(AssistantMessage(content=blocks, model="test"))
             )
         elif step["kind"] == "tool_result":
-            queue = unresolved_by_name.get(step["name"]) or []
+            queue = unresolved.get(step["name"]) or []
             if not queue:
                 continue
-            tool_use_id = queue.pop(0)
+            # Prefer matching the queued call whose input matches the
+            # tool_result's input; fall back to FIFO if no input match.
+            target_input = step.get("input") or {}
+            match_idx = next(
+                (i for i, (_, inp) in enumerate(queue) if inp == target_input),
+                0,
+            )
+            tool_use_id, _ = queue.pop(match_idx)
             events.extend(
                 adapter.convert_message(
                     UserMessage(
