@@ -4516,18 +4516,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
                 state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
-                # If the prior attempt already streamed text or tool results to
-                # the wire, suppress the empty-completion guard on this retry
-                # adapter — the user has already received content, and a
-                # silent-finish ResultMessage on the retry would otherwise
-                # surface a spurious "model returned an empty response" overlay
-                # on top of working output.
-                if (
-                    prior_adapter.has_started_text
-                    or prior_adapter.has_started_reasoning
-                    or prior_adapter._any_tool_results_seen
-                    or prior_adapter.prior_attempt_emitted_visible_content
-                ):
+                # Forward prior visibility so the empty-completion guard on this
+                # retry adapter doesn't false-fire on top of content the user
+                # already received.
+                if prior_adapter.emitted_visible_content:
                     state.adapter.prior_attempt_emitted_visible_content = True
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.

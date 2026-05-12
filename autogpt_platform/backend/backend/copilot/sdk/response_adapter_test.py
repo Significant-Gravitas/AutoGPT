@@ -1861,3 +1861,28 @@ def test_retry_adapter_without_prior_content_still_surfaces_empty_completion():
     results = adapter.convert_message(msg)
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
+
+
+def test_emitted_visible_content_property_combines_signals():
+    """The ``emitted_visible_content`` property must be True when any of the
+    underlying visibility signals is set, so the service-layer retry path
+    can forward the prior adapter's state without reaching into private
+    flags.
+    """
+    adapter = _adapter()
+    assert adapter.emitted_visible_content is False
+
+    adapter.has_started_text = True
+    assert adapter.emitted_visible_content is True
+    adapter.has_started_text = False
+
+    adapter.has_started_reasoning = True
+    assert adapter.emitted_visible_content is True
+    adapter.has_started_reasoning = False
+
+    adapter._any_tool_results_seen = True
+    assert adapter.emitted_visible_content is True
+    adapter._any_tool_results_seen = False
+
+    adapter.prior_attempt_emitted_visible_content = True
+    assert adapter.emitted_visible_content is True
