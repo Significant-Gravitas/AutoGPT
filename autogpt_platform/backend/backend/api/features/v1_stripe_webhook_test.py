@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import pytest
 import pytest_mock
 import stripe
 
@@ -13,7 +14,7 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 
-from .v1 import v1_router
+from .v1 import _claim_stripe_event, _release_stripe_event, v1_router
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
@@ -240,6 +241,110 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
 
     assert response.status_code >= 500
     mock_release.assert_awaited_once_with("evt_retrieve_fails")
+
+
+# ---------------------------------------------------------------------------
+# _claim_stripe_event / _release_stripe_event unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claim_stripe_event_first_delivery_returns_true(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """First delivery acquires the dedup key — Redis ``SET nx=True`` reports
+    success and the caller proceeds with handler dispatch."""
+    redis_mock = MagicMock()
+    redis_mock.set = AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.api.features.v1.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis_mock,
+    )
+
+    assert await _claim_stripe_event("evt_first") is True
+    redis_mock.set.assert_awaited_once()
+    _, kwargs = redis_mock.set.call_args
+    assert kwargs.get("nx") is True
+
+
+@pytest.mark.asyncio
+async def test_claim_stripe_event_replay_returns_false(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Replay: ``SET nx=True`` returns ``None`` because the key already
+    exists, so the caller short-circuits handler dispatch."""
+    redis_mock = MagicMock()
+    redis_mock.set = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.v1.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis_mock,
+    )
+
+    assert await _claim_stripe_event("evt_replay") is False
+
+
+@pytest.mark.asyncio
+async def test_claim_stripe_event_empty_id_falls_open() -> None:
+    """Empty ``event_id`` falls open (True) so the malformed-payload branch
+    further down can decide what to do — Redis is never touched."""
+    assert await _claim_stripe_event("") is True
+
+
+@pytest.mark.asyncio
+async def test_claim_stripe_event_redis_error_falls_open(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Redis unavailable → fall open and let processing continue. Better to
+    risk a rare duplicate than to drop a real event during a Redis outage."""
+    mocker.patch(
+        "backend.api.features.v1.get_redis_async",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("redis cluster down"),
+    )
+
+    assert await _claim_stripe_event("evt_redis_down") is True
+
+
+@pytest.mark.asyncio
+async def test_release_stripe_event_deletes_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Successful release: DEL on the dedup key so the next delivery can
+    re-acquire the claim."""
+    redis_mock = MagicMock()
+    redis_mock.delete = AsyncMock()
+    mocker.patch(
+        "backend.api.features.v1.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis_mock,
+    )
+
+    await _release_stripe_event("evt_release")
+    redis_mock.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_release_stripe_event_empty_id_noop() -> None:
+    """Empty ``event_id`` is a no-op so a malformed event doesn't error
+    while we're trying to clean up after it."""
+    await _release_stripe_event("")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_release_stripe_event_swallows_redis_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Redis errors during release must not propagate — we're already on
+    the failure path and re-raising would mask the original error."""
+    mocker.patch(
+        "backend.api.features.v1.get_redis_async",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("redis cluster down"),
+    )
+
+    await _release_stripe_event("evt_release_fails")  # must not raise
 
 
 # ---------------------------------------------------------------------------
