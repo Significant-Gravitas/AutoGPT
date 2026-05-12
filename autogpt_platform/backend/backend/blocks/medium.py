@@ -46,8 +46,8 @@ class PublishToMediumBlock(Block):
     class Input(BlockSchemaInput):
         author_id: BlockSecret = SecretField(
             key="medium_author_id",
-            description="""The Medium AuthorID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me\n\nThe response will contain the authorId field.""",
-            placeholder="Enter the author's Medium AuthorID",
+            description="""The Medium author ID of the user. You can get this by calling the /me endpoint of the Medium API.\n\ncurl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me\n\nThe response will contain the authorId field.""",
+            placeholder="Enter the author's Medium author ID",
         )
         title: str = SchemaField(
             description="The title of your Medium post",
