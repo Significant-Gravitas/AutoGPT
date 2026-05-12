@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from backend.blocks._base import Block, BlockCost, BlockCostType
 from backend.data.block import BlockInput
+from backend.data.model import APIKeyCredentials
 
 if TYPE_CHECKING:
     from backend.data.model import NodeExecutionStats
@@ -431,7 +432,7 @@ def _token_usd_rates(
     )
 
 
-def _tokens_llm_cost(model: LlmModel, credentials) -> BlockCost:
+def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCost:
     """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
     public per-1M-token USD rates when the model has a TOKEN_COST entry.
     """
@@ -447,6 +448,50 @@ def _tokens_llm_cost(model: LlmModel, credentials) -> BlockCost:
             },
         },
         cost_amount=MODEL_COST[model],
+        input_usd_per_1m=input_usd,
+        output_usd_per_1m=output_usd,
+        cache_read_usd_per_1m=cache_read_usd,
+        cache_creation_usd_per_1m=cache_creation_usd,
+    )
+
+
+def _groq_llm_cost(model: LlmModel) -> BlockCost:
+    """Groq variant of `_tokens_llm_cost` — keeps the legacy id-only
+    cost_filter shape so older graphs that stored just the credential id
+    continue to match.
+    """
+    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
+    return BlockCost(
+        cost_type=BlockCostType.TOKENS,
+        cost_filter={
+            "model": model,
+            "credentials": {"id": groq_credentials.id},
+        },
+        cost_amount=MODEL_COST[model],
+        input_usd_per_1m=input_usd,
+        output_usd_per_1m=output_usd,
+        cache_read_usd_per_1m=cache_read_usd,
+        cache_creation_usd_per_1m=cache_creation_usd,
+    )
+
+
+def _open_router_llm_cost(model: LlmModel) -> BlockCost:
+    """OpenRouter variant — bills via COST_USD against x-total-cost, but
+    still exposes the same per-1M-token USD rates so the builder UI shows
+    the "$X in / $Y out per 1M tokens" pair instead of "Pay-as-you-go".
+    """
+    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
+    return BlockCost(
+        cost_type=BlockCostType.COST_USD,
+        cost_filter={
+            "model": model,
+            "credentials": {
+                "id": open_router_credentials.id,
+                "provider": open_router_credentials.provider,
+                "type": open_router_credentials.type,
+            },
+        },
+        cost_amount=150,
         input_usd_per_1m=input_usd,
         output_usd_per_1m=output_usd,
         cache_read_usd_per_1m=cache_read_usd,
@@ -471,18 +516,7 @@ LLM_COST = (
     # lookup keys on model, so omitting provider/type avoids breaking older
     # graphs that stored just the id).
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {"id": groq_credentials.id},
-            },
-            cost_amount=MODEL_COST[model],
-            input_usd_per_1m=_token_usd_rates(model)[0],
-            output_usd_per_1m=_token_usd_rates(model)[1],
-            cache_read_usd_per_1m=_token_usd_rates(model)[2],
-            cache_creation_usd_per_1m=_token_usd_rates(model)[3],
-        )
+        _groq_llm_cost(model)
         for model in MODEL_COST
         if MODEL_METADATA[model].provider == "groq"
     ]
@@ -494,23 +528,8 @@ LLM_COST = (
     # same "$X / $Y per 1M" pair as direct-billed providers — final
     # charge still settles against x-total-cost regardless.
     + [
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": open_router_credentials.id,
-                    "provider": open_router_credentials.provider,
-                    "type": open_router_credentials.type,
-                },
-            },
-            cost_amount=150,
-            input_usd_per_1m=_token_usd_rates(model)[0],
-            output_usd_per_1m=_token_usd_rates(model)[1],
-            cache_read_usd_per_1m=_token_usd_rates(model)[2],
-            cache_creation_usd_per_1m=_token_usd_rates(model)[3],
-        )
-        for model in MODEL_COST.keys()
+        _open_router_llm_cost(model)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "open_router"
     ]
     # Llama API Models

@@ -99,7 +99,7 @@ function getDisplay(
         kind: "fixed",
         amountText,
         suffix: "/run",
-        note: "Flat pre-flight estimate; the provider doesn't publish per-token rates for this model.",
+        note: "Pre-flight flat estimate — per-token rate not in our catalog yet.",
       };
     default:
       return { kind: "fixed", amountText, suffix: `/${blockCost.cost_type}` };

@@ -144,6 +144,32 @@ describe("NodeCost", () => {
     expect(tooltipHost?.getAttribute("title")).toMatch(/Cache write: \$6\.25/);
   });
 
+  it("omits cache rate lines from the tooltip when not provided", () => {
+    render(
+      <NodeCost
+        blockCosts={[
+          cost({
+            cost_type: BlockCostType.tokens,
+            cost_amount: 14,
+            input_usd_per_1m: 5,
+            output_usd_per_1m: 25,
+            cache_read_usd_per_1m: null,
+            cache_creation_usd_per_1m: null,
+          }),
+        ]}
+        nodeId="n1"
+      />,
+    );
+    const tooltipHost = screen
+      .getByText("$5.00 in / $25.00 out")
+      .closest("div");
+    const title = tooltipHost?.getAttribute("title") ?? "";
+    expect(title).not.toMatch(/Cached input/);
+    expect(title).not.toMatch(/Cache write/);
+    expect(title).toMatch(/Input: \$5\.00/);
+    expect(title).toMatch(/Output: \$25\.00/);
+  });
+
   it("renders explicit in/out USD pair for TOKENS with published rates", () => {
     render(
       <NodeCost
