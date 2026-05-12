@@ -1640,7 +1640,19 @@ async def test_handle_subscription_payment_success_skips_when_disabled():
     """Default-off: with the config disabled, an otherwise grant-eligible
     invoice is a no-op. Guards against an accidental re-enablement of the
     post-#12933 behaviour (Pro Monthly subscribers receiving matching
-    automation credits)."""
+    automation credits).
+
+    Asserts against the REAL default (no patching of the flag) so flipping
+    ``enable_subscription_credit_grant`` to True in settings.py fails this
+    test rather than silently passing.
+    """
+    from backend.util.settings import Settings
+
+    assert Settings().config.enable_subscription_credit_grant is False, (
+        "Default flipped — this regression test asserts the OFF default; "
+        "either revert the default or update the assertion intentionally."
+    )
+
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
     invoice = {
         "id": "in_flag_off",
@@ -1659,7 +1671,6 @@ async def test_handle_subscription_payment_success_skips_when_disabled():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
-        _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
 

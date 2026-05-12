@@ -147,6 +147,53 @@ def test_stripe_webhook_checkout_propagates_sync_failure(
     assert response.status_code >= 500
 
 
+def test_stripe_webhook_releases_dedup_claim_on_handler_failure(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A handler exception must release the dedup claim so Stripe's retry
+    can rerun the handler — otherwise the event is silently dropped.
+    """
+    event = _make_checkout_event("subscription", "sub_release")
+    event["id"] = "evt_handler_fails"
+    mocker.patch(
+        "stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.v1._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mock_release = mocker.patch(
+        "backend.api.features.v1._release_stripe_event",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.v1.sync_tier_from_checkout_session",
+        new_callable=AsyncMock,
+        side_effect=stripe.StripeError("downstream blew up"),
+    )
+
+    nonraising_client = fastapi.testclient.TestClient(
+        app, raise_server_exceptions=False
+    )
+    response = nonraising_client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+
+    assert response.status_code >= 500
+    mock_release.assert_awaited_once_with("evt_handler_fails")
+
+
 # ---------------------------------------------------------------------------
 # sync_tier_from_checkout_session unit tests
 # ---------------------------------------------------------------------------
