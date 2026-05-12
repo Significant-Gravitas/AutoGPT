@@ -151,6 +151,32 @@ describe("useSendMessage", () => {
       expect(mockToast).not.toHaveBeenCalled();
     });
 
+    it("cancels the watchdog on unmount so the toast can't fire on an unrelated page", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn().mockResolvedValue("new-session-id");
+
+      const { result, unmount } = renderHook(() =>
+        useTestHarness({
+          sessionId: null,
+          sendMessage,
+          createSession,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.onSend("hello");
+      });
+
+      // User navigates away before the watchdog fires.
+      unmount();
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(mockToast).not.toHaveBeenCalled();
+    });
+
     it("does not toast when a subsequent send overwrites the slot", async () => {
       const sendMessage = vi.fn();
       const createSession = vi.fn().mockResolvedValue("new-session-id");

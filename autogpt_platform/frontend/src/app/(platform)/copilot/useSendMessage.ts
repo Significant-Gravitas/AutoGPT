@@ -49,6 +49,16 @@ export function useSendMessage({
   // mutation dispatches and resets in `finally`, so a second call inside
   // the same tick short-circuits.
   const isCreatingSessionRef = useRef(false);
+  // Watchdog timer; cleared on unmount so the toast can't fire on a page
+  // the user has already navigated to.
+  const watchdogTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (watchdogTimerRef.current !== null) {
+        window.clearTimeout(watchdogTimerRef.current);
+      }
+    };
+  }, []);
 
   async function uploadFiles(
     files: File[],
@@ -198,7 +208,8 @@ export function useSendMessage({
       await createSession();
       // Identity check against the same slot — a later setPendingFirstSend
       // swaps the reference and no-ops this timer.
-      window.setTimeout(() => {
+      watchdogTimerRef.current = window.setTimeout(() => {
+        watchdogTimerRef.current = null;
         const store = useCopilotStreamStore.getState();
         if (store.pendingFirstSend !== slot) return;
         store.setPendingFirstSend(null);
