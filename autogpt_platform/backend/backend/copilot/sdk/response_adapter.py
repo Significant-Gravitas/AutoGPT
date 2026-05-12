@@ -59,6 +59,15 @@ logger = logging.getLogger(__name__)
 _THINKING_COALESCE_MIN_CHARS = 64
 _THINKING_COALESCE_MAX_INTERVAL_MS = 50.0
 
+# ResultMessage subtypes that carry their own user-facing reason (budget
+# exhaustion, max turns). The empty-completion guard skips these so the
+# more specific message — emitted by the subtype routing in the
+# ResultMessage branch — isn't shadowed by a generic "model returned an
+# empty response" overlay.
+_SPECIFIC_ERROR_SUBTYPES: frozenset[str] = frozenset(
+    {"error_max_budget_usd", "error_max_turns"}
+)
+
 
 class SDKResponseAdapter:
     """Adapter for converting Claude Agent SDK messages to Vercel AI SDK format.
@@ -572,13 +581,44 @@ class SDKResponseAdapter:
 
             if sdk_message.subtype == "success":
                 responses.append(StreamFinish())
-            elif sdk_message.subtype in ("error", "error_during_execution"):
+            elif sdk_message.subtype in (
+                "error",
+                "error_during_execution",
+            ):
                 raw_error = str(sdk_message.result or "Unknown error")
                 if is_transient_api_error(raw_error):
                     error_text, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
                 else:
                     error_text, code = raw_error, "sdk_error"
                 responses.append(StreamError(errorText=error_text, code=code))
+                responses.append(StreamFinish())
+            elif sdk_message.subtype == "error_max_budget_usd":
+                # SDK signalled the per-turn USD budget was exhausted.
+                # Surface a specific message instead of the generic empty-
+                # completion overlay (which would shadow the real reason).
+                responses.append(
+                    StreamError(
+                        errorText=(
+                            "The turn ended because it exceeded the budget. "
+                            "Try a smaller scope, or wait for the next "
+                            "billing window."
+                        ),
+                        code="max_budget_exhausted",
+                    )
+                )
+                responses.append(StreamFinish())
+            elif sdk_message.subtype == "error_max_turns":
+                # SDK signalled the maximum number of LLM calls was reached.
+                responses.append(
+                    StreamError(
+                        errorText=(
+                            "The turn ended because it reached the maximum "
+                            "number of LLM calls. Break the task into "
+                            "smaller steps."
+                        ),
+                        code="max_turns_exhausted",
+                    )
+                )
                 responses.append(StreamFinish())
             else:
                 logger.warning(
@@ -622,12 +662,17 @@ class SDKResponseAdapter:
           the time the ResultMessage lands, ``current_tool_calls`` looks
           fully resolved even though the actual tool_results were synthetic.
         """
+        # Specific error subtypes (budget exhaustion, max turns) carry their
+        # own user-facing reason — don't shadow them with the generic empty-
+        # completion overlay; the ResultMessage subtype branch handles them.
+        if msg.subtype in _SPECIFIC_ERROR_SUBTYPES:
+            return False
         # If real user-visible content has already reached the wire this turn
         # (or a prior attempt), an empty trailing ResultMessage is not a ghost
         # finish from the user's perspective — surfacing the overlay would
         # render on top of working output. Excludes the orphan-flush empty-
         # fallback case (``_any_real_tool_result_seen`` is False there) so the
-        # SECRT-2333 guard below still fires for truly silent tool failures.
+        # orphan guard below still fires for truly silent tool failures.
         if self.emitted_real_content_to_wire:
             return False
         if msg.subtype == "success" and self._is_empty_completion(msg):

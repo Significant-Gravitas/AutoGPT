@@ -2084,3 +2084,129 @@ def test_real_tool_result_flag_set_by_stashed_flush():
     assert adapter._any_orphan_flush_seen is True
     # Cleanup
     _pto.set({})  # type: ignore[arg-type]
+
+
+# -- Real-trace replay tests (LOCAL ONLY; fixtures are gitignored) --
+#
+# Drop a langfuse-captured fixture under ``_test_fixtures/`` (see
+# ``scripts/dump_langfuse_traces.py``) and these tests will run against
+# real production failure sequences. Skipped in CI since fixtures contain
+# user data and are intentionally not committed.
+
+
+def _fixture_present(name: str) -> bool:
+    from .trace_replay import FIXTURES_DIR
+
+    return (FIXTURES_DIR / f"{name}.json").exists()
+
+
+@pytest.mark.skipif(
+    not _fixture_present("trace_b0e8ca83"),
+    reason="local fixture only; pull from langfuse to enable",
+)
+def test_replay_b0e8ca83_no_empty_completion_overlay():
+    """Replay the langfuse-captured SDK message sequence from dev session
+    ``b0e8ca83`` (orphan-flush race). The fix must suppress the spurious
+    ``empty_completion`` overlay because real tool output reached the wire
+    earlier in the turn.
+    """
+    from .trace_replay import replay
+
+    adapter = _adapter()
+    results = replay("trace_b0e8ca83", adapter, result_subtype="success")
+    assert adapter._any_real_tool_result_seen is True
+    assert adapter.emitted_real_content_to_wire is True
+    empty_completion_errors = [
+        r
+        for r in results
+        if isinstance(r, StreamError) and r.code == "empty_completion"
+    ]
+    assert empty_completion_errors == []
+
+
+@pytest.mark.skipif(
+    not _fixture_present("trace_835da550"),
+    reason="local fixture only; pull from langfuse to enable",
+)
+def test_replay_835da550_surfaces_max_budget_message_not_empty_overlay():
+    """Replay dev session ``835da550`` (``error_max_budget_usd``). The
+    user-facing error must be the specific budget-exhausted message — not
+    the generic empty-completion overlay that previously shadowed it.
+    """
+    from .trace_replay import replay
+
+    adapter = _adapter()
+    results = replay(
+        "trace_835da550",
+        adapter,
+        result_subtype="error_max_budget_usd",
+    )
+    errors = [r for r in results if isinstance(r, StreamError)]
+    assert len(errors) >= 1
+    assert all(e.code != "empty_completion" for e in errors)
+    assert any(e.code == "max_budget_exhausted" for e in errors)
+
+
+# -- Synthetic Category C tests (committed, no user data) --
+
+
+def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
+    """When the SDK ends a turn with subtype=``error_max_budget_usd``, the
+    user-facing error must be the specific budget-exhausted message — even
+    if the orphan-flush guard would otherwise have fired the generic
+    empty-completion overlay.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Mimic 835da550 prefix: tool_use with no real result, empty trailing
+    # AssistantMessage, then a budget-exhausted ResultMessage.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-budget",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    msg = ResultMessage(
+        subtype="error_max_budget_usd",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=1,
+        session_id="s1",
+        result="budget exhausted",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    errors = [r for r in results if isinstance(r, StreamError)]
+    assert len(errors) == 1
+    assert errors[0].code == "max_budget_exhausted"
+    assert "budget" in errors[0].errorText.lower()
+    # Must NOT shadow with empty_completion overlay.
+    assert all(e.code != "empty_completion" for e in errors)
+
+
+def test_error_max_turns_surfaces_specific_error():
+    """``error_max_turns`` should similarly route to its own message."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="error_max_turns",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=999,
+        session_id="s1",
+        result="hit cap",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next((r for r in results if isinstance(r, StreamError)), None)
+    assert err is not None
+    assert err.code == "max_turns_exhausted"
