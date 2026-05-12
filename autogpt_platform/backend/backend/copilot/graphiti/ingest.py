@@ -14,6 +14,7 @@ from graphiti_core.nodes import EpisodeType
 
 from .client import derive_group_id, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,16 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
             try:
                 group_id = derive_group_id(user_id)
                 client = await get_graphiti_client(group_id)
-                await client.add_episode(**payload)
+                # Pass custom entity + edge types so MemoryEnvelope metadata
+                # (status, confidence, source_kind, scope, provenance) lives
+                # on :RELATES_TO edges and not only inside :Episodic.content.
+                # Single point of wire-in for every caller of this worker.
+                await client.add_episode(
+                    **payload,
+                    entity_types=ENTITY_TYPES,
+                    edge_types=EDGE_TYPES,
+                    edge_type_map=EDGE_TYPE_MAP,
+                )
             except Exception:
                 logger.warning(
                     "Graphiti ingestion failed for user %s",
