@@ -1,0 +1,244 @@
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { useRef } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCopilotStreamStore } from "../copilotStreamStore";
+import { useSendMessage } from "../useSendMessage";
+
+const mockToast = vi.fn();
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: (...args: unknown[]) => mockToast(...args),
+}));
+
+const mockSentryCaptureException = vi.fn();
+const mockSentryCaptureMessage = vi.fn();
+const mockSentryBreadcrumb = vi.fn();
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => mockSentryCaptureException(...args),
+  captureMessage: (...args: unknown[]) => mockSentryCaptureMessage(...args),
+  addBreadcrumb: (...args: unknown[]) => mockSentryBreadcrumb(...args),
+}));
+
+vi.mock("@/lib/direct-upload", () => ({
+  uploadFileDirect: vi.fn(),
+}));
+
+function resetStore() {
+  useCopilotStreamStore.setState({
+    sessions: {},
+    messageSnapshots: {},
+    pendingFirstSend: null,
+    pendingFileParts: [],
+  });
+}
+
+function useTestHarness(args: {
+  sessionId: string | null;
+  sendMessage: ReturnType<typeof vi.fn>;
+  createSession: ReturnType<typeof vi.fn>;
+}) {
+  const isUserStoppingRef = useRef(false);
+  return useSendMessage({
+    sessionId: args.sessionId,
+    sendMessage: args.sendMessage as never,
+    createSession: args.createSession as unknown as () => Promise<
+      string | undefined
+    >,
+    isUserStoppingRef,
+  });
+}
+
+describe("useSendMessage", () => {
+  beforeEach(() => {
+    resetStore();
+    mockToast.mockReset();
+    mockSentryCaptureException.mockReset();
+    mockSentryCaptureMessage.mockReset();
+    mockSentryBreadcrumb.mockReset();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  describe("first-send flush on sessionId change", () => {
+    it("dispatches the pending message and clears the slot when sessionId arrives", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn();
+
+      useCopilotStreamStore.getState().setPendingFirstSend({
+        text: "hello",
+        files: [],
+      });
+
+      const { rerender } = renderHook(
+        ({ sessionId }) =>
+          useTestHarness({ sessionId, sendMessage, createSession }),
+        { initialProps: { sessionId: null as string | null } },
+      );
+
+      expect(sendMessage).not.toHaveBeenCalled();
+
+      await act(async () => {
+        rerender({ sessionId: "new-session-id" });
+      });
+
+      expect(sendMessage).toHaveBeenCalledWith({ text: "hello" });
+      expect(useCopilotStreamStore.getState().pendingFirstSend).toBeNull();
+    });
+
+    it("captures dispatch errors to Sentry and toasts the user", async () => {
+      const sendMessage = vi.fn(() => {
+        throw new Error("transport not ready");
+      });
+      const createSession = vi.fn();
+
+      useCopilotStreamStore.getState().setPendingFirstSend({
+        text: "hello",
+        files: [],
+      });
+
+      const { rerender } = renderHook(
+        ({ sessionId }) =>
+          useTestHarness({ sessionId, sendMessage, createSession }),
+        { initialProps: { sessionId: null as string | null } },
+      );
+
+      await act(async () => {
+        rerender({ sessionId: "new-session-id" });
+        // Let the catch handler run.
+        await Promise.resolve();
+      });
+
+      expect(mockSentryCaptureException).toHaveBeenCalledTimes(1);
+      const [err, ctx] = mockSentryCaptureException.mock.calls[0];
+      expect((err as Error).message).toBe("transport not ready");
+      expect(ctx).toMatchObject({
+        tags: { copilot_flow: "pending-first-send-flush" },
+      });
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive" }),
+      );
+    });
+
+    it("does nothing when sessionId arrives without a pending send", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn();
+
+      const { rerender } = renderHook(
+        ({ sessionId }) =>
+          useTestHarness({ sessionId, sendMessage, createSession }),
+        { initialProps: { sessionId: null as string | null } },
+      );
+
+      await act(async () => {
+        rerender({ sessionId: "new-session-id" });
+      });
+
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(mockSentryCaptureException).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stalled-flush detection", () => {
+    it("captures a warning and toasts if the flush never runs within the timeout", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn().mockResolvedValue("new-session-id");
+
+      const { result } = renderHook(() =>
+        useTestHarness({
+          sessionId: null,
+          sendMessage,
+          createSession,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.onSend("hello");
+      });
+
+      expect(useCopilotStreamStore.getState().pendingFirstSend).not.toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(mockSentryCaptureMessage).toHaveBeenCalledTimes(1);
+      const [msg, ctx] = mockSentryCaptureMessage.mock.calls[0];
+      expect(msg).toMatch(/not flushed after session create/i);
+      expect(ctx).toMatchObject({
+        tags: { copilot_flow: "pending-first-send-stalled" },
+        level: "warning",
+      });
+      expect(useCopilotStreamStore.getState().pendingFirstSend).toBeNull();
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive" }),
+      );
+    });
+
+    it("does not fire the stalled warning when the flush effect consumes the slot", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn().mockResolvedValue("new-session-id");
+
+      const { result } = renderHook(() =>
+        useTestHarness({
+          sessionId: null,
+          sendMessage,
+          createSession,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.onSend("hello");
+      });
+
+      // Simulate the post-create remount picking up the pending send.
+      act(() => {
+        useCopilotStreamStore.getState().takePendingFirstSend();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(mockSentryCaptureMessage).not.toHaveBeenCalled();
+    });
+
+    it("does not fire the stalled warning when a subsequent send overwrites the slot", async () => {
+      const sendMessage = vi.fn();
+      const createSession = vi.fn().mockResolvedValue("new-session-id");
+
+      const { result } = renderHook(() =>
+        useTestHarness({
+          sessionId: null,
+          sendMessage,
+          createSession,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.onSend("first");
+      });
+
+      // Simulate another new chat starting: a fresh setPendingFirstSend
+      // swaps the slot identity, so the first timer should silently no-op.
+      act(() => {
+        useCopilotStreamStore.getState().setPendingFirstSend({
+          text: "second",
+          files: [],
+        });
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(mockSentryCaptureMessage).not.toHaveBeenCalled();
+      // The second slot is still there — its own timer hasn't elapsed.
+      expect(useCopilotStreamStore.getState().pendingFirstSend?.text).toBe(
+        "second",
+      );
+    });
+  });
+});

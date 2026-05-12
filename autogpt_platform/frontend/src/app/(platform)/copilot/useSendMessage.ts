@@ -1,12 +1,14 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import * as Sentry from "@sentry/nextjs";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const PENDING_FLUSH_TIMEOUT_MS = 5000;
 
 interface UploadedFile {
   file_id: string;
@@ -147,7 +149,30 @@ export function useSendMessage({
       .getState()
       .takePendingFirstSend();
     if (!send) return;
-    void dispatchRef.current(sessionId, send.text, send.files, parts);
+    Sentry.addBreadcrumb({
+      category: "copilot.first-send",
+      level: "info",
+      message: "flush pending first send on sessionId change",
+      data: {
+        sessionId,
+        textLength: send.text.length,
+        fileCount: send.files.length,
+        partCount: parts.length,
+      },
+    });
+    dispatchRef
+      .current(sessionId, send.text, send.files, parts)
+      .catch((err: unknown) => {
+        Sentry.captureException(err, {
+          tags: { copilot_flow: "pending-first-send-flush" },
+          extra: { sessionId, textLength: send.text.length },
+        });
+        toast({
+          title: "Couldn't send your message",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      });
   }, [sessionId]);
 
   async function onSend(message: string, files?: File[]) {
@@ -191,11 +216,36 @@ export function useSendMessage({
 
     if (isCreatingSessionRef.current) return;
     isCreatingSessionRef.current = true;
-    useCopilotStreamStore
-      .getState()
-      .setPendingFirstSend({ text: trimmed, files: files ?? [] });
+    const slot = { text: trimmed, files: files ?? [] };
+    useCopilotStreamStore.getState().setPendingFirstSend(slot);
+    Sentry.addBreadcrumb({
+      category: "copilot.first-send",
+      level: "info",
+      message: "stored pending first send; awaiting session create",
+      data: { textLength: trimmed.length, fileCount: files?.length ?? 0 },
+    });
     try {
       await createSession();
+      // Identity check against the same slot — a later setPendingFirstSend
+      // swaps the reference and no-ops this timer.
+      window.setTimeout(() => {
+        const store = useCopilotStreamStore.getState();
+        if (store.pendingFirstSend !== slot) return;
+        store.setPendingFirstSend(null);
+        Sentry.captureMessage(
+          "Pending first send not flushed after session create",
+          {
+            level: "warning",
+            tags: { copilot_flow: "pending-first-send-stalled" },
+            extra: { textLength: slot.text.length },
+          },
+        );
+        toast({
+          title: "Couldn't send your message",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      }, PENDING_FLUSH_TIMEOUT_MS);
     } catch (err) {
       const { setPendingFirstSend, setPendingFileParts } =
         useCopilotStreamStore.getState();
