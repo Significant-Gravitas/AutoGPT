@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
-from backend.blocks._base import Block, BlockCost, BlockCostType
+from backend.blocks._base import Block, BlockCost, BlockCostType, TokenRateDisplay
 from backend.data.block import BlockInput
 from backend.data.model import APIKeyCredentials
 
@@ -409,26 +409,24 @@ def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
 _USD_PER_1M_DIVISOR = 150
 
 
-def _token_usd_rates(
-    model: LlmModel,
-) -> tuple[float | None, float | None, float | None, float | None]:
-    """Return (input, output, cache_read, cache_creation) USD/1M for `model`,
-    or all None if the model has no TOKEN_COST entry. cache_* are None when
-    the provider doesn't bill cached tokens at a distinct rate (most non-
-    Anthropic) — i.e. the corresponding TOKEN_COST field is zero.
+def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
+    """Return the published per-1M-token USD `TokenRateDisplay` for `model`,
+    or None if the model has no TOKEN_COST entry. cache_* fields are set
+    only when the provider publishes a distinct cached-token rate (most
+    non-Anthropic providers store 0 in TOKEN_COST and surface None here).
     """
     rate = TOKEN_COST.get(model)
     if rate is None:
-        return None, None, None, None
-    cache_read = rate.cache_read / _USD_PER_1M_DIVISOR if rate.cache_read else None
-    cache_creation = (
-        rate.cache_creation / _USD_PER_1M_DIVISOR if rate.cache_creation else None
-    )
-    return (
-        rate.input / _USD_PER_1M_DIVISOR,
-        rate.output / _USD_PER_1M_DIVISOR,
-        cache_read,
-        cache_creation,
+        return None
+    return TokenRateDisplay(
+        input_usd_per_1m=rate.input / _USD_PER_1M_DIVISOR,
+        output_usd_per_1m=rate.output / _USD_PER_1M_DIVISOR,
+        cache_read_usd_per_1m=(
+            rate.cache_read / _USD_PER_1M_DIVISOR if rate.cache_read else None
+        ),
+        cache_creation_usd_per_1m=(
+            rate.cache_creation / _USD_PER_1M_DIVISOR if rate.cache_creation else None
+        ),
     )
 
 
@@ -436,7 +434,6 @@ def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCo
     """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
     public per-1M-token USD rates when the model has a TOKEN_COST entry.
     """
-    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
     return BlockCost(
         cost_type=BlockCostType.TOKENS,
         cost_filter={
@@ -448,10 +445,7 @@ def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCo
             },
         },
         cost_amount=MODEL_COST[model],
-        input_usd_per_1m=input_usd,
-        output_usd_per_1m=output_usd,
-        cache_read_usd_per_1m=cache_read_usd,
-        cache_creation_usd_per_1m=cache_creation_usd,
+        token_rate=_token_rate_display(model),
     )
 
 
@@ -460,7 +454,6 @@ def _groq_llm_cost(model: LlmModel) -> BlockCost:
     cost_filter shape so older graphs that stored just the credential id
     continue to match.
     """
-    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
     return BlockCost(
         cost_type=BlockCostType.TOKENS,
         cost_filter={
@@ -468,10 +461,7 @@ def _groq_llm_cost(model: LlmModel) -> BlockCost:
             "credentials": {"id": groq_credentials.id},
         },
         cost_amount=MODEL_COST[model],
-        input_usd_per_1m=input_usd,
-        output_usd_per_1m=output_usd,
-        cache_read_usd_per_1m=cache_read_usd,
-        cache_creation_usd_per_1m=cache_creation_usd,
+        token_rate=_token_rate_display(model),
     )
 
 
@@ -480,7 +470,6 @@ def _open_router_llm_cost(model: LlmModel) -> BlockCost:
     still exposes the same per-1M-token USD rates so the builder UI shows
     the "$X in / $Y out per 1M tokens" pair instead of "Pay-as-you-go".
     """
-    input_usd, output_usd, cache_read_usd, cache_creation_usd = _token_usd_rates(model)
     return BlockCost(
         cost_type=BlockCostType.COST_USD,
         cost_filter={
@@ -492,10 +481,7 @@ def _open_router_llm_cost(model: LlmModel) -> BlockCost:
             },
         },
         cost_amount=150,
-        input_usd_per_1m=input_usd,
-        output_usd_per_1m=output_usd,
-        cache_read_usd_per_1m=cache_read_usd,
-        cache_creation_usd_per_1m=cache_creation_usd,
+        token_rate=_token_rate_display(model),
     )
 
 

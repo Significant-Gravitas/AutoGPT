@@ -10274,12 +10274,22 @@
             "title": "Cost Divisor",
             "default": 1
           },
-          "input_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Input Usd Per 1M"
-          },
+          "token_rate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenRateDisplay" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["cost_amount", "cost_filter", "cost_type"],
+        "title": "BlockCost"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": { "type": "number", "title": "Input Usd Per 1M" },
           "output_usd_per_1m": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "type": "number",
             "title": "Output Usd Per 1M"
           },
           "cache_read_usd_per_1m": {
@@ -10292,8 +10302,8 @@
           }
         },
         "type": "object",
-        "required": ["cost_amount", "cost_filter", "cost_type"],
-        "title": "BlockCost"
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay"
       },
       "BlockCostEstimateRow": {
         "properties": {

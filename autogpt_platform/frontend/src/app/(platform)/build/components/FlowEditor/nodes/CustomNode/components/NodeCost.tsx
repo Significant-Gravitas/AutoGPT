@@ -50,16 +50,13 @@ function getDisplay(
   // OpenRouter (COST_USD)-billed models show the same "$X / $Y per 1M"
   // format as direct-billed providers when we have a published rate.
   // The internal billing path (TOKENS vs COST_USD) is not user-facing.
-  if (
-    blockCost.input_usd_per_1m != null &&
-    blockCost.output_usd_per_1m != null
-  ) {
+  if (blockCost.token_rate) {
     return {
       kind: "token-rate",
-      input: blockCost.input_usd_per_1m,
-      output: blockCost.output_usd_per_1m,
-      cacheRead: blockCost.cache_read_usd_per_1m ?? null,
-      cacheCreation: blockCost.cache_creation_usd_per_1m ?? null,
+      input: blockCost.token_rate.input_usd_per_1m,
+      output: blockCost.token_rate.output_usd_per_1m,
+      cacheRead: blockCost.token_rate.cache_read_usd_per_1m ?? null,
+      cacheCreation: blockCost.token_rate.cache_creation_usd_per_1m ?? null,
     };
   }
 

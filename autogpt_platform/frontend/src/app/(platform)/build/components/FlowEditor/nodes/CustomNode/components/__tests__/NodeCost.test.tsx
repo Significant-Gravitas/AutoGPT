@@ -112,8 +112,10 @@ describe("NodeCost", () => {
           cost({
             cost_type: BlockCostType.cost_usd,
             cost_amount: 150,
-            input_usd_per_1m: 0.3,
-            output_usd_per_1m: 1.2,
+            token_rate: {
+              input_usd_per_1m: 0.3,
+              output_usd_per_1m: 1.2,
+            },
           }),
         ]}
         nodeId="n1"
@@ -130,10 +132,12 @@ describe("NodeCost", () => {
           cost({
             cost_type: BlockCostType.tokens,
             cost_amount: 14,
-            input_usd_per_1m: 5,
-            output_usd_per_1m: 25,
-            cache_read_usd_per_1m: 0.5,
-            cache_creation_usd_per_1m: 6.25,
+            token_rate: {
+              input_usd_per_1m: 5,
+              output_usd_per_1m: 25,
+              cache_read_usd_per_1m: 0.5,
+              cache_creation_usd_per_1m: 6.25,
+            },
           }),
         ]}
         nodeId="n1"
@@ -153,10 +157,12 @@ describe("NodeCost", () => {
           cost({
             cost_type: BlockCostType.tokens,
             cost_amount: 14,
-            input_usd_per_1m: 5,
-            output_usd_per_1m: 25,
-            cache_read_usd_per_1m: null,
-            cache_creation_usd_per_1m: null,
+            token_rate: {
+              input_usd_per_1m: 5,
+              output_usd_per_1m: 25,
+              cache_read_usd_per_1m: null,
+              cache_creation_usd_per_1m: null,
+            },
           }),
         ]}
         nodeId="n1"
@@ -179,8 +185,10 @@ describe("NodeCost", () => {
           cost({
             cost_type: BlockCostType.tokens,
             cost_amount: 14,
-            input_usd_per_1m: 5,
-            output_usd_per_1m: 25,
+            token_rate: {
+              input_usd_per_1m: 5,
+              output_usd_per_1m: 25,
+            },
           }),
         ]}
         nodeId="n1"
