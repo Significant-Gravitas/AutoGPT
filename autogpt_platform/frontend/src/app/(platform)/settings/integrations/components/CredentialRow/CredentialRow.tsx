@@ -8,6 +8,13 @@ import {
 } from "@phosphor-icons/react";
 
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+
+import {
   formatMaskedValue,
   typeBadgeLabel,
   type CredentialView,
@@ -75,12 +82,21 @@ export function CredentialRow({
       </div>
 
       {credential.isManaged ? (
-        <span
-          title="Managed by AutoGPT — cannot be removed"
-          className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057]"
-        >
-          Managed
-        </span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={0}
+                className="text-[11px] font-medium uppercase tracking-[1.1px] text-[#505057] focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+              >
+                Managed
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Managed by AutoGPT — cannot be removed
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : (
         <button
           type="button"
