@@ -141,11 +141,16 @@ services:
       - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
       - "3001:3000" # FalkorDB web UI
     <<: *backend-env-files
+    # `:?` fails the container with a clear error if the var is unset,
+    # rather than silently producing `--requirepass ""` (which would
+    # confuse every client with "wrong password" instead of "missing
+    # config"). The variable is set by backend/.env.default; nothing
+    # in this repo should ever start falkordb without it.
     entrypoint:
       - /bin/sh
       - -c
       - >-
-        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:-}"
+        export REDIS_ARGS="--requirepass $${GRAPHITI_FALKORDB_PASSWORD:?GRAPHITI_FALKORDB_PASSWORD must be set}"
         && exec /var/lib/falkordb/bin/run.sh "$$@"
       - --
     volumes:
