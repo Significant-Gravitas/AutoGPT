@@ -194,6 +194,54 @@ def test_stripe_webhook_releases_dedup_claim_on_handler_failure(
     mock_release.assert_awaited_once_with("evt_handler_fails")
 
 
+def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A ``stripe.StripeError`` raised by ``Invoice.retrieve`` while hydrating
+    an ``invoice_payment.paid`` event must propagate out so the outer handler
+    releases the dedup claim. Swallowing it with a 200 would silently drop
+    the event AND leave the dedup key blocking the next delivery for 24h.
+    """
+    event = {
+        "id": "evt_retrieve_fails",
+        "type": "invoice_payment.paid",
+        "data": {"object": {"id": "ip_test", "invoice": "in_retrieve_fail"}},
+    }
+    mocker.patch(
+        "stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.v1._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mock_release = mocker.patch(
+        "backend.api.features.v1._release_stripe_event",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.v1.stripe.Invoice.retrieve",
+        side_effect=stripe.StripeError("stripe down"),
+    )
+
+    nonraising_client = fastapi.testclient.TestClient(
+        app, raise_server_exceptions=False
+    )
+    response = nonraising_client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+
+    assert response.status_code >= 500
+    mock_release.assert_awaited_once_with("evt_retrieve_fails")
+
+
 # ---------------------------------------------------------------------------
 # sync_tier_from_checkout_session unit tests
 # ---------------------------------------------------------------------------

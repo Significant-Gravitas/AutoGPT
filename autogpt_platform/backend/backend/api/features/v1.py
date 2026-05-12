@@ -1428,21 +1428,14 @@ async def stripe_webhook(request: Request):
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
         # so we hydrate the underlying Invoice before delegating to the
-        # existing handlers.
+        # existing handlers. A transient ``stripe.StripeError`` here propagates
+        # to the outer handler so the dedup claim is released and Stripe sees
+        # a 5xx + retries — swallowing it with a 200 would silently drop the
+        # event and leave the dedup key blocking the next delivery.
         if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
             invoice_id = data_object.get("invoice")
             if invoice_id:
-                try:
-                    invoice = await run_in_threadpool(
-                        stripe.Invoice.retrieve, invoice_id
-                    )
-                except stripe.StripeError:
-                    logger.exception(
-                        "stripe_webhook: %s could not retrieve invoice %s; skipping",
-                        event_type,
-                        invoice_id,
-                    )
-                    return Response(status_code=200)
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
