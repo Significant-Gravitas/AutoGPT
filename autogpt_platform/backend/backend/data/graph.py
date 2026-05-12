@@ -27,7 +27,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -1831,6 +1831,14 @@ async def fix_llm_provider_credentials():
 async def migrate_llm_models(migrate_to: LlmModel):
     """
     Update all LLM models in all AI blocks that don't exist in the enum.
+
+    Runs in two passes per LlmModel field:
+      1. Family-aware: for each (legacy_value, replacement) in
+         LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
+         replacement so e.g. Claude Opus lands on a newer Opus, not the global
+         GPT default.
+      2. Catch-all: any value still out-of-enum gets ``migrate_to``.
+
     Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
@@ -1853,18 +1861,37 @@ async def migrate_llm_models(migrate_to: LlmModel):
     enum_values = [v.value for v in LlmModel]
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
-    # Update each block
-    for id, path in llm_model_fields.items():
-        query = f"""
-            UPDATE {{schema_prefix}}"AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-            WHERE "agentBlockId" = $3
-            AND "constantInput" ? ($4)::text
-            AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-            """
+    targeted_query = """
+        UPDATE {schema_prefix}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text = $5
+        """
 
+    fallback_query = f"""
+        UPDATE {{schema_prefix}}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
+        """
+
+    for id, path in llm_model_fields.items():
+        # Pass 1 — family-aware rewrites.
+        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+            await execute_raw_with_schema(
+                targeted_query,
+                [path],
+                replacement.value,
+                id,
+                path,
+                legacy_value,
+            )
+
+        # Pass 2 — catch anything still out-of-enum.
         await execute_raw_with_schema(
-            query,
+            fallback_query,
             [path],
             migrate_to.value,
             id,
