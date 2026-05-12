@@ -323,9 +323,10 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByText("Show advanced fields")).toBeNull();
   });
 
-  it("does not render Proceed when only inputs exist (no credentials)", () => {
-    // In preview mode the inputs aren't user-fillable, so there's nothing
-    // to Proceed with unless credentials need configuring.
+  it("renders enabled Proceed with inputs only (preserves legacy run_agent behavior)", () => {
+    // Proceed is rendered when needsCredentials || needsInputs — preserves
+    // legacy run_agent behaviour where Proceed is shown alongside the input
+    // preview and gated only by credentials.
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -337,9 +338,6 @@ describe("SetupRequirementsCard (preview mode)", () => {
       />,
     );
     const proceed = screen.queryByText("Proceed");
-    // Proceed is rendered when needsCredentials || needsInputs — preserves
-    // legacy run_agent behaviour where Proceed is shown alongside the input
-    // preview and gated only by credentials.
     expect(proceed).not.toBeNull();
     expect(proceed!.closest("button")?.disabled).toBe(false);
   });

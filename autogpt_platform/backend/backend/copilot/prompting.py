@@ -236,7 +236,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, two rules apply:
+not have them yet, three rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`

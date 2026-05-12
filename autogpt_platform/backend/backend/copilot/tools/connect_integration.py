@@ -6,7 +6,7 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from backend.copilot.model import ChatSession
 from backend.copilot.providers import SUPPORTED_PROVIDERS, get_provider_auth_types
@@ -19,7 +19,8 @@ from backend.copilot.tools.models import (
     UserReadiness,
 )
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.data.model import CredentialsFieldInfo
+from backend.data.model import CredentialsFieldInfo, CredentialsType
+from backend.integrations.providers import ProviderName
 
 from .base import BaseTool
 
@@ -147,13 +148,17 @@ class ConnectIntegrationTool(BaseTool):
         # Route the single-provider entry through the shared serializer
         # used by run_block / run_agent so the payload shape (sorted scopes,
         # type+types fields, optional discriminator) stays in lockstep across
-        # all three credential-surfacing tools.
-        field_info = CredentialsFieldInfo(
-            credentials_provider=frozenset([provider]),
-            credentials_types=frozenset(supported_types),
-            credentials_scopes=(
-                frozenset(merged_scopes) if merged_scopes else None
-            ),
+        # all three credential-surfacing tools. The casts narrow the runtime
+        # strings — already validated upstream — to the typed enum/literal
+        # the generic constructor expects.
+        provider_enum = ProviderName(provider)
+        typed_types: frozenset[CredentialsType] = cast(
+            frozenset[CredentialsType], frozenset(supported_types)
+        )
+        field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset([provider_enum]),
+            credentials_types=typed_types,
+            credentials_scopes=(frozenset(merged_scopes) if merged_scopes else None),
         )
         missing_credentials: dict[str, Any] = build_missing_credentials_from_field_info(
             credential_fields={field_key: field_info},
