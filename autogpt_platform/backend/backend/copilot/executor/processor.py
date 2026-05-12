@@ -282,16 +282,20 @@ class CoPilotProcessor:
 
                 cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
             if cli_path:
-                if not os.access(cli_path, os.X_OK):
-                    logger.warning(
-                        "[CoPilotExecutor] CLI pre-warm skipped: not executable: %s",
-                        cli_path,
-                    )
-                else:
+                try:
                     with open(cli_path, "rb") as _f:
                         while _f.read(65536):  # Stream full binary to warm OS page caches
                             pass
-                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                    logger.info(
+                        "[CoPilotExecutor] CLI pre-warm done: %s",
+                        os.path.basename(cli_path),
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "[CoPilotExecutor] CLI pre-warm skipped: %s: %s",
+                        os.path.basename(cli_path),
+                        exc,
+                    )
         except Exception as e:
             logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
