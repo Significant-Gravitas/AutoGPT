@@ -639,7 +639,7 @@ class SDKResponseAdapter:
         """True when the turn ended with no user-visible content the wire
         can render.
 
-        Two failure modes:
+        Three failure modes:
 
         * **Ghost-finished success** (SECRT-2252): a ``subtype="success"``
           ResultMessage whose ``result`` is empty, ``output_tokens == 0``,
@@ -661,6 +661,15 @@ class SDKResponseAdapter:
           (with non-tool content) triggered an earlier orphan flush — so by
           the time the ResultMessage lands, ``current_tool_calls`` looks
           fully resolved even though the actual tool_results were synthetic.
+        * **Thinking-only success with no tools**: model emitted only
+          ``ThinkingBlock`` content and ended the turn with
+          ``subtype="success"`` and no ``TextBlock`` / ``ToolUseBlock``.
+          ``_is_empty_completion`` excludes this (reasoning started), and
+          the post-tool-result re-prompt at line 470 requires
+          ``_any_tool_results_seen``.  Without surfacing it the FE renders
+          an inline reasoning panel that's visually identical to a
+          still-streaming turn (Toran's prod symptom in the
+          "While testing the new payment, billing" thread, 2026-05-06).
         """
         # Specific error subtypes (budget exhaustion, max turns) carry their
         # own user-facing reason — don't shadow them with the generic empty-
@@ -681,6 +690,14 @@ class SDKResponseAdapter:
             had_orphan_tool_use_at_result or self._any_orphan_flush_seen
         )
         if had_orphan_tool_use and self._last_assistant_had_empty_content:
+            return True
+        if (
+            msg.subtype == "success"
+            and self.has_started_reasoning
+            and not self.has_started_text
+            and not self._any_tool_results_seen
+            and not self.current_tool_calls
+        ):
             return True
         return False
 
