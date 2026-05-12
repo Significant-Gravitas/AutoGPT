@@ -85,11 +85,6 @@ describe("SharedChatPage", () => {
     expect(await screen.findByText(/public read-only view/i)).toBeDefined();
     expect(await screen.findByText("How do I deploy?")).toBeDefined();
     expect(await screen.findByText("Use docker compose.")).toBeDefined();
-    // Role labels render correctly (CSS uppercase keeps the text as
-    // mixed-case; testing-library queries the DOM text, not the
-    // rendered glyphs).
-    expect(await screen.findByText("You")).toBeDefined();
-    expect(await screen.findByText("AutoGPT")).toBeDefined();
   });
 
   test("surfaces the has_more notice when the chat is truncated", async () => {

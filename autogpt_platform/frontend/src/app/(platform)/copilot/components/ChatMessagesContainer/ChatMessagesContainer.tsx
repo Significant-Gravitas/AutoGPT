@@ -65,6 +65,12 @@ interface Props {
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
   bottomContentPadding?: number;
+  /** Public-viewer mode: render messages exactly as the owner sees them,
+   *  but hide every interactive affordance that depends on auth — feedback
+   *  buttons, TTS, queue/streaming indicators, load-more, retry, pending-
+   *  review banners, queued-message strip.  Anonymous viewers of a shared
+   *  chat get the rich renderer without any controls that would 401. */
+  readOnly?: boolean;
 }
 
 function renderSegments(
@@ -280,6 +286,7 @@ export function ChatMessagesContainer({
   turnStats,
   queuedMessages,
   bottomContentPadding,
+  readOnly = false,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -449,7 +456,7 @@ export function ChatMessagesContainer({
             : undefined
         }
       >
-        {hasMoreMessages && onLoadMore && (
+        {!readOnly && hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
             isLoading={!!isLoadingMore}
@@ -567,7 +574,8 @@ export function ChatMessagesContainer({
                 )}
                 {isLastAssistant && showIndicator && indicator}
               </MessageContent>
-              {message.role === "user" &&
+              {!readOnly &&
+                message.role === "user" &&
                 sessionChatStatus === "queued" &&
                 (() => {
                   const stats = turnStats?.get(message.id);
@@ -608,7 +616,7 @@ export function ChatMessagesContainer({
                   isUser={message.role === "user"}
                 />
               )}
-              {showActions && (
+              {!readOnly && showActions && (
                 <AssistantMessageActions
                   message={message}
                   sessionID={sessionID ?? null}
@@ -617,14 +625,14 @@ export function ChatMessagesContainer({
             </Message>
           );
         })}
-        {showIndicator && lastMessage?.role !== "assistant" && (
+        {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>
           </Message>
         )}
-        {isRestoringActiveSession && (
+        {!readOnly && isRestoringActiveSession && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
               {showRestoreFallback ? (
@@ -649,19 +657,22 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         )}
-        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
-        {queuedMessages?.map((msg, idx) => (
-          <Message key={idx} from="user">
-            <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
-              <span>{msg}</span>
-              <span className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="size-3" weight="bold" />
-                Queued
-              </span>
-            </MessageContent>
-          </Message>
-        ))}
-        {error && !lastAssistantHasErrorMarker && (
+        {!readOnly && graphExecId && (
+          <CopilotPendingReviews graphExecId={graphExecId} />
+        )}
+        {!readOnly &&
+          queuedMessages?.map((msg, idx) => (
+            <Message key={idx} from="user">
+              <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+                <span>{msg}</span>
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Clock className="size-3" weight="bold" />
+                  Queued
+                </span>
+              </MessageContent>
+            </Message>
+          ))}
+        {!readOnly && error && !lastAssistantHasErrorMarker && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your

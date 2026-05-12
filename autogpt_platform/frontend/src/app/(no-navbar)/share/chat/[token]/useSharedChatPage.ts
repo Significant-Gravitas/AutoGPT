@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import {
   useGetV2GetSharedChat,
   useGetV2GetSharedChatMessages,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 
 const PAGE_SIZE = 200;
 
@@ -39,9 +41,33 @@ export function useSharedChatPage(token: string) {
   const rawError = sessionQuery.error || messagesQuery.error;
   const error = rawError instanceof Error ? rawError.message : undefined;
 
+  // Convert the sanitized SharedChatMessage[] into the UIMessage[] shape
+  // that the owner-side ChatMessagesContainer expects.  ``isComplete``
+  // is hard-coded true because public shares are by definition a
+  // finished snapshot — there's no live stream, so any tool-call without
+  // a paired tool-row should render as completed (no spinner).
+  const ui = useMemo(() => {
+    if (!sessionQuery.data || !messagesQuery.data) {
+      return {
+        uiMessages: [],
+        turnStats: undefined as
+          | ReturnType<typeof convertChatSessionMessagesToUiMessages>["stats"]
+          | undefined,
+      };
+    }
+    const converted = convertChatSessionMessagesToUiMessages(
+      sessionQuery.data.id,
+      messagesQuery.data.messages,
+      { isComplete: true },
+    );
+    return { uiMessages: converted.messages, turnStats: converted.stats };
+  }, [sessionQuery.data, messagesQuery.data]);
+
   return {
     session: sessionQuery.data,
-    messages: messagesQuery.data?.messages ?? [],
+    rawMessages: messagesQuery.data?.messages ?? [],
+    uiMessages: ui.uiMessages,
+    turnStats: ui.turnStats,
     hasMore: messagesQuery.data?.has_more ?? false,
     isLoading,
     isError,
