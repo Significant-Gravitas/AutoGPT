@@ -14,11 +14,12 @@ from ...bot_backend import LinkTokenResult
 from .commands import _handle_help, _handle_setup, _handle_unlink
 
 
-def _interaction(*, guild: bool = True) -> MagicMock:
+def _interaction(*, guild: bool = True, manage_guild: bool = True) -> MagicMock:
     interaction = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
+    interaction.permissions = MagicMock(manage_guild=manage_guild)
     if guild:
         # MagicMock treats `name` as a constructor kwarg for the mock's repr,
         # not as an attribute — so set it after construction.
@@ -53,6 +54,18 @@ class TestHandleSetup:
         await _handle_setup(interaction, api)
 
         interaction.response.send_message.assert_awaited_once()
+        api.create_link_token.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_admin_guild_invocation_is_rejected(self):
+        interaction = _interaction(manage_guild=False)
+        api = _api_with_token()
+        await _handle_setup(interaction, api)
+
+        interaction.response.send_message.assert_awaited_once()
+        assert interaction.response.send_message.await_args.kwargs["ephemeral"] is True
+        assert "Manage Server" in interaction.response.send_message.await_args.args[0]
+        interaction.response.defer.assert_not_awaited()
         api.create_link_token.assert_not_awaited()
 
     @pytest.mark.asyncio

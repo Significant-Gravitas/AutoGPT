@@ -10,11 +10,15 @@ import logging
 import time
 import uuid
 from threading import Thread
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import redis
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from .cluster_lock import ClusterLock
+from .cluster_lock import AsyncClusterLock, ClusterLock
 
 logger = logging.getLogger(__name__)
 
@@ -534,6 +538,150 @@ class TestClusterLockRealWorldScenarios:
 
         new_lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
         assert new_lock.try_acquire() == owner_id
+
+
+class TestClusterLockTransientErrorHandling:
+    """Transient redis-cluster errors must degrade gracefully — try_acquire
+    returns None, refresh returns False — and must be logged at WARNING, not
+    ERROR (so Sentry isn't flooded during a shard rotation)."""
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RedisConnectionError("connection lost"),
+            RedisTimeoutError("read timeout"),
+            ClusterDownError("CLUSTERDOWN The cluster is down"),
+            # redis-py's reconnect path dereferences `.host` on plain
+            # ConnectionError, surfacing as AttributeError — must also be
+            # treated as transient.
+            AttributeError("'ConnectionError' object has no attribute 'host'"),
+        ],
+    )
+    def test_try_acquire_returns_none_on_transient_error(self, exc, caplog):
+        fake_redis = MagicMock()
+        fake_redis.set.side_effect = exc
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = ClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+
+        with caplog.at_level(logging.WARNING):
+            assert lock.try_acquire() is None
+
+        assert lock._last_refresh == 0
+        # Must be WARNING, not ERROR — that's the whole point of this branch.
+        records = [r for r in caplog.records if "try_acquire" in r.getMessage()]
+        assert records, "expected a try_acquire log record"
+        assert all(r.levelno == logging.WARNING for r in records)
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RedisConnectionError("connection lost"),
+            RedisTimeoutError("read timeout"),
+            ClusterDownError("CLUSTERDOWN The cluster is down"),
+            AttributeError("'ConnectionError' object has no attribute 'host'"),
+        ],
+    )
+    def test_refresh_returns_false_on_transient_error(self, exc, caplog):
+        fake_redis = MagicMock()
+        fake_redis.get.side_effect = exc
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = ClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+        # Pretend we own the lock so refresh runs the get() path.
+        lock._last_refresh = time.time() - 1000
+
+        with caplog.at_level(logging.WARNING):
+            assert lock.refresh() is False
+
+        assert lock._last_refresh == 0
+        records = [r for r in caplog.records if "refresh" in r.getMessage()]
+        assert records, "expected a refresh log record"
+        assert all(r.levelno == logging.WARNING for r in records)
+
+    def test_try_acquire_unknown_error_logged_at_error(self, caplog):
+        """A non-transient exception must still log at ERROR so we notice."""
+        fake_redis = MagicMock()
+        fake_redis.set.side_effect = RuntimeError("totally unexpected")
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = ClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+
+        with caplog.at_level(logging.WARNING):
+            assert lock.try_acquire() is None
+
+        records = [r for r in caplog.records if "try_acquire" in r.getMessage()]
+        assert records, "expected a try_acquire log record"
+        assert any(r.levelno == logging.ERROR for r in records)
+
+    def test_try_acquire_unrelated_attribute_error_logs_at_error(self, caplog):
+        """A bare ``AttributeError`` whose message doesn't match the redis-py
+        reconnect signature must surface at ERROR — a typo on a ClusterLock
+        attribute would otherwise be silently swallowed as a 'transient' error."""
+        fake_redis = MagicMock()
+        fake_redis.set.side_effect = AttributeError(
+            "'ClusterLock' object has no attribute 'tymeout'"
+        )
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = ClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+
+        with caplog.at_level(logging.WARNING):
+            assert lock.try_acquire() is None
+
+        records = [r for r in caplog.records if "try_acquire" in r.getMessage()]
+        assert records, "expected a try_acquire log record"
+        assert any(r.levelno == logging.ERROR for r in records)
+        assert not any(r.levelno == logging.WARNING for r in records)
+
+
+class TestAsyncClusterLockTransientErrorHandling:
+    """Async sibling of ``TestClusterLockTransientErrorHandling``."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RedisConnectionError("connection lost"),
+            RedisTimeoutError("read timeout"),
+            ClusterDownError("CLUSTERDOWN The cluster is down"),
+            AttributeError("'ConnectionError' object has no attribute 'host'"),
+        ],
+    )
+    async def test_try_acquire_returns_none_on_transient_error(self, exc, caplog):
+        fake_redis = MagicMock()
+        fake_redis.set = AsyncMock(side_effect=exc)
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = AsyncClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+
+        with caplog.at_level(logging.WARNING):
+            assert await lock.try_acquire() is None
+
+        assert lock._last_refresh == 0
+        records = [r for r in caplog.records if "try_acquire" in r.getMessage()]
+        assert records, "expected a try_acquire log record"
+        assert all(r.levelno == logging.WARNING for r in records)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RedisConnectionError("connection lost"),
+            RedisTimeoutError("read timeout"),
+            ClusterDownError("CLUSTERDOWN The cluster is down"),
+            AttributeError("'ConnectionError' object has no attribute 'host'"),
+        ],
+    )
+    async def test_refresh_returns_false_on_transient_error(self, exc, caplog):
+        fake_redis = MagicMock()
+        fake_redis.get = AsyncMock(side_effect=exc)
+        lock_key = f"test_lock:{uuid.uuid4()}"
+        lock = AsyncClusterLock(fake_redis, lock_key, str(uuid.uuid4()), timeout=60)
+        lock._last_refresh = time.time() - 1000
+
+        with caplog.at_level(logging.WARNING):
+            assert await lock.refresh() is False
+
+        assert lock._last_refresh == 0
+        records = [r for r in caplog.records if "refresh" in r.getMessage()]
+        assert records, "expected a refresh log record"
+        assert all(r.levelno == logging.WARNING for r in records)
 
 
 if __name__ == "__main__":
