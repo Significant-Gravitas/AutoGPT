@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -30,12 +30,11 @@ export function PlanCard({
   loading = false,
   disabled = false,
 }: Props) {
-  const { primaryPrice, monthlyOriginal, chargedToday, discountPercent } =
-    computePlanPricing({
-      plan,
-      country,
-      isYearly,
-    });
+  const { primaryPrice, chargedToday } = computePlanPricing({
+    plan,
+    country,
+    isYearly,
+  });
   const hl = plan.highlighted;
   const isTeam = plan.key === PLAN_KEYS.TEAM;
   const reduceMotion = useReducedMotion();
@@ -164,51 +163,6 @@ export function PlanCard({
               </span>
             )}
           </div>
-
-          <AnimatePresence initial={false}>
-            {monthlyOriginal !== null &&
-              discountPercent !== null &&
-              discountPercent > 0 && (
-                <motion.div
-                  key="savings"
-                  initial={
-                    reduceMotion
-                      ? false
-                      : { height: 0, opacity: 0, filter: "blur(2px)" }
-                  }
-                  animate={
-                    reduceMotion
-                      ? undefined
-                      : { height: "auto", opacity: 1, filter: "blur(0px)" }
-                  }
-                  exit={
-                    reduceMotion
-                      ? undefined
-                      : { height: 0, opacity: 0, filter: "blur(2px)" }
-                  }
-                  transition={
-                    reduceMotion
-                      ? undefined
-                      : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
-                  }
-                  className="overflow-hidden"
-                >
-                  <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pt-0.5">
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                      Save {discountPercent}%
-                    </span>
-                    <AnimatedAmount
-                      value={formatPrice(
-                        monthlyOriginal,
-                        country.currencyCode,
-                        country.symbol,
-                      )}
-                      className="text-xs text-zinc-500 line-through"
-                    />
-                  </div>
-                </motion.div>
-              )}
-          </AnimatePresence>
 
           {chargedToday !== null && (
             <AnimatedAmount
