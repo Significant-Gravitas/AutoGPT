@@ -31,7 +31,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
       collapsible
       className="my-1"
       value={value}
-      onValueChange={setValue}
+      onValueChange={(newValue) => setValue(newValue === value ? "" : newValue)}
     >
       <AccordionItem value="reasoning" className="border-none">
         <AccordionPrimitive.Header className="flex">
