@@ -402,7 +402,7 @@ describe("SettingsCreatorDashboardPage", () => {
     });
   });
 
-  test("approved row dropdown shows a 'View submission' action that calls onView", async () => {
+  test("approved row dropdown shows 'View submission' and 'Remove from marketplace' actions", async () => {
     server.use(
       getGetV2ListMySubmissionsMockHandler(
         makeResponse([
@@ -427,8 +427,54 @@ describe("SettingsCreatorDashboardPage", () => {
     const viewItem = await screen.findByRole("menuitem", {
       name: /view submission/i,
     });
-    expect(screen.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
+    const removeItem = await screen.findByRole("menuitem", {
+      name: /remove from marketplace/i,
+    });
+    expect(removeItem).toBeDefined();
     fireEvent.click(viewItem);
+  });
+
+  test("deleting an approved submission via row action calls the delete endpoint", async () => {
+    let deletedId: string | null = null;
+
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-approved-delete",
+            name: "Removable Agent",
+            status: SubmissionStatus.APPROVED,
+          }),
+        ]),
+      ),
+      getDeleteV2DeleteStoreSubmissionMockHandler(async ({ params }) => {
+        deletedId = params.submissionId as string;
+        return true;
+      }),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect(
+      (await screen.findAllByText("Removable Agent")).length,
+    ).toBeGreaterThan(0);
+
+    const actionButtons = screen.getAllByTestId("submission-actions");
+    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+
+    const removeMenuItem = await screen.findByRole("menuitem", {
+      name: /remove from marketplace/i,
+    });
+    fireEvent.click(removeMenuItem);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /remove from marketplace/i,
+    });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(deletedId).toBe("lv-approved-delete");
+    });
   });
 
   test("clicking Submit agent triggers the publish modal flow", async () => {

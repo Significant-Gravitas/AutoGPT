@@ -31,6 +31,7 @@ export function useSubmissionItem({
 
   const canModify = submission.status === SubmissionStatus.PENDING;
   const isApproved = submission.status === SubmissionStatus.APPROVED;
+  const canDelete = submission.status === SubmissionStatus.PENDING || submission.status === SubmissionStatus.APPROVED;
   const marketplaceUrl =
     isApproved && creatorUsername && submission.slug
       ? `/marketplace/agent/${encodeURIComponent(creatorUsername)}/${encodeURIComponent(submission.slug)}`
@@ -74,6 +75,7 @@ export function useSubmissionItem({
   return {
     canModify,
     isApproved,
+    canDelete,
     marketplaceUrl,
     handleView,
     handleEdit,
