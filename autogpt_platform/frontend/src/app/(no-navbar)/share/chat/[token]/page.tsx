@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArtifactPanel } from "@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
@@ -46,11 +48,22 @@ export default function SharedChatPage() {
     // doesn't look like a different surface.
     <div className="flex h-screen w-full flex-row overflow-hidden bg-[#f8f8f9]">
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
-        {/* Header strip — small, persistent.  Replaces the in-scroll
-            header so a long chat can't push it off-screen. */}
-        <header className="flex shrink-0 items-baseline justify-between gap-4 border-b border-zinc-200 bg-white px-4 py-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-zinc-900">
+        {/* Header strip — AutoGPT logo on the left, chat title in the
+            middle, Read-only pill on the right.  All ``shrink-0`` so a
+            long chat can't push them off-screen. */}
+        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-200 bg-white px-4 py-3">
+          <Link href="/" className="inline-block shrink-0">
+            <Image
+              src="/autogpt-logo-light-bg.png"
+              alt="AutoGPT"
+              width={120}
+              height={54}
+              className="block h-7 w-auto"
+              priority
+            />
+          </Link>
+          <div className="min-w-0 flex-1 text-center">
+            <h1 className="truncate text-sm font-semibold text-zinc-900">
               {session.title || "Shared chat"}
             </h1>
             <p className="truncate text-xs text-zinc-500">
