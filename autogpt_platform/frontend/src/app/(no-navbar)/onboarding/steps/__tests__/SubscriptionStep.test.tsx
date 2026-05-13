@@ -43,10 +43,10 @@ describe("SubscriptionStep", () => {
   test("defaults to yearly billing with the monthly-equivalent price and the annual charge", () => {
     render(<SubscriptionStep />);
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
-    expect(screen.getByText("$42.50")).toBeDefined();
-    expect(screen.getByText("$272.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $3,264.00")).toBeDefined();
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
+    expect(screen.getByLabelText("$272.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
     expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
   });
 
@@ -54,10 +54,10 @@ describe("SubscriptionStep", () => {
     render(<SubscriptionStep />);
     fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
-    expect(screen.getByText("$50.00")).toBeDefined();
-    expect(screen.getByText("$320.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $50.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $320.00")).toBeDefined();
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
   });
 
   test("selecting Pro persists selectedPlan, submits the profile, and redirects to Stripe Checkout", async () => {
