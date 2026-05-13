@@ -7,7 +7,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
-import { type Country, formatPrice } from "./countries";
+import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
 
@@ -48,6 +48,7 @@ export function PlanCard({
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   } as const;
+  const moneyFormatter = new Intl.NumberFormat("en-US", moneyFormat);
 
   return (
     <div
@@ -150,11 +151,7 @@ export function PlanCard({
             {primaryPrice !== null ? (
               <>
                 <span
-                  aria-label={formatPrice(
-                    primaryPrice,
-                    country.currencyCode,
-                    country.symbol,
-                  )}
+                  aria-label={moneyFormatter.format(primaryPrice)}
                   className={cn(
                     "font-poppins font-medium leading-none text-zinc-800",
                     hl ? "text-[32px]" : "text-[26px]",
@@ -183,11 +180,7 @@ export function PlanCard({
 
           {chargedToday !== null && (
             <div
-              aria-label={`Charged today: ${formatPrice(
-                chargedToday,
-                country.currencyCode,
-                country.symbol,
-              )}`}
+              aria-label={`Charged today: ${moneyFormatter.format(chargedToday)}`}
               className="mb-1 flex items-baseline gap-1 text-xs font-medium text-zinc-700"
             >
               <span>Charged today:</span>
