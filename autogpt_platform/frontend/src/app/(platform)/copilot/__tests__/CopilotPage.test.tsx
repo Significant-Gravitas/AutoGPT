@@ -71,15 +71,6 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),
 }));
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
-    ARTIFACTS: "ARTIFACTS",
-    CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-  },
-  useGetFlag: () => false,
-}));
-
 // Auth check moved into CopilotPage directly — default to a logged-in
 // user so the page renders past its loading gate.
 const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));

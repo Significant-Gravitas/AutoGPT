@@ -58,7 +58,6 @@ const defaultProps = {
   sessionId: "s1",
   messages: [] as Messages,
   isLoadingSession: false,
-  isArtifactsEnabled: true,
 };
 
 describe("useAutoOpenArtifacts (card-based)", () => {
@@ -120,17 +119,6 @@ describe("useAutoOpenArtifacts (card-based)", () => {
   it("does not set ready when sessionId is null", () => {
     renderHook(() =>
       useAutoOpenArtifacts({ ...defaultProps, sessionId: null }),
-    );
-    const ref = makeArtifact(A_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("does not set ready when artifacts feature flag is disabled", () => {
-    renderHook(() =>
-      useAutoOpenArtifacts({ ...defaultProps, isArtifactsEnabled: false }),
     );
     const ref = makeArtifact(A_ID);
     act(() => {

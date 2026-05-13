@@ -1,6 +1,5 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
@@ -69,13 +68,12 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
 function TextWithArtifactCards({ text }: { text: string }) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const artifacts = extractWorkspaceArtifacts(text);
   const resolved = resolveWorkspaceUrls(text);
 
   return (
     <>
-      {isArtifactsEnabled && artifacts.length > 0 && (
+      {artifacts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           {artifacts.map((artifact) => (
             <ArtifactCard key={artifact.id} artifact={artifact} />

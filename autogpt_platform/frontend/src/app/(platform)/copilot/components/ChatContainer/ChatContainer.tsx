@@ -6,7 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,17 +82,12 @@ export const ChatContainer = ({
   onDroppedFilesConsumed,
   turnStats,
 }: ChatContainerProps) => {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  // When the flag is off we must not auto-open artifacts or let the panel's
-  // open state drive layout width; an artifact generated in a stale session
-  // state would otherwise shrink the chat column with no panel rendered.
-  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
+  const isArtifactOpen = isArtifactPanelOpen;
   useAutoOpenArtifacts({
     sessionId,
     messages,
     isLoadingSession,
-    isArtifactsEnabled,
   });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users

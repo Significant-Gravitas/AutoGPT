@@ -8,7 +8,6 @@ interface UseAutoOpenArtifactsOptions {
   sessionId: string | null;
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   isLoadingSession: boolean;
-  isArtifactsEnabled: boolean;
 }
 
 /**
@@ -29,7 +28,6 @@ export function useAutoOpenArtifacts({
   sessionId,
   messages,
   isLoadingSession,
-  isArtifactsEnabled,
 }: UseAutoOpenArtifactsOptions) {
   const resetArtifactPanel = useCopilotUIStore((s) => s.resetArtifactPanel);
   const resetAutoOpenState = useCopilotUIStore((s) => s.resetAutoOpenState);
@@ -81,16 +79,10 @@ export function useAutoOpenArtifacts({
       wasEverLoadingRef.current = true;
       return;
     }
-    if (!sessionId || !isArtifactsEnabled) return;
+    if (!sessionId) return;
     if (wasEverLoadingRef.current && !hasMessages) return;
     setAutoOpenReady();
-  }, [
-    sessionId,
-    isLoadingSession,
-    isArtifactsEnabled,
-    hasMessages,
-    setAutoOpenReady,
-  ]);
+  }, [sessionId, isLoadingSession, hasMessages, setAutoOpenReady]);
 
   // Reset on unmount so navigating away from /copilot can't leave stale state.
   useEffect(() => {
