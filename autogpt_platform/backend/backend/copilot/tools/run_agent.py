@@ -714,6 +714,9 @@ class RunAgentTool(BaseTool):
                             execution.id,
                             exc_info=True,
                         )
+                await link_new_execution_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return AgentOutputResponse(
                     message=(
                         f"Agent '{library_agent.name}' completed successfully. "

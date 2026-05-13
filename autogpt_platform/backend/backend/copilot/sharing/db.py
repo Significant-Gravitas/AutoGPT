@@ -36,9 +36,16 @@ from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 logger = logging.getLogger(__name__)
 
 # Linked-execution discovery scans assistant tool responses (role="tool"
-# rows) for ``ExecutionStartedResponse`` payloads.  The shape is defined
-# by :class:`backend.copilot.tools.models.ExecutionStartedResponse`.
+# rows) for run_agent tool payloads that reference an execution.
+#
+# Two response shapes can result from a run_agent invocation:
+#   * ExecutionStartedResponse — async / still-running / REVIEW / schedule;
+#     ``execution_id`` lives at the top level of the JSON payload.
+#   * AgentOutputResponse — sync-complete (``wait_for_result``); the
+#     execution_id lives nested under ``execution.execution_id``.
+# Both shapes are emitted by ``backend.copilot.tools.models``.
 _EXECUTION_STARTED_TYPE = "execution_started"
+_AGENT_OUTPUT_TYPE = "agent_output"
 
 
 # ---------- Enable / disable -------------------------------------------------
@@ -442,7 +449,13 @@ async def _resolve_linked_executions(
 
 
 async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
-    """Find execution IDs referenced by ``role=tool`` responses in a session."""
+    """Find execution IDs referenced by ``role=tool`` responses in a session.
+
+    Matches both response shapes that ``run_agent`` produces:
+    ``ExecutionStartedResponse`` (top-level ``execution_id``) and
+    ``AgentOutputResponse`` (nested ``execution.execution_id`` from the
+    sync-complete ``wait_for_result`` path).
+    """
     rows = await PrismaChatMessage.prisma().find_many(
         where={"sessionId": session_id, "role": "tool"},
     )
@@ -453,9 +466,16 @@ async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
         payload = _json_or_none(row.content)
         if not isinstance(payload, dict):
             continue
-        if payload.get("type") != _EXECUTION_STARTED_TYPE:
+        payload_type = payload.get("type")
+        if payload_type == _EXECUTION_STARTED_TYPE:
+            execution_id = payload.get("execution_id")
+        elif payload_type == _AGENT_OUTPUT_TYPE:
+            execution = payload.get("execution")
+            execution_id = (
+                execution.get("execution_id") if isinstance(execution, dict) else None
+            )
+        else:
             continue
-        execution_id = payload.get("execution_id")
         if isinstance(execution_id, str) and execution_id:
             execution_ids.add(execution_id)
     return execution_ids

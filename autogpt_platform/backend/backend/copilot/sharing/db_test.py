@@ -386,6 +386,32 @@ class TestCollectExecutionIdsFromMessages:
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
+    @pytest.mark.asyncio
+    async def test_extracts_execution_id_from_agent_output_response(self):
+        """``wait_for_result`` sync-complete runs persist an AgentOutputResponse
+        with ``execution_id`` nested under ``execution`` rather than at the
+        top level.  Without this branch, sync-complete runs would never be
+        auto-linked when the owner re-shares the chat — the exact bug we
+        debugged on the QuickThemedGreeter chat."""
+        msg = _mock_tool_msg(
+            '{"type":"agent_output",'
+            '"message":"Agent X completed.",'
+            '"execution":{"execution_id":"exec-sync","status":"COMPLETED"}}'
+        )
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+            ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
+        assert ids == {"exec-sync"}
+
+    @pytest.mark.asyncio
+    async def test_ignores_agent_output_with_missing_execution_block(self):
+        """An agent_output without a nested execution block is a no-op."""
+        msg = _mock_tool_msg('{"type":"agent_output","message":"done"}')
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+            ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
+        assert ids == set()
+
 
 class TestLinkNewExecutionToChatShare:
     """Runtime hook: new run_agent → auto-link if chat has autoShareExecutions=True."""
