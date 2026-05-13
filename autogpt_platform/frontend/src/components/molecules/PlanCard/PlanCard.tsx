@@ -1,11 +1,12 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
+import { AnimatedAmount } from "./AnimatedAmount";
 import { type Country, formatPrice } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
@@ -139,18 +140,17 @@ export function PlanCard({
           <div className="mb-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             {primaryPrice !== null ? (
               <>
-                <span
-                  className={cn(
-                    "font-poppins font-medium leading-none text-zinc-800",
-                    hl ? "text-[32px]" : "text-[26px]",
-                  )}
-                >
-                  {formatPrice(
+                <AnimatedAmount
+                  value={formatPrice(
                     primaryPrice,
                     country.currencyCode,
                     country.symbol,
                   )}
-                </span>
+                  className={cn(
+                    "font-poppins font-medium leading-none text-zinc-800",
+                    hl ? "text-[32px]" : "text-[26px]",
+                  )}
+                />
                 <span className="text-xs text-zinc-400">/ month</span>
               </>
             ) : (
@@ -165,31 +165,60 @@ export function PlanCard({
             )}
           </div>
 
-          {monthlyOriginal !== null &&
-            discountPercent !== null &&
-            discountPercent > 0 && (
-              <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  Save {discountPercent}%
-                </span>
-                <span className="text-xs text-zinc-500 line-through">
-                  {formatPrice(
-                    monthlyOriginal,
-                    country.currencyCode,
-                    country.symbol,
-                  )}
-                </span>
-              </div>
-            )}
+          <AnimatePresence initial={false}>
+            {monthlyOriginal !== null &&
+              discountPercent !== null &&
+              discountPercent > 0 && (
+                <motion.div
+                  key="savings"
+                  initial={
+                    reduceMotion
+                      ? false
+                      : { height: 0, opacity: 0, filter: "blur(2px)" }
+                  }
+                  animate={
+                    reduceMotion
+                      ? undefined
+                      : { height: "auto", opacity: 1, filter: "blur(0px)" }
+                  }
+                  exit={
+                    reduceMotion
+                      ? undefined
+                      : { height: 0, opacity: 0, filter: "blur(2px)" }
+                  }
+                  transition={
+                    reduceMotion
+                      ? undefined
+                      : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+                  }
+                  className="overflow-hidden"
+                >
+                  <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pt-0.5">
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Save {discountPercent}%
+                    </span>
+                    <AnimatedAmount
+                      value={formatPrice(
+                        monthlyOriginal,
+                        country.currencyCode,
+                        country.symbol,
+                      )}
+                      className="text-xs text-zinc-500 line-through"
+                    />
+                  </div>
+                </motion.div>
+              )}
+          </AnimatePresence>
 
           {chargedToday !== null && (
-            <div className="mb-1 text-xs font-medium text-zinc-700">
-              {`Charged today: ${formatPrice(
+            <AnimatedAmount
+              value={`Charged today: ${formatPrice(
                 chargedToday,
                 country.currencyCode,
                 country.symbol,
               )}`}
-            </div>
+              className="mb-1 block text-xs font-medium text-zinc-700"
+            />
           )}
 
           <p className="mb-3.5 min-h-[30px] text-sm leading-relaxed text-zinc-800">
