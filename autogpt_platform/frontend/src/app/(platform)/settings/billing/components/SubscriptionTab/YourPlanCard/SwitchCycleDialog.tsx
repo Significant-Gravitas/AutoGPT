@@ -8,6 +8,7 @@ interface Props {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   targetCycle: "monthly" | "yearly";
+  title?: string;
   body: string;
   isSaving: boolean;
   onConfirm: () => void;
@@ -17,6 +18,7 @@ export function SwitchCycleDialog({
   isOpen,
   onOpenChange,
   targetCycle,
+  title,
   body,
   isSaving,
   onConfirm,
@@ -25,7 +27,7 @@ export function SwitchCycleDialog({
 
   return (
     <Dialog
-      title={`Switch billing to ${targetLabel}?`}
+      title={title ?? `Switch billing to ${targetLabel}?`}
       styling={{ maxWidth: "440px" }}
       controlled={{ isOpen, set: onOpenChange }}
     >

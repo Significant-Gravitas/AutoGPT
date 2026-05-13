@@ -832,6 +832,73 @@ def test_result_success_with_text_emits_finish_not_error():
     assert "StreamError" not in types
 
 
+def test_result_success_thinking_only_no_tools_emits_empty_completion():
+    """Thinking-only success with zero tools: model emitted ThinkingBlock(s)
+    and nothing else, ResultMessage subtype="success", no tool_use / tool_result
+    seen. ``_is_empty_completion`` excludes turns where reasoning started, and
+    the post-tool-result re-prompt guard requires ``_any_tool_results_seen``.
+    Without surfacing this, the FE renders an inline expanded reasoning panel
+    indistinguishable from a still-streaming turn (Toran's prod symptom in the
+    "While testing the new payment, billing" thread)."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="reasoning about the answer", signature="sig")
+            ],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamError" in types
+    assert "StreamFinish" in types
+    assert types.index("StreamError") < types.index("StreamFinish")
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+
+
+def test_result_success_thinking_only_with_text_after_no_error():
+    """Regression guard: when text follows the ThinkingBlock, the turn is
+    legitimately complete and must NOT trip the new thinking-only guard."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="figuring out", signature="sig"),
+                TextBlock(text="here is the answer"),
+            ],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="here is the answer",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
 def test_result_success_with_nonzero_output_tokens_not_empty():
     """If ``output_tokens > 0`` but ``result`` is empty, don't classify as
     empty — fall through to the existing success path. No prior

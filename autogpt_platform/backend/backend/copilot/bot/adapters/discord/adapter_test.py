@@ -135,6 +135,29 @@ class TestChannelType:
 # ── _is_mentioned ──────────────────────────────────────────────────────
 
 
+class TestShouldIgnoreMessage:
+    def test_ignores_own_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=1000, bot=True)
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_allows_other_bot_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+
+        assert adapter._should_ignore_message(msg) is False
+
+    def test_allows_human_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=False)
+
+        assert adapter._should_ignore_message(msg) is False
+
+
 class TestIsMentioned:
     def test_dm_always_counts_as_mentioned(self):
         adapter, _ = _bare_adapter(bot_id=1000)

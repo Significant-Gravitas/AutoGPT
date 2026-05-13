@@ -29,11 +29,12 @@ export function PlanCard({
   loading = false,
   disabled = false,
 }: Props) {
-  const { displayPrice, monthlyEquiv, perLabel } = computePlanPricing({
-    plan,
-    country,
-    isYearly,
-  });
+  const { primaryPrice, monthlyOriginal, chargedToday, discountPercent } =
+    computePlanPricing({
+      plan,
+      country,
+      isYearly,
+    });
   const hl = plan.highlighted;
   const isTeam = plan.key === PLAN_KEYS.TEAM;
   const reduceMotion = useReducedMotion();
@@ -136,7 +137,7 @@ export function PlanCard({
           </div>
 
           <div className="mb-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            {displayPrice !== null ? (
+            {primaryPrice !== null ? (
               <>
                 <span
                   className={cn(
@@ -145,23 +146,12 @@ export function PlanCard({
                   )}
                 >
                   {formatPrice(
-                    displayPrice,
+                    primaryPrice,
                     country.currencyCode,
                     country.symbol,
                   )}
                 </span>
-                <span className="text-xs text-zinc-400">{perLabel}</span>
-                {monthlyEquiv !== null && (
-                  <span className="text-xs text-zinc-800">
-                    (
-                    {formatPrice(
-                      monthlyEquiv,
-                      country.currencyCode,
-                      country.symbol,
-                    )}
-                    /month)
-                  </span>
-                )}
+                <span className="text-xs text-zinc-400">/ month</span>
               </>
             ) : (
               <span
@@ -174,6 +164,33 @@ export function PlanCard({
               </span>
             )}
           </div>
+
+          {monthlyOriginal !== null &&
+            discountPercent !== null &&
+            discountPercent > 0 && (
+              <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  Save {discountPercent}%
+                </span>
+                <span className="text-xs text-zinc-500 line-through">
+                  {formatPrice(
+                    monthlyOriginal,
+                    country.currencyCode,
+                    country.symbol,
+                  )}
+                </span>
+              </div>
+            )}
+
+          {chargedToday !== null && (
+            <div className="mb-1 text-xs font-medium text-zinc-700">
+              {`Charged today: ${formatPrice(
+                chargedToday,
+                country.currencyCode,
+                country.symbol,
+              )}`}
+            </div>
+          )}
 
           <p className="mb-3.5 min-h-[30px] text-sm leading-relaxed text-zinc-800">
             {plan.description}
