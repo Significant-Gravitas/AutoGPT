@@ -153,30 +153,52 @@ async def link_new_execution_to_chat_share(
     persisted.  No-op when the chat is not shared, or shared without
     ``autoShareExecutions=True``.  Idempotent — repeated calls for the
     same (session, execution) pair don't double-link.
+
+    ``run_agent`` runs inside the CoPilotExecutor worker process, which
+    has a different Prisma client lifecycle than the API server.  Any
+    Prisma failure (e.g. the worker's client not yet connected) is
+    caught and logged: a sharing hook must never crash the tool itself
+    — a failure here surfaces as ``ClientNotConnectedError`` inside the
+    Claude SDK as an orphan tool_use, which the SDK turns into "The
+    model returned an empty response."  Skipped links are recovered the
+    next time the owner re-shares the chat (enable-time backfill walks
+    every existing run via ``_collect_execution_ids_from_messages``).
     """
-    session = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
-    if not session or not session.isShared or not session.autoShareExecutions:
-        return
+    try:
+        session = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+        if not session or not session.isShared or not session.autoShareExecutions:
+            return
 
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "userId": session.userId, "isDeleted": False},
-    )
-    if execution is None:
-        return
+        execution = await AgentGraphExecution.prisma().find_first(
+            where={"id": execution_id, "userId": session.userId, "isDeleted": False},
+        )
+        if execution is None:
+            return
 
-    existing = await ChatLinkedShare.prisma().find_first(
-        where={"sessionId": session_id, "executionId": execution_id},
-    )
-    if existing is not None:
-        return
+        existing = await ChatLinkedShare.prisma().find_first(
+            where={"sessionId": session_id, "executionId": execution_id},
+        )
+        if existing is not None:
+            return
 
-    now = datetime.now(UTC)
-    async with transaction() as tx:
-        await _link_executions_to_share(
-            session_id=session_id,
-            executions=[execution],
-            shared_at=now,
-            tx=tx,
+        now = datetime.now(UTC)
+        async with transaction() as tx:
+            await _link_executions_to_share(
+                session_id=session_id,
+                executions=[execution],
+                shared_at=now,
+                tx=tx,
+            )
+    except Exception:
+        # Best-effort hook: a sharing failure must never break the
+        # underlying run_agent tool.  See note above on the empty-
+        # completion failure mode this guards against.
+        logger.warning(
+            "link_new_execution_to_chat_share failed for session=%s execution=%s; "
+            "owner can recover via stop+reshare or an explicit re-enable",
+            session_id,
+            execution_id,
+            exc_info=True,
         )
 
 
