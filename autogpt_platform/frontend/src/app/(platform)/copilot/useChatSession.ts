@@ -187,6 +187,10 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     [sessionQuery.data, freshSessionData],
   );
 
+  const sessionChatStatus = (
+    freshSessionData as { chat_status?: string } | undefined
+  )?.chat_status;
+
   return {
     sessionId,
     setSessionId,
@@ -207,5 +211,6 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
+    sessionChatStatus,
   };
 }

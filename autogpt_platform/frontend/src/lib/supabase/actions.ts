@@ -1,7 +1,6 @@
 "use server";
 import * as Sentry from "@sentry/nextjs";
 import type { User } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
 import { getRedirectPath } from "./helpers";
 import { getServerSupabase } from "./server/getServerSupabase";
 
@@ -164,8 +163,6 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
           scope: options.globalLogout ? "global" : "local",
         });
 
-        revalidatePath("/");
-
         if (error) {
           console.error("Error logging out:", error);
           return { success: false, error: error.message };
@@ -178,7 +175,10 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
         };
       }
 
-      revalidatePath("/", "layout");
+      // No `revalidatePath`: `/` is a client-only spinner that redirects to
+      // `/copilot`, so there is no RSC payload to invalidate. The cross-tab
+      // storage listener calls `router.refresh()` for any visible page, and
+      // the React Query cache is cleared client-side.
       return { success: true };
     },
   );
@@ -210,9 +210,6 @@ export async function refreshSession() {
             error: error.message,
           };
         }
-
-        // Revalidate the layout to update server components
-        revalidatePath("/", "layout");
 
         return { user };
       } catch (error) {

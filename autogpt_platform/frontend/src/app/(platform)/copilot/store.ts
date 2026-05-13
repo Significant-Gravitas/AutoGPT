@@ -1,7 +1,6 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
-import { classifyArtifact } from "./components/ArtifactPanel/helpers";
 import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
@@ -96,10 +95,6 @@ function persistCompletedSessions(ids: Set<string>) {
   }
 }
 
-function isPreviewableArtifact(ref: ArtifactRef): boolean {
-  return classifyArtifact(ref.mimeType, ref.title, ref.sizeBytes).openable;
-}
-
 interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
   initialPrompt: string | null;
@@ -136,6 +131,13 @@ interface CopilotUIState {
   setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
 
+  // Card-based auto-open: ArtifactCard registers itself on mount, the store
+  // decides whether to auto-open. Much simpler than message-scanning.
+  registerArtifactForAutoOpen: (ref: ArtifactRef) => void;
+  setAutoOpenReady: () => void;
+  markUserClosedForAutoOpen: () => void;
+  resetAutoOpenState: () => void;
+
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotChatMode: CopilotMode;
   setCopilotChatMode: (mode: CopilotMode) => void;
@@ -151,7 +153,15 @@ interface CopilotUIState {
   clearCopilotLocalData: () => void;
 }
 
-export const useCopilotUIStore = create<CopilotUIState>((set) => ({
+// ── Card-based auto-open tracking ───────────────────────────────────
+// Module-level state — not in Zustand to avoid unnecessary re-renders.
+// ArtifactCard calls registerArtifactForAutoOpen on mount; the store
+// decides whether to auto-open based on these flags.
+const _autoOpenKnownIds = new Set<string>();
+let _autoOpenReady = false;
+let _autoOpenUserClosed = false;
+
+export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
 
@@ -216,8 +226,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   },
   openArtifact: (ref) =>
     set((state) => {
-      if (!isPreviewableArtifact(ref)) return state;
-
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
@@ -305,6 +313,36 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       };
     }),
 
+  // ── Card-based auto-open actions ─────────────────────────────────
+  registerArtifactForAutoOpen: (ref) => {
+    if (_autoOpenKnownIds.has(ref.id)) {
+      // Already known — upgrade activeArtifact metadata if this ref is richer
+      // (e.g. file-part ref with real MIME replacing text-extracted null MIME).
+      const active = get().artifactPanel.activeArtifact;
+      if (active?.id === ref.id && !active.mimeType && ref.mimeType) {
+        set((state) => ({
+          artifactPanel: { ...state.artifactPanel, activeArtifact: ref },
+        }));
+      }
+      return;
+    }
+    _autoOpenKnownIds.add(ref.id);
+    if (!_autoOpenReady || _autoOpenUserClosed || ref.origin !== "agent")
+      return;
+    get().openArtifact(ref);
+  },
+  setAutoOpenReady: () => {
+    _autoOpenReady = true;
+  },
+  markUserClosedForAutoOpen: () => {
+    _autoOpenUserClosed = true;
+  },
+  resetAutoOpenState: () => {
+    _autoOpenKnownIds.clear();
+    _autoOpenReady = false;
+    _autoOpenUserClosed = false;
+  },
+
   copilotChatMode: (() => {
     const saved = isClient ? storage.get(Key.COPILOT_MODE) : null;
     return saved === "fast" ? "fast" : "extended_thinking";
@@ -335,6 +373,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
 
   clearCopilotLocalData: () => {
     clearContentCache();
+    _autoOpenKnownIds.clear();
+    _autoOpenReady = false;
+    _autoOpenUserClosed = false;
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);

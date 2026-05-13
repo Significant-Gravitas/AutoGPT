@@ -393,6 +393,10 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the new
+            # ``_validate_aux_client_for_direct_main`` validator — these
+            # tests target the SDK normalizer, not the aux check.
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -533,6 +537,8 @@ class TestEffectiveTransport:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the aux-credential validator.
+            aux_api_key="or-aux-key",
         )
         assert cfg.effective_transport == "direct_anthropic"
 
@@ -542,6 +548,11 @@ class TestEffectiveTransport:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` runs in subscription
+            # mode now (PR #13034 review): pin a direct key + Anthropic
+            # title model so the aux 401-trap validator is satisfied.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.effective_transport == "subscription"
 
@@ -873,9 +884,11 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="hello-unique-marker"),
-                ChatMessage(role="assistant", content="world-unique-marker"),
-                ChatMessage(role="user", content="follow up"),
+                ChatMessage(role="user", content="hello-unique-marker", sequence=0),
+                ChatMessage(
+                    role="assistant", content="world-unique-marker", sequence=1
+                ),
+                ChatMessage(role="user", content="follow up", sequence=2),
             ],
             title="test",
             usage=[],
@@ -963,9 +976,9 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="hi"),
-                ChatMessage(role="assistant", content="hello"),
-                ChatMessage(role="user", content="follow up"),
+                ChatMessage(role="user", content="hi", sequence=0),
+                ChatMessage(role="assistant", content="hello", sequence=1),
+                ChatMessage(role="user", content="follow up", sequence=2),
             ],
             title="test",
             usage=[],
@@ -1048,9 +1061,9 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="DB_USER"),
-                ChatMessage(role="assistant", content="DB_ASSISTANT"),
-                ChatMessage(role="user", content="current turn"),
+                ChatMessage(role="user", content="DB_USER", sequence=0),
+                ChatMessage(role="assistant", content="DB_ASSISTANT", sequence=1),
+                ChatMessage(role="user", content="current turn", sequence=2),
             ],
             title="test",
             usage=[],
@@ -1136,11 +1149,11 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="DB_USER_0"),
-                ChatMessage(role="assistant", content="DB_ASSISTANT_1"),
-                ChatMessage(role="user", content="GAP_USER_2"),
-                ChatMessage(role="assistant", content="GAP_ASSISTANT_3"),
-                ChatMessage(role="user", content="current turn"),
+                ChatMessage(role="user", content="DB_USER_0", sequence=0),
+                ChatMessage(role="assistant", content="DB_ASSISTANT_1", sequence=1),
+                ChatMessage(role="user", content="GAP_USER_2", sequence=2),
+                ChatMessage(role="assistant", content="GAP_ASSISTANT_3", sequence=3),
+                ChatMessage(role="user", content="current turn", sequence=4),
             ],
             title="test",
             usage=[],

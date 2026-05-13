@@ -15,6 +15,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     File,
     HTTPException,
     Path,
@@ -27,7 +28,11 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_404_NOT_FOUND,
+)
 from typing_extensions import Optional, TypedDict
 
 from backend.api.features.workspace.routes import create_file_download_response
@@ -44,7 +49,7 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
-from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -73,6 +78,7 @@ from backend.data.credit import (
     set_subscription_tier,
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
+    sync_tier_from_checkout_session,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -88,6 +94,7 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.redis_client import get_redis_async
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -116,7 +123,11 @@ from backend.monitoring.instrumentation import (
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    InsufficientBalanceError,
+    NotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -454,7 +465,10 @@ async def get_graph_blocks() -> Response:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+    },
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -468,6 +482,13 @@ async def execute_graph_block(
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
+
+    try:
+        await execution_utils.charge_for_direct_block_execution(
+            user_id=user_id, block=obj, input_data=data, source="internal"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
     start_time = time.time()
     try:
@@ -1249,6 +1270,62 @@ async def update_subscription_tier(
     return status
 
 
+def _stripe_event_dedup_key(event_id: str) -> str:
+    return f"stripe_webhook_event:{event_id}"
+
+
+async def _claim_stripe_event(event_id: str) -> bool:
+    """Mark a Stripe webhook event as claimed via Redis SETNX.
+
+    Returns ``True`` when the caller acquired the claim (first time we've seen
+    ``event_id``) and should proceed with handler dispatch. Returns ``False``
+    when the event was already processed in a prior delivery — Stripe retries
+    the same ``event.id`` on non-2xx responses, and we don't want downstream
+    handlers (some of which only carry per-resource idempotency) to fire twice.
+
+    Pair with ``_release_stripe_event`` in a try/except around handler dispatch:
+    on handler failure we DELete the key so Stripe's retry isn't no-op'd, but
+    a retry that arrives *during* in-flight processing still hits the live
+    claim and is deduped.
+
+    TTL of 24h comfortably exceeds Stripe's retry window. On Redis failure we
+    fall open and let processing continue — better to risk a rare duplicate
+    than to drop a real event.
+    """
+    if not event_id:
+        # Malformed event without an id — fall open so the rest of the
+        # handler can decide what to do (it'll log and 200 anyway).
+        return True
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            _stripe_event_dedup_key(event_id), "1", nx=True, ex=86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup claim failed for event %s; processing anyway",
+            event_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _release_stripe_event(event_id: str) -> None:
+    """Release a previously-claimed dedup key so Stripe's retry can rerun."""
+    if not event_id:
+        return
+    try:
+        redis_client = await get_redis_async()
+        await redis_client.delete(_stripe_event_dedup_key(event_id))
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup release failed for event %s",
+            event_id,
+            exc_info=True,
+        )
+
+
 @v1_router.post(
     path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
 )
@@ -1282,7 +1359,20 @@ async def stripe_webhook(request: Request):
     # AFTER signature verification — which Stripe interprets as a delivery
     # failure and retries forever, while spamming Sentry with no useful info.
     # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
+            event_type,
+        )
+        return Response(status_code=200)
+
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):
@@ -1292,75 +1382,82 @@ async def stripe_webhook(request: Request):
         )
         return Response(status_code=200)
 
-    if event_type in (
-        "checkout.session.completed",
-        "checkout.session.async_payment_succeeded",
-    ):
-        session_id = data_object.get("id")
-        if not session_id:
-            logger.warning(
-                "stripe_webhook: %s missing data.object.id; ignoring", event_type
-            )
-            return Response(status_code=200)
-        await UserCredit().fulfill_checkout(session_id=session_id)
-
-    if event_type in (
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
-    ):
-        await sync_subscription_from_stripe(data_object)
-
-    # `subscription_schedule.updated` is deliberately omitted: our own
-    # `SubscriptionSchedule.create` + `.modify` calls in
-    # `_schedule_downgrade_at_period_end` would fire that event right back at us
-    # and loop redundant traffic through this handler. We only care about state
-    # transitions (released / completed); phase advance to the new price is
-    # already covered by `customer.subscription.updated`.
-    if event_type in (
-        "subscription_schedule.released",
-        "subscription_schedule.completed",
-    ):
-        await sync_subscription_schedule_from_stripe(data_object)
-
-    if event_type == "invoice.payment_succeeded":
-        await handle_subscription_payment_success(data_object)
-
-    if event_type == "invoice.payment_failed":
-        await handle_subscription_payment_failure(data_object)
-
-    # New Stripe API (≥2025-04-01) split the per-payment events off the Invoice
-    # resource. data.object is an InvoicePayment, not an Invoice, so we hydrate
-    # the underlying Invoice before delegating to the existing handlers.
-    if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
-        invoice_id = data_object.get("invoice")
-        if invoice_id:
-            try:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
-            except stripe.StripeError:
-                logger.exception(
-                    "stripe_webhook: %s could not retrieve invoice %s; skipping",
-                    event_type,
-                    invoice_id,
+    # Wrap handler dispatch so a downstream failure releases the dedup claim;
+    # otherwise Stripe's retry would hit the live key and silently drop the
+    # event. Concurrent retries that arrive *during* in-flight processing
+    # still hit the live claim and are deduped.
+    try:
+        if event_type in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        ):
+            session_id = data_object.get("id")
+            if not session_id:
+                logger.warning(
+                    "stripe_webhook: %s missing data.object.id; ignoring", event_type
                 )
                 return Response(status_code=200)
-            invoice_payload = cast(dict, invoice)
-            if event_type == "invoice_payment.paid":
-                await handle_subscription_payment_success(invoice_payload)
-            else:
-                await handle_subscription_payment_failure(invoice_payload)
+            await UserCredit().fulfill_checkout(session_id=session_id)
+            await sync_tier_from_checkout_session(data_object)
 
-    # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
-    # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
-    # StripeObject (a dict subclass) carrying that runtime shape, so we cast
-    # to satisfy the type checker without changing runtime behaviour.
-    if event_type == "charge.dispute.created":
-        await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+        if event_type in (
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
+            await sync_subscription_from_stripe(data_object)
 
-    if event_type == "refund.created" or event_type == "charge.dispute.closed":
-        await UserCredit().deduct_credits(
-            cast("stripe.Refund | stripe.Dispute", data_object)
-        )
+        # `subscription_schedule.updated` is deliberately omitted: our own
+        # `SubscriptionSchedule.create` + `.modify` calls in
+        # `_schedule_downgrade_at_period_end` would fire that event right back
+        # at us and loop redundant traffic through this handler. We only care
+        # about state transitions (released / completed); phase advance to
+        # the new price is already covered by `customer.subscription.updated`.
+        if event_type in (
+            "subscription_schedule.released",
+            "subscription_schedule.completed",
+        ):
+            await sync_subscription_schedule_from_stripe(data_object)
+
+        if event_type == "invoice.payment_succeeded":
+            await handle_subscription_payment_success(data_object)
+
+        if event_type == "invoice.payment_failed":
+            await handle_subscription_payment_failure(data_object)
+
+        # New Stripe API (≥2025-04-01) split the per-payment events off the
+        # Invoice resource. data.object is an InvoicePayment, not an Invoice,
+        # so we hydrate the underlying Invoice before delegating to the
+        # existing handlers. A transient ``stripe.StripeError`` here propagates
+        # to the outer handler so the dedup claim is released and Stripe sees
+        # a 5xx + retries — swallowing it with a 200 would silently drop the
+        # event and leave the dedup key blocking the next delivery.
+        if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+            invoice_id = data_object.get("invoice")
+            if invoice_id:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice_payload = cast(dict, invoice)
+                if event_type == "invoice_payment.paid":
+                    await handle_subscription_payment_success(invoice_payload)
+                else:
+                    await handle_subscription_payment_failure(invoice_payload)
+
+        # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
+        # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
+        # StripeObject (a dict subclass) carrying that runtime shape, so we
+        # cast to satisfy the type checker without changing runtime behaviour.
+        if event_type == "charge.dispute.created":
+            await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+
+        if event_type == "refund.created" or event_type == "charge.dispute.closed":
+            await UserCredit().deduct_credits(
+                cast("stripe.Refund | stripe.Dispute", data_object)
+            )
+    except Exception:
+        # Release the dedup claim so Stripe's retry isn't no-op'd. Re-raise
+        # so the webhook returns 500 and Stripe retries (the normal contract).
+        await _release_stripe_event(event_id)
+        raise
 
     return Response(status_code=200)
 
@@ -1667,7 +1764,19 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    # The route dep enforces fail-closed (503-on-blip) so a transient
+    # Supabase outage surfaces as a retryable error, not a free run
+    # for a paywalled user. The deep gate inside ``add_graph_execution``
+    # still covers scheduled / webhook / copilot-internal runs that
+    # don't pass through this route — those callers prefer fail-open
+    # so background work doesn't abandon valid jobs during a blip.
+    responses={
+        402: {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+        },
+        503: {"description": "Subscription state temporarily unavailable"},
+    },
 )
 async def execute_graph(
     graph_id: str,
