@@ -1828,7 +1828,7 @@ async def fix_llm_provider_credentials():
         )
 
 
-async def migrate_llm_models(migrate_to: LlmModel):
+async def migrate_llm_models(fallback: LlmModel):
     """
     Update all LLM models in all AI blocks that don't exist in the enum.
 
@@ -1837,7 +1837,7 @@ async def migrate_llm_models(migrate_to: LlmModel):
          LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
          replacement so e.g. Claude Opus lands on a newer Opus, not the global
          GPT default.
-      2. Catch-all: any value still out-of-enum gets ``migrate_to``.
+      2. Catch-all: any value still out-of-enum gets ``fallback``.
 
     Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
     """
@@ -1893,7 +1893,7 @@ async def migrate_llm_models(migrate_to: LlmModel):
         await execute_raw_with_schema(
             fallback_query,
             [path],
-            migrate_to.value,
+            fallback.value,
             id,
             path,
         )
