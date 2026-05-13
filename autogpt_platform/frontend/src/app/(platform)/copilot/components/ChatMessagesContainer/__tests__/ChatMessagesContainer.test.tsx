@@ -622,3 +622,96 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     expect(screen.queryByTestId("queue-badge")).toBeNull();
   });
 });
+
+// ── readOnly viewer behaviour ─────────────────────────────────────────────
+//
+// The shared-chat viewer (``/share/chat/[token]``) renders the same
+// ChatMessagesContainer with ``readOnly`` so the public viewer cannot
+// trigger any owner-only interactions (load-more, queue badges,
+// feedback actions, error banners).  These tests pin the gate.
+
+describe("ChatMessagesContainer — readOnly mode", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the load-older-messages sentinel even when more history exists", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages
+        onLoadMore={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /load older messages/i }),
+    ).toBeNull();
+  });
+
+  it("hides queued messages even when queuedMessages is non-empty", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["should not show"]}
+        readOnly
+      />,
+    );
+    expect(screen.queryByText("should not show")).toBeNull();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("hides the trailing error banner even on error status", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("upstream blew up")}
+        status="error"
+        readOnly
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByText(/upstream blew up/i)).toBeNull();
+  });
+
+  it("hides the queue-badge gate even when the session is queued", () => {
+    const userId = "user-q-readonly";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "queue me", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="queued"
+        readOnly
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});

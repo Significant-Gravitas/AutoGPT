@@ -145,4 +145,114 @@ describe("SharedChatPage", () => {
       await screen.findByText(/invalid or has been disabled/i),
     ).toBeDefined();
   });
+
+  test("uses split layout (flex-row) so ArtifactPanel can dock alongside messages", async () => {
+    // Owner-side copilot renders messages + ArtifactPanel side-by-side
+    // via ``flex-row``.  The viewer must match — otherwise opening an
+    // artifact covers the chat full-screen instead of splitting.
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-split",
+          title: "Layout check",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [],
+          has_more: false,
+          oldest_sequence: null,
+        }),
+      ),
+    );
+
+    const { container } = render(<SharedChatPage />);
+    // Wait for the page to settle past loading.
+    await screen.findByText("Layout check");
+
+    const rootRow = container.querySelector("div.flex-row");
+    expect(rootRow).not.toBeNull();
+    expect(rootRow?.className).toContain("flex-row");
+    expect(rootRow?.className).toContain("h-screen");
+  });
+
+  test("falls back to 'Shared chat' when the session has no title", async () => {
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-no-title",
+          title: "",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [],
+          has_more: false,
+          oldest_sequence: null,
+        }),
+      ),
+    );
+
+    render(<SharedChatPage />);
+    expect(await screen.findByText("Shared chat")).toBeDefined();
+  });
+
+  test("always shows the read-only banner explaining shared/public view", async () => {
+    // The banner is the only persistent affordance telling viewers
+    // the link can be revoked — losing it would mislead anonymous
+    // users into thinking they have private access.
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-banner",
+          title: "Banner check",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [],
+          has_more: false,
+          oldest_sequence: null,
+        }),
+      ),
+    );
+
+    render(<SharedChatPage />);
+    await screen.findByText("Banner check");
+    expect(screen.getByText(/can revoke access at any time/i)).toBeDefined();
+  });
+
+  test("does NOT show the has_more notice when the chat fits in one page", async () => {
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-fits",
+          title: "Fits",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [],
+          has_more: false,
+          oldest_sequence: null,
+        }),
+      ),
+    );
+
+    render(<SharedChatPage />);
+    await screen.findByText("Fits");
+    expect(screen.queryByText(/older history is not visible/i)).toBeNull();
+  });
 });
