@@ -2,6 +2,7 @@ import {
   getGetV2GetCopilotUsageMockHandler200,
   getGetV2GetPendingMessagesMockHandler200,
   getGetV2GetSessionMockHandler200,
+  getPostV2CancelSessionTaskMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
@@ -123,6 +124,15 @@ export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
     getGetV2GetPendingMessagesMockHandler200({
       count: 0,
       messages: [],
+    }),
+    // useCopilotStop POSTs here when the user clicks Stop. The default
+    // Orval handler returns random faker fields; pin to a deterministic
+    // success so the stop path neither triggers the destructive "Could
+    // not stop the task" toast nor the "Stop may take a moment" toast
+    // (which would render extra DOM and risk flaky assertions).
+    getPostV2CancelSessionTaskMockHandler200({
+      cancelled: true,
+      reason: null,
     }),
   );
   return render(
