@@ -18,7 +18,7 @@ from typing import (
 
 import jsonref
 import jsonschema
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.model import (
@@ -129,6 +129,21 @@ _DYNAMIC_COST_TYPES: frozenset[BlockCostType] = frozenset(
 )
 
 
+class TokenRateDisplay(BaseModel):
+    """Public per-1M-token USD rates surfaced to the builder UI.
+
+    Populated only on LLM block costs whose model has a TOKEN_COST rate.
+    cache_* fields are set only when the provider publishes a distinct
+    cached-token rate (Anthropic). Display-only — billing always uses the
+    internal credit math in `BlockCost.cost_amount`.
+    """
+
+    input_usd_per_1m: float = Field(ge=0)
+    output_usd_per_1m: float = Field(ge=0)
+    cache_read_usd_per_1m: Optional[float] = Field(default=None, ge=0)
+    cache_creation_usd_per_1m: Optional[float] = Field(default=None, ge=0)
+
+
 class BlockCost(BaseModel):
     cost_amount: int
     cost_filter: BlockInput
@@ -140,6 +155,10 @@ class BlockCost(BaseModel):
     # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
     # "1 credit per 10 seconds of walltime".
     cost_divisor: int = 1
+    # LLM-specific display rate card. None on non-LLM blocks and on LLM
+    # entries whose model isn't in TOKEN_COST yet (those render
+    # "Pay-as-you-go" / flat-tier).
+    token_rate: Optional[TokenRateDisplay] = None
 
     def __init__(
         self,

@@ -55,7 +55,7 @@ export function usePaywallModal() {
   });
   const { mutateAsync: updateTier, isPending } = useUpdateSubscriptionTier();
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
-    "monthly",
+    "yearly",
   );
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   // When the user already has an active Stripe subscription (admin override

@@ -1588,9 +1588,24 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
         assert kwargs.get("transaction_key") == "in_idempotency_test"
 
 
+def _patch_credit_grant_config(enabled: bool):
+    """Patch ``settings.config.enable_subscription_credit_grant`` for the
+    success handler's gate check.
+
+    The setting is OFF by default, so the success-handler tests that exercise
+    the grant path must explicitly opt in; the disabled-path test below
+    asserts the default behaviour.
+    """
+    return patch(
+        "backend.data.credit.settings.config.enable_subscription_credit_grant",
+        new=enabled,
+    )
+
+
 @pytest.mark.asyncio
-async def test_handle_subscription_payment_success_grants_credits():
-    """A paid subscription invoice grants credits = amount_paid, keyed by invoice_id."""
+async def test_handle_subscription_payment_success_grants_credits_when_enabled():
+    """When the credit-grant config is on, a paid sub invoice grants credits
+    equal to ``amount_paid`` keyed by invoice id."""
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
     invoice = {
         "id": "in_abc123",
@@ -1610,6 +1625,7 @@ async def test_handle_subscription_payment_success_grants_credits():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
 
@@ -1620,8 +1636,51 @@ async def test_handle_subscription_payment_success_grants_credits():
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_when_disabled():
+    """Default-off: with the config disabled, an otherwise grant-eligible
+    invoice is a no-op. Guards against an accidental re-enablement of the
+    post-#12933 behaviour (Pro Monthly subscribers receiving matching
+    automation credits).
+
+    Asserts against the REAL default (no patching of the flag) so flipping
+    ``enable_subscription_credit_grant`` to True in settings.py fails this
+    test rather than silently passing.
+    """
+    from backend.util.settings import Settings
+
+    assert Settings().config.enable_subscription_credit_grant is False, (
+        "Default flipped — this regression test asserts the OFF default; "
+        "either revert the default or update the assertion intentionally."
+    )
+
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_flag_off",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "billing_reason": "subscription_cycle",
+    }
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_success_skips_non_subscription_invoice():
-    """Invoices with no subscription field (one-off invoices) are no-ops."""
+    """Invoices with no subscription field (one-off invoices) are no-ops —
+    short-circuit lands before the flag check, so no LD eval is needed."""
     invoice = {
         "id": "in_abc123",
         "customer": "cus_123",
@@ -1661,6 +1720,7 @@ async def test_handle_subscription_payment_success_skips_paid_out_of_band():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
@@ -1687,6 +1747,7 @@ async def test_handle_subscription_payment_success_skips_zero_amount():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
@@ -1725,6 +1786,7 @@ async def test_handle_subscription_payment_success_skips_unknown_user():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
@@ -1750,6 +1812,7 @@ async def test_handle_subscription_payment_success_skips_enterprise():
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
@@ -1777,6 +1840,7 @@ async def test_handle_subscription_payment_success_idempotent_on_unique_violatio
             "backend.data.credit.UserCredit._add_transaction",
             new=add_tx_mock,
         ),
+        _patch_credit_grant_config(True),
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_awaited_once()

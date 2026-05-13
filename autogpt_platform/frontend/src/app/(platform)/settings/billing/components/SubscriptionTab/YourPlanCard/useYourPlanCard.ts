@@ -131,6 +131,14 @@ export function useYourPlanCard() {
   const currentTierKey = effectiveTier ?? "NO_TIER";
   const currentYearlyCents = tierCostsYearly[currentTierKey];
   const currentMonthlyCents = tierCosts[currentTierKey];
+  // Stripe credits the unused portion of the user's current monthly invoice
+  // when switching to yearly with proration_behavior="always_invoice"; the
+  // backend computes the same value (monthly_cost * remaining / total) and
+  // exposes it on the status payload so we can show the actual charge today.
+  const prorationCreditCents = subscription.data?.proration_credit_cents ?? 0;
+  const currentPeriodEndMs = subscription.data?.current_period_end
+    ? subscription.data.current_period_end * 1000
+    : null;
 
   const plan = subscription.data
     ? {
@@ -328,26 +336,103 @@ export function useYourPlanCard() {
     setPendingCycle(null);
   }
 
-  function getDialogBody(): string {
+  function getDialogTitle(): string {
     if (!pendingCycle) return "";
+    const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
+    // NO_TIER / unknown tiers don't have a meaningful label for the title
+    // ("Switch No active subscription to yearly billing?" reads as nonsense).
+    if (
+      !tierLabel ||
+      effectiveTier === "NO_TIER" ||
+      effectiveTier === "BUSINESS"
+    ) {
+      return pendingCycle === "yearly"
+        ? "Switch billing to Yearly?"
+        : "Switch billing to Monthly?";
+    }
+    return pendingCycle === "yearly"
+      ? `Switch ${tierLabel} to yearly billing?`
+      : `Switch ${tierLabel} to monthly billing?`;
+  }
+
+  function getDialogBody(): { label?: string; text: string }[] {
+    if (!pendingCycle) return [];
+    const periodEndLabel = currentPeriodEndMs
+      ? formatShortDate(currentPeriodEndMs)
+      : null;
     if (pendingCycle === "yearly") {
-      const yearly =
-        currentYearlyCents !== undefined ? formatCents(currentYearlyCents) : "";
+      const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
+      // `<=` (not `<`) so a misconfigured 0%-savings yearly price still gets
+      // the explicit price breakdown rather than falling through to generic
+      // copy — the savings line itself is suppressed when savings == 0.
+      const hasPrices =
+        currentMonthlyCents !== undefined &&
+        currentYearlyCents !== undefined &&
+        currentMonthlyCents > 0 &&
+        currentYearlyCents <= currentMonthlyCents * 12;
+      if (!hasPrices) {
+        return [
+          { text: "You'll be charged the prorated difference today." },
+          {
+            text:
+              currentYearlyCents !== undefined
+                ? `Renews at ${formatCents(currentYearlyCents)}/year after this period.`
+                : "Renews on the new yearly cadence after this period.",
+          },
+        ];
+      }
+      const yearly = formatCents(currentYearlyCents!);
+      const monthlyEquivalent = formatCents(
+        Math.round(currentYearlyCents! / 12),
+      );
+      const savingsPercent = Math.round(
+        ((currentMonthlyCents! * 12 - currentYearlyCents!) /
+          (currentMonthlyCents! * 12)) *
+          100,
+      );
+      // Net charge today = full yearly price minus the unused-monthly credit
+      // Stripe will apply. Only surface the exact amount when the backend
+      // returned a non-zero credit (admin-granted plans / no Stripe customer
+      // return 0 and we fall back to the generic line).
+      const netChargeCents = Math.max(
+        0,
+        currentYearlyCents! - prorationCreditCents,
+      );
+      const chargedToday =
+        prorationCreditCents > 0
+          ? {
+              label: "Charged today:",
+              text: `${formatCents(netChargeCents)} (prorated from your monthly plan).`,
+            }
+          : { text: "You'll be charged the prorated difference today." };
+      const renews = periodEndLabel
+        ? { label: "Renews", text: `${yearly}/year on ${periodEndLabel}.` }
+        : { label: "Renews", text: `at ${yearly}/year after this period.` };
       return [
-        "You'll be charged the prorated difference immediately.",
-        yearly
-          ? `After this period, your plan renews yearly at ${yearly}.`
-          : "After this period, your plan renews on the new yearly cadence.",
-      ].join(" ");
+        savingsPercent > 0
+          ? { text: `Save ${savingsPercent}% with yearly billing.` }
+          : null,
+        {
+          label: tierLabel ? `${tierLabel} yearly:` : "Yearly:",
+          text: `${yearly}/year (${monthlyEquivalent}/month).`,
+        },
+        chargedToday,
+        renews,
+      ].filter(
+        (line): line is { label?: string; text: string } => line !== null,
+      );
     }
     const monthly =
       currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
     return [
-      "Your plan will switch to monthly billing at the end of your current yearly period; no charge today.",
-      monthly ? `New monthly price: ${monthly}.` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+      {
+        text: periodEndLabel
+          ? `Switches to monthly billing on ${periodEndLabel}.`
+          : "Switches to monthly at the end of your current yearly period.",
+      },
+      monthly ? { label: "New price:", text: `${monthly}/month.` } : null,
+      { text: "No charge today." },
+    ].filter((line): line is { label?: string; text: string } => line !== null);
   }
 
   function getTierUpgradeDialogBody(): string {
@@ -451,6 +536,7 @@ export function useYourPlanCard() {
       ? (PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade)
       : null,
     isCycleToggleVisible,
+    cycleDialogTitle: getDialogTitle(),
     cycleDialogBody: getDialogBody(),
     tierUpgradeDialogBody: getTierUpgradeDialogBody(),
     tierDowngradeDialogBody: getTierDowngradeDialogBody(),

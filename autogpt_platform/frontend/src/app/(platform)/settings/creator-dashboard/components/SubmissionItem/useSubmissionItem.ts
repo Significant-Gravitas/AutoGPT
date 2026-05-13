@@ -16,6 +16,7 @@ interface Args {
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
 }
 
 export function useSubmissionItem({
@@ -23,11 +24,17 @@ export function useSubmissionItem({
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
 }: Args) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const canModify = submission.status === SubmissionStatus.PENDING;
+  const isApproved = submission.status === SubmissionStatus.APPROVED;
+  const marketplaceUrl =
+    isApproved && creatorUsername && submission.slug
+      ? `/marketplace/agent/${encodeURIComponent(creatorUsername)}/${encodeURIComponent(submission.slug)}`
+      : undefined;
 
   function handleView() {
     onView(submission);
@@ -66,6 +73,8 @@ export function useSubmissionItem({
 
   return {
     canModify,
+    isApproved,
+    marketplaceUrl,
     handleView,
     handleEdit,
     confirmDeleteOpen,

@@ -189,15 +189,7 @@ class DiscordAdapter(PlatformAdapter):
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
-            # Always skip our own messages — without this we'd loop forever
-            # answering our own replies. Other bots are fine: in channels
-            # we still require an @mention, in threads we still require an
-            # explicit subscription, so the existing gates already bound the
-            # blast radius of bot-to-bot interactions.
-            if (
-                self._client.user is not None
-                and message.author.id == self._client.user.id
-            ):
+            if self._should_ignore_message(message):
                 return
             if self._on_message_callback is None:
                 return
@@ -228,6 +220,11 @@ class DiscordAdapter(PlatformAdapter):
                 mentionable_users=self._collect_mentionable_users(message),
             )
             await self._on_message_callback(ctx, self)
+
+    def _should_ignore_message(self, message: discord.Message) -> bool:
+        return (
+            self._client.user is not None and message.author.id == self._client.user.id
+        )
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
