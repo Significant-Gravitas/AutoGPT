@@ -1,7 +1,7 @@
 """Extract workspace file references from arbitrary nested data.
 
 Both execution-output sharing and chat-message sharing need to build an
-allowlist of workspace files exposed by a share.  Two reference shapes
+allowlist of workspace files exposed by a share.  Three reference shapes
 appear in real payloads:
 
 1. ``workspace://<uuid>`` URI strings — emitted by
@@ -10,10 +10,15 @@ appear in real payloads:
 2. ``file_id=<uuid>`` substrings in ``[Attached files]`` blocks the
    copilot appends to user messages (see
    ``backend/copilot/pending_messages.py``).  These show up inside
-   ChatMessage.content for user uploads — the viewer would not be able
-   to render those as artifacts without the allowlist entry.
+   ChatMessage.content for user uploads.
+3. ``"file_id":"<uuid>"`` JSON tokens in tool-response message content
+   (``role="tool"`` rows).  Tool outputs like
+   ``workspace_file_written`` serialise the file id inside a JSON
+   blob persisted as plain text — the JSON shape uses ``":"`` between
+   key and value rather than ``=``, so a separate alternation is
+   required.
 
-Both forms are handled by a single recursive walker.
+All three forms are handled by a single recursive walker.
 """
 
 import re
@@ -21,12 +26,14 @@ from typing import Any
 
 _WORKSPACE_PREFIX = "workspace://"
 
-# Matches the ``file_id=<uuid>`` token that appears in the
-# ``[Attached files]`` block appended to user messages.  Anchored on the
-# ``file_id=`` literal so we don't pick up random hex strings.  The
-# ``\b`` after the UUID prevents trailing characters from sneaking in.
+# Match ``file_id`` followed by either ``=`` (Attached-files block) or
+# ``":"`` / ``": "`` (JSON serialised tool output).  Anchored on the
+# ``file_id`` literal so the UUID alone (e.g. mid-narrative) is never
+# pulled out as a reference.  The ``\b`` after the UUID prevents
+# trailing characters from sneaking in.
 _FILE_ID_RE = re.compile(
-    r"file_id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+    r'(?:file_id=|"file_id"\s*:\s*")'
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
 
 

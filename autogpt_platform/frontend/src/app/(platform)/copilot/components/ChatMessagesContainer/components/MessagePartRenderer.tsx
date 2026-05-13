@@ -68,17 +68,32 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
-function TextWithArtifactCards({ text }: { text: string }) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const artifacts = extractWorkspaceArtifacts(text);
-  const resolved = resolveWorkspaceUrls(text);
+function TextWithArtifactCards({
+  text,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
+}: {
+  text: string;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
+}) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
+  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
+  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
   return (
     <>
       {isArtifactsEnabled && artifacts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           {artifacts.map((artifact) => (
-            <ArtifactCard key={artifact.id} artifact={artifact} />
+            <ArtifactCard
+              key={artifact.id}
+              artifact={artifact}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       )}
@@ -94,6 +109,17 @@ interface Props {
   messageID: string;
   partIndex: number;
   onRetry?: () => void;
+  /** Override the URL emitted when rewriting workspace:// references
+   *  in markdown.  Owner side defaults to the workspace-file endpoint;
+   *  the public share viewer passes a token-aware builder so anonymous
+   *  readers can download via the public allowlist-gated route. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Force inline artifact-card rendering for workspace:// URIs in
+   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
+  forceArtifacts?: boolean;
+  /** Read-only mode — forwarded so embedded ``ArtifactCard``s
+   *  download on click instead of opening a panel. */
+  readOnly?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -101,6 +127,9 @@ export function MessagePartRenderer({
   messageID,
   partIndex,
   onRetry,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -158,7 +187,15 @@ export function MessagePartRenderer({
         );
       }
 
-      return <TextWithArtifactCards key={key} text={cleanText} />;
+      return (
+        <TextWithArtifactCards
+          key={key}
+          text={cleanText}
+          fileUrlBuilder={fileUrlBuilder}
+          forceArtifacts={forceArtifacts}
+          readOnly={readOnly}
+        />
+      );
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;

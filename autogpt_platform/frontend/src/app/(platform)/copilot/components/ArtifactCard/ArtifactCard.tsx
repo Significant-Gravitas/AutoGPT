@@ -11,6 +11,12 @@ import { classifyArtifact } from "../ArtifactPanel/helpers";
 
 interface Props {
   artifact: ArtifactRef;
+  /** Read-only mode: clicking the card downloads the file instead of
+   *  opening the artifact panel.  The public share viewer doesn't
+   *  mount ``ArtifactPanel``, so the default ``openArtifact`` store
+   *  action would set state with no visible effect — download is the
+   *  only meaningful action available to anonymous readers. */
+  readOnly?: boolean;
 }
 
 function formatSize(bytes?: number): string {
@@ -20,7 +26,7 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ArtifactCard({ artifact }: Props) {
+export function ArtifactCard({ artifact, readOnly }: Props) {
   const isActive = useCopilotUIStore(
     (s) =>
       s.artifactPanel.isOpen &&
@@ -34,10 +40,13 @@ export function ArtifactCard({ artifact }: Props) {
   // Register this artifact on mount — the store decides whether to auto-open.
   // Fires once per artifact ID; subsequent renders with the same ID are no-ops
   // in the store (knownIds check).
+  // Skipped in readOnly mode — the share viewer has no panel for auto-open
+  // to target, and registering would just pollute the store.
   useEffect(() => {
+    if (readOnly) return;
     registerArtifactForAutoOpen(artifact);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
-  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen]);
+  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen, readOnly]);
 
   const classification = classifyArtifact(
     artifact.mimeType,
@@ -56,7 +65,11 @@ export function ArtifactCard({ artifact }: Props) {
     });
   }
 
-  if (!classification.openable) {
+  // In readOnly mode the artifact panel isn't mounted, so ``openArtifact``
+  // would no-op visibly.  Collapse openable artifacts onto the
+  // download-only branch instead — downloading is the only meaningful
+  // action an anonymous viewer can take.
+  if (readOnly || !classification.openable) {
     return (
       <button
         type="button"

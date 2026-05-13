@@ -30,6 +30,9 @@ interface Props {
    *  side defaults to the workspace-file URL shape; the public viewer
    *  passes a per-token pattern from ``lib/share/routes.ts``. */
   filePattern?: RegExp;
+  /** Read-only mode — forwarded to ``ArtifactCard`` so clicks
+   *  download instead of trying to open a panel that isn't mounted. */
+  readOnly?: boolean;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -55,6 +58,7 @@ export function MessageAttachments({
   isUser,
   forceArtifacts,
   filePattern,
+  readOnly,
 }: Props) {
   const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
@@ -74,6 +78,7 @@ export function MessageAttachments({
               <ArtifactCard
                 key={`artifact-${artifactRef.id}-${i}`}
                 artifact={artifactRef}
+                readOnly={readOnly}
               />
             );
           }

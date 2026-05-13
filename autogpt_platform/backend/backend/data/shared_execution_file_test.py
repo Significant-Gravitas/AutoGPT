@@ -89,3 +89,24 @@ class TestExtractWorkspaceFileIds:
         """``file_id=`` followed by a non-UUID is ignored."""
         content = "see file_id=not-a-uuid here"
         assert extract_workspace_file_ids(content) == set()
+
+    def test_extracts_file_id_from_tool_response_json(self):
+        """Tool messages (``role="tool"``) persist their output as a
+        JSON blob in ``ChatMessage.content`` — files referenced there
+        appear as ``"file_id":"<uuid>"`` not ``file_id=<uuid>``."""
+        content = (
+            '{"type":"workspace_file_written",'
+            '"message":"Wrote FounderStoryCard.tsx",'
+            '"file_id":"b5c4f6df-f043-4826-88a2-33c33389c17d",'
+            '"name":"FounderStoryCard.tsx"}'
+        )
+        assert extract_workspace_file_ids(content) == {
+            "b5c4f6df-f043-4826-88a2-33c33389c17d"
+        }
+
+    def test_extracts_file_id_from_tool_response_json_with_spaces(self):
+        """Allow ``"file_id" : "<uuid>"`` with arbitrary whitespace."""
+        content = '{"file_id" :  "b5c4f6df-f043-4826-88a2-33c33389c17d"}'
+        assert extract_workspace_file_ids(content) == {
+            "b5c4f6df-f043-4826-88a2-33c33389c17d"
+        }

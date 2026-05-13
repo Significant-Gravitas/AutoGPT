@@ -290,7 +290,17 @@ export function filePartToArtifactRef(
 const FULL_UUID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
-export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
+/** Build the default workspace-file URL — used wherever a caller
+ *  doesn't supply its own ``fileUrlBuilder``.  Centralising it here
+ *  keeps the owner-side default in one place. */
+function defaultWorkspaceFileUrl(fileId: string): string {
+  return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
+}
+
+export function extractWorkspaceArtifacts(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): ArtifactRef[] {
   const seen = new Set<string>();
   const artifacts: ArtifactRef[] = [];
 
@@ -322,7 +332,7 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
       id: parsed.fileID,
       title,
       mimeType: parsed.mimeType,
-      sourceUrl: `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(parsed.fileID)}`,
+      sourceUrl: fileUrlBuilder(parsed.fileID),
       origin: "agent",
     });
   }
@@ -369,13 +379,15 @@ export function getMessageArtifacts(
  * inspected so that videos can be rendered with a `<video>` element via the
  * custom img component.
  */
-export function resolveWorkspaceUrls(text: string): string {
+export function resolveWorkspaceUrls(
+  text: string,
+  fileUrlBuilder: (fileId: string) => string = defaultWorkspaceFileUrl,
+): string {
   // Handle image links: ![alt](workspace://id#mime)
   let resolved = text.replace(
     /!\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#([^)#\s]*))?\)/g,
     (_match, alt: string, fileId: string, mimeHint?: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-      const url = `/api/proxy${apiPath}`;
+      const url = fileUrlBuilder(fileId);
       if (mimeHint?.startsWith("video/")) {
         return `![video:${alt || "Video"}](${url})`;
       }
@@ -392,11 +404,11 @@ export function resolveWorkspaceUrls(text: string): string {
   resolved = resolved.replace(
     /(?<!!)\[([^\]]*)\]\(workspace:\/\/([^)#\s]+)(?:#[^)#\s]*)?\)/g,
     (_match, linkText: string, fileId: string) => {
-      const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
+      const url = fileUrlBuilder(fileId);
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/api/proxy${apiPath}`;
-      return `[${linkText || "Download file"}](${url})`;
+      const absoluteUrl = url.startsWith("/") ? `${origin}${url}` : url;
+      return `[${linkText || "Download file"}](${absoluteUrl})`;
     },
   );
 

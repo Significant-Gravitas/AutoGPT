@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
-import { sharedChatFilePattern } from "@/lib/share/routes";
+import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
 import { useSharedChatPage } from "./useSharedChatPage";
 import { SharedChatErrorState } from "./components/SharedChatErrorState";
 import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
@@ -15,6 +15,13 @@ export default function SharedChatPage() {
   // recognise file URLs we built for this specific share without
   // loosening the workspace-file matcher used by the owner side.
   const filePattern = useMemo(() => sharedChatFilePattern(token), [token]);
+  // URL builder for inline ``workspace://`` rewrites in assistant prose
+  // (handled by ``resolveWorkspaceUrls`` / ``extractWorkspaceArtifacts``)
+  // — same token-aware shape as the converter's builder.
+  const fileUrlBuilder = useMemo(
+    () => (fileId: string) => sharedChatFileUrl(token, fileId),
+    [token],
+  );
 
   const {
     session,
@@ -68,6 +75,7 @@ export default function SharedChatPage() {
           turnStats={turnStats}
           readOnly
           filePattern={filePattern}
+          fileUrlBuilder={fileUrlBuilder}
         />
       </div>
 

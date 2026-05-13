@@ -76,13 +76,25 @@ interface Props {
    *  shape; the public viewer passes a per-token pattern so its file
    *  URLs match without loosening the default. */
   filePattern?: RegExp;
+  /** Override the URL emitted when rewriting ``workspace://`` references
+   *  in markdown prose AND when building inline artifact source URLs.
+   *  The public viewer passes a token-aware builder. */
+  fileUrlBuilder?: (fileId: string) => string;
+}
+
+interface RenderSegmentOptions {
+  onRetry?: () => void;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
-  onRetry?: () => void,
+  options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
+  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
@@ -94,6 +106,9 @@ function renderSegments(
         messageID={messageID}
         partIndex={seg.index}
         onRetry={onRetry}
+        fileUrlBuilder={fileUrlBuilder}
+        forceArtifacts={forceArtifacts}
+        readOnly={readOnly}
       />
     );
   });
@@ -293,6 +308,7 @@ export function ChatMessagesContainer({
   bottomContentPadding,
   readOnly = false,
   filePattern,
+  fileUrlBuilder,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -549,15 +565,20 @@ export function ChatMessagesContainer({
               >
                 {hasReasoning && reasoningSegments && (
                   <StepsCollapse>
-                    {renderSegments(reasoningSegments, message.id)}
+                    {renderSegments(reasoningSegments, message.id, {
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })}
                   </StepsCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(
-                      responseSegments,
-                      message.id,
-                      isLastAssistant ? onRetry : undefined,
-                    )
+                  ? renderSegments(responseSegments, message.id, {
+                      onRetry: isLastAssistant ? onRetry : undefined,
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })
                   : renderableParts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
@@ -565,6 +586,9 @@ export function ChatMessagesContainer({
                         messageID={message.id}
                         partIndex={i}
                         onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        forceArtifacts={readOnly}
+                        readOnly={readOnly}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
@@ -622,6 +646,7 @@ export function ChatMessagesContainer({
                   isUser={message.role === "user"}
                   forceArtifacts={readOnly}
                   filePattern={filePattern}
+                  readOnly={readOnly}
                 />
               )}
               {!readOnly && showActions && (
