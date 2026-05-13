@@ -231,14 +231,54 @@ describe("YourPlanCard cycle toggle", () => {
     fireEvent.click(yearly);
 
     expect(
-      await screen.findByText(/Switch billing to Yearly\?/i),
+      await screen.findByText(/Switch Pro to yearly billing\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Save 15% with yearly billing\./i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /Pro is \$42\.50\/month when billed yearly, charged as \$510\.00\/year instead of \$600\.00\/year monthly\./i,
+      ),
     ).toBeDefined();
     expect(
       screen.getByText(/charged the prorated difference immediately/i),
     ).toBeDefined();
-    expect(screen.getByText(/\$510\.00/)).toBeDefined();
     expect(
       screen.getByRole("button", { name: /switch to yearly/i }),
+    ).toBeDefined();
+  });
+
+  it("shows Max-specific yearly savings copy in the confirmation dialog", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+
+    expect(
+      await screen.findByText(/Switch Max to yearly billing\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /Max is \$272\.00\/month when billed yearly, charged as \$3,264\.00\/year instead of \$3,840\.00\/year monthly\./i,
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/After this period, your plan renews yearly at \$3,264\.00\./i),
     ).toBeDefined();
   });
 

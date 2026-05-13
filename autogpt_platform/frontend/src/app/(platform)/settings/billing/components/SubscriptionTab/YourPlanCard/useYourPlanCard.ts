@@ -328,17 +328,62 @@ export function useYourPlanCard() {
     setPendingCycle(null);
   }
 
+  function getDialogTitle(): string {
+    if (!pendingCycle) return "";
+    const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
+    // NO_TIER / unknown tiers don't have a meaningful label for the title
+    // ("Switch No active subscription to yearly billing?" reads as nonsense).
+    if (
+      !tierLabel ||
+      effectiveTier === "NO_TIER" ||
+      effectiveTier === "BUSINESS"
+    ) {
+      return pendingCycle === "yearly"
+        ? "Switch billing to Yearly?"
+        : "Switch billing to Monthly?";
+    }
+    return pendingCycle === "yearly"
+      ? `Switch ${tierLabel} to yearly billing?`
+      : `Switch ${tierLabel} to monthly billing?`;
+  }
+
   function getDialogBody(): string {
     if (!pendingCycle) return "";
     if (pendingCycle === "yearly") {
       const yearly =
         currentYearlyCents !== undefined ? formatCents(currentYearlyCents) : "";
-      return [
+      const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
+      const prorationLine = [
         "You'll be charged the prorated difference immediately.",
         yearly
           ? `After this period, your plan renews yearly at ${yearly}.`
           : "After this period, your plan renews on the new yearly cadence.",
       ].join(" ");
+      // Surface the yearly savings up front when we have both prices — the
+      // 15% discount is the user's primary motivator for accepting the
+      // prorated charge and shouldn't be buried.
+      if (
+        currentMonthlyCents !== undefined &&
+        currentYearlyCents !== undefined &&
+        currentMonthlyCents > 0 &&
+        currentYearlyCents < currentMonthlyCents * 12
+      ) {
+        const annualMonthlyCents = currentMonthlyCents * 12;
+        const savingsPercent = Math.round(
+          ((annualMonthlyCents - currentYearlyCents) / annualMonthlyCents) *
+            100,
+        );
+        const monthlyEquivalent = formatCents(
+          Math.round(currentYearlyCents / 12),
+        );
+        const annualMonthly = formatCents(annualMonthlyCents);
+        const savingsLine = `Save ${savingsPercent}% with yearly billing.`;
+        const pricingLine = tierLabel
+          ? `${tierLabel} is ${monthlyEquivalent}/month when billed yearly, charged as ${yearly}/year instead of ${annualMonthly}/year monthly.`
+          : `It's ${monthlyEquivalent}/month when billed yearly, charged as ${yearly}/year instead of ${annualMonthly}/year monthly.`;
+        return [savingsLine, pricingLine, prorationLine].join(" ");
+      }
+      return prorationLine;
     }
     const monthly =
       currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
@@ -451,6 +496,7 @@ export function useYourPlanCard() {
       ? (PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade)
       : null,
     isCycleToggleVisible,
+    cycleDialogTitle: getDialogTitle(),
     cycleDialogBody: getDialogBody(),
     tierUpgradeDialogBody: getTierUpgradeDialogBody(),
     tierDowngradeDialogBody: getTierDowngradeDialogBody(),
