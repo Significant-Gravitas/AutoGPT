@@ -148,6 +148,35 @@ _BUDGET_EXHAUSTED_FALLBACK_TEXT = (
     "Send a follow-up message to continue from here."
 )
 
+# Fallback surfaced when the model finished naturally (under the budget) but
+# left the terminal round with zero visible text — the baseline equivalent
+# of the SDK's ``StreamError(code="empty_completion")``. Without this the FE
+# silently shows nothing after a long thinking-only turn on baseline-routed
+# sessions (e.g. some Kimi K2.6 cohorts).
+_NATURAL_FINISH_EMPTY_FALLBACK_TEXT = (
+    "The model returned no response for this turn. "
+    "Please try again or rephrase your request."
+)
+
+
+def _silent_finish_fallback_events(
+    notice: str | None,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Wrap a fallback notice (or ``None``) into the matching wire events.
+
+    Shared by the budget-exhausted and natural-finish-empty branches so the
+    event sequencing stays identical — only the message text differs.
+    """
+    if notice is None:
+        return [], ""
+    block_id = str(uuid.uuid4())
+    events: list[StreamBaseResponse] = [
+        StreamTextStart(id=block_id),
+        StreamTextDelta(id=block_id, delta=notice),
+        StreamTextEnd(id=block_id),
+    ]
+    return events, notice
+
 
 def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
     """Return the fallback notice when a budget-exhausted turn produced no
@@ -161,6 +190,15 @@ def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
     return _BUDGET_EXHAUSTED_FALLBACK_TEXT
 
 
+def _natural_finish_empty_notice_text(terminal_round_text: str) -> str | None:
+    """Return the fallback notice when a naturally-finishing turn produced
+    no visible text, or ``None`` when the model already summarised itself.
+    """
+    if terminal_round_text.strip():
+        return None
+    return _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+
+
 def _build_budget_exhausted_fallback_events(
     terminal_round_text: str,
 ) -> tuple[list[StreamBaseResponse], str]:
@@ -171,16 +209,23 @@ def _build_budget_exhausted_fallback_events(
     no fallback is needed.  Split out of the async generator so it's unit-
     testable without the surrounding streaming machinery.
     """
-    notice = _budget_exhausted_notice_text(terminal_round_text)
-    if notice is None:
-        return [], ""
-    block_id = str(uuid.uuid4())
-    events: list[StreamBaseResponse] = [
-        StreamTextStart(id=block_id),
-        StreamTextDelta(id=block_id, delta=notice),
-        StreamTextEnd(id=block_id),
-    ]
-    return events, notice
+    return _silent_finish_fallback_events(
+        _budget_exhausted_notice_text(terminal_round_text)
+    )
+
+
+def _build_natural_finish_empty_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a naturally-finishing
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.
+    """
+    return _silent_finish_fallback_events(
+        _natural_finish_empty_notice_text(terminal_round_text)
+    )
 
 
 # Max seconds to wait for transcript upload in the finally block before
@@ -2041,6 +2086,21 @@ async def stream_chat_completion_baseline(
             fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
                 terminal_round_text
             )
+            for evt in fallback_events:
+                yield evt
+            state.assistant_text += fallback_text
+        elif loop_result and loop_result.finished_naturally:
+            # mirrors SDK's empty_completion surface — prevents blank bubble on thinking-only turns
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            fallback_events, fallback_text = (
+                _build_natural_finish_empty_fallback_events(terminal_round_text)
+            )
+            if fallback_events:
+                logger.warning(
+                    "[Baseline] Natural finish with empty terminal round (%d "
+                    "iterations); surfacing fallback notice",
+                    loop_result.iterations,
+                )
             for evt in fallback_events:
                 yield evt
             state.assistant_text += fallback_text

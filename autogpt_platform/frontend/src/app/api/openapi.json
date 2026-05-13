@@ -10282,6 +10282,12 @@
             "type": "integer",
             "title": "Cost Divisor",
             "default": 1
+          },
+          "token_rate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenRateDisplay" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17811,6 +17817,32 @@
         "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Input Usd Per 1M"
+          },
+          "output_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
+          }
+        },
+        "type": "object",
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay",
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {

@@ -11,18 +11,21 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
     _BUDGET_EXHAUSTED_FALLBACK_TEXT,
+    _NATURAL_FINISH_EMPTY_FALLBACK_TEXT,
     _baseline_conversation_updater,
     _baseline_llm_caller,
     _BaselineStreamState,
     _budget_exhausted_notice_text,
     _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
+    _build_natural_finish_empty_fallback_events,
     _compress_session_messages,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
+    _natural_finish_empty_notice_text,
     _supports_prompt_cache_markers,
 )
 from backend.copilot.model import ChatMessage
@@ -2333,6 +2336,54 @@ class TestBuildBudgetExhaustedFallbackEvents:
         events_a, _ = _build_budget_exhausted_fallback_events("")
         events_b, _ = _build_budget_exhausted_fallback_events("")
         assert events_a[0].id != events_b[0].id
+
+
+class TestNaturalFinishEmptyNoticeText:
+    """Fallback decision when the model finished naturally (under budget)
+    but the terminal round produced no visible text — the baseline
+    equivalent of the SDK's ``empty_completion`` StreamError. Without
+    this fallback the FE shows nothing after a long thinking-only turn
+    on baseline-routed sessions (e.g. some Kimi K2.6 cohorts)."""
+
+    def test_empty_text_returns_fallback(self):
+        assert (
+            _natural_finish_empty_notice_text("") == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+        )
+
+    def test_whitespace_only_returns_fallback(self):
+        assert (
+            _natural_finish_empty_notice_text("   \n\t  ")
+            == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+        )
+
+    def test_non_empty_text_returns_none(self):
+        assert _natural_finish_empty_notice_text("Here is the answer.") is None
+
+    def test_fallback_text_is_user_facing(self):
+        """Guard against shipping an empty / internal string."""
+        assert _NATURAL_FINISH_EMPTY_FALLBACK_TEXT.strip()
+        # Distinct from the budget message — they describe different causes
+        # so the user gets accurate signal about what happened.
+        assert _NATURAL_FINISH_EMPTY_FALLBACK_TEXT != _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+class TestBuildNaturalFinishEmptyFallbackEvents:
+    def test_empty_terminal_text_emits_three_events(self):
+        events, to_append = _build_natural_finish_empty_fallback_events("")
+        assert to_append == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+        assert len(events) == 3
+        assert isinstance(events[0], StreamTextStart)
+        assert isinstance(events[1], StreamTextDelta)
+        assert isinstance(events[2], StreamTextEnd)
+        assert events[0].id == events[1].id == events[2].id
+        assert events[1].delta == _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+
+    def test_non_empty_terminal_text_returns_empty(self):
+        events, to_append = _build_natural_finish_empty_fallback_events(
+            "Here is the answer."
+        )
+        assert events == []
+        assert to_append == ""
 
 
 class TestStreamOptionsGating:
