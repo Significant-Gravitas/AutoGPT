@@ -141,11 +141,8 @@ services:
       - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
       - "3001:3000" # FalkorDB web UI
     <<: *backend-env-files
-    # `:?` fails the container with a clear error if the var is unset,
-    # rather than silently producing `--requirepass ""` (which would
-    # confuse every client with "wrong password" instead of "missing
-    # config"). The variable is set by backend/.env.default; nothing
-    # in this repo should ever start falkordb without it.
+    # `:?` exits the container if the var is unset/empty, surfacing a
+    # missing-config error instead of silent `--requirepass ""` auth.
     entrypoint:
       - /bin/sh
       - -c
@@ -158,10 +155,6 @@ services:
     networks:
       - app-network
     healthcheck:
-      # redis-cli ping is the real readiness signal - the app only talks
-      # FalkorDB over the redis protocol on 6379. The previous version also
-      # wget-probed the browser UI on :3000, but wget isn't installed in
-      # the falkordb image, so the check always reported unhealthy.
       test:
         [
           "CMD-SHELL",

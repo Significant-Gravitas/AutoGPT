@@ -151,12 +151,11 @@ services:
     environment:
       GOTRUE_MAILER_AUTOCONFIRM: true
 
-  # `db` waits for rabbitmq:service_healthy as a workaround for an E2B Docker
-  # concurrent-create race that surfaces as `Error when reading
-  # /var/lib/rabbitmq/.erlang.cookie: eacces` at RabbitMQ boot. Every supabase
-  # service depends_on db:service_healthy upstream, so cascading through db
-  # gives rabbit an isolated create+start cycle without scattering fake deps
-  # across the file. Locally this just adds ~5s to first-time startup.
+  # db waits on rabbitmq:service_healthy to gate startup ordering:
+  # concurrent container creation in E2B's Docker races RabbitMQ's
+  # .erlang.cookie write, producing `eacces` at broker boot. Supabase's
+  # auth/meta/studio + migrate all depends_on db:service_healthy
+  # upstream, so gating db alone cascades to the rest of the stack.
   db:
     <<: *supabase-services
     extends:
