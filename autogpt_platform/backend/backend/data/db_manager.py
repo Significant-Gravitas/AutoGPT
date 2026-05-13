@@ -578,6 +578,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Summary Data ============ #
     get_user_execution_summary_data = d.get_user_execution_summary_data
 
+    # ============ Chat Sharing ============ #
+    link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
+
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
