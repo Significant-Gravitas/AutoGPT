@@ -44,7 +44,7 @@ export function PlanCard({
   const moneyFormat = {
     style: "currency",
     currency: country.currencyCode,
-    currencyDisplay: "narrowSymbol",
+    currencyDisplay: "symbol",
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   } as const;
