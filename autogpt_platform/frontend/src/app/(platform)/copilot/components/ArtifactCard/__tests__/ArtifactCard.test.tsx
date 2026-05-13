@@ -23,8 +23,19 @@ vi.mock("../../../store", () => {
 });
 
 // Skip real download wiring — fetch/blob plumbing isn't under test.
+// Module-level mock so tests can override implementations per case.
+const downloadArtifactMock = vi.fn(() => Promise.resolve());
 vi.mock("../../ArtifactPanel/downloadArtifact", () => ({
-  downloadArtifact: vi.fn(() => Promise.resolve()),
+  downloadArtifact: (...args: unknown[]) =>
+    downloadArtifactMock(...(args as [])),
+}));
+
+// Toast is invoked from the download-failure path; spy on it so we
+// can assert the user-visible "Download failed" surface fires.
+const toastSpy = vi.fn();
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: (...args: unknown[]) => toastSpy(...(args as [])),
+  useToast: () => ({ toast: toastSpy }),
 }));
 
 const ARTIFACT: ArtifactRef = {
@@ -39,6 +50,9 @@ const ARTIFACT: ArtifactRef = {
 beforeEach(() => {
   registerSpy.mockClear();
   openSpy.mockClear();
+  downloadArtifactMock.mockReset();
+  downloadArtifactMock.mockImplementation(() => Promise.resolve());
+  toastSpy.mockClear();
 });
 
 afterEach(() => {
@@ -69,5 +83,49 @@ describe("ArtifactCard — readOnly", () => {
   test("renders the artifact title", () => {
     render(<ArtifactCard artifact={ARTIFACT} readOnly />);
     expect(screen.getByText("report.png")).toBeDefined();
+  });
+});
+
+describe("ArtifactCard — non-openable artifact (download-only)", () => {
+  // application/zip + .zip extension is classified as download-only,
+  // so the card renders the download-only branch instead of the
+  // openable click-to-open variant.
+  const ZIP_ARTIFACT: ArtifactRef = {
+    id: "660e8400-e29b-41d4-a716-446655440000",
+    title: "agent-output.zip",
+    mimeType: "application/zip",
+    origin: "agent",
+    sourceUrl: "https://example.com/file/660e8400-e29b-41d4-a716-446655440000",
+  };
+
+  test("clicking the card triggers downloadArtifact", () => {
+    render(<ArtifactCard artifact={ZIP_ARTIFACT} />);
+    const button = screen.getByRole("button");
+    button.click();
+    expect(downloadArtifactMock).toHaveBeenCalledTimes(1);
+    expect(downloadArtifactMock).toHaveBeenCalledWith(ZIP_ARTIFACT);
+    // Non-openable artifacts must NOT open the panel — the panel
+    // can't preview them.
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  test("download failure surfaces a destructive toast", async () => {
+    downloadArtifactMock.mockImplementation(() =>
+      Promise.reject(new Error("network down")),
+    );
+
+    render(<ArtifactCard artifact={ZIP_ARTIFACT} />);
+    const button = screen.getByRole("button");
+    button.click();
+
+    await vi.waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledTimes(1);
+    });
+    const toastArg = toastSpy.mock.calls[0][0] as {
+      title: string;
+      variant?: string;
+    };
+    expect(toastArg.title).toMatch(/download failed/i);
+    expect(toastArg.variant).toBe("destructive");
   });
 });
