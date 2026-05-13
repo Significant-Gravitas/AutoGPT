@@ -1,7 +1,7 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ExclamationMarkIcon } from "@phosphor-icons/react";
+import { StopIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
@@ -131,9 +131,10 @@ export function MessagePartRenderer({
           return (
             <div
               key={key}
-              className="my-2 flex items-center gap-1 rounded-lg bg-neutral-200/50 px-3 py-2 text-sm text-neutral-600"
+              className="my-2 flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-500"
             >
-              <ExclamationMarkIcon size={16} /> You manually stopped this chat
+              <StopIcon size={16} weight="fill" className="shrink-0 text-neutral-400" />
+              <span>Response stopped</span>
             </div>
           );
         }
