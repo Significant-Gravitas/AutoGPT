@@ -37,7 +37,7 @@ OAuth is ideal for:
 - "Sign in with AutoGPT" (SSO, Single Sign-On) functionality
 - Applications that need user-specific permissions
 
-See the [SSO Integration Guide](sso-guide.md) for complete OAuth implementation details.
+See the [OAuth Integration Guide](oauth-guide.md) for complete OAuth implementation details, including the "Sign in with AutoGPT" SSO flow.
 
 ## Available Scopes
 
@@ -69,7 +69,7 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 ### Using OAuth
 
 1. Register an OAuth application (contact platform administrator)
-2. Implement the OAuth flow as described in the [SSO Guide](sso-guide.md)
+2. Implement the OAuth flow as described in the [OAuth Guide](oauth-guide.md)
 3. Use the obtained access token:
 
 ```bash
