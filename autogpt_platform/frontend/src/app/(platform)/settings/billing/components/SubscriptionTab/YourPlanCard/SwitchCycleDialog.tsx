@@ -33,8 +33,11 @@ export function SwitchCycleDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-2">
-          {body.map((line) => (
-            <div key={line.label ?? line.text} className="flex flex-wrap gap-1">
+          {body.map((line, index) => (
+            <div
+              key={`${index}-${line.label ?? ""}-${line.text}`}
+              className="flex flex-wrap gap-1"
+            >
               {line.label ? (
                 <Text
                   variant="body"

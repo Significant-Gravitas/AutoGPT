@@ -356,7 +356,9 @@ describe("YourPlanCard cycle toggle", () => {
       screen.getByText(/^You'll be charged the prorated difference today\.$/),
     ).toBeDefined();
     expect(
-      screen.getByText(/^Renews on the new yearly cadence after this period\.$/),
+      screen.getByText(
+        /^Renews on the new yearly cadence after this period\.$/,
+      ),
     ).toBeDefined();
   });
 

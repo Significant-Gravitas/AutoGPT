@@ -362,11 +362,14 @@ export function useYourPlanCard() {
       : null;
     if (pendingCycle === "yearly") {
       const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
+      // `<=` (not `<`) so a misconfigured 0%-savings yearly price still gets
+      // the explicit price breakdown rather than falling through to generic
+      // copy — the savings line itself is suppressed when savings == 0.
       const hasPrices =
         currentMonthlyCents !== undefined &&
         currentYearlyCents !== undefined &&
         currentMonthlyCents > 0 &&
-        currentYearlyCents < currentMonthlyCents * 12;
+        currentYearlyCents <= currentMonthlyCents * 12;
       if (!hasPrices) {
         return [
           { text: "You'll be charged the prorated difference today." },
@@ -406,14 +409,18 @@ export function useYourPlanCard() {
         ? { label: "Renews", text: `${yearly}/year on ${periodEndLabel}.` }
         : { label: "Renews", text: `at ${yearly}/year after this period.` };
       return [
-        { text: `Save ${savingsPercent}% with yearly billing.` },
+        savingsPercent > 0
+          ? { text: `Save ${savingsPercent}% with yearly billing.` }
+          : null,
         {
           label: tierLabel ? `${tierLabel} yearly:` : "Yearly:",
           text: `${yearly}/year (${monthlyEquivalent}/month).`,
         },
         chargedToday,
         renews,
-      ];
+      ].filter(
+        (line): line is { label?: string; text: string } => line !== null,
+      );
     }
     const monthly =
       currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
@@ -423,13 +430,9 @@ export function useYourPlanCard() {
           ? `Switches to monthly billing on ${periodEndLabel}.`
           : "Switches to monthly at the end of your current yearly period.",
       },
-      monthly
-        ? { label: "New price:", text: `${monthly}/month.` }
-        : null,
+      monthly ? { label: "New price:", text: `${monthly}/month.` } : null,
       { text: "No charge today." },
-    ].filter((line): line is { label?: string; text: string } =>
-      line !== null,
-    );
+    ].filter((line): line is { label?: string; text: string } => line !== null);
   }
 
   function getTierUpgradeDialogBody(): string {
