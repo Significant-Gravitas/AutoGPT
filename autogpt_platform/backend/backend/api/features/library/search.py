@@ -25,21 +25,24 @@ logger = logging.getLogger(__name__)
 
 # Minimum combined relevance score for a library agent to be considered
 # "functionally similar" enough to recommend before creating a new one.
-# Calibrated against ``_LIBRARY_SEARCH_WEIGHTS``: with semantic-biased
-# weights, a true near-duplicate scores ~0.75 (semantic ≈0.85 × 0.85
-# weight) and an unrelated agent lands well below 0.5.
+# Calibrated empirically against the 9-near-duplicate "YouTube Video
+# Summarizer" corpus: with ``_LIBRARY_SEARCH_WEIGHTS`` a true match scores
+# ~0.91, an unrelated query (email / weather) tops out at ~0.29, so 0.55
+# sits in the middle of a 0.62-wide separation gap.
 LIBRARY_SIMILARITY_THRESHOLD = 0.55
 
-# Library-agent search weights differ from the default unified-search mix.
-# Library agents have no categories on their metadata so ``category``
-# carries no signal here. Semantic still dominates because user goals are
-# free-form natural language and the keyword-extracted lexical query (see
-# ``_extract_lexical_keywords``) only sees ~5 stemmed tokens.
+# Library-agent search weights. Differ from ``DEFAULT_UNIFIED_WEIGHTS``
+# (40/40/10/10) only in that ``category`` is zero — LibraryAgent metadata
+# has no categories, and the 10% would just dilute the other signals.
+# Semantic stays slightly dominant over lexical so paraphrased goals
+# ("draft an agent that watches YouTube and writes notes") still catch a
+# match where the lexical keyword form drops out. See
+# ``_extract_lexical_keywords`` for why lexical needs the keyword form.
 _LIBRARY_SEARCH_WEIGHTS = UnifiedSearchWeights(
-    semantic=0.85,
-    lexical=0.10,
+    semantic=0.50,
+    lexical=0.40,
     category=0.0,
-    recency=0.05,
+    recency=0.10,
 )
 
 # English stopwords + a few command verbs (``build``, ``create``, ``make``)
