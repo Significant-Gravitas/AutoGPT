@@ -80,10 +80,13 @@ describe("SharedChatPage", () => {
 
     render(<SharedChatPage />);
 
-    // Title is rendered as an sr-only h1 — accessible to screen
-    // readers and crawlers, hidden from visual layout.
+    // Title is visible in the page's meta row; the AutoGPT logo
+    // lives in the parent layout (not rendered in this test).
     const heading = await screen.findByRole("heading", { level: 1 });
     expect(heading.textContent).toBe("How to deploy");
+    expect(
+      screen.getByText(/Shared .* · public read-only view/i),
+    ).toBeDefined();
     expect(await screen.findByText("How do I deploy?")).toBeDefined();
     expect(await screen.findByText("Use docker compose.")).toBeDefined();
   });

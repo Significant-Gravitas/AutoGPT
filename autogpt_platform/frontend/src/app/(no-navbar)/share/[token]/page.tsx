@@ -14,8 +14,8 @@ import { InfoIcon } from "lucide-react";
 import { useParams } from "next/navigation";
 
 // The parent ``share/layout.tsx`` renders the AutoGPT logo header.
-// This page owns its own scroll/container chrome inside the layout's
-// flex-1 body.
+// This chrome adds the page-specific container + internal scroll
+// inside the layout's flex-1 main.
 function ExecutionShareChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
@@ -39,7 +39,7 @@ export default function SharePage() {
   if (loading) {
     return (
       <ExecutionShareChrome>
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center justify-center py-16">
           <div className="text-center">
             <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
             <p className="text-muted-foreground">Loading shared execution...</p>
@@ -52,7 +52,7 @@ export default function SharePage() {
   if (error || is404 || !executionData) {
     return (
       <ExecutionShareChrome>
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
             <Card className="border-dashed">
               <CardContent className="pt-6">

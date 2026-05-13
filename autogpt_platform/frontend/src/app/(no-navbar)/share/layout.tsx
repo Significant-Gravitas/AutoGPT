@@ -8,12 +8,15 @@ export const metadata: Metadata = {
   robots: "noindex, nofollow",
 };
 
-// Logo header at the top, full-bleed children below.  Children get
-// ``flex-1 min-h-0`` so a child that wants the full remaining height
-// (like the chat viewer) can use ``h-full`` without overflowing the
-// document.  Pages that want a container/max-width wrapper add it
-// themselves (e.g. the execution-share page wraps its content in
-// ``container mx-auto px-4 py-8``).
+// Shared chrome for every ``/share/...`` route: AutoGPT logo header
+// up top, full-height main body underneath.  Each page renders its
+// own page-specific meta row inside the body — the layout owns
+// brand consistency, the pages own their domain detail.
+//
+// The body uses ``flex-1 min-h-0 overflow-hidden`` so pages that
+// want full-bleed (chat viewer, ``h-full``) and pages that want
+// internal scrolling (execution viewer, container + scroll) both
+// work without leaking a document-level scrollbar.
 export default function ShareLayout({
   children,
 }: {
