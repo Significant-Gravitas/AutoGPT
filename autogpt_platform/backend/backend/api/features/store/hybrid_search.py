@@ -140,6 +140,7 @@ async def unified_hybrid_search(
     weights: UnifiedSearchWeights | None = None,
     min_score: float | None = None,
     user_id: str | None = None,
+    lexical_query: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Unified hybrid search across all content types.
@@ -147,7 +148,8 @@ async def unified_hybrid_search(
     Searches UnifiedContentEmbedding using both semantic (vector) and lexical (tsvector) signals.
 
     Args:
-        query: Search query string
+        query: Search query string (used for embedding + lexical unless
+            ``lexical_query`` is provided).
         content_types: List of content types to search. Defaults to all public types.
         category: Filter by category (for content types that support it)
         page: Page number (1-indexed)
@@ -155,6 +157,13 @@ async def unified_hybrid_search(
         weights: Custom weights for search signals
         min_score: Minimum relevance score threshold (0-1)
         user_id: User ID for searching private content (library agents)
+        lexical_query: Optional override for the tsvector ``@@`` candidate
+            selection and ``ts_rank_cd`` scoring. Use when the natural-
+            language query is too long for ``plainto_tsquery``'s
+            AND-of-terms semantics — typically a keyword-extracted form
+            of ``query`` (e.g. ``"youtube summarize video"`` for a goal
+            like ``"summarize a YouTube video..."``). Defaults to
+            ``query`` when None.
 
     Returns:
         Tuple of (results list, total count)
@@ -163,6 +172,11 @@ async def unified_hybrid_search(
     query = query.strip()
     if not query:
         return [], 0
+    # Default the lexical query to the semantic query for backwards-
+    # compatibility; callers (e.g. library similarity search) override
+    # when ``plainto_tsquery``'s AND semantics over a long natural goal
+    # would zero out every match.
+    lexical_query = (lexical_query or query).strip() or query
 
     if page < 1:
         page = 1
@@ -213,12 +227,15 @@ async def unified_hybrid_search(
     params: list[Any] = []
     param_idx = 1
 
-    # Query for lexical search
-    params.append(query)
+    # Query for lexical search (may differ from semantic ``query`` —
+    # see the ``lexical_query`` parameter doc).
+    params.append(lexical_query)
     query_param = f"${param_idx}"
     param_idx += 1
 
-    # Query lowercase for category matching
+    # Query lowercase for category matching — keep tied to the
+    # natural-language ``query`` so categories still match the user's
+    # intent words, not the stripped lexical form.
     params.append(query.lower())
     query_lower_param = f"${param_idx}"
     param_idx += 1

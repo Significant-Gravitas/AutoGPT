@@ -6,6 +6,7 @@ import pytest
 
 from backend.api.features.library.search import (
     LIBRARY_SIMILARITY_THRESHOLD,
+    _extract_lexical_keywords,
     hybrid_search_library_agents,
 )
 
@@ -51,6 +52,60 @@ async def test_delegates_to_unified_hybrid_search_with_user_scope():
     assert kwargs["page_size"] == 3
     assert kwargs["min_score"] == LIBRARY_SIMILARITY_THRESHOLD
     assert len(kwargs["content_types"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_forwards_keyword_extracted_lexical_query():
+    """Semantic uses the full sentence; lexical gets the stopword-stripped
+    keyword form so plainto_tsquery's AND-of-terms doesn't zero out every
+    match against an agent description."""
+    rows: list[dict] = []
+    patcher, mock_shim = _patch_search((rows, 0))
+    with patcher:
+        await hybrid_search_library_agents(
+            query=(
+                "Summarize a YouTube video with timestamped bullet points "
+                "and topic summary from a URL input"
+            ),
+            user_id="u",
+        )
+
+    kwargs = mock_shim.unified_hybrid_search.call_args.kwargs
+    # Full sentence preserved for embedding
+    assert kwargs["query"].startswith("Summarize a YouTube video")
+    # Lexical query: short keyword string, stopwords + short tokens dropped
+    lex = kwargs["lexical_query"].split()
+    assert len(lex) <= 5
+    assert "the" not in lex and "a" not in lex and "from" not in lex
+    assert "summarize" in lex
+    assert "youtube" in lex
+    assert "video" in lex
+
+
+def test_extract_lexical_keywords_drops_stopwords_and_short_tokens():
+    out = _extract_lexical_keywords("Build me an agent to summarize my emails")
+    tokens = out.split()
+    # 'Build', 'me', 'an', 'to', 'my' are stopwords/short → dropped
+    assert "agent" in tokens
+    assert "summarize" in tokens
+    assert "emails" in tokens
+    assert "build" not in tokens and "me" not in tokens and "to" not in tokens
+
+
+def test_extract_lexical_keywords_caps_count():
+    out = _extract_lexical_keywords(
+        "alpha beta gamma delta epsilon zeta eta theta", max_keywords=5
+    )
+    assert out.split() == ["alpha", "beta", "gamma", "delta", "epsilon"]
+
+
+def test_extract_lexical_keywords_dedupes_preserving_order():
+    out = _extract_lexical_keywords("youtube video youtube summarizer video")
+    assert out.split() == ["youtube", "video", "summarizer"]
+
+
+def test_extract_lexical_keywords_empty_when_only_stopwords():
+    assert _extract_lexical_keywords("a the of to and") == ""
 
 
 @pytest.mark.asyncio
