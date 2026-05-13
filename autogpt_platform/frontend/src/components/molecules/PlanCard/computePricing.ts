@@ -32,7 +32,10 @@ export function computePlanPricing({
       ? monthlyLocal
       : null;
   const discountPercent =
-    isYearly && monthlyLocal !== null && monthlyLocal > 0 && monthlyEquiv !== null
+    isYearly &&
+    monthlyLocal !== null &&
+    monthlyLocal > 0 &&
+    monthlyEquiv !== null
       ? Math.round((1 - monthlyEquiv / monthlyLocal) * 100)
       : null;
 

@@ -29,16 +29,12 @@ export function PlanCard({
   loading = false,
   disabled = false,
 }: Props) {
-  const {
-    primaryPrice,
-    monthlyOriginal,
-    chargedToday,
-    discountPercent,
-  } = computePlanPricing({
-    plan,
-    country,
-    isYearly,
-  });
+  const { primaryPrice, monthlyOriginal, chargedToday, discountPercent } =
+    computePlanPricing({
+      plan,
+      country,
+      isYearly,
+    });
   const hl = plan.highlighted;
   const isTeam = plan.key === PLAN_KEYS.TEAM;
   const reduceMotion = useReducedMotion();
