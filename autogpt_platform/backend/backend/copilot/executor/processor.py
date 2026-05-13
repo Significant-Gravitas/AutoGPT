@@ -283,9 +283,9 @@ class CoPilotProcessor:
                 cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
             if cli_path:
                 try:
-                    with open(cli_path, "rb") as _f:
-                        while _f.read(65536):  # Stream full binary to warm OS page caches
-                            pass
+                    with open(cli_path, "rb") as binary_file:
+                            for _ in iter(lambda: binary_file.read(1024 * 1024), b""):
+                                pass
                     logger.info(
                         "[CoPilotExecutor] CLI pre-warm done: %s",
                         os.path.basename(cli_path),
