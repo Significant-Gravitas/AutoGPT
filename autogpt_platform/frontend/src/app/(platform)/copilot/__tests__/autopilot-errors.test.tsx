@@ -54,7 +54,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("CoPilot streaming — error paths", () => {
+describe("AutoPilot streaming — error paths", () => {
   it("surfaces an SSE error chunk to the user", async () => {
     const chunks: UIMessageChunk[] = [
       { type: "start", messageId: "msg-1" },

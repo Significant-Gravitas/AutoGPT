@@ -62,7 +62,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("CoPilot streaming — content rendering", () => {
+describe("AutoPilot streaming — content rendering", () => {
   it("renders assistant text from a single text-delta frame", async () => {
     server.use(
       copilotStreamHandler({

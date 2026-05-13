@@ -55,7 +55,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("CoPilot streaming — submit / stop lifecycle", () => {
+describe("AutoPilot streaming — submit / stop lifecycle", () => {
   it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {
     server.use(
       copilotStreamHandler({
@@ -121,7 +121,7 @@ describe("CoPilot streaming — submit / stop lifecycle", () => {
   });
 });
 
-describe("CoPilot streaming — resume on mount", () => {
+describe("AutoPilot streaming — resume on mount", () => {
   it("issues a GET resume and renders streamed content when the session has an active_stream", async () => {
     server.use(
       copilotResumeHandler({
