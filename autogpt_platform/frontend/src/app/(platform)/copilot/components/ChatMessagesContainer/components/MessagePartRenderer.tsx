@@ -111,7 +111,7 @@ export function MessagePartRenderer({
       if (!reasoningText.trim()) return null;
       return (
         <ReasoningCollapse key={key}>
-          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+          <pre className="text-sm whitespace-pre-wrap text-zinc-700">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -133,7 +133,11 @@ export function MessagePartRenderer({
               key={key}
               className="my-2 flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-500"
             >
-              <StopIcon size={16} weight="fill" className="shrink-0 text-neutral-400" />
+              <StopIcon
+                size={16}
+                weight="fill"
+                className="shrink-0 text-neutral-400"
+              />
               <span>Response stopped</span>
             </div>
           );
@@ -152,7 +156,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600 italic"
           >
             {markerText}
           </div>
