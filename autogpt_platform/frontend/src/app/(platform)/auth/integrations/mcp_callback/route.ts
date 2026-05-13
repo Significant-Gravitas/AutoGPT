@@ -49,8 +49,8 @@ export async function GET(request: Request) {
 
         // Method 1: BroadcastChannel (reliable across tabs/popups, no opener needed)
         try {
-          var bc = new BroadcastChannel("mcp_oauth");
-          bc.postMessage({ type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
+          var bc = new BroadcastChannel("oauth_popup");
+          bc.postMessage({ message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
           bc.close();
           sent = true;
         } catch(e) { /* BroadcastChannel not supported */ }
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
 
         // Method 3: localStorage (most reliable cross-tab fallback)
         try {
-          localStorage.setItem("mcp_oauth_result", JSON.stringify(msg));
+          localStorage.setItem("oauth_popup_result", JSON.stringify({ message_type: "mcp_oauth_result", ...msg }));
           sent = true;
         } catch(e) { /* localStorage not available */ }
 

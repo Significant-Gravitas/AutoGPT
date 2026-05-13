@@ -33,19 +33,40 @@ export async function GET(request: Request) {
 
   console.debug("Sending message to opener:", message);
 
-  // Return a response with the message as JSON and a script to close the window
-  // Use safeJsonStringify to prevent XSS by escaping <, >, and & characters
+  // Emit via three channels so the result reaches the originating page
+  // regardless of how the OAuth flow was opened:
+  //   1. BroadcastChannel — works across tabs/popups even when COOP headers
+  //      have severed window.opener, and is the only channel that works for
+  //      the popup-blocked → new-tab fallback path.
+  //   2. window.opener.postMessage — fast path for same-origin popups.
+  //   3. localStorage — most reliable cross-tab fallback when both above fail.
+  // The listener (`openOAuthPopup`) filters incoming messages by state token,
+  // so writing to a shared channel is safe across concurrent flows.
   return new NextResponse(
-    `
-    <html>
-      <body>
-        <script>
-          window.opener.postMessage(${safeJsonStringify(message)});
-          window.close();
-        </script>
-      </body>
-    </html>
-    `,
+    `<!DOCTYPE html>
+<html>
+  <body>
+    <script>
+      (function() {
+        var msg = ${safeJsonStringify(message)};
+        try {
+          var bc = new BroadcastChannel("oauth_popup");
+          bc.postMessage(msg);
+          bc.close();
+        } catch(e) {}
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(msg, window.location.origin);
+          }
+        } catch(e) {}
+        try {
+          localStorage.setItem("oauth_popup_result", JSON.stringify(msg));
+        } catch(e) {}
+        window.close();
+      })();
+    </script>
+  </body>
+</html>`,
     {
       headers: { "Content-Type": "text/html" },
     },

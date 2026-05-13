@@ -23,13 +23,14 @@ export type OAuthPopupOptions = {
   /** State token to validate against incoming messages */
   stateToken: string;
   /**
-   * Use BroadcastChannel + localStorage polling for cross-origin OAuth (MCP).
-   * Standard OAuth only uses postMessage via window.opener.
+   * Use BroadcastChannel + localStorage polling on top of postMessage. Needed
+   * whenever `window.opener` may not survive (cross-origin OAuth providers
+   * stripped by COOP headers, popup-blocked → new-tab fallback, etc.).
    */
   useCrossOriginListeners?: boolean;
-  /** BroadcastChannel name (default: "mcp_oauth") */
+  /** BroadcastChannel name (default: "oauth_popup") */
   broadcastChannelName?: string;
-  /** localStorage key for cross-origin fallback (default: "mcp_oauth_result") */
+  /** localStorage key for cross-origin fallback (default: "oauth_popup_result") */
   localStorageKey?: string;
   /** Message types to accept (default: ["oauth_popup_result", "mcp_oauth_result"]) */
   acceptMessageTypes?: string[];
@@ -70,8 +71,8 @@ export function openOAuthPopup(
   const {
     stateToken,
     useCrossOriginListeners = false,
-    broadcastChannelName = "mcp_oauth",
-    localStorageKey = "mcp_oauth_result",
+    broadcastChannelName = "oauth_popup",
+    localStorageKey = "oauth_popup_result",
     acceptMessageTypes = ["oauth_popup_result", "mcp_oauth_result"],
     timeout = DEFAULT_TIMEOUT_MS,
   } = options;

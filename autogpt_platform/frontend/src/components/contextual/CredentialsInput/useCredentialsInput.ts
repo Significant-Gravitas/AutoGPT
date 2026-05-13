@@ -202,8 +202,10 @@ export function useCredentialsInput({
 
       const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
         stateToken: state_token,
-        useCrossOriginListeners: isMCP,
-        // Standard OAuth uses "oauth_popup_result", MCP uses "mcp_oauth_result"
+        // Always enable BroadcastChannel + localStorage listeners — they are
+        // the only path that works when the popup is blocked and we fall back
+        // to a new tab (window.opener can be severed by cross-origin COOP).
+        useCrossOriginListeners: true,
         acceptMessageTypes: isMCP
           ? ["mcp_oauth_result"]
           : ["oauth_popup_result"],
