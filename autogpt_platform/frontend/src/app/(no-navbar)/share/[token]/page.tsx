@@ -12,14 +12,24 @@ import {
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "next/navigation";
+import { ShareHeader } from "../components/ShareHeader/ShareHeader";
 
-// The parent ``share/layout.tsx`` renders the AutoGPT logo header.
-// This chrome adds the page-specific container + internal scroll
-// inside the layout's flex-1 main.
-function ExecutionShareChrome({ children }: { children: React.ReactNode }) {
+// Wraps the page in the shared header + a scrollable container.
+// Header is the same component used by the chat share viewer so the
+// two routes stay visually consistent.
+function ExecutionShareChrome({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="container mx-auto px-4 py-8">{children}</div>
+    <div className="flex h-screen w-full flex-col bg-background">
+      <ShareHeader title={title} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="container mx-auto px-4 py-8">{children}</div>
+      </div>
     </div>
   );
 }
@@ -91,7 +101,7 @@ export default function SharePage() {
   }
 
   return (
-    <ExecutionShareChrome>
+    <ExecutionShareChrome title={executionData.graph_name}>
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Alert>

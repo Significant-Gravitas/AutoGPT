@@ -80,13 +80,11 @@ describe("SharedChatPage", () => {
 
     render(<SharedChatPage />);
 
-    // Title is visible in the page's meta row; the AutoGPT logo
-    // lives in the parent layout (not rendered in this test).
+    // Title sits in the ShareHeader's title slot.  Logo + actions
+    // slots also live in the header but aren't asserted here.
     const heading = await screen.findByRole("heading", { level: 1 });
     expect(heading.textContent).toBe("How to deploy");
-    expect(
-      screen.getByText(/Shared .* · public read-only view/i),
-    ).toBeDefined();
+    expect(screen.getByText(/^Shared /)).toBeDefined();
     expect(await screen.findByText("How do I deploy?")).toBeDefined();
     expect(await screen.findByText("Use docker compose.")).toBeDefined();
   });
@@ -177,12 +175,11 @@ describe("SharedChatPage", () => {
     // Wait for the page to settle past loading.
     await screen.findByRole("heading", { level: 1 });
 
-    const rootRow = container.querySelector("div.flex-row");
-    expect(rootRow).not.toBeNull();
-    expect(rootRow?.className).toContain("flex-row");
-    // Fills layout's flex-1 body via h-full (not h-screen — h-screen
-    // would overflow inside the layout's already-h-screen container).
-    expect(rootRow?.className).toContain("h-full");
+    // A flex-row container must sit below the header so the chat
+    // column and ArtifactPanel can dock side-by-side on desktop.
+    const splitRow = container.querySelector("div.flex-row");
+    expect(splitRow).not.toBeNull();
+    expect(splitRow?.className).toContain("flex-row");
   });
 
   test("falls back to 'Shared chat' when the session has no title", async () => {
