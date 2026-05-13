@@ -10,10 +10,10 @@
 
 set -euo pipefail
 
-if [ $# -lt 3 ]; then
+if [ $# -lt 3 ]; 
   echo "Usage: recycle-agent.sh WINDOW WORKTREE_PATH SPARE_BRANCH" >&2
-  exit 1
-fi
+        ;
+
 
 WINDOW="$1"
 WORKTREE_PATH="$2"
