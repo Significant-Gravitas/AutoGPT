@@ -1,8 +1,10 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   chatSharePath,
+  chatShareUrl,
   executionSharePath,
+  executionShareUrl,
   sharedChatFilePattern,
   sharedChatFileUrl,
 } from "../routes";
@@ -14,6 +16,52 @@ describe("share viewer path builders", () => {
 
   test("executionSharePath returns the canonical viewer route", () => {
     expect(executionSharePath("abc-123")).toBe("/share/abc-123");
+  });
+});
+
+describe("share viewer absolute URL builders", () => {
+  const ORIGINAL_ENV = process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+
+  beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_ENV === undefined) {
+      delete process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = ORIGINAL_ENV;
+    }
+    vi.unstubAllGlobals();
+  });
+
+  test("chatShareUrl uses window.location.origin when env var is unset", () => {
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    expect(chatShareUrl("abc-123")).toBe(
+      "https://app.example.com/share/chat/abc-123",
+    );
+  });
+
+  test("executionShareUrl uses NEXT_PUBLIC_FRONTEND_BASE_URL when set", () => {
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = "https://shared.example.com";
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    expect(executionShareUrl("abc-123")).toBe(
+      "https://shared.example.com/share/abc-123",
+    );
+  });
+
+  test("chatShareUrl prefers env var over window.location", () => {
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = "https://shared.example.com";
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    expect(chatShareUrl("abc-123")).toBe(
+      "https://shared.example.com/share/chat/abc-123",
+    );
   });
 });
 
