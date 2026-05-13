@@ -47,15 +47,17 @@ _EXECUTION_STARTED_TYPE = "execution_started"
 async def enable_chat_session_share(
     session_id: str,
     user_id: str,
-    linked_execution_ids: list[str],
+    auto_share_executions: bool,
 ) -> str:
     """Enable sharing on a chat session.
 
     Generates a fresh token, refreshes the file allowlist from the
-    session's messages, and opts the caller-selected
-    ``linked_execution_ids`` in to the share.  Linked executions that
-    are already independently shared keep their existing token; only
-    not-yet-shared executions get a new ``CHAT_LINK`` share.
+    session's messages, and — when ``auto_share_executions`` is True —
+    auto-links every ``run_agent`` execution referenced by the chat's
+    tool messages.  The flag is persisted on the session so subsequent
+    ``run_agent`` invocations (handled by
+    :func:`link_new_execution_to_chat_share`) keep the chat share in
+    sync without requiring the owner to revisit the dialog.
 
     All writes happen inside a single Prisma transaction so a crash
     mid-flow cannot leave the chat publicly readable with a missing
@@ -64,8 +66,7 @@ async def enable_chat_session_share(
 
     Returns the share token.
 
-    Raises ValueError if the session does not belong to *user_id* or if
-    any ``linked_execution_ids`` is not owned by *user_id*.
+    Raises ValueError if the session does not belong to *user_id*.
     """
     session = await PrismaChatSession.prisma().find_first(
         where={"id": session_id, "userId": user_id},
@@ -73,9 +74,28 @@ async def enable_chat_session_share(
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
 
-    requested_links = await _validate_owned_executions(
-        execution_ids=linked_execution_ids, user_id=user_id
-    )
+    if auto_share_executions:
+        execution_ids = list(
+            await _collect_execution_ids_from_messages(session_id=session_id)
+        )
+        # Only auto-link executions the caller still owns.  Runs the
+        # caller doesn't own (deleted, cross-user) are silently skipped
+        # rather than failing the whole share — they shouldn't have
+        # been referenced in the chat in the first place, but defending
+        # against that here keeps share-enable robust.
+        executions_to_link = (
+            await AgentGraphExecution.prisma().find_many(
+                where={
+                    "id": {"in": execution_ids},
+                    "userId": user_id,
+                    "isDeleted": False,
+                },
+            )
+            if execution_ids
+            else []
+        )
+    else:
+        executions_to_link = []
 
     share_token = generate_share_token()
     now = datetime.now(UTC)
@@ -95,7 +115,7 @@ async def enable_chat_session_share(
 
         await _link_executions_to_share(
             session_id=session_id,
-            executions=requested_links,
+            executions=executions_to_link,
             shared_at=now,
             tx=tx,
         )
@@ -109,10 +129,48 @@ async def enable_chat_session_share(
                 "isShared": True,
                 "shareToken": share_token,
                 "sharedAt": now,
+                "autoShareExecutions": auto_share_executions,
             },
         )
 
     return share_token
+
+
+async def link_new_execution_to_chat_share(
+    session_id: str,
+    execution_id: str,
+) -> None:
+    """Auto-link a freshly-completed execution into an already-shared chat.
+
+    Hook called by the ``run_agent`` tool after the tool result is
+    persisted.  No-op when the chat is not shared, or shared without
+    ``autoShareExecutions=True``.  Idempotent — repeated calls for the
+    same (session, execution) pair don't double-link.
+    """
+    session = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    if not session or not session.isShared or not session.autoShareExecutions:
+        return
+
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": session.userId, "isDeleted": False},
+    )
+    if execution is None:
+        return
+
+    existing = await ChatLinkedShare.prisma().find_first(
+        where={"sessionId": session_id, "executionId": execution_id},
+    )
+    if existing is not None:
+        return
+
+    now = datetime.now(UTC)
+    async with transaction() as tx:
+        await _link_executions_to_share(
+            session_id=session_id,
+            executions=[execution],
+            shared_at=now,
+            tx=tx,
+        )
 
 
 async def disable_chat_session_share(session_id: str, user_id: str) -> None:
@@ -172,6 +230,10 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
                 "isShared": False,
                 "shareToken": None,
                 "sharedAt": None,
+                # Reset the auto-share preference so the next time the
+                # owner re-shares this chat the modal opens in its
+                # default state (toggle off until they flip it).
+                "autoShareExecutions": False,
             },
         )
 
@@ -248,88 +310,32 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
 class ChatShareState:
     is_shared: bool
     share_token: str | None
+    auto_share_executions: bool = False
 
 
 async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     """Return the current share state for *session_id* scoped to *user_id*.
 
-    Returns ``ChatShareState(is_shared=False, share_token=None)`` when the
-    session is missing or not owned by the user — the same shape callers
-    see for never-shared sessions, so the share modal renders the
-    "enable" path without an extra existence check.
+    Returns ``ChatShareState(is_shared=False, ...)`` when the session is
+    missing or not owned by the user — the same shape callers see for
+    never-shared sessions, so the share modal renders the "enable" path
+    without an extra existence check.
     """
     row = await PrismaChatSession.prisma().find_first(
         where={"id": session_id, "userId": user_id},
     )
     if not row:
-        return ChatShareState(is_shared=False, share_token=None)
-    return ChatShareState(is_shared=row.isShared, share_token=row.shareToken)
-
-
-async def find_linked_executions_in_session(
-    session_id: str, user_id: str
-) -> list[SharedChatLinkedExecution]:
-    """Return executions referenced by the chat's tool responses.
-
-    Used by the share modal to prompt the owner "this chat ran 3
-    agents — include them in the share?".  Only executions still owned
-    by *user_id* are returned (so deleted / cross-user runs don't leak).
-    Each entry's ``share_token`` reflects the execution's CURRENT share
-    state, which the UI uses to disambiguate "already shared
-    independently" from "not yet shared at all".
-    """
-    session = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
-    )
-    if not session:
-        return []
-
-    execution_ids = await _collect_execution_ids_from_messages(session_id=session_id)
-    if not execution_ids:
-        return []
-
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={
-            "id": {"in": list(execution_ids)},
-            "userId": user_id,
-            "isDeleted": False,
-        },
-        include={"AgentGraph": True},
-    )
-
-    return [
-        SharedChatLinkedExecution(
-            execution_id=e.id,
-            graph_id=e.agentGraphId,
-            graph_name=_graph_name(e.AgentGraph),
-            share_token=e.shareToken if e.isShared else None,
+        return ChatShareState(
+            is_shared=False, share_token=None, auto_share_executions=False
         )
-        for e in executions
-    ]
+    return ChatShareState(
+        is_shared=row.isShared,
+        share_token=row.shareToken,
+        auto_share_executions=row.autoShareExecutions,
+    )
 
 
 # ---------- Helpers ----------------------------------------------------------
-
-
-async def _validate_owned_executions(
-    execution_ids: list[str], user_id: str
-) -> list[AgentGraphExecution]:
-    if not execution_ids:
-        return []
-    rows = await AgentGraphExecution.prisma().find_many(
-        where={
-            "id": {"in": execution_ids},
-            "userId": user_id,
-            "isDeleted": False,
-        },
-    )
-    found_ids = {r.id for r in rows}
-    missing = set(execution_ids) - found_ids
-    if missing:
-        raise ValueError(
-            f"Executions not found or not owned by user: {sorted(missing)}"
-        )
-    return rows
 
 
 async def _build_shared_chat_files(

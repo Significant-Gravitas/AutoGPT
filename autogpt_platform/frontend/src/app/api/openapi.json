@@ -2656,12 +2656,12 @@
         }
       }
     },
-    "/api/chat/sessions/{session_id}/share/linked-executions": {
+    "/api/chat/sessions/{session_id}/share/state": {
       "get": {
         "tags": ["v2", "chat", "share", "chat", "share"],
-        "summary": "List Linked Executions",
-        "description": "List executions referenced by this chat's tool responses.\n\nThe share modal renders these as a checklist so the owner explicitly\nconsents to exposing each underlying agent run.  Already-shared\nexecutions still appear so the owner sees the full picture.",
-        "operationId": "getV2ListLinkedExecutions",
+        "summary": "Get Chat Share State",
+        "description": "Return the chat's current share state.\n\nThe share modal calls this on open so it can render in the right\nmode (share-vs-revoke) and pre-select the auto-share toggle.",
+        "operationId": "getV2GetChatShareState",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -2677,7 +2677,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LinkedExecutionsResponse"
+                  "$ref": "#/components/schemas/ChatShareStateResponse"
                 }
               }
             }
@@ -11132,6 +11132,27 @@
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
+      "ChatShareStateResponse": {
+        "properties": {
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ChatShareStateResponse",
+        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip."
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -11802,16 +11823,15 @@
       },
       "EnableShareRequest": {
         "properties": {
-          "linked_execution_ids": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Linked Execution Ids",
-            "default": []
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
           }
         },
         "type": "object",
         "title": "EnableShareRequest",
-        "description": "Per-execution opt-in choices made in the share modal.\n\nEmpty list = share the chat without exposing any underlying agent\nruns (viewer sees the inline tool-call snapshots, no drill-in)."
+        "description": "Whether to auto-link every ``run_agent`` execution in this chat.\n\nWhen true, the backend creates ``ChatLinkedShare`` rows for every\nexisting agent run AND auto-links any new runs that land while the\nshare is active.  When false, only the chat messages are shared\n(cards in the viewer render in their \"execution not shared\" state)."
       },
       "ErrorResponse": {
         "properties": {
@@ -13725,30 +13745,6 @@
         "type": "string",
         "enum": ["SERVER", "USER"],
         "title": "LinkType"
-      },
-      "LinkedExecutionsResponse": {
-        "properties": {
-          "linked_executions": {
-            "items": {
-              "$ref": "#/components/schemas/SharedChatLinkedExecution"
-            },
-            "type": "array",
-            "title": "Linked Executions"
-          },
-          "is_shared": {
-            "type": "boolean",
-            "title": "Is Shared",
-            "default": false
-          },
-          "share_token": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Share Token"
-          }
-        },
-        "type": "object",
-        "required": ["linked_executions"],
-        "title": "LinkedExecutionsResponse",
-        "description": "Listing returned to the share modal so the owner can opt-in.\n\nAlso surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip."
       },
       "ListFilesResponse": {
         "properties": {

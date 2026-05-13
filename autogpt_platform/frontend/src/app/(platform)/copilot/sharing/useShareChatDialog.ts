@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  getGetV2ListLinkedExecutionsQueryKey,
+  getGetV2GetChatShareStateQueryKey,
   useDeleteV2DisableChatSharing,
-  useGetV2ListLinkedExecutions,
+  useGetV2GetChatShareState,
   usePostV2EnableChatSharing,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { SharedChatLinkedExecution } from "@/app/api/__generated__/models/sharedChatLinkedExecution";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { chatShareUrl } from "@/lib/share/routes";
 
@@ -21,33 +20,35 @@ export function useShareChatDialog({ sessionId, open }: Props) {
 
   const [isShared, setIsShared] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
-  const [selectedExecutionIds, setSelectedExecutionIds] = useState<Set<string>>(
-    new Set(),
-  );
+  // Default ON so the common case ("share this chat and the runs it
+  // produced") works without the owner having to think about it.
+  // Server state overrides this once the share-state query resolves.
+  const [autoShareExecutions, setAutoShareExecutions] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  // Only load linked executions when the modal opens — the scan can touch
-  // many tool messages, so we don't run it eagerly on chat mount.
-  const { data: linkedExecutionsResponse, isLoading: isLoadingLinks } =
-    useGetV2ListLinkedExecutions(sessionId, {
+  const { data: stateResponse, isLoading: isLoadingState } =
+    useGetV2GetChatShareState(sessionId, {
       query: {
         enabled: open,
         select: (res) => (res.status === 200 ? res.data : undefined),
       },
     });
 
-  // Hydrate local share state from the backend payload so the modal
-  // opens in the right mode after a reload.
+  // Hydrate local state from the backend payload so the modal opens
+  // in the right mode after a reload.
   useEffect(() => {
-    if (linkedExecutionsResponse) {
-      setIsShared(linkedExecutionsResponse.is_shared ?? false);
-      setShareToken(linkedExecutionsResponse.share_token ?? null);
+    if (stateResponse) {
+      setIsShared(stateResponse.is_shared ?? false);
+      setShareToken(stateResponse.share_token ?? null);
+      if (stateResponse.is_shared) {
+        setAutoShareExecutions(stateResponse.auto_share_executions ?? false);
+      }
     }
-  }, [linkedExecutionsResponse]);
+  }, [stateResponse]);
 
-  const invalidateLinks = () =>
+  const invalidateState = () =>
     queryClient.invalidateQueries({
-      queryKey: getGetV2ListLinkedExecutionsQueryKey(sessionId),
+      queryKey: getGetV2GetChatShareStateQueryKey(sessionId),
     });
 
   const { mutate: enable, isPending: isEnabling } = usePostV2EnableChatSharing({
@@ -63,7 +64,7 @@ export function useShareChatDialog({ sessionId, open }: Props) {
         }
         setIsShared(true);
         setShareToken(res.data.share_token);
-        invalidateLinks();
+        invalidateState();
         toast({
           title: "Chat sharing enabled",
           description:
@@ -86,8 +87,10 @@ export function useShareChatDialog({ sessionId, open }: Props) {
         onSuccess: () => {
           setIsShared(false);
           setShareToken(null);
-          setSelectedExecutionIds(new Set());
-          invalidateLinks();
+          // Reset the toggle to its default-on state so re-share
+          // works without an extra click.
+          setAutoShareExecutions(true);
+          invalidateState();
           toast({
             title: "Chat sharing disabled",
             description: "The share link is no longer accessible.",
@@ -104,18 +107,6 @@ export function useShareChatDialog({ sessionId, open }: Props) {
     });
 
   const shareUrl = shareToken ? chatShareUrl(shareToken) : "";
-
-  function toggleExecution(executionId: string) {
-    setSelectedExecutionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(executionId)) {
-        next.delete(executionId);
-      } else {
-        next.add(executionId);
-      }
-      return next;
-    });
-  }
 
   async function copyShareUrl() {
     if (!shareUrl) return;
@@ -136,14 +127,13 @@ export function useShareChatDialog({ sessionId, open }: Props) {
     shareToken,
     shareUrl,
     copied,
-    linkedExecutions: linkedExecutionsResponse?.linked_executions ?? [],
-    isLoadingLinks,
-    selectedExecutionIds,
-    toggleExecution,
+    autoShareExecutions,
+    setAutoShareExecutions,
+    isLoadingState,
     enable: () =>
       enable({
         sessionId,
-        data: { linked_execution_ids: Array.from(selectedExecutionIds) },
+        data: { auto_share_executions: autoShareExecutions },
       }),
     isEnabling,
     disable: () => disable({ sessionId }),
@@ -153,4 +143,3 @@ export function useShareChatDialog({ sessionId, open }: Props) {
 }
 
 export type ShareChatDialogState = ReturnType<typeof useShareChatDialog>;
-export type { SharedChatLinkedExecution };

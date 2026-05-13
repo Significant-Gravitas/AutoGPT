@@ -10,7 +10,6 @@ from starlette.responses import Response
 
 from backend.api.features.chat.share import owner_router, public_router
 from backend.copilot.sharing.models import (
-    SharedChatLinkedExecution,
     SharedChatMessage,
     SharedChatMessagesPage,
     SharedChatSession,
@@ -100,12 +99,39 @@ class TestEnableChatSharing:
         ):
             response = client.post(
                 f"/api/chat/sessions/{SESSION_ID}/share",
-                json={"linked_execution_ids": []},
+                json={"auto_share_executions": False},
             )
         assert response.status_code == 200
         body = response.json()
         assert body["share_token"] == VALID_TOKEN
         assert body["share_url"].endswith(f"/share/chat/{VALID_TOKEN}")
+
+    def test_enables_share_with_auto_share_executions(self, client):
+        captured: dict = {}
+
+        async def fake_enable(**kwargs):
+            captured.update(kwargs)
+            return VALID_TOKEN
+
+        with (
+            patch(
+                "backend.api.features.chat.share.is_feature_enabled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.api.features.chat.share.share_db.enable_chat_session_share",
+                side_effect=fake_enable,
+            ),
+        ):
+            response = client.post(
+                f"/api/chat/sessions/{SESSION_ID}/share",
+                json={"auto_share_executions": True},
+            )
+        assert response.status_code == 200
+        # The route must forward the flag down to the data layer so the
+        # backend can auto-link existing + future runs.
+        assert captured["auto_share_executions"] is True
 
     def test_flag_off_refuses_with_403(self, client):
         with patch(
@@ -115,7 +141,7 @@ class TestEnableChatSharing:
         ):
             response = client.post(
                 f"/api/chat/sessions/{SESSION_ID}/share",
-                json={"linked_execution_ids": []},
+                json={"auto_share_executions": False},
             )
         assert response.status_code == 403
 
@@ -134,7 +160,7 @@ class TestEnableChatSharing:
         ):
             response = client.post(
                 f"/api/chat/sessions/{SESSION_ID}/share",
-                json={"linked_execution_ids": ["bad-exec-id"]},
+                json={"auto_share_executions": False},
             )
         assert response.status_code == 404
 
@@ -159,35 +185,44 @@ class TestDisableChatSharing:
         assert response.status_code == 404
 
 
-class TestListLinkedExecutions:
-    def test_returns_listing(self, client):
+class TestGetChatShareState:
+    def test_returns_unshared_state(self, client):
         from backend.copilot.sharing.db import ChatShareState
 
-        listing = [
-            SharedChatLinkedExecution(
-                execution_id="exec-1",
-                graph_id="graph-1",
-                graph_name="My Agent",
-                share_token=None,
-            ),
-        ]
-        with (
-            patch(
-                "backend.api.features.chat.share.share_db.get_chat_share_state",
-                new_callable=AsyncMock,
-                return_value=ChatShareState(is_shared=False, share_token=None),
-            ),
-            patch(
-                "backend.api.features.chat.share.share_db.find_linked_executions_in_session",
-                new_callable=AsyncMock,
-                return_value=listing,
+        with patch(
+            "backend.api.features.chat.share.share_db.get_chat_share_state",
+            new_callable=AsyncMock,
+            return_value=ChatShareState(
+                is_shared=False, share_token=None, auto_share_executions=False
             ),
         ):
-            response = client.get(
-                f"/api/chat/sessions/{SESSION_ID}/share/linked-executions"
-            )
+            response = client.get(f"/api/chat/sessions/{SESSION_ID}/share/state")
         assert response.status_code == 200
-        assert response.json()["linked_executions"][0]["execution_id"] == "exec-1"
+        body = response.json()
+        assert body == {
+            "is_shared": False,
+            "share_token": None,
+            "auto_share_executions": False,
+        }
+
+    def test_returns_shared_state_with_token_and_auto_share_flag(self, client):
+        from backend.copilot.sharing.db import ChatShareState
+
+        with patch(
+            "backend.api.features.chat.share.share_db.get_chat_share_state",
+            new_callable=AsyncMock,
+            return_value=ChatShareState(
+                is_shared=True,
+                share_token=VALID_TOKEN,
+                auto_share_executions=True,
+            ),
+        ):
+            response = client.get(f"/api/chat/sessions/{SESSION_ID}/share/state")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["is_shared"] is True
+        assert body["share_token"] == VALID_TOKEN
+        assert body["auto_share_executions"] is True
 
 
 class TestPublicChatRead:

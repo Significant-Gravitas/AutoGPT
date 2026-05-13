@@ -21,11 +21,7 @@ from starlette.status import HTTP_204_NO_CONTENT
 
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.copilot.sharing import db as share_db
-from backend.copilot.sharing.models import (
-    SharedChatLinkedExecution,
-    SharedChatMessagesPage,
-    SharedChatSession,
-)
+from backend.copilot.sharing.models import SharedChatMessagesPage, SharedChatSession
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
 from backend.data.workspace import get_workspace_file_by_id
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -42,26 +38,26 @@ settings = Settings()
 owner_router = APIRouter(tags=["chat", "share"])
 
 
-class LinkedExecutionsResponse(BaseModel):
-    """Listing returned to the share modal so the owner can opt-in.
-
-    Also surfaces the chat's current share state so the modal can open
+class ChatShareStateResponse(BaseModel):
+    """Surfaces the chat's current share state so the modal can open
     in the right mode (share-vs-revoke) without an extra round-trip.
     """
 
-    linked_executions: list[SharedChatLinkedExecution]
     is_shared: bool = False
     share_token: str | None = None
+    auto_share_executions: bool = False
 
 
 class EnableShareRequest(BaseModel):
-    """Per-execution opt-in choices made in the share modal.
+    """Whether to auto-link every ``run_agent`` execution in this chat.
 
-    Empty list = share the chat without exposing any underlying agent
-    runs (viewer sees the inline tool-call snapshots, no drill-in).
+    When true, the backend creates ``ChatLinkedShare`` rows for every
+    existing agent run AND auto-links any new runs that land while the
+    share is active.  When false, only the chat messages are shared
+    (cards in the viewer render in their "execution not shared" state).
     """
 
-    linked_execution_ids: list[str] = []
+    auto_share_executions: bool = False
 
 
 class ShareResponse(BaseModel):
@@ -69,25 +65,21 @@ class ShareResponse(BaseModel):
     share_token: str
 
 
-@owner_router.get("/sessions/{session_id}/share/linked-executions")
-async def list_linked_executions(
+@owner_router.get("/sessions/{session_id}/share/state")
+async def get_chat_share_state(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
-) -> LinkedExecutionsResponse:
-    """List executions referenced by this chat's tool responses.
+) -> ChatShareStateResponse:
+    """Return the chat's current share state.
 
-    The share modal renders these as a checklist so the owner explicitly
-    consents to exposing each underlying agent run.  Already-shared
-    executions still appear so the owner sees the full picture.
+    The share modal calls this on open so it can render in the right
+    mode (share-vs-revoke) and pre-select the auto-share toggle.
     """
     state = await share_db.get_chat_share_state(session_id=session_id, user_id=user_id)
-    linked = await share_db.find_linked_executions_in_session(
-        session_id=session_id, user_id=user_id
-    )
-    return LinkedExecutionsResponse(
-        linked_executions=linked,
+    return ChatShareStateResponse(
         is_shared=state.is_shared,
         share_token=state.share_token,
+        auto_share_executions=state.auto_share_executions,
     )
 
 
@@ -120,7 +112,7 @@ async def enable_chat_sharing(
         share_token = await share_db.enable_chat_session_share(
             session_id=session_id,
             user_id=user_id,
-            linked_execution_ids=body.linked_execution_ids,
+            auto_share_executions=body.auto_share_executions,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

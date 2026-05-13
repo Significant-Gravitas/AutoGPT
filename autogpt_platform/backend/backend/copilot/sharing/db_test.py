@@ -21,8 +21,8 @@ from backend.copilot.sharing.db import (
     _collect_execution_ids_from_messages,
     disable_chat_session_share,
     enable_chat_session_share,
-    find_linked_executions_in_session,
     get_chat_share_state,
+    link_new_execution_to_chat_share,
 )
 
 SESSION_ID = "sess-A"
@@ -31,7 +31,7 @@ USER_ID = "user-1"
 EXECUTION_ID = "exec-1"
 
 
-def _mock_session() -> PrismaChatSession:
+def _mock_session(*, auto_share_executions: bool = False) -> PrismaChatSession:
     now = datetime.now(UTC)
     return PrismaChatSession.model_construct(
         id=SESSION_ID,
@@ -48,6 +48,7 @@ def _mock_session() -> PrismaChatSession:
         isShared=True,
         shareToken="token-A",
         sharedAt=now,
+        autoShareExecutions=auto_share_executions,
     )
 
 
@@ -268,7 +269,9 @@ class TestEnableChatShareState:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
             mock_prisma_calls["session"].return_value.update = AsyncMock()
 
-            token = await enable_chat_session_share(SESSION_ID, USER_ID, [])
+            token = await enable_chat_session_share(
+                SESSION_ID, USER_ID, auto_share_executions=False
+            )
 
         # Token returned, session.update called with isShared=True.
         assert isinstance(token, str)
@@ -306,7 +309,7 @@ class TestEnableChatShareState:
         assert state.share_token == "token-A"
 
 
-def _mock_tool_msg(content: str) -> "PrismaChatMessage":
+def _mock_tool_msg(content: str):
     """Build a minimal tool-role ChatMessage row for scanner tests."""
     from prisma.models import ChatMessage as PrismaChatMessage
 
@@ -336,9 +339,7 @@ class TestCollectExecutionIdsFromMessages:
         msg = _mock_tool_msg(
             '{"type":"execution_started","execution_id":"exec-A","graph_id":"g1"}'
         )
-        with patch(
-            "backend.copilot.sharing.db.PrismaChatMessage"
-        ) as msg_mock:
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == {"exec-A"}
@@ -346,18 +347,10 @@ class TestCollectExecutionIdsFromMessages:
     @pytest.mark.asyncio
     async def test_dedupes_executions_across_multiple_tool_messages(self):
         """The same execution referenced twice → single entry."""
-        m1 = _mock_tool_msg(
-            '{"type":"execution_started","execution_id":"exec-A"}'
-        )
-        m2 = _mock_tool_msg(
-            '{"type":"execution_started","execution_id":"exec-A"}'
-        )
-        m3 = _mock_tool_msg(
-            '{"type":"execution_started","execution_id":"exec-B"}'
-        )
-        with patch(
-            "backend.copilot.sharing.db.PrismaChatMessage"
-        ) as msg_mock:
+        m1 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
+        m2 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
+        m3 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-B"}')
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(
                 return_value=[m1, m2, m3]
             )
@@ -370,9 +363,7 @@ class TestCollectExecutionIdsFromMessages:
         msg = _mock_tool_msg(
             '{"type":"web_fetch","url":"https://example.com","status_code":200}'
         )
-        with patch(
-            "backend.copilot.sharing.db.PrismaChatMessage"
-        ) as msg_mock:
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
@@ -381,9 +372,7 @@ class TestCollectExecutionIdsFromMessages:
     async def test_ignores_malformed_json_tool_content(self):
         """Tool content that isn't valid JSON shouldn't crash the scan."""
         msg = _mock_tool_msg("not-json-at-all {{")
-        with patch(
-            "backend.copilot.sharing.db.PrismaChatMessage"
-        ) as msg_mock:
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
@@ -392,126 +381,95 @@ class TestCollectExecutionIdsFromMessages:
     async def test_ignores_execution_started_with_missing_id(self):
         """Defense-in-depth — a malformed payload without execution_id."""
         msg = _mock_tool_msg('{"type":"execution_started"}')
-        with patch(
-            "backend.copilot.sharing.db.PrismaChatMessage"
-        ) as msg_mock:
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
 
-class TestFindLinkedExecutionsInSession:
-    """Higher-level: from session → SharedChatLinkedExecution list."""
+class TestLinkNewExecutionToChatShare:
+    """Runtime hook: new run_agent → auto-link if chat has autoShareExecutions=True."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_for_non_owner(
-        self, mock_prisma_calls
+    async def test_no_op_when_chat_not_shared(self, mock_prisma_calls):
+        """An execution in an unshared chat is never auto-linked."""
+        unshared = _mock_session()
+        unshared.isShared = False
+        unshared.autoShareExecutions = False
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            return_value=unshared
+        )
+        link_create = AsyncMock()
+        mock_prisma_calls["linked"].return_value.create = link_create
+
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
+
+        link_create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_op_when_auto_share_executions_off(self, mock_prisma_calls):
+        """Chat shared but the owner opted out of auto-sharing runs."""
+        opted_out = _mock_session(auto_share_executions=False)
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            return_value=opted_out
+        )
+        link_create = AsyncMock()
+        mock_prisma_calls["linked"].return_value.create = link_create
+
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
+
+        link_create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_idempotent_when_link_already_exists(self, mock_prisma_calls):
+        """Repeated calls for the same (session, execution) pair don't double-link."""
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            return_value=_mock_session(auto_share_executions=True)
+        )
+        mock_prisma_calls["execution"].return_value.find_first = AsyncMock(
+            return_value=_mock_execution()
+        )
+        # Existing ChatLinkedShare row for this (session, execution).
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
+            return_value=ChatLinkedShare.model_construct(
+                sessionId=SESSION_ID, executionId=EXECUTION_ID
+            )
+        )
+        link_create = AsyncMock()
+        mock_prisma_calls["linked"].return_value.create = link_create
+
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
+
+        link_create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_links_new_execution_when_auto_share_on(
+        self, mock_prisma_calls, mock_transaction
     ):
-        """Non-owner / unknown session → empty list (uniform shape)."""
-        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+        """Chat shared with autoShareExecutions=True → new run gets linked."""
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            return_value=_mock_session(auto_share_executions=True)
+        )
+        mock_prisma_calls["execution"].return_value.find_first = AsyncMock(
+            return_value=_mock_execution()
+        )
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
             return_value=None
         )
+        link_create = AsyncMock()
+        mock_prisma_calls["linked"].return_value.create = link_create
 
-        result = await find_linked_executions_in_session(
-            session_id=SESSION_ID, user_id="other-user"
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
         )
 
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_returns_empty_when_no_tool_executions_in_messages(
-        self, mock_prisma_calls
-    ):
-        """Owner with chat but no run_agent calls → empty list."""
-        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
-            return_value=_mock_session()
-        )
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
-            result = await find_linked_executions_in_session(
-                session_id=SESSION_ID, user_id=USER_ID
-            )
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_returns_linked_executions_with_share_token(
-        self, mock_prisma_calls
-    ):
-        """Chat that ran a SHARED execution → drill-in link surfaces."""
-        from prisma.models import AgentGraph
-
-        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
-            return_value=_mock_session()
-        )
-        shared_exec = _mock_execution()
-        shared_exec.AgentGraph = AgentGraph.model_construct(
-            id="graph-1", version=1, name="My Agent", userId=USER_ID
-        )
-        mock_prisma_calls["execution"].return_value.find_many = AsyncMock(
-            return_value=[shared_exec]
-        )
-
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(
-                return_value=[
-                    _mock_tool_msg(
-                        f'{{"type":"execution_started","execution_id":"{EXECUTION_ID}"}}'
-                    )
-                ]
-            )
-            result = await find_linked_executions_in_session(
-                session_id=SESSION_ID, user_id=USER_ID
-            )
-
-        assert len(result) == 1
-        assert result[0].execution_id == EXECUTION_ID
-        assert result[0].graph_name == "My Agent"
-        assert result[0].share_token == "token-exec"  # was isShared=True
-
-    @pytest.mark.asyncio
-    async def test_returns_unshared_executions_with_none_token(
-        self, mock_prisma_calls
-    ):
-        """Unshared execution shows up in the modal as opt-in candidate."""
-        from prisma.enums import AgentExecutionStatus
-
-        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
-            return_value=_mock_session()
-        )
-        # Build an unshared execution.
-        from prisma.models import AgentGraphExecution as Exec
-
-        unshared = Exec.model_construct(
-            id=EXECUTION_ID,
-            createdAt=datetime.now(UTC),
-            agentGraphId="graph-1",
-            agentGraphVersion=1,
-            executionStatus=AgentExecutionStatus.COMPLETED,
-            userId=USER_ID,
-            isDeleted=False,
-            isShared=False,
-            shareToken=None,
-            sharedAt=None,
-            sharedVia=None,
-            AgentGraph=None,
-        )
-        mock_prisma_calls["execution"].return_value.find_many = AsyncMock(
-            return_value=[unshared]
-        )
-
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(
-                return_value=[
-                    _mock_tool_msg(
-                        f'{{"type":"execution_started","execution_id":"{EXECUTION_ID}"}}'
-                    )
-                ]
-            )
-            result = await find_linked_executions_in_session(
-                session_id=SESSION_ID, user_id=USER_ID
-            )
-
-        assert len(result) == 1
-        # Not yet shared → share_token=None so the modal renders the
-        # "include in share" toggle for it.
-        assert result[0].share_token is None
+        link_create.assert_called_once()
+        call_data = link_create.call_args.kwargs["data"]
+        assert call_data["sessionId"] == SESSION_ID
+        assert call_data["executionId"] == EXECUTION_ID

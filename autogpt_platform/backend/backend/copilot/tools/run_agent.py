@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -753,6 +754,9 @@ class RunAgentTool(BaseTool):
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
+                await link_new_execution_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
@@ -770,6 +774,9 @@ class RunAgentTool(BaseTool):
                 )
             else:
                 status = completed.status.value if completed else "unknown"
+                await link_new_execution_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is still {status} after "
@@ -786,6 +793,9 @@ class RunAgentTool(BaseTool):
                     status=status,
                 )
 
+        await link_new_execution_to_chat_share(
+            session_id=session_id, execution_id=execution.id
+        )
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "

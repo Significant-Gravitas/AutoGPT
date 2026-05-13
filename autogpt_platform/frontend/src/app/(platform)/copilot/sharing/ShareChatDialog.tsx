@@ -31,48 +31,27 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
             </Text>
           </div>
 
-          {state.linkedExecutions.length > 0 && (
-            <div className="space-y-2">
-              <Text variant="small" className="font-medium">
-                This chat ran {state.linkedExecutions.length} agent
-                {state.linkedExecutions.length === 1 ? "" : "s"}. Choose which
-                to include in the share:
+          {/* Global execution-sharing toggle.  When ON, every agent
+              run in this chat — past and future — is included in the
+              share automatically.  Locked while shared so the toggle
+              state always matches what the viewer sees. */}
+          <div className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2.5">
+            <div className="min-w-0">
+              <Text variant="body" className="font-medium">
+                Share agent runs in this chat
               </Text>
-              <ul className="space-y-2">
-                {state.linkedExecutions.map((execution) => {
-                  const checked = state.selectedExecutionIds.has(
-                    execution.execution_id,
-                  );
-                  const alreadyShared = !!execution.share_token;
-                  return (
-                    <li
-                      key={execution.execution_id}
-                      className="flex items-center justify-between rounded border border-zinc-200 px-3 py-2"
-                    >
-                      <div className="flex flex-col">
-                        <Text variant="body">
-                          {execution.graph_name || "Untitled agent"}
-                        </Text>
-                        {alreadyShared && (
-                          <Text variant="small" className="text-zinc-500">
-                            Already shared independently
-                          </Text>
-                        )}
-                      </div>
-                      <Switch
-                        checked={checked}
-                        onCheckedChange={() =>
-                          state.toggleExecution(execution.execution_id)
-                        }
-                        disabled={state.isShared}
-                        aria-label={`Include ${execution.graph_name || "agent"} in share`}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
+              <Text variant="small" className="text-zinc-500">
+                Includes every run from this conversation, including ones that
+                happen after you share.
+              </Text>
             </div>
-          )}
+            <Switch
+              checked={state.autoShareExecutions}
+              onCheckedChange={state.setAutoShareExecutions}
+              disabled={state.isShared || state.isLoadingState}
+              aria-label="Share agent runs from this chat"
+            />
+          </div>
 
           {state.isShared && state.shareUrl && (
             <div className="space-y-2">
@@ -117,7 +96,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               variant="primary"
               onClick={state.enable}
               loading={state.isEnabling}
-              disabled={state.isLoadingLinks}
+              disabled={state.isLoadingState}
               leftIcon={<ShareNetworkIcon size={14} />}
             >
               Enable sharing

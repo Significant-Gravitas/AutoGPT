@@ -288,6 +288,14 @@ model ChatSession {
   shareToken String?   @unique
   sharedAt   DateTime?
 
+  // When true (set at share-enable time), any run_agent execution in
+  // this chat is automatically linked into the share — both the
+  // existing history at enable-time and any new runs that land while
+  // the share is active.  When false, no executions are linked even
+  // if the chat itself is shared (cards in the viewer render in their
+  // "execution not shared" state).
+  autoShareExecutions Boolean @default(false)
+
   SharedChatFiles  SharedChatFile[]
   ChatLinkedShares ChatLinkedShare[]
 
