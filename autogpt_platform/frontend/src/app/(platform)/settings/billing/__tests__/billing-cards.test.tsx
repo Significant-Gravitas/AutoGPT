@@ -282,6 +282,71 @@ describe("YourPlanCard cycle toggle", () => {
     ).toBeDefined();
   });
 
+  it("opens the confirmation dialog with end-of-period copy when a yearly Pro user clicks Monthly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /monthly/i }));
+
+    expect(
+      await screen.findByText(/Switch Pro to monthly billing\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /switch to monthly billing at the end of your current yearly period/i,
+      ),
+    ).toBeDefined();
+    expect(screen.getByText(/New monthly price: \$50\.00/)).toBeDefined();
+  });
+
+  it("falls back to the generic dialog title when prices are missing (NO_TIER-like)", async () => {
+    // BUSINESS tier exercises the generic-title fallback in getDialogTitle —
+    // the cycle toggle is still visible (BUSINESS isn't in the hidden set),
+    // but the title shouldn't read "Switch Team to yearly billing?" since
+    // BUSINESS is contact-sales and not a user-managed yearly tier.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BUSINESS",
+        monthly_cost: 50000,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+
+    expect(
+      await screen.findByText(/Switch billing to Yearly\?/i),
+    ).toBeDefined();
+    // No tier_costs / tier_costs_yearly in the payload — body falls back to
+    // proration-only copy without the savings/pricing lines.
+    expect(
+      screen.getByText(
+        /charged the prorated difference immediately\. After this period, your plan renews on the new yearly cadence\./i,
+      ),
+    ).toBeDefined();
+  });
+
   it("fires updateTier with billing_cycle on confirm", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
