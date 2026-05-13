@@ -37,6 +37,7 @@
     "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
     "@next/third-parties": "15.4.6",
+    "@number-flow/react": "0.6.0",
     "@phosphor-icons/react": "2.1.10",
     "@posthog/react": "1.7.0",
     "@radix-ui/react-accordion": "1.2.12",

@@ -1,14 +1,17 @@
 "use client";
 
+import NumberFlow from "@number-flow/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
-import { type Country, formatPrice } from "./countries";
+import { type Country } from "./countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
 import { computePlanPricing } from "./computePricing";
+
+const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
 
 interface Props {
   plan: PlanDef;
@@ -29,15 +32,23 @@ export function PlanCard({
   loading = false,
   disabled = false,
 }: Props) {
-  const { primaryPrice, monthlyOriginal, chargedToday, discountPercent } =
-    computePlanPricing({
-      plan,
-      country,
-      isYearly,
-    });
+  const { primaryPrice, chargedToday } = computePlanPricing({
+    plan,
+    country,
+    isYearly,
+  });
   const hl = plan.highlighted;
   const isTeam = plan.key === PLAN_KEYS.TEAM;
   const reduceMotion = useReducedMotion();
+  const decimalDigits = ZERO_DECIMAL_CODES.has(country.currencyCode) ? 0 : 2;
+  const moneyFormat = {
+    style: "currency",
+    currency: country.currencyCode,
+    currencyDisplay: "symbol",
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
+  } as const;
+  const moneyFormatter = new Intl.NumberFormat("en-US", moneyFormat);
 
   return (
     <div
@@ -140,16 +151,18 @@ export function PlanCard({
             {primaryPrice !== null ? (
               <>
                 <span
+                  aria-label={moneyFormatter.format(primaryPrice)}
                   className={cn(
                     "font-poppins font-medium leading-none text-zinc-800",
                     hl ? "text-[32px]" : "text-[26px]",
                   )}
                 >
-                  {formatPrice(
-                    primaryPrice,
-                    country.currencyCode,
-                    country.symbol,
-                  )}
+                  <NumberFlow
+                    value={primaryPrice}
+                    format={moneyFormat}
+                    locales="en-US"
+                    willChange
+                  />
                 </span>
                 <span className="text-xs text-zinc-400">/ month</span>
               </>
@@ -165,30 +178,18 @@ export function PlanCard({
             )}
           </div>
 
-          {monthlyOriginal !== null &&
-            discountPercent !== null &&
-            discountPercent > 0 && (
-              <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                <span className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  Save {discountPercent}%
-                </span>
-                <span className="text-xs text-zinc-500 line-through">
-                  {formatPrice(
-                    monthlyOriginal,
-                    country.currencyCode,
-                    country.symbol,
-                  )}
-                </span>
-              </div>
-            )}
-
           {chargedToday !== null && (
-            <div className="mb-1 text-xs font-medium text-zinc-700">
-              {`Charged today: ${formatPrice(
-                chargedToday,
-                country.currencyCode,
-                country.symbol,
-              )}`}
+            <div
+              aria-label={`Charged today: ${moneyFormatter.format(chargedToday)}`}
+              className="mb-1 flex items-baseline gap-1 text-xs font-medium text-zinc-700"
+            >
+              <span>Charged today:</span>
+              <NumberFlow
+                value={chargedToday}
+                format={moneyFormat}
+                locales="en-US"
+                willChange
+              />
             </div>
           )}
 
