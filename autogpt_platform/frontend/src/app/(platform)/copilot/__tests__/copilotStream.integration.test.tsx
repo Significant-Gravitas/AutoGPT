@@ -6,10 +6,16 @@ import {
   copilotStreamHandler,
 } from "@/tests/integrations/copilot-sse";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import type { UIMessage, UIMessageChunk } from "ai";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const TEST_BACKEND_BASE_URL = "http://localhost:18006";
+import type { UIMessageChunk } from "ai";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  StreamHarness,
+  TEST_BACKEND_BASE_URL,
+  TEST_SESSION_ID,
+  clickSend,
+  clickStop,
+  expectTextContent,
+} from "./copilotStream.harness";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -31,125 +37,10 @@ vi.mock("../helpers", async (importActual) => {
 });
 
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
-import { useCopilotStream } from "../useCopilotStream";
-
-const TEST_SESSION_ID = "test-session-stream-1";
-
-interface HarnessProps {
-  hasActiveStream?: boolean;
-  hydratedMessages?: UIMessage[];
-}
-
-function StreamHarness({
-  hasActiveStream = false,
-  hydratedMessages = [],
-}: HarnessProps) {
-  const refetchSession = async () => ({ data: undefined });
-  const result = useCopilotStream({
-    sessionId: TEST_SESSION_ID,
-    hydratedMessages,
-    hasActiveStream,
-    refetchSession,
-    copilotMode: undefined,
-    copilotModel: undefined,
-  });
-
-  const assistantMessages = result.messages.filter(
-    (m) => m.role === "assistant",
-  );
-  const userMessages = result.messages.filter((m) => m.role === "user");
-
-  const allParts = assistantMessages.flatMap((m) => m.parts);
-
-  const assistantText = allParts
-    .filter((p): p is Extract<typeof p, { type: "text" }> => p.type === "text")
-    .map((p) => p.text)
-    .join("");
-
-  const assistantReasoning = allParts
-    .filter(
-      (p): p is Extract<typeof p, { type: "reasoning" }> =>
-        p.type === "reasoning",
-    )
-    .map((p) => p.text)
-    .join("");
-
-  interface ToolPartSnapshot {
-    type: string;
-    state?: string;
-    toolCallId?: string;
-    input?: unknown;
-    output?: unknown;
-  }
-  const toolParts: ToolPartSnapshot[] = allParts
-    .filter(
-      (p) =>
-        typeof p.type === "string" &&
-        (p.type.startsWith("tool-") || p.type === "dynamic-tool"),
-    )
-    .map((p) => {
-      const tp = p as ToolPartSnapshot;
-      return {
-        type: tp.type,
-        state: tp.state,
-        toolCallId: tp.toolCallId,
-        input: tp.input,
-        output: tp.output,
-      };
-    });
-
-  const stepStartCount = allParts.filter((p) => p.type === "step-start").length;
-
-  return (
-    <div>
-      <div data-testid="status">{result.status}</div>
-      <div data-testid="error">{result.error?.message ?? ""}</div>
-      <div data-testid="is-reconnecting">{String(result.isReconnecting)}</div>
-      <div data-testid="is-user-stopping">{String(result.isUserStopping)}</div>
-      <div data-testid="rate-limit">{result.rateLimitMessage ?? ""}</div>
-      <div data-testid="assistant-text">{assistantText}</div>
-      <div data-testid="assistant-reasoning">{assistantReasoning}</div>
-      <div data-testid="tool-parts">{JSON.stringify(toolParts)}</div>
-      <div data-testid="assistant-message-count">
-        {assistantMessages.length}
-      </div>
-      <div data-testid="user-message-count">{userMessages.length}</div>
-      <div data-testid="step-start-count">{stepStartCount}</div>
-      <button
-        data-testid="send"
-        onClick={() => result.sendMessage({ text: "hello copilot" })}
-      >
-        send
-      </button>
-      <button data-testid="stop" onClick={() => result.stop()}>
-        stop
-      </button>
-    </div>
-  );
-}
-
-async function clickSend() {
-  const user = (await import("@testing-library/user-event")).default.setup();
-  await user.click(screen.getByTestId("send"));
-}
-
-async function clickStop() {
-  const user = (await import("@testing-library/user-event")).default.setup();
-  await user.click(screen.getByTestId("stop"));
-}
-
-function expectTextContent(testId: string, expected: string) {
-  expect(screen.getByTestId(testId).textContent).toBe(expected);
-}
 
 describe("CoPilot streaming (SSE) — content rendering", () => {
   beforeEach(() => {
     resetCopilotChatRegistry();
-  });
-
-  afterEach(() => {
-    resetCopilotChatRegistry();
-    vi.useRealTimers();
   });
 
   it("renders assistant text from a single text-delta frame", async () => {
@@ -350,11 +241,6 @@ describe("CoPilot streaming (SSE) — status lifecycle", () => {
     resetCopilotChatRegistry();
   });
 
-  afterEach(() => {
-    resetCopilotChatRegistry();
-    vi.useRealTimers();
-  });
-
   it("transitions status from ready → streaming → ready across a turn", async () => {
     server.use(
       copilotStreamHandler({
@@ -385,11 +271,6 @@ describe("CoPilot streaming (SSE) — status lifecycle", () => {
 describe("CoPilot streaming (SSE) — error paths", () => {
   beforeEach(() => {
     resetCopilotChatRegistry();
-  });
-
-  afterEach(() => {
-    resetCopilotChatRegistry();
-    vi.useRealTimers();
   });
 
   it("propagates an SSE error chunk into the error state", async () => {
@@ -468,11 +349,6 @@ describe("CoPilot streaming (SSE) — stop", () => {
     resetCopilotChatRegistry();
   });
 
-  afterEach(() => {
-    resetCopilotChatRegistry();
-    vi.useRealTimers();
-  });
-
   it("flips is-user-stopping and ends the stream when stop is clicked mid-stream", async () => {
     server.use(
       copilotStreamHandler({
@@ -525,11 +401,6 @@ describe("CoPilot streaming (SSE) — stop", () => {
 describe("CoPilot streaming (SSE) — resume on mount", () => {
   beforeEach(() => {
     resetCopilotChatRegistry();
-  });
-
-  afterEach(() => {
-    resetCopilotChatRegistry();
-    vi.useRealTimers();
   });
 
   it("issues a GET resume and renders streamed content when mounted with hasActiveStream=true", async () => {
