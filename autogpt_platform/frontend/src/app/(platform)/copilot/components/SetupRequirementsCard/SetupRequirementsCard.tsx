@@ -145,9 +145,20 @@ export function SetupRequirementsCard({
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
   // provide (the Proceed button is hidden behind the early return below).
+  // Deferred to a microtask + cleanup-cancellable so StrictMode's dev-mode
+  // double-invoke aborts the first scheduled send before it fires; the
+  // synchronous form would call handleRun twice because the second effect
+  // run reuses the same render's closure (where hasSent is still false).
   useEffect(() => {
-    if (canAutoDismiss && !hasSent) handleRun();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; hasSent guards re-entry
+    if (!canAutoDismiss || hasSent) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) handleRun();
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; cleanup guards re-entry
   }, [canAutoDismiss, hasSent]);
 
   if (hasSent || canAutoDismiss) {

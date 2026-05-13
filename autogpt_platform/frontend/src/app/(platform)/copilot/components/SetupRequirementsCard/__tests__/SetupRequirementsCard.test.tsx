@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
@@ -361,7 +367,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
 });
 
 describe("SetupRequirementsCard (session-scoped dismissal)", () => {
-  it("auto-dismisses when all requested providers are already connected in this session", () => {
+  it("auto-dismisses when all requested providers are already connected in this session", async () => {
     useConnectedProvidersStore
       .getState()
       .markConnected({ sessionID: "sess-1", providers: ["openai"] });
@@ -380,10 +386,11 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
     // Auto-dismiss must also fire onSend, otherwise the AI's tool call sits
     // unanswered and the chat hangs (regression: Sentry bug prediction).
-    expect(mockOnSend).toHaveBeenCalledOnce();
+    // Deferred via microtask for StrictMode safety, so awaited here.
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
   });
 
-  it("auto-dismiss in preview mode sends the legacy run_agent message", () => {
+  it("auto-dismiss in preview mode sends the legacy run_agent message", async () => {
     useConnectedProvidersStore
       .getState()
       .markConnected({ sessionID: "sess-1", providers: ["openai"] });
@@ -402,12 +409,14 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
       />,
     );
 
-    expect(mockOnSend).toHaveBeenCalledWith(
-      "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+    await waitFor(() =>
+      expect(mockOnSend).toHaveBeenCalledWith(
+        "I've configured the required credentials. Please check if everything is ready and proceed with running the agent.",
+      ),
     );
   });
 
-  it("auto-dismiss invokes onComplete callback", () => {
+  it("auto-dismiss invokes onComplete callback", async () => {
     useConnectedProvidersStore
       .getState()
       .markConnected({ sessionID: "sess-1", providers: ["openai"] });
@@ -424,7 +433,7 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
       />,
     );
 
-    expect(onComplete).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
   });
 
   it("does not auto-dismiss when only some providers are connected", () => {
