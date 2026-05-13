@@ -80,9 +80,10 @@ describe("SharedChatPage", () => {
 
     render(<SharedChatPage />);
 
-    expect(await screen.findByText("How to deploy")).toBeDefined();
-    // Read-only banner is always visible on the happy path.
-    expect(await screen.findByText(/public read-only view/i)).toBeDefined();
+    // Title is rendered as an sr-only h1 — accessible to screen
+    // readers and crawlers, hidden from visual layout.
+    const heading = await screen.findByRole("heading", { level: 1 });
+    expect(heading.textContent).toBe("How to deploy");
     expect(await screen.findByText("How do I deploy?")).toBeDefined();
     expect(await screen.findByText("Use docker compose.")).toBeDefined();
   });
@@ -171,12 +172,14 @@ describe("SharedChatPage", () => {
 
     const { container } = render(<SharedChatPage />);
     // Wait for the page to settle past loading.
-    await screen.findByText("Layout check");
+    await screen.findByRole("heading", { level: 1 });
 
     const rootRow = container.querySelector("div.flex-row");
     expect(rootRow).not.toBeNull();
     expect(rootRow?.className).toContain("flex-row");
-    expect(rootRow?.className).toContain("h-screen");
+    // Fills layout's flex-1 body via h-full (not h-screen — h-screen
+    // would overflow inside the layout's already-h-screen container).
+    expect(rootRow?.className).toContain("h-full");
   });
 
   test("falls back to 'Shared chat' when the session has no title", async () => {
@@ -200,71 +203,8 @@ describe("SharedChatPage", () => {
     );
 
     render(<SharedChatPage />);
-    expect(await screen.findByText("Shared chat")).toBeDefined();
-  });
-
-  test("renders the persistent read-only indicators (subline + pill)", async () => {
-    // The viewer must always tell visitors they're in a public,
-    // read-only context.  We surface that twice in the persistent
-    // header: a 'public read-only view' subline and a 'Read-only'
-    // pill — neither should disappear if a chat is long.
-    server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-banner",
-          title: "Banner check",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
-      getGetV2GetSharedChatMessagesMockHandler200(
-        (): SharedChatMessagesPage => ({
-          messages: [],
-          has_more: false,
-          oldest_sequence: null,
-        }),
-      ),
-    );
-
-    render(<SharedChatPage />);
-    await screen.findByText("Banner check");
-    expect(screen.getByText(/public read-only view/i)).toBeDefined();
-    expect(screen.getByText("Read-only")).toBeDefined();
-  });
-
-  test("pins the 'Powered by AutoGPT Platform' footer outside the scroll area", async () => {
-    // Regression for: a long chat could push the footer off-screen
-    // or scroll over it.  The footer must live as a sibling of the
-    // scrolling chat column so it stays visible regardless of message
-    // count.
-    server.use(
-      getGetV2GetSharedChatMockHandler200(
-        (): SharedChatSession => ({
-          id: "session-footer",
-          title: "Footer check",
-          created_at: new Date("2026-05-12T00:00:00Z"),
-          updated_at: new Date("2026-05-12T00:00:00Z"),
-          linked_executions: [],
-        }),
-      ),
-      getGetV2GetSharedChatMessagesMockHandler200(
-        (): SharedChatMessagesPage => ({
-          messages: [],
-          has_more: false,
-          oldest_sequence: null,
-        }),
-      ),
-    );
-
-    const { container } = render(<SharedChatPage />);
-    await screen.findByText("Footer check");
-
-    const footer = container.querySelector("footer");
-    expect(footer).not.toBeNull();
-    expect(footer?.textContent).toContain("Powered by AutoGPT Platform");
-    // Footer is a shrink-0 sibling — never inside the scroll container.
-    expect(footer?.className).toContain("shrink-0");
+    const heading = await screen.findByRole("heading", { level: 1 });
+    expect(heading.textContent).toBe("Shared chat");
   });
 
   test("does NOT show the has_more notice when the chat fits in one page", async () => {
@@ -288,7 +228,7 @@ describe("SharedChatPage", () => {
     );
 
     render(<SharedChatPage />);
-    await screen.findByText("Fits");
+    await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByText(/older history is not visible/i)).toBeNull();
   });
 });

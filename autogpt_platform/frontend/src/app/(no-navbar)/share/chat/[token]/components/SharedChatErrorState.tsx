@@ -7,7 +7,7 @@ type Props = {
 
 export function SharedChatErrorState({ onRetry }: Props) {
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex h-full items-center justify-center">
       <div className="mx-auto w-full max-w-md p-6">
         <div className="space-y-4 rounded-lg border border-dashed border-zinc-300 p-6 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100">

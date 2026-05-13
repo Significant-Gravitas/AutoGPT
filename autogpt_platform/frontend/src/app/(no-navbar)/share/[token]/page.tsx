@@ -11,38 +11,14 @@ import {
 } from "@/components/__legacy__/ui/card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 
-// Logo + container chrome lives here (used to live in the parent
-// ``share/layout.tsx``).  Moved inline so the sibling chat share
-// route can own its own full-bleed viewport without inheriting
-// this chrome.
+// The parent ``share/layout.tsx`` renders the AutoGPT logo header.
+// This page owns its own scroll/container chrome inside the layout's
+// flex-1 body.
 function ExecutionShareChrome({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background">
-        <div className="container mx-auto flex justify-center px-4 py-4">
-          <Link href="/" className="inline-block">
-            <Image
-              src="/autogpt-logo-dark-bg.png"
-              alt="AutoGPT"
-              width={120}
-              height={54}
-              className="hidden h-8 w-auto dark:block"
-            />
-            <Image
-              src="/autogpt-logo-light-bg.png"
-              alt="AutoGPT"
-              width={120}
-              height={54}
-              className="block h-8 w-auto dark:hidden"
-              priority
-            />
-          </Link>
-        </div>
-      </header>
+    <div className="h-full overflow-y-auto">
       <div className="container mx-auto px-4 py-8">{children}</div>
     </div>
   );
