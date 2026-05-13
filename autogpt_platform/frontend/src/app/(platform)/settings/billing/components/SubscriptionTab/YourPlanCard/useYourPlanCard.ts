@@ -355,7 +355,7 @@ export function useYourPlanCard() {
       : `Switch ${tierLabel} to monthly billing?`;
   }
 
-  function getDialogBody(): string[] {
+  function getDialogBody(): { text: string; emphasis?: boolean }[] {
     if (!pendingCycle) return [];
     const periodEndLabel = currentPeriodEndMs
       ? formatShortDate(currentPeriodEndMs)
@@ -369,10 +369,13 @@ export function useYourPlanCard() {
         currentYearlyCents < currentMonthlyCents * 12;
       if (!hasPrices) {
         return [
-          "You'll be charged the prorated difference today.",
-          currentYearlyCents !== undefined
-            ? `Renews at ${formatCents(currentYearlyCents)}/year after this period.`
-            : "Renews on the new yearly cadence after this period.",
+          { text: "You'll be charged the prorated difference today." },
+          {
+            text:
+              currentYearlyCents !== undefined
+                ? `Renews at ${formatCents(currentYearlyCents)}/year after this period.`
+                : "Renews on the new yearly cadence after this period.",
+          },
         ];
       }
       const yearly = formatCents(currentYearlyCents!);
@@ -403,21 +406,27 @@ export function useYourPlanCard() {
         ? `Renews ${yearly}/year on ${periodEndLabel}.`
         : `Renews at ${yearly}/year after this period.`;
       return [
-        `Save ${savingsPercent}% with yearly billing.`,
-        priceLine,
-        chargedTodayLine,
-        renewsLine,
+        { text: `Save ${savingsPercent}% with yearly billing.` },
+        { text: priceLine, emphasis: true },
+        { text: chargedTodayLine, emphasis: true },
+        { text: renewsLine, emphasis: true },
       ];
     }
     const monthly =
       currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
     return [
-      periodEndLabel
-        ? `Switches to monthly billing on ${periodEndLabel}.`
-        : "Switches to monthly at the end of your current yearly period.",
-      monthly ? `New price: ${monthly}/month.` : "",
-      "No charge today.",
-    ].filter(Boolean);
+      {
+        text: periodEndLabel
+          ? `Switches to monthly billing on ${periodEndLabel}.`
+          : "Switches to monthly at the end of your current yearly period.",
+      },
+      monthly
+        ? { text: `New price: ${monthly}/month.`, emphasis: true }
+        : null,
+      { text: "No charge today." },
+    ].filter((line): line is { text: string; emphasis?: boolean } =>
+      line !== null,
+    );
   }
 
   function getTierUpgradeDialogBody(): string {
