@@ -143,12 +143,14 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    // PRO monthly = 5000 cents = $50.00
+    // PRO monthly = 5000 cents = $50.00 (primary), $50.00 charged today
     expect(screen.getByText("$50.00")).toBeDefined();
     expect(screen.getByText("$320.00")).toBeDefined();
+    expect(screen.getByText("Charged today: $50.00")).toBeDefined();
+    expect(screen.getByText("Charged today: $320.00")).toBeDefined();
   });
 
-  it("toggling Yearly switches displayed prices to tier_costs_yearly", async () => {
+  it("toggling Yearly switches displayed prices to the monthly-equivalent and the annual total", async () => {
     setupMocks({
       subscription: {
         tier: "NO_TIER",
@@ -161,10 +163,13 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
 
-    // PRO yearly = 51000 cents = $510.00; MAX yearly = 326400 cents = $3,264.00
+    // PRO yearly = 51000 cents → $42.50/mo primary, $510.00 charged today.
+    // MAX yearly = 326400 cents → $272.00/mo primary, $3,264.00 charged today.
     await waitFor(() => {
-      expect(screen.getByText("$510.00")).toBeDefined();
-      expect(screen.getByText("$3,264.00")).toBeDefined();
+      expect(screen.getByText("$42.50")).toBeDefined();
+      expect(screen.getByText("$272.00")).toBeDefined();
+      expect(screen.getByText("Charged today: $510.00")).toBeDefined();
+      expect(screen.getByText("Charged today: $3,264.00")).toBeDefined();
     });
   });
 });
