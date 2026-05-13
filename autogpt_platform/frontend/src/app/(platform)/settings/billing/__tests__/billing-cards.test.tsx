@@ -233,9 +233,7 @@ describe("YourPlanCard cycle toggle", () => {
     expect(
       await screen.findByText(/Switch Pro to yearly billing\?/i),
     ).toBeDefined();
-    expect(
-      screen.getByText(/Save 15% with yearly billing\./i),
-    ).toBeDefined();
+    expect(screen.getByText(/Save 15% with yearly billing\./i)).toBeDefined();
     expect(
       screen.getByText(
         /Pro is \$42\.50\/month when billed yearly, charged as \$510\.00\/year instead of \$600\.00\/year monthly\./i,
@@ -278,7 +276,9 @@ describe("YourPlanCard cycle toggle", () => {
       ),
     ).toBeDefined();
     expect(
-      screen.getByText(/After this period, your plan renews yearly at \$3,264\.00\./i),
+      screen.getByText(
+        /After this period, your plan renews yearly at \$3,264\.00\./i,
+      ),
     ).toBeDefined();
   });
 
