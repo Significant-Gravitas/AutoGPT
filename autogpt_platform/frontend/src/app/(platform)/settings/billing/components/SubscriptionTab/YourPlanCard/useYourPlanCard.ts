@@ -355,7 +355,7 @@ export function useYourPlanCard() {
       : `Switch ${tierLabel} to monthly billing?`;
   }
 
-  function getDialogBody(): { text: string; emphasis?: boolean }[] {
+  function getDialogBody(): { label?: string; text: string }[] {
     if (!pendingCycle) return [];
     const periodEndLabel = currentPeriodEndMs
       ? formatShortDate(currentPeriodEndMs)
@@ -387,9 +387,6 @@ export function useYourPlanCard() {
           (currentMonthlyCents! * 12)) *
           100,
       );
-      const priceLine = tierLabel
-        ? `${tierLabel} yearly: ${yearly}/year (${monthlyEquivalent}/month).`
-        : `Yearly: ${yearly}/year (${monthlyEquivalent}/month).`;
       // Net charge today = full yearly price minus the unused-monthly credit
       // Stripe will apply. Only surface the exact amount when the backend
       // returned a non-zero credit (admin-granted plans / no Stripe customer
@@ -398,18 +395,24 @@ export function useYourPlanCard() {
         0,
         currentYearlyCents! - prorationCreditCents,
       );
-      const chargedTodayLine =
+      const chargedToday =
         prorationCreditCents > 0
-          ? `Charged today: ${formatCents(netChargeCents)} (prorated from your monthly plan).`
-          : "You'll be charged the prorated difference today.";
-      const renewsLine = periodEndLabel
-        ? `Renews ${yearly}/year on ${periodEndLabel}.`
-        : `Renews at ${yearly}/year after this period.`;
+          ? {
+              label: "Charged today:",
+              text: `${formatCents(netChargeCents)} (prorated from your monthly plan).`,
+            }
+          : { text: "You'll be charged the prorated difference today." };
+      const renews = periodEndLabel
+        ? { label: "Renews", text: `${yearly}/year on ${periodEndLabel}.` }
+        : { label: "Renews", text: `at ${yearly}/year after this period.` };
       return [
         { text: `Save ${savingsPercent}% with yearly billing.` },
-        { text: priceLine, emphasis: true },
-        { text: chargedTodayLine, emphasis: true },
-        { text: renewsLine, emphasis: true },
+        {
+          label: tierLabel ? `${tierLabel} yearly:` : "Yearly:",
+          text: `${yearly}/year (${monthlyEquivalent}/month).`,
+        },
+        chargedToday,
+        renews,
       ];
     }
     const monthly =
@@ -421,10 +424,10 @@ export function useYourPlanCard() {
           : "Switches to monthly at the end of your current yearly period.",
       },
       monthly
-        ? { text: `New price: ${monthly}/month.`, emphasis: true }
+        ? { label: "New price:", text: `${monthly}/month.` }
         : null,
       { text: "No charge today." },
-    ].filter((line): line is { text: string; emphasis?: boolean } =>
+    ].filter((line): line is { label?: string; text: string } =>
       line !== null,
     );
   }

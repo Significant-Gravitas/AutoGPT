@@ -9,7 +9,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   targetCycle: "monthly" | "yearly";
   title?: string;
-  body: { text: string; emphasis?: boolean }[];
+  body: { label?: string; text: string }[];
   isSaving: boolean;
   onConfirm: () => void;
 }
@@ -34,14 +34,20 @@ export function SwitchCycleDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-2">
           {body.map((line) => (
-            <Text
-              key={line.text}
-              variant={line.emphasis ? "body-medium" : "body"}
-              as="span"
-              className="text-zinc-700"
-            >
-              {line.text}
-            </Text>
+            <div key={line.label ?? line.text} className="flex flex-wrap gap-1">
+              {line.label ? (
+                <Text
+                  variant="body-medium"
+                  as="span"
+                  className="text-zinc-700"
+                >
+                  {line.label}
+                </Text>
+              ) : null}
+              <Text variant="body" as="span" className="text-zinc-700">
+                {line.text}
+              </Text>
+            </div>
           ))}
         </div>
 

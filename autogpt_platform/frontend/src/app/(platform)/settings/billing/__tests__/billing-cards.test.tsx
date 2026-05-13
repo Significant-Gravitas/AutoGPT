@@ -235,18 +235,20 @@ describe("YourPlanCard cycle toggle", () => {
     expect(
       await screen.findByText(/Switch Pro to yearly billing\?/i),
     ).toBeDefined();
-    // Dialog body is rendered as separate lines, each its own Text node.
+    // Each line splits into a bold label span + regular value span, so we
+    // assert the two pieces separately.
     expect(screen.getByText(/^Save 15% with yearly billing\.$/)).toBeDefined();
+    expect(screen.getByText("Pro yearly:")).toBeDefined();
     expect(
-      screen.getByText(/^Pro yearly: \$510\.00\/year \(\$42\.50\/month\)\.$/),
+      screen.getByText(/^\$510\.00\/year \(\$42\.50\/month\)\.$/),
     ).toBeDefined();
     // 51000 yearly - 2500 proration credit = 48500 cents = $485.00 charged today.
+    expect(screen.getByText("Charged today:")).toBeDefined();
     expect(
-      screen.getByText(
-        /^Charged today: \$485\.00 \(prorated from your monthly plan\)\.$/,
-      ),
+      screen.getByText(/^\$485\.00 \(prorated from your monthly plan\)\.$/),
     ).toBeDefined();
-    expect(screen.getByText(/^Renews \$510\.00\/year on /)).toBeDefined();
+    expect(screen.getByText("Renews")).toBeDefined();
+    expect(screen.getByText(/^\$510\.00\/year on /)).toBeDefined();
     expect(
       screen.getByRole("button", { name: /switch to yearly/i }),
     ).toBeDefined();
@@ -275,18 +277,18 @@ describe("YourPlanCard cycle toggle", () => {
     expect(
       await screen.findByText(/Switch Max to yearly billing\?/i),
     ).toBeDefined();
+    expect(screen.getByText("Max yearly:")).toBeDefined();
     expect(
-      screen.getByText(
-        /^Max yearly: \$3,264\.00\/year \(\$272\.00\/month\)\.$/,
-      ),
+      screen.getByText(/^\$3,264\.00\/year \(\$272\.00\/month\)\.$/),
     ).toBeDefined();
     // No proration_credit_cents in this fixture → falls back to generic
     // "prorated difference today" line instead of an exact dollar amount.
     expect(
       screen.getByText(/^You'll be charged the prorated difference today\.$/),
     ).toBeDefined();
+    expect(screen.getByText("Renews")).toBeDefined();
     expect(
-      screen.getByText(/^Renews at \$3,264\.00\/year after this period\.$/),
+      screen.getByText(/^at \$3,264\.00\/year after this period\.$/),
     ).toBeDefined();
   });
 
@@ -318,7 +320,8 @@ describe("YourPlanCard cycle toggle", () => {
         /^Switches to monthly at the end of your current yearly period\.$/,
       ),
     ).toBeDefined();
-    expect(screen.getByText(/^New price: \$50\.00\/month\.$/)).toBeDefined();
+    expect(screen.getByText("New price:")).toBeDefined();
+    expect(screen.getByText(/^\$50\.00\/month\.$/)).toBeDefined();
     expect(screen.getByText(/^No charge today\.$/)).toBeDefined();
   });
 
