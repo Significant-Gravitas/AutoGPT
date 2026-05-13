@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
+import { ArtifactPanel } from "@/app/(platform)/copilot/components/ArtifactPanel/ArtifactPanel";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
 import { useSharedChatPage } from "./useSharedChatPage";
@@ -82,6 +83,13 @@ export default function SharedChatPage() {
       <div className="mt-4 text-center text-xs text-zinc-400">
         Powered by AutoGPT Platform
       </div>
+
+      {/* Right-side Sheet that opens when an ArtifactCard is clicked.
+          Driven entirely by ``useCopilotUIStore.artifactPanel`` — the
+          card's ``openArtifact`` action sets the store state and the
+          panel renders.  ``mobile`` mode is used at all sizes so the
+          viewer doesn't need a docked-panel layout. */}
+      <ArtifactPanel mobile />
     </div>
   );
 }

@@ -65,11 +65,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
     });
   }
 
-  // In readOnly mode the artifact panel isn't mounted, so ``openArtifact``
-  // would no-op visibly.  Collapse openable artifacts onto the
-  // download-only branch instead — downloading is the only meaningful
-  // action an anonymous viewer can take.
-  if (readOnly || !classification.openable) {
+  if (!classification.openable) {
     return (
       <button
         type="button"
