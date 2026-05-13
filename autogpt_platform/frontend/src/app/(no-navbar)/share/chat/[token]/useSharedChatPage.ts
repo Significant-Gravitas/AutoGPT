@@ -4,6 +4,7 @@ import {
   useGetV2GetSharedChatMessages,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { sharedChatFileUrl } from "@/lib/share/routes";
 
 const PAGE_SIZE = 200;
 
@@ -62,9 +63,11 @@ export function useSharedChatPage(token: string) {
         isComplete: true,
         // Route file URLs through the public allowlist-gated download
         // endpoint so anonymous viewers can render attachments without
-        // hitting the auth-protected workspace download.
-        fileUrlBuilder: (fileId) =>
-          `/api/proxy/api/public/shared/chats/${token}/files/${fileId}/download`,
+        // hitting the auth-protected workspace download.  The URL
+        // shape and the renderer's matching regex
+        // (``sharedChatFilePattern``) live together in
+        // ``lib/share/routes.ts`` so they evolve together.
+        fileUrlBuilder: (fileId) => sharedChatFileUrl(token, fileId),
       },
     );
     return { uiMessages: converted.messages, turnStats: converted.stats };

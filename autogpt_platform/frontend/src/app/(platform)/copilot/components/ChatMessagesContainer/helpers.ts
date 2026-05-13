@@ -47,11 +47,14 @@ export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
 }
 
-// Matches the workspace-file or public-share file download URL shapes.
-// Both end in ``/files/<uuid>/download`` and only differ in the path
-// prefix.  Anchoring on UUID format avoids matching arbitrary paths.
-const WORKSPACE_FILE_PATTERN =
-  /\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download/;
+// Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
+// Other surfaces (e.g. public share viewer) pass their own pattern into
+// ``filePartToArtifactRef`` rather than loosen this one — keeping the
+// match anchored to a known prefix per surface prevents an unrelated
+// future ``FileUIPart`` source from accidentally rendering as an
+// artifact.
+export const WORKSPACE_FILE_PATTERN =
+  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
@@ -266,9 +269,14 @@ export function parseSpecialMarkers(text: string): {
 export function filePartToArtifactRef(
   file: FileUIPart,
   origin: ArtifactRef["origin"] = "user-upload",
+  /** Pattern that extracts the file UUID from ``file.url``.  Defaults
+   *  to the workspace-file shape; the public share viewer passes a
+   *  per-token pattern from ``lib/share/routes.ts`` so its file URLs
+   *  match without loosening the default. */
+  pattern: RegExp = WORKSPACE_FILE_PATTERN,
 ): ArtifactRef | null {
   if (!file.url) return null;
-  const match = file.url.match(WORKSPACE_FILE_PATTERN);
+  const match = file.url.match(pattern);
   if (!match) return null;
   return {
     id: match[1],

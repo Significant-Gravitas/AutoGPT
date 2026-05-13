@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
+import { sharedChatFilePattern } from "@/lib/share/routes";
 import { useSharedChatPage } from "./useSharedChatPage";
 import { SharedChatErrorState } from "./components/SharedChatErrorState";
 import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
@@ -9,6 +11,10 @@ import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
 export default function SharedChatPage() {
   const params = useParams();
   const token = params.token as string;
+  // Compute the per-token pattern once per token so the renderer can
+  // recognise file URLs we built for this specific share without
+  // loosening the workspace-file matcher used by the owner side.
+  const filePattern = useMemo(() => sharedChatFilePattern(token), [token]);
 
   const {
     session,
@@ -61,6 +67,7 @@ export default function SharedChatPage() {
           isLoading={false}
           turnStats={turnStats}
           readOnly
+          filePattern={filePattern}
         />
       </div>
 

@@ -71,6 +71,11 @@ interface Props {
    *  review banners, queued-message strip.  Anonymous viewers of a shared
    *  chat get the rich renderer without any controls that would 401. */
   readOnly?: boolean;
+  /** URL→file-ID matcher used to decide whether a ``FileUIPart`` becomes
+   *  an ArtifactCard.  Owner side defaults to the workspace-file URL
+   *  shape; the public viewer passes a per-token pattern so its file
+   *  URLs match without loosening the default. */
+  filePattern?: RegExp;
 }
 
 function renderSegments(
@@ -287,6 +292,7 @@ export function ChatMessagesContainer({
   queuedMessages,
   bottomContentPadding,
   readOnly = false,
+  filePattern,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -615,6 +621,7 @@ export function ChatMessagesContainer({
                   files={fileParts}
                   isUser={message.role === "user"}
                   forceArtifacts={readOnly}
+                  filePattern={filePattern}
                 />
               )}
               {!readOnly && showActions && (

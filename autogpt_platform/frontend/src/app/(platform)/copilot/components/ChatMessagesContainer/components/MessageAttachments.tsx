@@ -26,6 +26,10 @@ interface Props {
    *  anonymous readers always get the rich treatment — the flag
    *  defaults off and we don't want it to gate the viewer UX. */
   forceArtifacts?: boolean;
+  /** URL→file-ID pattern used by ``filePartToArtifactRef``.  Owner
+   *  side defaults to the workspace-file URL shape; the public viewer
+   *  passes a per-token pattern from ``lib/share/routes.ts``. */
+  filePattern?: RegExp;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -46,7 +50,12 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({ files, isUser, forceArtifacts }: Props) {
+export function MessageAttachments({
+  files,
+  isUser,
+  forceArtifacts,
+  filePattern,
+}: Props) {
   const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
   if (files.length === 0) return null;
@@ -58,6 +67,7 @@ export function MessageAttachments({ files, isUser, forceArtifacts }: Props) {
           const artifactRef = filePartToArtifactRef(
             file,
             isUser ? "user-upload" : "agent",
+            filePattern,
           );
           if (artifactRef) {
             return (

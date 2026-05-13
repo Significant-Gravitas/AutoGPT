@@ -30,3 +30,32 @@ export function executionShareUrl(token: string): string {
 export function chatShareUrl(token: string): string {
   return `${getBaseUrl()}${chatSharePath(token)}`;
 }
+
+// ---------- Per-share file download URL + matcher --------------------------
+//
+// The renderer extracts a file ID from a ``FileUIPart.url`` to decide
+// whether to render an ArtifactCard.  Keeping the URL builder and the
+// matching regex in the same module guarantees they evolve together —
+// if the public-share file route ever changes, both update here and
+// nowhere else needs to be touched.
+
+const FILE_UUID_GROUP =
+  "([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})";
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function sharedChatFileUrl(shareToken: string, fileId: string): string {
+  return `/api/proxy/api/public/shared/chats/${shareToken}/files/${fileId}/download`;
+}
+
+export function sharedChatFilePattern(shareToken: string): RegExp {
+  // Anchor on the literal share-chat prefix for THIS token so only
+  // URLs we constructed for this specific share match.  Per-token
+  // patterns prevent cross-share contamination when multiple viewers
+  // are mounted side-by-side (storybook / tests).
+  return new RegExp(
+    `/api/proxy/api/public/shared/chats/${escapeRegex(shareToken)}/files/${FILE_UUID_GROUP}/download`,
+  );
+}
