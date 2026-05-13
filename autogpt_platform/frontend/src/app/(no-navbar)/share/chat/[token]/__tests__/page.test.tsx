@@ -203,10 +203,11 @@ describe("SharedChatPage", () => {
     expect(await screen.findByText("Shared chat")).toBeDefined();
   });
 
-  test("always shows the read-only banner explaining shared/public view", async () => {
-    // The banner is the only persistent affordance telling viewers
-    // the link can be revoked — losing it would mislead anonymous
-    // users into thinking they have private access.
+  test("renders the persistent read-only indicators (subline + pill)", async () => {
+    // The viewer must always tell visitors they're in a public,
+    // read-only context.  We surface that twice in the persistent
+    // header: a 'public read-only view' subline and a 'Read-only'
+    // pill — neither should disappear if a chat is long.
     server.use(
       getGetV2GetSharedChatMockHandler200(
         (): SharedChatSession => ({
@@ -228,7 +229,42 @@ describe("SharedChatPage", () => {
 
     render(<SharedChatPage />);
     await screen.findByText("Banner check");
-    expect(screen.getByText(/can revoke access at any time/i)).toBeDefined();
+    expect(screen.getByText(/public read-only view/i)).toBeDefined();
+    expect(screen.getByText("Read-only")).toBeDefined();
+  });
+
+  test("pins the 'Powered by AutoGPT Platform' footer outside the scroll area", async () => {
+    // Regression for: a long chat could push the footer off-screen
+    // or scroll over it.  The footer must live as a sibling of the
+    // scrolling chat column so it stays visible regardless of message
+    // count.
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-footer",
+          title: "Footer check",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [],
+          has_more: false,
+          oldest_sequence: null,
+        }),
+      ),
+    );
+
+    const { container } = render(<SharedChatPage />);
+    await screen.findByText("Footer check");
+
+    const footer = container.querySelector("footer");
+    expect(footer).not.toBeNull();
+    expect(footer?.textContent).toContain("Powered by AutoGPT Platform");
+    // Footer is a shrink-0 sibling — never inside the scroll container.
+    expect(footer?.className).toContain("shrink-0");
   });
 
   test("does NOT show the has_more notice when the chat fits in one page", async () => {

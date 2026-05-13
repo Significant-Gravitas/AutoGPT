@@ -14,13 +14,7 @@ export default function SharedChatPage() {
   const params = useParams();
   const token = params.token as string;
   const isMobile = useIsMobile();
-  // Compute the per-token pattern once per token so the renderer can
-  // recognise file URLs we built for this specific share without
-  // loosening the workspace-file matcher used by the owner side.
   const filePattern = useMemo(() => sharedChatFilePattern(token), [token]);
-  // URL builder for inline ``workspace://`` rewrites in assistant prose
-  // (handled by ``resolveWorkspaceUrls`` / ``extractWorkspaceArtifacts``)
-  // — same token-aware shape as the converter's builder.
   const fileUrlBuilder = useMemo(
     () => (fileId: string) => sharedChatFileUrl(token, fileId),
     [token],
@@ -46,35 +40,44 @@ export default function SharedChatPage() {
   }
 
   return (
-    // Split layout — mirrors the owner copilot page: messages flex-1 on
-    // the left, ArtifactPanel docked on the right when open.  The
-    // ``useCopilotUIStore.artifactPanel`` state drives the panel's
-    // visibility; ``useIsMobile`` picks docked vs Sheet rendering.
-    <div className="flex h-screen w-full flex-row overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-3xl flex-col px-4 py-6">
-          <header className="mb-4 space-y-1">
-            <h1 className="text-2xl font-semibold">
+    // Mirrors the owner copilot layout: flex-row root, chat column on
+    // the left fills available width, ArtifactPanel docks on the right
+    // when open.  Background matches the owner side so the viewer
+    // doesn't look like a different surface.
+    <div className="flex h-screen w-full flex-row overflow-hidden bg-[#f8f8f9]">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+        {/* Header strip — small, persistent.  Replaces the in-scroll
+            header so a long chat can't push it off-screen. */}
+        <header className="flex shrink-0 items-baseline justify-between gap-4 border-b border-zinc-200 bg-white px-4 py-3">
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-zinc-900">
               {session.title || "Shared chat"}
             </h1>
-            <p className="text-sm text-zinc-500">
-              Shared on {new Date(session.created_at).toLocaleDateString()} ·
-              view only
+            <p className="truncate text-xs text-zinc-500">
+              Shared {new Date(session.created_at).toLocaleDateString()} ·
+              public read-only view
             </p>
-          </header>
-
-          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            This is a public read-only view of a chat conversation. The person
-            who shared it can revoke access at any time.
           </div>
+          <span className="hidden shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 sm:inline-block">
+            Read-only
+          </span>
+        </header>
 
-          {hasMore && (
-            <div className="mb-4 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-600">
-              Showing the most recent {uiMessages.length} messages of this
-              conversation. Older history is not visible in this shared view.
-            </div>
-          )}
+        {hasMore && (
+          <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-600">
+            Showing the most recent {uiMessages.length} messages — older history
+            is not visible in this shared view.
+          </div>
+        )}
 
+        {/* The chat column — ``flex-1 min-h-0`` so it takes only the
+            remaining space between header and footer.  No max-width
+            cap: the viewer has no sidebar to balance the layout, so
+            we let messages fill the page width.  Internal scrolling
+            lives inside ChatMessagesContainer's Conversation — we
+            must NOT add a second overflow on the wrappers, otherwise
+            the page ends up with two stacked scrollbars. */}
+        <div className="flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0">
           <ChatMessagesContainer
             messages={uiMessages}
             status="idle"
@@ -85,16 +88,17 @@ export default function SharedChatPage() {
             filePattern={filePattern}
             fileUrlBuilder={fileUrlBuilder}
           />
-
-          <div className="mt-4 text-center text-xs text-zinc-400">
-            Powered by AutoGPT Platform
-          </div>
         </div>
+
+        {/* Pinned footer — outside the scroll area so it never gets
+            run over by a long chat.  Tiny, low-contrast. */}
+        <footer className="shrink-0 border-t border-zinc-200 bg-white px-4 py-2 text-center text-[11px] text-zinc-400">
+          Powered by AutoGPT Platform
+        </footer>
       </div>
 
-      {/* Docked on desktop, fullscreen Sheet on mobile — same split
-          as the owner-side copilot page.  Driven by the artifact
-          panel store; the card's ``openArtifact`` sets state. */}
+      {/* Docked on desktop, fullscreen Sheet on mobile — driven by the
+          artifact panel store; ArtifactCard's openArtifact sets state. */}
       {isMobile ? <ArtifactPanel mobile /> : <ArtifactPanel />}
     </div>
   );
