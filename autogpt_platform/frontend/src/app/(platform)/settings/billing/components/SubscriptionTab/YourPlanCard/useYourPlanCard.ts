@@ -131,6 +131,14 @@ export function useYourPlanCard() {
   const currentTierKey = effectiveTier ?? "NO_TIER";
   const currentYearlyCents = tierCostsYearly[currentTierKey];
   const currentMonthlyCents = tierCosts[currentTierKey];
+  // Stripe credits the unused portion of the user's current monthly invoice
+  // when switching to yearly with proration_behavior="always_invoice"; the
+  // backend computes the same value (monthly_cost * remaining / total) and
+  // exposes it on the status payload so we can show the actual charge today.
+  const prorationCreditCents = subscription.data?.proration_credit_cents ?? 0;
+  const currentPeriodEndMs = subscription.data?.current_period_end
+    ? subscription.data.current_period_end * 1000
+    : null;
 
   const plan = subscription.data
     ? {
@@ -347,52 +355,69 @@ export function useYourPlanCard() {
       : `Switch ${tierLabel} to monthly billing?`;
   }
 
-  function getDialogBody(): string {
-    if (!pendingCycle) return "";
+  function getDialogBody(): string[] {
+    if (!pendingCycle) return [];
+    const periodEndLabel = currentPeriodEndMs
+      ? formatShortDate(currentPeriodEndMs)
+      : null;
     if (pendingCycle === "yearly") {
-      const yearly =
-        currentYearlyCents !== undefined ? formatCents(currentYearlyCents) : "";
       const tierLabel = effectiveTier ? PLAN_LABEL[effectiveTier] : null;
-      const prorationLine = [
-        "You'll be charged the prorated difference immediately.",
-        yearly
-          ? `After this period, your plan renews yearly at ${yearly}.`
-          : "After this period, your plan renews on the new yearly cadence.",
-      ].join(" ");
-      // Surface the yearly savings up front when we have both prices — the
-      // 15% discount is the user's primary motivator for accepting the
-      // prorated charge and shouldn't be buried.
-      if (
+      const hasPrices =
         currentMonthlyCents !== undefined &&
         currentYearlyCents !== undefined &&
         currentMonthlyCents > 0 &&
-        currentYearlyCents < currentMonthlyCents * 12
-      ) {
-        const annualMonthlyCents = currentMonthlyCents * 12;
-        const savingsPercent = Math.round(
-          ((annualMonthlyCents - currentYearlyCents) / annualMonthlyCents) *
-            100,
-        );
-        const monthlyEquivalent = formatCents(
-          Math.round(currentYearlyCents / 12),
-        );
-        const annualMonthly = formatCents(annualMonthlyCents);
-        const savingsLine = `Save ${savingsPercent}% with yearly billing.`;
-        const pricingLine = tierLabel
-          ? `${tierLabel} is ${monthlyEquivalent}/month when billed yearly, charged as ${yearly}/year instead of ${annualMonthly}/year monthly.`
-          : `It's ${monthlyEquivalent}/month when billed yearly, charged as ${yearly}/year instead of ${annualMonthly}/year monthly.`;
-        return [savingsLine, pricingLine, prorationLine].join(" ");
+        currentYearlyCents < currentMonthlyCents * 12;
+      if (!hasPrices) {
+        return [
+          "You'll be charged the prorated difference today.",
+          currentYearlyCents !== undefined
+            ? `Renews at ${formatCents(currentYearlyCents)}/year after this period.`
+            : "Renews on the new yearly cadence after this period.",
+        ];
       }
-      return prorationLine;
+      const yearly = formatCents(currentYearlyCents!);
+      const monthlyEquivalent = formatCents(
+        Math.round(currentYearlyCents! / 12),
+      );
+      const savingsPercent = Math.round(
+        ((currentMonthlyCents! * 12 - currentYearlyCents!) /
+          (currentMonthlyCents! * 12)) *
+          100,
+      );
+      const priceLine = tierLabel
+        ? `${tierLabel} yearly: ${yearly}/year (${monthlyEquivalent}/month).`
+        : `Yearly: ${yearly}/year (${monthlyEquivalent}/month).`;
+      // Net charge today = full yearly price minus the unused-monthly credit
+      // Stripe will apply. Only surface the exact amount when the backend
+      // returned a non-zero credit (admin-granted plans / no Stripe customer
+      // return 0 and we fall back to the generic line).
+      const netChargeCents = Math.max(
+        0,
+        currentYearlyCents! - prorationCreditCents,
+      );
+      const chargedTodayLine =
+        prorationCreditCents > 0
+          ? `Charged today: ${formatCents(netChargeCents)} (prorated from your monthly plan).`
+          : "You'll be charged the prorated difference today.";
+      const renewsLine = periodEndLabel
+        ? `Renews ${yearly}/year on ${periodEndLabel}.`
+        : `Renews at ${yearly}/year after this period.`;
+      return [
+        `Save ${savingsPercent}% with yearly billing.`,
+        priceLine,
+        chargedTodayLine,
+        renewsLine,
+      ];
     }
     const monthly =
       currentMonthlyCents !== undefined ? formatCents(currentMonthlyCents) : "";
     return [
-      "Your plan will switch to monthly billing at the end of your current yearly period; no charge today.",
-      monthly ? `New monthly price: ${monthly}.` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+      periodEndLabel
+        ? `Switches to monthly billing on ${periodEndLabel}.`
+        : "Switches to monthly at the end of your current yearly period.",
+      monthly ? `New price: ${monthly}/month.` : "",
+      "No charge today.",
+    ].filter(Boolean);
   }
 
   function getTierUpgradeDialogBody(): string {

@@ -217,6 +217,8 @@ describe("YourPlanCard cycle toggle", () => {
         billing_cycle: "monthly",
         tier_costs: { PRO: 5000, MAX: 32000 },
         tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        proration_credit_cents: 2500,
+        current_period_end: 1900000000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -233,15 +235,18 @@ describe("YourPlanCard cycle toggle", () => {
     expect(
       await screen.findByText(/Switch Pro to yearly billing\?/i),
     ).toBeDefined();
-    expect(screen.getByText(/Save 15% with yearly billing\./i)).toBeDefined();
+    // Dialog body is rendered as separate lines, each its own Text node.
+    expect(screen.getByText(/^Save 15% with yearly billing\.$/)).toBeDefined();
+    expect(
+      screen.getByText(/^Pro yearly: \$510\.00\/year \(\$42\.50\/month\)\.$/),
+    ).toBeDefined();
+    // 51000 yearly - 2500 proration credit = 48500 cents = $485.00 charged today.
     expect(
       screen.getByText(
-        /Pro is \$42\.50\/month when billed yearly, charged as \$510\.00\/year instead of \$600\.00\/year monthly\./i,
+        /^Charged today: \$485\.00 \(prorated from your monthly plan\)\.$/,
       ),
     ).toBeDefined();
-    expect(
-      screen.getByText(/charged the prorated difference immediately/i),
-    ).toBeDefined();
+    expect(screen.getByText(/^Renews \$510\.00\/year on /)).toBeDefined();
     expect(
       screen.getByRole("button", { name: /switch to yearly/i }),
     ).toBeDefined();
@@ -272,13 +277,16 @@ describe("YourPlanCard cycle toggle", () => {
     ).toBeDefined();
     expect(
       screen.getByText(
-        /Max is \$272\.00\/month when billed yearly, charged as \$3,264\.00\/year instead of \$3,840\.00\/year monthly\./i,
+        /^Max yearly: \$3,264\.00\/year \(\$272\.00\/month\)\.$/,
       ),
     ).toBeDefined();
+    // No proration_credit_cents in this fixture → falls back to generic
+    // "prorated difference today" line instead of an exact dollar amount.
     expect(
-      screen.getByText(
-        /After this period, your plan renews yearly at \$3,264\.00\./i,
-      ),
+      screen.getByText(/^You'll be charged the prorated difference today\.$/),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/^Renews at \$3,264\.00\/year after this period\.$/),
     ).toBeDefined();
   });
 
@@ -307,10 +315,11 @@ describe("YourPlanCard cycle toggle", () => {
     ).toBeDefined();
     expect(
       screen.getByText(
-        /switch to monthly billing at the end of your current yearly period/i,
+        /^Switches to monthly at the end of your current yearly period\.$/,
       ),
     ).toBeDefined();
-    expect(screen.getByText(/New monthly price: \$50\.00/)).toBeDefined();
+    expect(screen.getByText(/^New price: \$50\.00\/month\.$/)).toBeDefined();
+    expect(screen.getByText(/^No charge today\.$/)).toBeDefined();
   });
 
   it("falls back to the generic dialog title when prices are missing (NO_TIER-like)", async () => {
@@ -341,9 +350,10 @@ describe("YourPlanCard cycle toggle", () => {
     // No tier_costs / tier_costs_yearly in the payload — body falls back to
     // proration-only copy without the savings/pricing lines.
     expect(
-      screen.getByText(
-        /charged the prorated difference immediately\. After this period, your plan renews on the new yearly cadence\./i,
-      ),
+      screen.getByText(/^You'll be charged the prorated difference today\.$/),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/^Renews on the new yearly cadence after this period\.$/),
     ).toBeDefined();
   });
 
