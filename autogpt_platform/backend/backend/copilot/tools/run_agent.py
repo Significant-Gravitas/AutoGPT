@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, field_validator
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
-from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -16,7 +15,7 @@ from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_database_manager_async_client, get_scheduler_client
 from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -714,7 +713,7 @@ class RunAgentTool(BaseTool):
                             execution.id,
                             exc_info=True,
                         )
-                await link_new_execution_to_chat_share(
+                await get_database_manager_async_client().link_new_execution_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return AgentOutputResponse(
@@ -757,7 +756,7 @@ class RunAgentTool(BaseTool):
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
-                await link_new_execution_to_chat_share(
+                await get_database_manager_async_client().link_new_execution_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ExecutionStartedResponse(
@@ -777,7 +776,7 @@ class RunAgentTool(BaseTool):
                 )
             else:
                 status = completed.status.value if completed else "unknown"
-                await link_new_execution_to_chat_share(
+                await get_database_manager_async_client().link_new_execution_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ExecutionStartedResponse(
@@ -796,7 +795,7 @@ class RunAgentTool(BaseTool):
                     status=status,
                 )
 
-        await link_new_execution_to_chat_share(
+        await get_database_manager_async_client().link_new_execution_to_chat_share(
             session_id=session_id, execution_id=execution.id
         )
         return ExecutionStartedResponse(
