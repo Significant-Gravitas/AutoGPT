@@ -105,10 +105,16 @@ export function openOAuthPopup(
     if (popup && !popup.closed) popup.close();
   });
 
-  // Clear any stale localStorage entry
+  // Scope the localStorage key by stateToken so concurrent OAuth flows do
+  // not race for a single shared slot. Each flow only reads/writes its own
+  // key, so a poller cannot destructively consume a result intended for a
+  // different flow. BroadcastChannel is pub/sub so it doesn't need scoping.
+  const scopedLocalStorageKey = `${localStorageKey}_${stateToken}`;
+
+  // Clear any stale localStorage entry for this specific flow only.
   if (useCrossOriginListeners) {
     try {
-      localStorage.removeItem(localStorageKey);
+      localStorage.removeItem(scopedLocalStorageKey);
     } catch {}
   }
 
@@ -162,10 +168,10 @@ export function openOAuthPopup(
       // Listener: localStorage polling (most reliable cross-tab fallback)
       const pollInterval = setInterval(() => {
         try {
-          const stored = localStorage.getItem(localStorageKey);
+          const stored = localStorage.getItem(scopedLocalStorageKey);
           if (stored) {
             const data = JSON.parse(stored);
-            localStorage.removeItem(localStorageKey);
+            localStorage.removeItem(scopedLocalStorageKey);
             handleResult(data);
           }
         } catch {}

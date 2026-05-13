@@ -66,10 +66,14 @@ export async function GET(request: Request) {
           }
         } catch(e) { /* opener not available (COOP) */ }
 
-        // Method 3: localStorage (most reliable cross-tab fallback)
+        // Method 3: localStorage (most reliable cross-tab fallback).
+        // Key is scoped by state token so concurrent OAuth flows don't race
+        // for a single shared slot (poller destructively reads its own key).
         try {
-          localStorage.setItem("oauth_popup_result", JSON.stringify({ message_type: "mcp_oauth_result", ...msg }));
-          sent = true;
+          if (msg.state) {
+            localStorage.setItem("oauth_popup_result_" + msg.state, JSON.stringify({ message_type: "mcp_oauth_result", ...msg }));
+            sent = true;
+          }
         } catch(e) { /* localStorage not available */ }
 
         var statusEl = document.getElementById("status");

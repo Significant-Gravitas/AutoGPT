@@ -40,8 +40,9 @@ export async function GET(request: Request) {
   //      the popup-blocked → new-tab fallback path.
   //   2. window.opener.postMessage — fast path for same-origin popups.
   //   3. localStorage — most reliable cross-tab fallback when both above fail.
-  // The listener (`openOAuthPopup`) filters incoming messages by state token,
-  // so writing to a shared channel is safe across concurrent flows.
+  //      Key is scoped by state token so concurrent flows don't clobber each
+  //      other's slots. BroadcastChannel/postMessage are pub/sub-style so the
+  //      listener's state-token filter already prevents cross-talk for them.
   return new NextResponse(
     `<!DOCTYPE html>
 <html>
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
     <script>
       (function() {
         var msg = ${safeJsonStringify(message)};
+        var state = ${safeJsonStringify(state)};
         try {
           var bc = new BroadcastChannel("oauth_popup");
           bc.postMessage(msg);
@@ -60,7 +62,9 @@ export async function GET(request: Request) {
           }
         } catch(e) {}
         try {
-          localStorage.setItem("oauth_popup_result", JSON.stringify(msg));
+          if (state) {
+            localStorage.setItem("oauth_popup_result_" + state, JSON.stringify(msg));
+          }
         } catch(e) {}
         window.close();
       })();
