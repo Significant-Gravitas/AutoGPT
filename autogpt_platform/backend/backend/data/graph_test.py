@@ -2199,3 +2199,43 @@ async def test_migrate_llm_models_uses_schema_prefix_placeholder():
             "DATABASE_URL has no ?schema= param."
         )
         assert 'platform."AgentNode"' not in query_template
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
+    """Regression: migrate_llm_models must rewrite provider-prefixed stored
+    values (e.g. ``anthropic/claude-sonnet-4-20250514``) to the family-aware
+    replacement, not let them fall through to the global ``fallback`` model.
+
+    ``LlmModel._missing_`` accepts prefixed inputs at write time, so historical
+    rows may carry either the bare or prefixed form."""
+    from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+    from backend.data.graph import migrate_llm_models
+
+    bare_legacy_value = "claude-sonnet-4-20250514"
+    expected_replacement = LEGACY_MODEL_MAPPINGS[bare_legacy_value].value
+    prefixed_legacy_value = f"anthropic/{bare_legacy_value}"
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LlmModel)))
+
+    # Targeted query has 5 SQL params ($1..$5), so its call has 6 positional
+    # args: (query, [path], replacement, block_id, path, stored_value).
+    targeted_pairs = {
+        (call.args[2], call.args[5])  # (replacement, stored_value)
+        for call in mock_execute.await_args_list
+        if len(call.args) == 6
+    }
+
+    assert (expected_replacement, bare_legacy_value) in targeted_pairs, (
+        f"bare legacy slug {bare_legacy_value!r} not rewritten to "
+        f"{expected_replacement!r}"
+    )
+    assert (expected_replacement, prefixed_legacy_value) in targeted_pairs, (
+        f"provider-prefixed legacy slug {prefixed_legacy_value!r} not "
+        f"rewritten to {expected_replacement!r} — prefixed forms must hit the "
+        "family-aware pass, not the global fallback."
+    )

@@ -10,6 +10,11 @@
 -- (`migrate_llm_models` in backend/data/graph.py) applies the same mapping so
 -- environments stay consistent even before this migration runs.
 --
+-- For bare Anthropic/OpenAI slugs we also match the provider-prefixed form
+-- (e.g. `anthropic/claude-sonnet-4-20250514`) because `LlmModel._missing_`
+-- accepts prefixed inputs at write time, so historical rows may carry either
+-- form.
+--
 -- AI/ML API stragglers (Qwen/Qwen2.5-72B-Instruct-Turbo,
 -- nvidia/llama-3.1-nemotron-70b-instruct,
 -- meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo,
@@ -25,7 +30,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"claude-haiku-4-5-20251001"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'claude-3-haiku-20240307';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'claude-3-haiku-20240307',
+         'anthropic/claude-3-haiku-20240307'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -34,7 +42,10 @@ SET    "data" = JSONB_SET(
          '"claude-haiku-4-5-20251001"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'claude-3-haiku-20240307';
+  AND  "data"::jsonb->>'model' IN (
+         'claude-3-haiku-20240307',
+         'anthropic/claude-3-haiku-20240307'
+       );
 
 -- claude-opus-4-20250514 -> claude-opus-4-7
 UPDATE "AgentNode"
@@ -43,7 +54,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"claude-opus-4-7"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'claude-opus-4-20250514';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'claude-opus-4-20250514',
+         'anthropic/claude-opus-4-20250514'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -52,7 +66,10 @@ SET    "data" = JSONB_SET(
          '"claude-opus-4-7"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'claude-opus-4-20250514';
+  AND  "data"::jsonb->>'model' IN (
+         'claude-opus-4-20250514',
+         'anthropic/claude-opus-4-20250514'
+       );
 
 -- claude-sonnet-4-20250514 -> claude-sonnet-4-6
 UPDATE "AgentNode"
@@ -61,7 +78,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"claude-sonnet-4-6"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'claude-sonnet-4-20250514';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'claude-sonnet-4-20250514',
+         'anthropic/claude-sonnet-4-20250514'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -70,7 +90,10 @@ SET    "data" = JSONB_SET(
          '"claude-sonnet-4-6"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'claude-sonnet-4-20250514';
+  AND  "data"::jsonb->>'model' IN (
+         'claude-sonnet-4-20250514',
+         'anthropic/claude-sonnet-4-20250514'
+       );
 
 -- claude-opus-4-1-20250805 -> claude-opus-4-7
 UPDATE "AgentNode"
@@ -79,7 +102,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"claude-opus-4-7"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'claude-opus-4-1-20250805';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'claude-opus-4-1-20250805',
+         'anthropic/claude-opus-4-1-20250805'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -88,7 +114,10 @@ SET    "data" = JSONB_SET(
          '"claude-opus-4-7"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'claude-opus-4-1-20250805';
+  AND  "data"::jsonb->>'model' IN (
+         'claude-opus-4-1-20250805',
+         'anthropic/claude-opus-4-1-20250805'
+       );
 
 -- gpt-4-turbo -> gpt-4.1-2025-04-14
 UPDATE "AgentNode"
@@ -97,7 +126,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"gpt-4.1-2025-04-14"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'gpt-4-turbo';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'gpt-4-turbo',
+         'openai/gpt-4-turbo'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -106,7 +138,10 @@ SET    "data" = JSONB_SET(
          '"gpt-4.1-2025-04-14"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'gpt-4-turbo';
+  AND  "data"::jsonb->>'model' IN (
+         'gpt-4-turbo',
+         'openai/gpt-4-turbo'
+       );
 
 -- o1 -> o3-2025-04-16
 UPDATE "AgentNode"
@@ -115,7 +150,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"o3-2025-04-16"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'o1';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'o1',
+         'openai/o1'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -124,7 +162,10 @@ SET    "data" = JSONB_SET(
          '"o3-2025-04-16"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'o1';
+  AND  "data"::jsonb->>'model' IN (
+         'o1',
+         'openai/o1'
+       );
 
 -- o1-mini -> o3-mini
 UPDATE "AgentNode"
@@ -133,7 +174,10 @@ SET    "constantInput" = JSONB_SET(
          '{model}',
          '"o3-mini"'::jsonb
        )
-WHERE  "constantInput"::jsonb->>'model' = 'o1-mini';
+WHERE  "constantInput"::jsonb->>'model' IN (
+         'o1-mini',
+         'openai/o1-mini'
+       );
 
 UPDATE "AgentNodeExecutionInputOutput"
 SET    "data" = JSONB_SET(
@@ -142,7 +186,10 @@ SET    "data" = JSONB_SET(
          '"o3-mini"'::jsonb
        )
 WHERE  "agentPresetId" IS NOT NULL
-  AND  "data"::jsonb->>'model' = 'o1-mini';
+  AND  "data"::jsonb->>'model' IN (
+         'o1-mini',
+         'openai/o1-mini'
+       );
 
 -- google/gemini-2.5-pro-preview-03-25 -> google/gemini-2.5-pro
 UPDATE "AgentNode"

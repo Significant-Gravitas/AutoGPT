@@ -1878,16 +1878,24 @@ async def migrate_llm_models(fallback: LlmModel):
         """
 
     for id, path in llm_model_fields.items():
-        # Pass 1 — family-aware rewrites.
+        # Pass 1 — family-aware rewrites. Match both the bare slug and the
+        # provider-prefixed form (e.g. ``anthropic/claude-sonnet-4-20250514``)
+        # since ``LlmModel._missing_`` accepts prefixed inputs, so historical
+        # writes may carry either form even when the canonical enum value is
+        # unprefixed.
         for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
-            await execute_raw_with_schema(
-                targeted_query,
-                [path],
-                replacement.value,
-                id,
-                path,
-                legacy_value,
-            )
+            stored_aliases = {legacy_value}
+            if "/" not in legacy_value:
+                stored_aliases.add(f"{replacement.metadata.provider}/{legacy_value}")
+            for stored_value in stored_aliases:
+                await execute_raw_with_schema(
+                    targeted_query,
+                    [path],
+                    replacement.value,
+                    id,
+                    path,
+                    stored_value,
+                )
 
         # Pass 2 — catch anything still out-of-enum.
         await execute_raw_with_schema(
