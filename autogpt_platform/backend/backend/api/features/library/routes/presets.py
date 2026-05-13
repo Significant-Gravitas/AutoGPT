@@ -37,7 +37,7 @@ async def list_presets(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1),
     graph_id: Optional[str] = Query(
-        description="Allows to filter presets by a specific agent graph"
+        description="Allows filtering presets by a specific agent graph"
     ),
 ) -> models.LibraryAgentPresetResponse:
     """
@@ -47,7 +47,7 @@ async def list_presets(
         user_id (str): ID of the authenticated user.
         page (int): Page number for pagination.
         page_size (int): Number of items per page.
-        graph_id: Allows to filter presets by a specific agent graph.
+        graph_id: Allows filtering presets by a specific agent graph.
 
     Returns:
         models.LibraryAgentPresetResponse: A response containing the list of presets.
