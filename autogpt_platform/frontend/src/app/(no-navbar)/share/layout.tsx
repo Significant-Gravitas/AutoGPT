@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Shared Agent Run - AutoGPT",
@@ -8,35 +6,16 @@ export const metadata: Metadata = {
   robots: "noindex, nofollow",
 };
 
+// Passthrough.  Each share page owns its own viewport — the chat
+// viewer needs full-bleed h-screen, while the execution share page
+// renders its own logo header + ``container`` wrapper inline.
+// Wrapping everything here forced ``h-screen`` content to overflow
+// the document body, producing a page-level scrollbar on top of
+// the chat's internal one.
 export default function ShareLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background">
-        <div className="container mx-auto flex justify-center px-4 py-4">
-          <Link href="/" className="inline-block">
-            <Image
-              src="/autogpt-logo-dark-bg.png"
-              alt="AutoGPT"
-              width={120}
-              height={54}
-              className="hidden h-8 w-auto dark:block"
-            />
-            <Image
-              src="/autogpt-logo-light-bg.png"
-              alt="AutoGPT"
-              width={120}
-              height={54}
-              className="block h-8 w-auto dark:hidden"
-              priority
-            />
-          </Link>
-        </div>
-      </header>
-      <div className="container mx-auto px-4 py-8">{children}</div>
-    </div>
-  );
+  return <>{children}</>;
 }
