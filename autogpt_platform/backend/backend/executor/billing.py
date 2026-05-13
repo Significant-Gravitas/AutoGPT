@@ -24,7 +24,7 @@ from backend.util.clients import (
 )
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import DiscordChannel, discord_send_alert
+from backend.util.metrics import DiscordChannel
 from backend.util.settings import Settings
 
 from .utils import LogMetadata, block_usage_cost, execution_usage_cost

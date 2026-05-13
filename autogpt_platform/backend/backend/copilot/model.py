@@ -44,6 +44,15 @@ def _get_session_cache_key(session_id: str) -> str:
     return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
 
 
+# ChatSession.chatStatus lifecycle values.  Open enum: future states
+# (e.g. ``"errored"``, ``"paused"``) can be added without a migration.
+# Within a session, turns are serialized so at most one task is in
+# flight at a time — the status sits at session scope, not message.
+CHAT_STATUS_IDLE = "idle"
+CHAT_STATUS_QUEUED = "queued"
+CHAT_STATUS_RUNNING = "running"
+
+
 # ===================== Chat data models ===================== #
 
 
@@ -83,6 +92,15 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Owning session id and generic per-row JSONB bag.  Today the
+    # dispatcher uses ``metadata`` to preserve the submit-time payload
+    # (file_ids / mode / model / permissions / context / arrival_at)
+    # on the user row that triggered a queued turn, so a later
+    # promotion can replay the turn faithfully.  Generic so future
+    # per-row state can land here without a migration.
+    session_id: str | None = None
+    metadata: dict | None = None
+
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
@@ -98,6 +116,8 @@ class ChatMessage(BaseModel):
             sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
+            session_id=prisma_message.sessionId,
+            metadata=_parse_json_field(prisma_message.metadata),
         )
 
 
@@ -164,6 +184,8 @@ class ChatSessionInfo(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
+    chat_status: str = "idle"
 
     @property
     def dry_run(self) -> bool:
@@ -212,6 +234,7 @@ class ChatSessionInfo(BaseModel):
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
+            chat_status=prisma_session.chatStatus,
         )
 
 
@@ -602,10 +625,35 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
-    """Get a chat session from the database."""
-    session = await chat_db().get_chat_session(session_id)
-    if not session:
+    """Get a chat session from the database, capped at MAX_LOADED_CHAT_MESSAGES.
+
+    Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
+    no cursor) so the LLM-context path inherits the same tool-pair boundary
+    expansion and visibility guarantees the UI scroll-back path uses. The
+    cap-hit log surfaces here (the LLM-context use case) rather than inside the
+    generic paginated function.
+    """
+    # Local import to avoid the model→db→model cycle.
+    from .db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    if page is None:
         return None
+
+    if page.has_more:
+        logger.warning(
+            "Session %s loaded with capped messages (%d) — older history "
+            "must come from transcript checkpoint or context will be lost",
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+        )
+
+    session = ChatSession(
+        **page.session.model_dump(),
+        messages=page.messages,
+    )
 
     logger.info(
         f"Loaded session {session_id} from DB: "
@@ -698,8 +746,9 @@ async def _save_session_to_db(
     db = chat_db()
 
     if not skip_existence_check:
-        # Check if session exists in DB
-        existing = await db.get_chat_session(session.session_id)
+        # Existence check only — use the metadata-only fetch, no need to
+        # eager-load any messages here.
+        existing = await db.get_chat_session_metadata(session.session_id)
 
         if not existing:
             # Create new session
@@ -724,8 +773,22 @@ async def _save_session_to_db(
         total_completion_tokens=total_completion,
     )
 
-    # Add new messages (only those after existing count)
-    new_messages = session.messages[existing_message_count:]
+    # Identify unsaved messages.  Two cases:
+    #
+    # - Brand-new session (existing_message_count == 0): persist every message,
+    #   regardless of whether it carries a sequence (callers may construct
+    #   ``ChatSession`` from a list of ChatMessage objects that already have
+    #   sequences set, e.g. when re-using a fixture across tests — those still
+    #   need to be saved as new rows).
+    # - Existing session: filter by ``sequence is None``.  Slicing by
+    #   ``session.messages[existing_message_count:]`` is incorrect for windowed
+    #   loads (cap of MAX_LOADED_CHAT_MESSAGES) — a session with 1500 saved
+    #   messages comes back with 1000 entries, and that slice would silently
+    #   drop every newly-appended message.
+    if existing_message_count == 0:
+        new_messages = list(session.messages)
+    else:
+        new_messages = [m for m in session.messages if m.sequence is None]
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -752,17 +815,19 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-        # Back-fill sequence numbers on the in-memory ChatMessage objects so
-        # that downstream callers (inject_user_context) can persist updates
-        # by sequence rather than falling back to index-based writes.
         for i, msg in enumerate(new_messages):
-            msg.sequence = existing_message_count + i
+            msg.sequence = actual_start + i
 
 
 async def append_and_save_message(

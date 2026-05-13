@@ -4,11 +4,18 @@ import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 export interface TurnStats {
   durationMs?: number;
   createdAt?: string;
+  /** Raw ChatMessage.id (UUID).  Carried for the badge's cancel handler. */
+  rawMessageId?: string | null;
+  /** True iff this is the latest user message in the session.  The
+   *  "Queued" badge anchors on this row whenever the OWNING session's
+   *  ``chat_status === "queued"`` (checked at render time). */
+  isLatestUserMessage?: boolean;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
 
 interface SessionChatMessage {
+  id: string | null;
   role: string;
   content: string | null;
   tool_call_id: string | null;
@@ -30,6 +37,7 @@ function coerceSessionChatMessages(
       if (!role) return null;
 
       return {
+        id: typeof msg.id === "string" ? msg.id : null,
         role,
         content:
           typeof msg.content === "string"
@@ -215,6 +223,11 @@ export function convertChatSessionMessagesToUiMessages(
   stats: TurnStatsMap;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
+  // Find the most-recent user message — when the session is queued, this
+  // is the message that's waiting and renders the "Queued" badge.
+  const latestUserMessageIndex = messages.findLastIndex(
+    (m) => m.role === "user",
+  );
   const toolOutputsByCallId = new Map<string, unknown>();
 
   // Seed with extra tool outputs from adjacent pages first;
@@ -248,6 +261,11 @@ export function convertChatSessionMessagesToUiMessages(
       msg.role !== "reasoning"
     )
       return;
+
+    // Cancelled rows stay visible in the conversation as orphan user
+    // bubbles (no AI follow-up after them).  We don't emit a separate
+    // "Cancelled" indicator — the row's lack of a response, combined
+    // with the user remembering they just clicked X, communicates it.
 
     // Role=="reasoning" rows carry extended_thinking content.  Treat them as
     // contributing a reasoning part to the surrounding assistant bubble —
@@ -387,6 +405,14 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
       patch.durationMs = msg.duration_ms;
+    }
+    if (uiRole === "user") {
+      // Queue badge consumes ``rawMessageId`` for its cancel handler and
+      // ``isLatestUserMessage`` to pick the anchor row.  The badge's
+      // gating on ``session.chat_status === "queued"`` is the consumer's
+      // (ChatMessagesContainer's) concern.
+      patch.rawMessageId = msg.id;
+      patch.isLatestUserMessage = idx === latestUserMessageIndex;
     }
     if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });

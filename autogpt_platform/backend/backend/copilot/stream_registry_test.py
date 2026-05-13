@@ -288,6 +288,75 @@ async def test_mark_session_completed_releases_cluster_lock_on_success():
 
 
 @pytest.mark.asyncio
+async def test_mark_session_completed_fires_user_queue_dispatcher():
+    """When a turn completes for ``user_id=u1`` (read from the session's
+    Redis meta), the slot-free hook must invoke
+    ``dispatch_next_for_user('u1')`` so the user's next queued session
+    can be promoted.  Per-user scoping: we don't dispatch for other
+    users (no global broadcast)."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+    dispatch_mock = AsyncMock(return_value=True)
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=dispatch_mock,
+        ),
+    ):
+        await stream_registry.mark_session_completed("sess-1")
+
+    dispatch_mock.assert_awaited_once_with("u1")
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_swallows_dispatcher_errors():
+    """The dispatcher firing after slot-free must not be able to break
+    the completion path — any exception from ``dispatch_next_for_user``
+    is logged and swallowed so a queue hiccup never blocks the turn's
+    cleanup."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user",
+            new=AsyncMock(side_effect=RuntimeError("queue brown-out")),
+        ),
+    ):
+        # No exception should bubble.
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+
+
+@pytest.mark.asyncio
 async def test_mark_session_completed_skips_lock_release_when_already_completed():
     """CAS failure = someone else completed the session first; we must not
     delete their already-released lock, and we must NOT publish StreamFinish
