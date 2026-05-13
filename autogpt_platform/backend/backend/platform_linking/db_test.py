@@ -15,6 +15,8 @@ from backend.util.exceptions import (
 )
 
 from .db import (
+    LINK_TOKEN_RETENTION_HOURS,
+    cleanup_expired_platform_link_tokens,
     confirm_server_link,
     confirm_user_link,
     create_server_link_token,
@@ -479,3 +481,33 @@ class TestDeleteLinks:
             mock_model.prisma.return_value.find_unique = AsyncMock(return_value=link)
             with pytest.raises(NotAuthorizedError):
                 await delete_user_link("x", "u-other")
+
+
+# ── Cleanup ──────────────────────────────────────────────────────────
+
+
+class TestCleanupExpired:
+    @pytest.mark.asyncio
+    async def test_deletes_with_retention_window_cutoff(self):
+        with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
+            mock_model.prisma.return_value.delete_many = AsyncMock(return_value=7)
+            count = await cleanup_expired_platform_link_tokens()
+
+        assert count == 7
+        mock_model.prisma.return_value.delete_many.assert_awaited_once()
+        where = mock_model.prisma.return_value.delete_many.await_args.kwargs["where"]
+        assert "expiresAt" in where and "lt" in where["expiresAt"]
+        cutoff = where["expiresAt"]["lt"]
+        delta = datetime.now(timezone.utc) - cutoff
+        assert (
+            timedelta(hours=LINK_TOKEN_RETENTION_HOURS - 1)
+            < delta
+            < timedelta(hours=LINK_TOKEN_RETENTION_HOURS + 1)
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_nothing_to_delete(self):
+        with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
+            mock_model.prisma.return_value.delete_many = AsyncMock(return_value=0)
+            count = await cleanup_expired_platform_link_tokens()
+        assert count == 0

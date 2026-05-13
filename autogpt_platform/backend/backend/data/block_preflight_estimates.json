@@ -1,6 +1,61 @@
 {
   "version": 1,
-  "generated_at": null,
-  "source_window_days": null,
-  "estimates": {}
+  "generated_at": "2026-05-11T08:29:28.322148+00:00",
+  "source_window_days": 30,
+  "estimates": {
+    "3b191d9f-356f-482d-8238-ba04b6d18381": {
+      "block_name": "OrchestratorBlock",
+      "cost_type": "cost_usd",
+      "samples": 3227,
+      "mean_credits": 6
+    },
+    "1f292d4a-41a4-4977-9684-7c8d560b9f91": {
+      "block_name": "AITextGeneratorBlock",
+      "cost_type": "cost_usd",
+      "samples": 2283,
+      "mean_credits": 4
+    },
+    "87840993-2053-44b7-8da4-187ad4ee518c": {
+      "block_name": "SearchTheWebBlock",
+      "cost_type": "cost_usd",
+      "samples": 1202,
+      "mean_credits": 1
+    },
+    "a0a69be1-4528-491c-a85a-a4ab6873e3f0": {
+      "block_name": "AITextSummarizerBlock",
+      "cost_type": "cost_usd",
+      "samples": 1105,
+      "mean_credits": 8
+    },
+    "c40d75a2-d0ea-44c9-a4f6-634bb3bdab1a": {
+      "block_name": "ReplicateModelBlock",
+      "cost_type": "cost_usd",
+      "samples": 633,
+      "mean_credits": 10
+    },
+    "0b02b072-abe7-11ef-8372-fb5d162dd712": {
+      "block_name": "ExecuteCodeBlock",
+      "cost_type": "second",
+      "samples": 63,
+      "mean_credits": 1
+    },
+    "9c0b0450-d199-458b-a731-072189dd6593": {
+      "block_name": "AIListGeneratorBlock",
+      "cost_type": "cost_usd",
+      "samples": 36,
+      "mean_credits": 5
+    },
+    "c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f": {
+      "block_name": "PerplexityBlock",
+      "cost_type": "cost_usd",
+      "samples": 21,
+      "mean_credits": 5
+    },
+    "ed55ac19-356e-4243-a6cb-bc599e9b716f": {
+      "block_name": "AIStructuredResponseGeneratorBlock",
+      "cost_type": "cost_usd",
+      "samples": 16,
+      "mean_credits": 6
+    }
+  }
 }
