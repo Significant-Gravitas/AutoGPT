@@ -5,6 +5,7 @@ import {
   cleanup,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRequirementsCard } from "../SetupRequirementsCard";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
@@ -389,7 +390,6 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
     // Auto-dismiss must also fire onSend, otherwise the AI's tool call sits
     // unanswered and the chat hangs (regression: Sentry bug prediction).
-    // Deferred via microtask for StrictMode safety, so awaited here.
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
   });
 
@@ -568,5 +568,38 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     );
     // But only one auto-send fires for the whole provider set.
     expect(mockOnSend).toHaveBeenCalledOnce();
+  });
+
+  it("auto-send survives StrictMode's double-invoke of effects", async () => {
+    // Regression test for Sentry bug prediction: in React StrictMode, the
+    // auto-dismiss effect runs twice in quick succession (mount → cleanup →
+    // re-mount). A previous version of this effect scheduled the send via a
+    // microtask and cancelled it in cleanup, which leaked the store claim
+    // across the double-invoke — the first effect's microtask got cancelled,
+    // the second effect couldn't re-claim, and `handleRun` never fired.
+    // Today the claim itself provides atomicity and we call `handleRun`
+    // synchronously; this test pins the behaviour against a StrictMode
+    // remount.
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    render(
+      <StrictMode>
+        <SetupRequirementsCard
+          output={makeOutput({
+            missingCredentials: {
+              api_key: { provider: "openai", types: ["api_key"] },
+            },
+          })}
+        />
+      </StrictMode>,
+    );
+
+    // The card must dismiss AND the auto-send must fire exactly once
+    // (not zero — the previous bug; not two — the original double-invoke
+    // risk that the microtask used to guard against).
+    expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
+    await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
   });
 });

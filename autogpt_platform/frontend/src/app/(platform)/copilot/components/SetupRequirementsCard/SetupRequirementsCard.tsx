@@ -145,16 +145,16 @@ export function SetupRequirementsCard({
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
   // provide (the Proceed button is hidden behind the early return below).
-  // Deferred to a microtask + cleanup-cancellable so StrictMode's dev-mode
-  // double-invoke aborts the first scheduled send before it fires; the
-  // synchronous form would call handleRun twice because the second effect
-  // run reuses the same render's closure (where hasSent is still false).
   //
-  // When N parallel cards share a provider set, all of them flip to
-  // `canAutoDismiss` simultaneously once one card connects the provider.
-  // Without coordination each would send an identical "Please proceed"
-  // message; the store-level claim ensures only the first auto-dismissing
-  // card emits a message and the rest dismiss silently.
+  // `tryClaimAutoDismiss` provides the atomicity guarantee: only the first
+  // card per `(sessionID, providers)` slot wins the claim and runs
+  // `handleRun`; later cards (whether parallel siblings or StrictMode's
+  // dev-mode re-mount of the same card) see `claimed === false`, set their
+  // local `hasSent`, and dismiss silently — no chat spam, no double-send.
+  // We deliberately call `handleRun` synchronously: a microtask + cleanup
+  // pattern would leak the claim across StrictMode's double-invoke
+  // (cleanup cancels the first microtask, but the claim is still held, so
+  // the second effect run can't re-claim and the send never fires).
   useEffect(() => {
     if (!canAutoDismiss || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
@@ -165,14 +165,8 @@ export function SetupRequirementsCard({
       setHasSent(true);
       return;
     }
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) handleRun();
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; cleanup guards re-entry
+    handleRun();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
   }, [canAutoDismiss, hasSent]);
 
   if (hasSent || canAutoDismiss) {
