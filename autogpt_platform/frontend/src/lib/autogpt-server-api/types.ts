@@ -872,7 +872,7 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   // First Wins
-  | "VISIT_COPILOT"
+  | "ONBOARDING_COMPLETE"
   | "GET_RESULTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
@@ -892,10 +892,13 @@ export type OnboardingStep =
   | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
-  completedSteps: OnboardingStep[];
+  // Plain string[] so legacy step names from existing rows pass through.
+  // Validation against the active set lives on the completion endpoint via
+  // `PostV1CompleteOnboardingStepStep` (the generated literal union).
+  completedSteps: string[];
   walletShown: boolean;
-  notified: OnboardingStep[];
-  rewardedFor: OnboardingStep[];
+  notified: string[];
+  rewardedFor: string[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
@@ -910,7 +913,8 @@ export interface UserOnboarding {
 export interface OnboardingNotificationPayload {
   type: "onboarding";
   event: "step_completed" | "increment_runs";
-  step: OnboardingStep | null;
+  // Plain string so legacy step names from existing rows pass through.
+  step: string | null;
 }
 
 export type WebSocketNotification =

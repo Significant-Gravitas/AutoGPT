@@ -26,6 +26,8 @@ import pytest
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
+
+from backend.data.onboarding import OnboardingStep
 from prisma.types import (
     AgentBlockCreateInput,
     AgentGraphCreateInput,
@@ -461,7 +463,7 @@ async def main():
         users, k=int(NUM_USERS * 0.7)
     ):  # 70% of users have onboarding data
         completed_steps = []
-        possible_steps = list(prisma.enums.OnboardingStep)
+        possible_steps = [step.value for step in OnboardingStep]
         # Randomly complete some steps
         if random.random() < 0.8:
             num_steps = random.randint(1, len(possible_steps))

@@ -12,7 +12,6 @@ from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
     NotificationType,
-    OnboardingStep,
     SubscriptionTier,
 )
 from prisma.errors import PrismaError, UniqueViolationError
@@ -209,7 +208,7 @@ class UserCreditBase(ABC):
 
     @abstractmethod
     async def onboarding_reward(
-        self, user_id: str, credits: int, step: OnboardingStep
+        self, user_id: str, credits: int, step: str
     ) -> bool:
         """
         Reward the user with credits for completing an onboarding step.
@@ -218,7 +217,9 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             credits (int): The amount to reward.
-            step (OnboardingStep): The onboarding step.
+            step (str): The onboarding step identifier (``OnboardingStep`` StrEnum
+                values are accepted directly; typed as ``str`` to avoid a circular
+                import with ``backend.data.onboarding``).
 
         Returns:
             bool: True if rewarded, False if already rewarded.
@@ -746,15 +747,15 @@ class UserCredit(UserCreditBase):
             balance, _ = await self._get_credits(user_id)
         return balance
 
-    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+    async def onboarding_reward(self, user_id: str, credits: int, step: str):
         try:
             await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"REWARD-{user_id}-{step.value}",
+                transaction_key=f"REWARD-{user_id}-{step}",
                 metadata=SafeJson(
-                    {"reason": f"Reward for completing {step.value} onboarding step."}
+                    {"reason": f"Reward for completing {step} onboarding step."}
                 ),
             )
             return True

@@ -54,7 +54,7 @@ export function Wallet() {
         details: "Kickstart your journey with quick wins.",
         tasks: [
           {
-            id: "VISIT_COPILOT",
+            id: "ONBOARDING_COMPLETE",
             name: "Complete onboarding",
             amount: 3,
             details: "",

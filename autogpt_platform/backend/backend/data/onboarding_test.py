@@ -2,9 +2,12 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
-from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import _reward_user, format_onboarding_for_extraction
+from backend.data.onboarding import (
+    OnboardingStep,
+    _reward_user,
+    format_onboarding_for_extraction,
+)
 
 
 def test_format_onboarding_for_extraction_basic():
@@ -37,7 +40,7 @@ def test_format_onboarding_for_extraction_with_other():
 @pytest.mark.parametrize(
     "step,expected_reward",
     [
-        (OnboardingStep.VISIT_COPILOT, 300),
+        (OnboardingStep.ONBOARDING_COMPLETE, 300),
         (OnboardingStep.AGENT_NEW_RUN, 300),
         (OnboardingStep.MARKETPLACE_ADD_AGENT, 100),
         (OnboardingStep.MARKETPLACE_RUN_AGENT, 100),
@@ -89,3 +92,13 @@ async def test_reward_user_skips_if_already_rewarded(
     await _reward_user("user-1", onboarding, OnboardingStep.RUN_14_DAYS)
 
     credit_model.onboarding_reward.assert_not_called()
+
+
+def test_onboarding_step_values_are_plain_strings():
+    # StrEnum members must round-trip through ``str`` unchanged so they can be
+    # written directly into the ``String[]`` columns on UserOnboarding.
+    assert str(OnboardingStep.ONBOARDING_COMPLETE) == "ONBOARDING_COMPLETE"
+    assert OnboardingStep.ONBOARDING_COMPLETE == "ONBOARDING_COMPLETE"
+    # Legacy values that have been retired (e.g. VISIT_COPILOT) must not appear
+    # in the active set — existing rows containing them remain inert strings.
+    assert "VISIT_COPILOT" not in {step.value for step in OnboardingStep}

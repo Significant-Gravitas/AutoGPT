@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
+from prisma.enums import CreditTransactionType, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -967,10 +967,14 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
-    completedSteps: list[OnboardingStep]
+    # Step names are plain strings: legacy values that have been retired from
+    # the active set (see ``backend.data.onboarding.OnboardingStep``) must
+    # remain readable from existing rows. Boundary validation lives on the
+    # completion endpoint via the ``FrontendOnboardingStep`` Literal.
+    completedSteps: list[str]
     walletShown: bool
-    notified: list[OnboardingStep]
-    rewardedFor: list[OnboardingStep]
+    notified: list[str]
+    rewardedFor: list[str]
     usageReason: Optional[str]
     integrations: list[str]
     otherIntegrations: Optional[str]

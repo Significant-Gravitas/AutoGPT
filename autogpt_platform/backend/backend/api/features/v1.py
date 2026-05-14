@@ -344,7 +344,8 @@ async def is_onboarding_completed(
 ) -> OnboardingStatusResponse:
     user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
+        is_completed=OnboardingStep.ONBOARDING_COMPLETE
+        in user_onboarding.completedSteps,
     )
 
 

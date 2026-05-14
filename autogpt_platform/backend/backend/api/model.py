@@ -2,7 +2,6 @@ import enum
 from typing import Any, Literal, Optional
 
 import pydantic
-from prisma.enums import OnboardingStep
 
 from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
@@ -93,7 +92,8 @@ class NotificationPayload(pydantic.BaseModel):
 
 
 class OnboardingNotificationPayload(NotificationPayload):
-    step: OnboardingStep | None
+    # Plain string so legacy step names from existing rows pass through unchanged.
+    step: str | None
 
 
 class CopilotCompletionPayload(NotificationPayload):

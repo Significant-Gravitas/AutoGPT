@@ -9,10 +9,11 @@ import asyncio
 import random
 from uuid import uuid4
 
-import prisma.enums
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
+
+from backend.data.onboarding import OnboardingStep
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
@@ -290,7 +291,7 @@ async def test_onboarding_reward_idempotency(server: SpinTestServer):
         async def claim_reward():
             try:
                 result = await credit_system.onboarding_reward(
-                    user_id, 500, prisma.enums.OnboardingStep.WELCOME
+                    user_id, 500, OnboardingStep.WELCOME
                 )
                 return "SUCCESS" if result else "DUPLICATE"
             except Exception as e:
