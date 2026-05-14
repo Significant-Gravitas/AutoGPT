@@ -250,6 +250,22 @@ class TestEnableChatShareState:
     """Smoke tests for enable_chat_session_share + helpers."""
 
     @pytest.mark.asyncio
+    async def test_raises_value_error_when_session_not_owned_by_user(
+        self, mock_prisma_calls
+    ):
+        """A user can't enable sharing on a chat they don't own — both
+        a security guarantee AND the shape callers expect for the 404
+        path in the share route."""
+        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+            return_value=None
+        )
+
+        with pytest.raises(ValueError, match="not found for user"):
+            await enable_chat_session_share(
+                SESSION_ID, "other-user", auto_share_executions=False
+            )
+
+    @pytest.mark.asyncio
     async def test_enable_session_update_is_last_inside_transaction(
         self, mock_prisma_calls, mock_transaction
     ):
@@ -473,6 +489,27 @@ class TestLinkNewExecutionToChatShare:
         )
 
         link_create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_swallows_prisma_failures_without_crashing_caller(
+        self, mock_prisma_calls
+    ):
+        """The hook runs inside the CoPilotExecutor worker; if Prisma is
+        unconnected there, the underlying find_unique raises
+        ClientNotConnectedError.  The hook must NEVER let that escape —
+        crashing run_agent surfaces as "The model returned an empty
+        response" via the orphan tool_use SDK path.  Best-effort: a
+        sharing failure must not break the underlying tool.
+        """
+        from prisma.errors import ClientNotConnectedError
+
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            side_effect=ClientNotConnectedError()
+        )
+        # Should NOT raise — the hook catches everything.
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
 
     @pytest.mark.asyncio
     async def test_links_new_execution_when_auto_share_on(
