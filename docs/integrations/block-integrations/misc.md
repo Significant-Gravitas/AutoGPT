@@ -785,7 +785,7 @@ Configure publish_status to publish immediately, save as draft, or make unlisted
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| author_id | The Medium author ID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me  The response will contain the authorId field. | str | No |
+| author_id | The Medium author ID of the user. You can get this by calling the /me endpoint of the Medium API.  curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me  The response will contain the `authorId` field. | str | No |
 | title | The title of your Medium post | str | Yes |
 | content | The main content of your Medium post | str | Yes |
 | content_format | The format of the content: 'html' or 'markdown' | str | Yes |
