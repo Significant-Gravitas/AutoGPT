@@ -132,6 +132,7 @@ async def get_graphiti_client(group_id: str):
     Returns a ``graphiti_core.Graphiti`` instance.
     """
     from graphiti_core import Graphiti
+    from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client import LLMConfig, OpenAIClient
 
@@ -159,6 +160,18 @@ async def get_graphiti_client(group_id: str):
         )
         embedder = OpenAIEmbedder(config=embedder_config)
 
+        # P-1.4: cross-encoder reranker for warm-context retrieval.
+        # OpenAIRerankerClient runs concurrent boolean-classifier prompts
+        # (one per candidate edge) and uses log-probabilities to rank.
+        # Cheap because the reranker model defaults to gpt-4.1-nano —
+        # the cost is one batch of small calls per session-start search.
+        reranker_config = LLMConfig(
+            api_key=graphiti_config.resolve_llm_api_key(),
+            model=graphiti_config.reranker_model,
+            base_url=graphiti_config.resolve_llm_base_url(),
+        )
+        cross_encoder = OpenAIRerankerClient(config=reranker_config)
+
         graph_driver = AutoGPTFalkorDriver(
             host=graphiti_config.falkordb_host,
             port=graphiti_config.falkordb_port,
@@ -168,6 +181,7 @@ async def get_graphiti_client(group_id: str):
         client = Graphiti(
             llm_client=llm_client,
             embedder=embedder,
+            cross_encoder=cross_encoder,
             graph_driver=graph_driver,
             max_coroutines=graphiti_config.semaphore_limit,
         )

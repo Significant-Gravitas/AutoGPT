@@ -58,6 +58,19 @@ class GraphitiConfig(BaseSettings):
         description="API key for embedder — empty falls back to CHAT_OPENAI_API_KEY, then OPENAI_API_KEY",
     )
 
+    # Cross-encoder reranker (P-1.4) — used by warm-context retrieval to
+    # rerank top edges from BM25 + cosine + BFS. Graphiti's built-in
+    # OpenAIRerankerClient runs concurrent boolean-classifier prompts
+    # against gpt-4.1-nano by default (one prompt per candidate; log-
+    # probabilities decide the score). The audit estimated ~10–15%
+    # precision lift on warm context at the cost of one LLM call per
+    # session start. Defaults match Graphiti's own default so the
+    # reranker can ship with no env config.
+    reranker_model: str = Field(
+        default="gpt-4.1-nano",
+        description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
+    )
+
     # Concurrency
     semaphore_limit: int = Field(
         default=5,
