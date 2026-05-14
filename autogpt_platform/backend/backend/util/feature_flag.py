@@ -47,6 +47,48 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+
+    # --- Dream-system gates (P0) ---
+    #
+    # No "enabled-users list" flag — LD's per-flag targeting natively
+    # cohorts the canary (internal team → 5 → 50 → 500 → 5k), and
+    # ``is_feature_enabled(..., user_id, ...)`` evaluates each user.
+    # The four flags below are the master gate + three per-feature
+    # gates. Helper functions live next to the code that consumes them
+    # (added when each feature lands); these enum entries are
+    # scaffolding so the LD keys can be configured ahead of code.
+
+    # Master gate for the dream pass. When off, no dream-related code
+    # paths fire for the user — no schedule registration, no batch
+    # consumer pickup, no ratification loop. Defaults False; opt-in
+    # only.
+    DREAM_PASS_ENABLED = "dream-pass-enabled"
+
+    # Per-feature gate for the web-fact-check tool (P0.5). The tool
+    # can only DEMOTE memories on contradiction; new web-derived
+    # facts ride the ratification loop as tentative. Off on the
+    # local-LLM transport by default (most local installs lack a
+    # search-API key); cloud opt-in. Independent of
+    # ``DREAM_PASS_ENABLED`` so the dream pass can run without
+    # external network calls when this flag is off.
+    DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check"
+
+    # Per-feature gate for the cascading-expiry helper
+    # ``invalidate_entity_direct_neighbors`` (P0.3b). Off for the
+    # first two weeks after the dream pass ships — direct-neighbor
+    # demotion is the highest-blast-radius dream action and needs
+    # canary validation before broad rollout, even with the
+    # single-hop guard in place.
+    DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity"
+
+    # Opt-in to running the dream pass on the local-LLM transport
+    # (Ollama / vLLM / LocalAI / LM Studio / LiteLLM-proxy — see
+    # PR #12993). Off by default until validated end-to-end on at
+    # least one local-LLM contributor's stack. When on, the dream
+    # pass runs sync via the baseline path with phase-collapse and
+    # a longer Redis lock TTL (see ``dream/p0-spec.md`` §13).
+    DREAM_PASS_LOCAL_TRANSPORT = "dream-pass-local-transport"
+
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
