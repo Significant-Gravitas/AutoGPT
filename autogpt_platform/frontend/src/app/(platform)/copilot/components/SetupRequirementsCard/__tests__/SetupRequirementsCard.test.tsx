@@ -44,7 +44,10 @@ vi.mock("@/components/renderers/InputRenderer/FormRenderer", () => ({
 afterEach(() => {
   cleanup();
   mockOnSend.mockReset();
-  useConnectedProvidersStore.setState({ connected: new Set() });
+  useConnectedProvidersStore.setState({
+    connected: new Set(),
+    autoDismissedKeys: new Set(),
+  });
 });
 
 function makeOutput(
@@ -531,5 +534,39 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     );
 
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
+  });
+
+  it("only one card auto-sends when multiple parallel cards share a provider set", async () => {
+    // Regression test for Sentry bug prediction: when N parallel
+    // SetupRequirementsCard instances all require the same provider, after
+    // one card connects the provider the others all flip to canAutoDismiss
+    // simultaneously. Without coordination each card's useEffect would fire
+    // onSend, producing N identical "Please proceed" messages and spamming
+    // the chat. The store-level claim must allow only the first auto-dismiss
+    // to send.
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: "sess-1", providers: ["openai"] });
+
+    const output = makeOutput({
+      missingCredentials: {
+        api_key: { provider: "openai", types: ["api_key"] },
+      },
+    });
+
+    render(
+      <>
+        <SetupRequirementsCard output={output} />
+        <SetupRequirementsCard output={output} />
+        <SetupRequirementsCard output={output} />
+      </>,
+    );
+
+    // All three cards must visually dismiss.
+    await waitFor(() =>
+      expect(screen.getAllByText(/Connected. Continuing/)).toHaveLength(3),
+    );
+    // But only one auto-send fires for the whole provider set.
+    expect(mockOnSend).toHaveBeenCalledOnce();
   });
 });

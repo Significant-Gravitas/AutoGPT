@@ -149,8 +149,22 @@ export function SetupRequirementsCard({
   // double-invoke aborts the first scheduled send before it fires; the
   // synchronous form would call handleRun twice because the second effect
   // run reuses the same render's closure (where hasSent is still false).
+  //
+  // When N parallel cards share a provider set, all of them flip to
+  // `canAutoDismiss` simultaneously once one card connects the provider.
+  // Without coordination each would send an identical "Please proceed"
+  // message; the store-level claim ensures only the first auto-dismissing
+  // card emits a message and the rest dismiss silently.
   useEffect(() => {
     if (!canAutoDismiss || hasSent) return;
+    if (!sessionID || requestedProviders.length === 0) return;
+    const claimed = useConnectedProvidersStore
+      .getState()
+      .tryClaimAutoDismiss({ sessionID, providers: requestedProviders });
+    if (!claimed) {
+      setHasSent(true);
+      return;
+    }
     let cancelled = false;
     queueMicrotask(() => {
       if (!cancelled) handleRun();

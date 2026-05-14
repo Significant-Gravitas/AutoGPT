@@ -7,7 +7,10 @@ import {
 
 afterEach(() => {
   // Reset the store so tests are isolated.
-  useConnectedProvidersStore.setState({ connected: new Set() });
+  useConnectedProvidersStore.setState({
+    connected: new Set(),
+    autoDismissedKeys: new Set(),
+  });
 });
 
 describe("connectedProvidersStore", () => {
@@ -102,5 +105,119 @@ describe("connectedProvidersStore", () => {
         .markConnected({ sessionID: "sess-1", providers: ["", "github"] });
     });
     expect(useConnectedProvidersStore.getState().connected.size).toBe(1);
+  });
+
+  describe("tryClaimAutoDismiss", () => {
+    it("returns true on first claim and false on subsequent claims", () => {
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        }),
+      ).toBe(false);
+    });
+
+    it("treats different provider sets in the same session as separate slots", () => {
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["openai"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github", "openai"],
+        }),
+      ).toBe(true);
+    });
+
+    it("treats the same provider set in different sessions as separate slots", () => {
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-2",
+          providers: ["github"],
+        }),
+      ).toBe(true);
+    });
+
+    it("ignores provider order when matching slots", () => {
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github", "openai"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["openai", "github"],
+        }),
+      ).toBe(false);
+    });
+
+    it("returns false when sessionID is empty or providers list is empty", () => {
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({ sessionID: "", providers: ["github"] }),
+      ).toBe(false);
+      expect(
+        store.tryClaimAutoDismiss({ sessionID: "sess-1", providers: [] }),
+      ).toBe(false);
+    });
+
+    it("clearSession releases auto-dismiss slots scoped to that session", () => {
+      act(() => {
+        const store = useConnectedProvidersStore.getState();
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        });
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-2",
+          providers: ["github"],
+        });
+      });
+
+      act(() => {
+        useConnectedProvidersStore.getState().clearSession("sess-1");
+      });
+
+      const store = useConnectedProvidersStore.getState();
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-1",
+          providers: ["github"],
+        }),
+      ).toBe(true);
+      expect(
+        store.tryClaimAutoDismiss({
+          sessionID: "sess-2",
+          providers: ["github"],
+        }),
+      ).toBe(false);
+    });
   });
 });
