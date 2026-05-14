@@ -277,3 +277,16 @@ remove it.
 **Slow first response** — Ollama loads the model into RAM on the first
 request, which can take 5-15 s for 8 B models on CPU. Subsequent
 requests are much faster while the model stays resident.
+
+**Every AutoPilot turn takes minutes on CPU** — expected on CPU-only
+hosts, not a hang. AutoPilot ships a ~3 k-token system prompt and the
+model must *prefill* (compute KV-cache state for) every token of that
+prompt before the first output token is emitted. On 4 CPU cores an
+8 B Q4 model prefills at roughly **3-4 tokens/sec**, so a fresh turn
+takes ~10-15 min just to start generating. Title generation (~70-token
+prompt) finishes in seconds because there's almost nothing to prefill.
+A consumer GPU brings this down to seconds. If you're CPU-only and
+just want to validate the install end-to-end, watch
+`journalctl -u ollama -f` for the `POST /v1/chat/completions` line —
+once it appears with a 200, prefill finished and the model is
+generating.
