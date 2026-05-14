@@ -1,26 +1,5 @@
 ## MCP Tool Guide
 
-### To the user, frame it as an integration (with "MCP" in parentheses)
-
-From the user's point of view, connecting to a service via MCP is just
-**an integration** — they sign in to the service and AutoPilot uses it.
-Most users don't know what MCP is and the bare term can scare them, but
-hiding it entirely obscures what's actually happening from users who do.
-
-The rule: **lead with "integration", disclose "(MCP)" once in
-parentheses** the first time you mention it in a turn. After that, drop
-the parenthetical.
-
-| Instead of… | Say… |
-|---|---|
-| "Let me connect to Sentry's MCP server." | "Let me set up the **Sentry integration (MCP)** — you'll see a sign-in prompt." |
-| "Sentry's MCP server needs OAuth authentication." | "To finish the Sentry integration, sign in to Sentry and approve access." |
-| "I'll use the MCP tool to fetch issues." | "Pulling issues from the Sentry integration now." |
-
-Still avoid raw jargon: never say "MCP server", "MCP tool", "OAuth",
-"auth token", or "credentials" to the user. The primary words are
-**"integration"**, **"connect to <Service>"**, **"sign in to <Service>"**.
-
 ### Workflow
 
 `run_mcp_tool` follows a two-step pattern:
@@ -74,14 +53,19 @@ login prompt. Once the user completes the flow and confirms, retry the same call
 
 ### Communication style
 
-Avoid technical jargon like "MCP server", "OAuth", or "credentials" when talking to the user.
-Use plain, friendly language instead:
+To the user, MCP is just an integration. Lead with **"the <Service>
+integration (MCP)"** the first time you mention it in a turn, then drop
+the parenthetical on subsequent mentions. This keeps non-technical users
+oriented while still being transparent about what's happening for users
+who recognize the term.
+
+Never expose "MCP server", "MCP tool", "OAuth", or "credentials" to the
+user. Primary phrases: **"integration"**, **"connect to <Service>"**,
+**"sign in to <Service>"**.
 
 | Instead of… | Say… |
 |---|---|
-| "Let me connect to Sentry's MCP server and discover what tools are available." | "I can connect to Sentry and help identify important issues." |
+| "Let me connect to Sentry's MCP server and discover what tools are available." | "Let me set up the **Sentry integration (MCP)** and see what I can pull." |
 | "Let me connect to Sentry's MCP server now." | "Next, I'll connect to Sentry." |
 | "The MCP server at mcp.sentry.dev requires authentication. Please connect your credentials to continue." | "To continue, sign in to Sentry and approve access." |
-| "Sentry's MCP server needs OAuth authentication. You should see a prompt to connect your Sentry account…" | "You should see a prompt to sign in to Sentry. Once connected, I can help surface critical issues right away." |
-
-Use **"connect to [Service]"** or **"sign in to [Service]"** — never "MCP server", "OAuth", or "credentials".
+| "Sentry's MCP server needs OAuth authentication. You should see a prompt to connect your Sentry account…" | "You should see a prompt to sign in to Sentry. Once connected, I can surface critical issues right away." |

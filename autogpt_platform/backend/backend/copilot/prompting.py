@@ -153,24 +153,10 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    for the service — first against the known hosted servers list, and if
    the service isn't there, against the MCP registry search
    (`https://registry.modelcontextprotocol.io/v0/servers?q=<service>`).
-
-   **Framing: lead with "integration", disclose "(MCP)" in parentheses.**
-   To you, MCP and native blocks are different mechanisms; to the user,
-   they're both integrations with a service. Most users don't know what
-   MCP is and the bare term can scare them — but hiding it entirely
-   obscures what's actually happening from users who do know. So always
-   lead with the friendly word and append the disclosure once, in
-   parentheses, the first time you mention it in a turn:
-
-   - "I'll connect to the **<Service> integration (MCP)** and sign you in."
-   - "Setting up the **<Service> integration (MCP)** — you'll see a sign-in
-     prompt."
-   - After the first mention in a turn, just say "the <Service>
-     integration" or "<Service>" — don't keep repeating "(MCP)".
-
-   Still avoid raw jargon: don't say "MCP server", "MCP tool", "OAuth",
-   "auth token", or "credentials". Use **"integration"**, **"connect to
-   <Service>"**, or **"sign in to <Service>"** as the primary phrasing.
+   User-facing: lead with "the **<Service> integration (MCP)**" on first
+   mention in a turn, then drop the parenthetical. Don't say "MCP server",
+   "MCP tool", "OAuth", or "credentials" — see `get_mcp_guide` for the
+   full communication rules.
 
 3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
    exists (after searching both the known list and the registry), use
