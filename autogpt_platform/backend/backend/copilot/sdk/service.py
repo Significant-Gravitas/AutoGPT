@@ -120,6 +120,7 @@ from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import ToolGroup
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
+from ..tools.local_pc_shim import LocalPCShim, get_shim_manager
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from ..transcript import (
@@ -3812,6 +3813,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
+            if config.use_local_pc_executor:
+                try:
+                    shim = await LocalPCShim.for_session(
+                        session_id, manager=get_shim_manager(), connect_timeout=30.0
+                    )
+                    return shim
+                except Exception as shim_err:
+                    logger.error(
+                        "[LocalPC] [%s] Shim connection failed: %s",
+                        session_id[:12],
+                        shim_err,
+                    )
+                    return None
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -4919,7 +4933,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # _background_tasks to prevent garbage collection.
         # Use pause_sandbox_direct to skip the Redis lookup and reconnect
         # round-trip — e2b_sandbox is the live object from this turn.
-        if e2b_sandbox is not None:
+        if e2b_sandbox is not None and not isinstance(e2b_sandbox, LocalPCShim):
             task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
