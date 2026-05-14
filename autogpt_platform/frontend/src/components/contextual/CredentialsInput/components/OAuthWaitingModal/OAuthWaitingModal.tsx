@@ -32,8 +32,8 @@ export function OAuthFlowWaitingModal({
       <Dialog.Content>
         {popupBlocked ? (
           <p className="text-sm text-zinc-600">
-            Your browser blocked the sign-in popup, so we opened it in a new tab
-            — switch to that tab and complete sign-in there.
+            Your browser blocked the sign-in popup, so we opened it in a new
+            tab. Switch to that tab and complete sign-in there.
             <br />
             If you don&apos;t see the tab, allow popups for this site, close
             this dialog, and try connecting again.
