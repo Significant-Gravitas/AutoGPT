@@ -111,7 +111,7 @@ export function MessagePartRenderer({
       if (!reasoningText.trim()) return null;
       return (
         <ReasoningCollapse key={key}>
-          <pre className="text-sm whitespace-pre-wrap text-zinc-700">
+          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -144,7 +144,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600 italic"
+            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
           >
             {markerText}
           </div>
