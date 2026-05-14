@@ -35,7 +35,7 @@ class TestIsMoonshotModel:
             "anthropic/claude-opus-4.7",
             "openai/gpt-4o",
             "google/gemini-2.5-flash",
-            "xai/grok-4",
+            "xai/grok-4.3",
             "deepseek/deepseek-v3",
             "",  # Empty string — not Moonshot.
         ],
@@ -163,7 +163,7 @@ class TestSupportsCacheControl:
         [
             "openai/gpt-4o",
             "google/gemini-2.5-flash",
-            "xai/grok-4",
+            "xai/grok-4.3",
             "deepseek/deepseek-v3",
             "",
             None,

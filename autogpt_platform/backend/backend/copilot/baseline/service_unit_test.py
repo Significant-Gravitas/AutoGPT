@@ -1443,7 +1443,7 @@ class TestApplyPromptCacheMarkers:
         assert not _is_anthropic_model("openai/gpt-4o")
         assert not _is_anthropic_model("openai/gpt-5")
         assert not _is_anthropic_model("google/gemini-2.5-pro")
-        assert not _is_anthropic_model("xai/grok-4")
+        assert not _is_anthropic_model("xai/grok-4.3")
         assert not _is_anthropic_model("meta-llama/llama-3.3-70b-instruct")
 
     def test_is_anthropic_model_rejects_kimi_routes(self):
@@ -2265,7 +2265,7 @@ class TestSupportsPromptCacheMarkers:
         [
             "openai/gpt-4o",
             "google/gemini-2.5-pro",
-            "xai/grok-4",
+            "xai/grok-4.3",
             "meta-llama/llama-3.3-70b-instruct",
             "deepseek/deepseek-v3",
         ],

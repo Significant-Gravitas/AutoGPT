@@ -502,7 +502,7 @@ def _is_anthropic_model(model: str) -> bool:
       - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
       - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
 
-    False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
+    False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4.3``
     etc.  Moonshot is False here too even though Moonshot's
     Anthropic-compat endpoint honours ``cache_control`` — use
     :func:`_supports_prompt_cache_markers` for the cache-gating decision,

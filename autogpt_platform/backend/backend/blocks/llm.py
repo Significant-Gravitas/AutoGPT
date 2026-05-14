@@ -210,13 +210,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
-    GROK_3 = "x-ai/grok-3"
-    GROK_4 = "x-ai/grok-4"
-    GROK_4_FAST = "x-ai/grok-4-fast"
-    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_4_3 = "x-ai/grok-4.3"
     GROK_4_20 = "x-ai/grok-4.20"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
-    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
@@ -629,23 +625,8 @@ MODEL_METADATA = {
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata(
         "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
     ),
-    LlmModel.GROK_3: ModelMetadata(
-        "open_router",
-        131072,
-        131072,
-        "Grok 3",
-        "OpenRouter",
-        "xAI",
-        2,
-    ),
-    LlmModel.GROK_4: ModelMetadata(
-        "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
-    ),
-    LlmModel.GROK_4_FAST: ModelMetadata(
-        "open_router", 2000000, 30000, "Grok 4 Fast", "OpenRouter", "xAI", 1
-    ),
-    LlmModel.GROK_4_1_FAST: ModelMetadata(
-        "open_router", 2000000, 30000, "Grok 4.1 Fast", "OpenRouter", "xAI", 1
+    LlmModel.GROK_4_3: ModelMetadata(
+        "open_router", 1000000, 1000000, "Grok 4.3", "OpenRouter", "xAI", 3
     ),
     LlmModel.GROK_4_20: ModelMetadata(
         "open_router", 2000000, 100000, "Grok 4.20", "OpenRouter", "xAI", 3
@@ -659,9 +640,7 @@ MODEL_METADATA = {
         "xAI",
         3,
     ),
-    LlmModel.GROK_CODE_FAST_1: ModelMetadata(
-        "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
-    ),
+
     LlmModel.KIMI_K2: ModelMetadata(
         "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
     ),

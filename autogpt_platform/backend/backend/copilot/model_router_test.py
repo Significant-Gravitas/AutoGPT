@@ -177,13 +177,13 @@ class TestResolveModel:
     @pytest.mark.asyncio
     async def test_whitespace_is_stripped(self):
         cfg = _make_config()
-        payload = {"thinking": {"advanced": "  xai/grok-4  "}}
+        payload = {"thinking": {"advanced": "  xai/grok-4.3  "}}
         with patch(
             "backend.copilot.model_router.get_feature_flag_value",
             new=AsyncMock(return_value=payload),
         ):
             result = await resolve_model("thinking", "advanced", "user-1", config=cfg)
-        assert result == "xai/grok-4"
+        assert result == "xai/grok-4.3"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
