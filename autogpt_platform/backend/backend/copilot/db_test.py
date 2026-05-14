@@ -62,6 +62,13 @@ def _make_session(
         title=None,
         metadata={},
         chatStatus="idle",
+        # Sharing fields added by the chat-sharing PR — even with
+        # ``model_construct`` Pydantic v2 still validates required
+        # non-optional columns, so the mock needs them explicitly.
+        isShared=False,
+        shareToken=None,
+        sharedAt=None,
+        autoShareExecutions=False,
         Messages=messages or [],
     )
     return session

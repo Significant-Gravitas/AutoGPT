@@ -146,18 +146,22 @@ def _redact_tool_calls(tool_calls: list[dict] | None) -> list[dict] | None:
 
 
 def _redact_secret_keys(value: Any) -> Any:
-    """Recursively walk *value* and redact secret-shaped string leaves.
+    """Recursively walk *value* and redact secret-shaped subtrees.
 
-    Returns a new structure; never mutates the input.  Non-string leaves
-    are passed through.
+    Returns a new structure; never mutates the input.  When a dict key
+    matches a secret-shaped hint, the ENTIRE subtree under that key is
+    replaced with the ``_REDACTED`` sentinel — including lists and
+    nested dicts.  Pre-fix this only redacted string leaves at the
+    immediate level, so payloads like ``{"api_keys": ["sk-1", "sk-2"]}``
+    or ``{"auth": {"bearer": "tok"}}`` leaked through because the
+    inner leaves had no secret-shaped key wrapping them.  Lose the
+    (rare, low-value) ability to surface bool/int metadata under a
+    secret-shaped key — the sanitizer is the load-bearing security
+    boundary for the public viewer.
     """
     if isinstance(value, dict):
         return {
-            k: (
-                _REDACTED
-                if _is_secret_key(k) and isinstance(v, str)
-                else _redact_secret_keys(v)
-            )
+            k: (_REDACTED if _is_secret_key(k) else _redact_secret_keys(v))
             for k, v in value.items()
         }
     if isinstance(value, list):

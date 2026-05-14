@@ -59,11 +59,34 @@ class TestRedactSecretKeys:
         )
         assert result == [{"secret": "[redacted]"}, {"name": "y"}]
 
-    def test_leaves_non_string_secret_values_intact(self):
-        # Non-string values aren't redacted — only string leaves at
-        # secret-shaped keys get the [redacted] sentinel.
-        result = _redact_secret_keys({"token": 42})
-        assert result == {"token": 42}
+    def test_redacts_secret_shaped_key_regardless_of_value_type(self):
+        # Secret-shaped keys redact their ENTIRE subtree — strings,
+        # ints, bools, lists, dicts.  Trades the (rare) ability to
+        # surface bool/int metadata under a secret-shaped key for
+        # sealing the leak vectors below.
+        assert _redact_secret_keys({"token": 42}) == {"token": "[redacted]"}
+        assert _redact_secret_keys({"requires_auth": True}) == {
+            "requires_auth": "[redacted]",
+        }
+
+    def test_redacts_list_under_secret_shaped_key(self):
+        # Regression: pre-fix this leaked because the list is not a
+        # string and the inner items had no secret-shaped key wrapping.
+        result = _redact_secret_keys({"api_keys": ["sk-prod", "sk-test"]})
+        assert result == {"api_keys": "[redacted]"}
+
+    def test_redacts_nested_dict_under_secret_shaped_key(self):
+        # Regression: pre-fix this leaked because the dict value
+        # recursed and the inner ``bearer`` key didn't match any hint.
+        result = _redact_secret_keys({"auth": {"bearer": "tok-xyz"}})
+        assert result == {"auth": "[redacted]"}
+
+    def test_redacts_list_of_dicts_under_secret_shaped_key(self):
+        # Regression: pre-fix this leaked end-to-end.
+        result = _redact_secret_keys(
+            {"oauth_tokens": [{"value": "tok-1"}, {"value": "tok-2"}]}
+        )
+        assert result == {"oauth_tokens": "[redacted]"}
 
     def test_does_not_mutate_input(self):
         original = {"api_key": "sk-1"}
