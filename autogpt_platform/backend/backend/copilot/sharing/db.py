@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import sentry_sdk
 from prisma.enums import SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import AgentGraph, AgentGraphExecution, ChatLinkedShare
@@ -189,10 +190,13 @@ async def link_new_execution_to_chat_share(
                 shared_at=now,
                 tx=tx,
             )
-    except Exception:
+    except Exception as exc:
         # Best-effort hook: a sharing failure must never break the
         # underlying run_agent tool.  See note above on the empty-
-        # completion failure mode this guards against.
+        # completion failure mode this guards against.  Pair the log
+        # with a Sentry capture so the no-crash guarantee doesn't
+        # hide real operational regressions (DB outage, schema drift)
+        # behind a warn-only signal.
         logger.warning(
             "link_new_execution_to_chat_share failed for session=%s execution=%s; "
             "owner can recover via stop+reshare or an explicit re-enable",
@@ -200,6 +204,7 @@ async def link_new_execution_to_chat_share(
             execution_id,
             exc_info=True,
         )
+        sentry_sdk.capture_exception(exc)
 
 
 async def disable_chat_session_share(session_id: str, user_id: str) -> None:
@@ -428,11 +433,27 @@ async def _link_executions_to_share(
     *,
     tx: Any | None = None,
 ) -> None:
-    """Insert ChatLinkedShare rows and cascade-enable share on unshared ones."""
+    """Insert ChatLinkedShare rows and cascade-enable share on unshared ones.
+
+    Idempotent against the unique (sessionId, executionId) constraint —
+    a concurrent ``run_agent`` for the same execution_id may race the
+    runtime hook's pre-insert existence check and both reach this
+    function.  In that case the second create raises
+    ``UniqueViolationError``; we treat it as "already linked, skip"
+    rather than a failure, mirroring ``_build_shared_chat_files``.
+    """
     for execution in executions:
-        await ChatLinkedShare.prisma(tx).create(
-            data={"sessionId": session_id, "executionId": execution.id}
-        )
+        try:
+            await ChatLinkedShare.prisma(tx).create(
+                data={"sessionId": session_id, "executionId": execution.id}
+            )
+        except UniqueViolationError:
+            logger.debug(
+                "ChatLinkedShare already exists: %s/%s",
+                session_id,
+                execution.id,
+            )
+            continue
         if execution.isShared:
             # Already independently shared — keep its token and provenance.
             continue

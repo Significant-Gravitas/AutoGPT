@@ -92,7 +92,7 @@ describe("ShareChatDialog", () => {
     expect(screen.getByRole("button", { name: /copy/i })).toBeDefined();
   });
 
-  test("reflects auto_share_executions server state when chat is already shared", async () => {
+  test("renders the auto-share toggle when chat is already shared", async () => {
     mockShareState({
       is_shared: true,
       share_token: "11111111-2222-3333-4444-555555555555",
