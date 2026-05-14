@@ -640,7 +640,6 @@ MODEL_METADATA = {
         "xAI",
         3,
     ),
-
     LlmModel.KIMI_K2: ModelMetadata(
         "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
     ),
