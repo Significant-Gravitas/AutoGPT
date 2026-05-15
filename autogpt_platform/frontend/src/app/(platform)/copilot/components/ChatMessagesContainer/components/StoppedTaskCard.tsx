@@ -18,7 +18,7 @@ export function StoppedTaskCard() {
         </Text>
         <div className="mt-2.5 flex items-center gap-1.5">
           <LightbulbIcon size={14} className="shrink-0 text-purple-300" />
-          <Text variant="small" className="text-slate-400">
+          <Text variant="small" className="text-zinc-600">
             Try &ldquo;continue&rdquo; or type something new.
           </Text>
         </div>
