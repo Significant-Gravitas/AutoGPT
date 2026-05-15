@@ -1,10 +1,13 @@
-import {
-  getV2ListSessions,
-  type getV2ListSessionsResponse,
-} from "@/app/api/__generated__/endpoints/chat/chat";
+import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
+// `refetchInterval` on a `useInfiniteQuery` refetches every loaded page, and
+// TanStack Query v5 removed `refetchPage` so we can't scope it to page 0.
+// Worst case is bounded by the user's session count (and the WebSocket
+// invalidations in `useCopilotNotifications` already handle the high-signal
+// completion events) — revisit by extracting a separate live-status query if
+// this ever becomes a real bandwidth concern.
 export const SESSION_LIST_REFETCH_INTERVAL_MS = 10_000;
 
 // Fresh, paginated-cache key. The orval-generated key targets the non-infinite
@@ -37,12 +40,8 @@ export function useSessionList({ enabled = true }: Args = {}) {
     enabled,
   });
 
-  const sessions = flattenSessions(query.data);
-  const total = getTotal(query.data);
-
   return {
-    sessions,
-    total,
+    sessions: flattenSessions(query.data),
     isLoading: query.isLoading,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
@@ -63,12 +62,3 @@ function countLoadedSessions(pages: SessionListPage[]) {
     0,
   );
 }
-
-function getTotal(data: SessionListInfiniteData | undefined) {
-  const lastPage = data?.pages.at(-1);
-  if (!lastPage || lastPage.status !== 200) return 0;
-  return lastPage.data.total;
-}
-
-// Re-exported so cache walkers don't have to depend on the generated module.
-export type { getV2ListSessionsResponse };
