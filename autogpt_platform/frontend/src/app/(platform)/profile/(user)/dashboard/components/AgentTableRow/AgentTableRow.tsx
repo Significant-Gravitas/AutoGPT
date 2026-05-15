@@ -57,6 +57,8 @@ export const AgentTableRow = ({
   } = storeAgentSubmission;
 
   const canModify = status === SubmissionStatus.PENDING;
+  const isApproved = status === SubmissionStatus.APPROVED;
+  const canDelete = status === SubmissionStatus.PENDING || status === SubmissionStatus.APPROVED;
 
   return (
     <div
@@ -163,7 +165,7 @@ export const AgentTableRow = ({
                   <span className="dark:text-gray-100">View</span>
                 </DropdownMenu.Item>
               )}
-              {canModify && (
+              {canDelete && (
                 <>
                   <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
                   <DropdownMenu.Item
@@ -171,7 +173,7 @@ export const AgentTableRow = ({
                     className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     <TrashIcon className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
-                    <span className="dark:text-red-400">Delete</span>
+                    <span className="dark:text-red-400">{isApproved ? "Remove from marketplace" : "Delete"}</span>
                   </DropdownMenu.Item>
                 </>
               )}

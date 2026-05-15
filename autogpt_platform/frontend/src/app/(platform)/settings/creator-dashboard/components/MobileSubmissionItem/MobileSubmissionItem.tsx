@@ -59,6 +59,8 @@ export function MobileSubmissionItem({
   const reduceMotion = useReducedMotion();
   const {
     canModify,
+    isApproved,
+    canDelete,
     marketplaceUrl,
     handleView,
     handleEdit,
@@ -214,7 +216,7 @@ export function MobileSubmissionItem({
                 </Link>
               </DropdownMenuItem>
             ) : null}
-            {canModify ? (
+            {canDelete ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -222,7 +224,7 @@ export function MobileSubmissionItem({
                   className="flex cursor-pointer items-center gap-2 text-rose-600 focus:text-rose-700"
                 >
                   <TrashIcon size={14} />
-                  Delete
+                  {isApproved ? "Remove from marketplace" : "Delete"}
                 </DropdownMenuItem>
               </>
             ) : null}
@@ -260,7 +262,7 @@ export function MobileSubmissionItem({
       </div>
 
       <Dialog
-        title="Delete submission?"
+        title={isApproved ? "Remove from marketplace?" : "Delete submission?"}
         styling={{ maxWidth: "420px" }}
         controlled={{
           isOpen: confirmDeleteOpen,
@@ -269,8 +271,11 @@ export function MobileSubmissionItem({
       >
         <Dialog.Content>
           <Text variant="body" className="text-zinc-700">
-            This will remove <strong>{submission.name}</strong> from the store.
-            This action cannot be undone.
+            {isApproved ? (
+              <>This will remove <strong>{submission.name}</strong> from the marketplace and the store. This action cannot be undone.</>
+            ) : (
+              <>This will remove <strong>{submission.name}</strong> from the store. This action cannot be undone.</>
+            )}
           </Text>
           <Dialog.Footer>
             <Button
@@ -287,7 +292,11 @@ export function MobileSubmissionItem({
               onClick={handleConfirmDelete}
               loading={isDeleting}
             >
-              {isDeleting ? "Deleting" : "Delete submission"}
+              {isDeleting
+                ? "Removing"
+                : isApproved
+                  ? "Remove from marketplace"
+                  : "Delete submission"}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

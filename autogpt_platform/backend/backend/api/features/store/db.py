@@ -748,11 +748,33 @@ async def delete_store_submission(
         ):
             raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
-        # Prevent deletion of approved submissions
+        # If deleting an approved submission, update the StoreListing accordingly
         if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            raise store_exceptions.InvalidOperationError(
-                "Cannot delete approved submissions"
+            other_approved = (
+                await prisma.models.StoreListingVersion.prisma().find_first(
+                    where={
+                        "storeListingId": version.storeListingId,
+                        "id": {"not": version.id},
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    }
+                )
             )
+
+            if not other_approved:
+                await prisma.models.StoreListing.prisma().update(
+                    where={"id": version.storeListingId},
+                    data={
+                        "hasApprovedVersion": False,
+                        "ActiveVersion": {"disconnect": True},
+                    },
+                )
+            else:
+                await prisma.models.StoreListing.prisma().update(
+                    where={"id": version.storeListingId},
+                    data={
+                        "ActiveVersion": {"connect": {"id": other_approved.id}},
+                    },
+                )
 
         # Delete the version
         await prisma.models.StoreListingVersion.prisma().delete(
@@ -1198,8 +1220,7 @@ async def get_my_agents(
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(
-        f"Getting my agents for user {user_id}, page={page}, "
-        f"sort_by={sort_by.value}"
+        f"Getting my agents for user {user_id}, page={page}, sort_by={sort_by.value}"
     )
 
     try:
