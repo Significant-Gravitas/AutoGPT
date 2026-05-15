@@ -841,13 +841,13 @@ async def get_user_cost_summary(
         ),
         query_raw_with_schema(
             "SELECT"
-            "  (\"createdAt\" AT TIME ZONE 'UTC')::date AS date,"
+            '  ("createdAt" AT TIME ZONE \'UTC\')::date AS "date",'
             "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS cost_cents,"
             "  COUNT(*)::bigint AS run_count"
             ' FROM {schema_prefix}"AgentGraphExecution"'
             f" WHERE {base_where}"
             "  GROUP BY (\"createdAt\" AT TIME ZONE 'UTC')::date"
-            "  ORDER BY date ASC",
+            '  ORDER BY "date" ASC',
             *params,
         ),
     )
