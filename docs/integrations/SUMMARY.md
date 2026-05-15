@@ -108,6 +108,7 @@
 * [Sardis Payment](block-integrations/sardis/payment.md)
 * [Sardis Policy](block-integrations/sardis/policy.md)
 * [Search](block-integrations/search.md)
+* [Slack Blocks](block-integrations/slack/blocks.md)
 * [Slant3D Filament](block-integrations/slant3d/filament.md)
 * [Slant3D Order](block-integrations/slant3d/order.md)
 * [Slant3D Slicing](block-integrations/slant3d/slicing.md)

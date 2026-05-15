@@ -1,12 +1,10 @@
 """Tests for dry-run execution mode."""
 
-import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import backend.copilot.tools.run_block as run_block_module
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -90,11 +88,12 @@ async def test_simulate_block_basic():
 
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    ) as mock_get_client:
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
 
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
     assert ("result", "simulated output") in outputs
     # Empty error pin should NOT be yielded — the simulator omits empty values
     assert ("error", "") not in outputs
@@ -238,7 +237,7 @@ async def test_execute_block_dry_run_skips_real_execution():
     mock_block = make_mock_block()
     mock_block.execute = AsyncMock()  # should NOT be called
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         yield "result", "simulated"
 
     # Patching at helpers.simulate_block works because helpers.py imports
@@ -265,10 +264,10 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should match real execution message format and have success=True."""
+    """Dry-run response should look like a normal success (no dry-run signal to LLM)."""
     mock_block = make_mock_block()
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         yield "result", "simulated"
 
     with patch(
@@ -286,10 +285,41 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
+    assert "[DRY RUN]" not in response.message
     assert "executed successfully" in response.message
-    assert "[DRY RUN]" not in response.message  # must not leak to LLM context
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
+    # is_dry_run is present in model_dump (used by frontend SSE via StreamToolOutputAvailable).
+    # tool_adapter._truncating strips it from the LLM-facing result AFTER stashing,
+    # so the frontend receives it but the LLM does not.
+    assert response.is_dry_run is True
+    assert "is_dry_run" in response.model_dump()
+    # model_dump_json excludes None fields — is_dry_run=True must still appear.
+    assert '"is_dry_run"' in response.model_dump_json(exclude_none=True)
+
+
+@pytest.mark.asyncio
+async def test_execute_block_normal_run_omits_is_dry_run():
+    """Normal (non-dry-run) BlockOutputResponse must NOT carry is_dry_run in JSON.
+
+    The field must be absent so the frontend and LLM don't see spurious
+    'is_dry_run: false' noise on every tool call.
+    """
+    from backend.copilot.tools.models import BlockOutputResponse
+
+    response = BlockOutputResponse(
+        message="Block 'X' executed successfully",
+        block_id="b1",
+        block_name="X",
+        outputs={"result": ["real"]},
+        success=True,
+        session_id="s1",
+        # is_dry_run intentionally NOT set → stays None
+    )
+
+    assert response.is_dry_run is None
+    serialized = response.model_dump_json(exclude_none=True)
+    assert '"is_dry_run"' not in serialized
 
 
 @pytest.mark.asyncio
@@ -301,7 +331,7 @@ async def test_execute_block_real_execution_unchanged():
     # Just verify simulate_block is NOT called.
     simulate_called = False
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         nonlocal simulate_called
         simulate_called = True
         yield "result", "should not happen"
@@ -334,31 +364,85 @@ async def test_execute_block_real_execution_unchanged():
 # ---------------------------------------------------------------------------
 
 
-def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run' as a required field."""
+def test_run_block_tool_no_dry_run_param():
+    """RunBlockTool parameters must NOT expose 'dry_run' — it's a session-level flag."""
     tool = RunBlockTool()
     params = tool.parameters
-    assert "dry_run" in params["properties"]
-    assert params["properties"]["dry_run"]["type"] == "boolean"
-    assert "dry_run" in params["required"]
+    assert "dry_run" not in params["properties"]
 
 
-def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute accepts dry_run as a typed parameter.
+@pytest.mark.asyncio
+async def test_run_block_tool_uses_session_dry_run():
+    """RunBlockTool._execute derives dry_run from session.dry_run, not from kwargs.
 
-    We verify the parameter exists in the signature and is forwarded to
-    execute_block.
+    Behavioral test: intercepts prepare_block_for_execution and captures the
+    dry_run argument actually passed, asserting it matches session.dry_run
+    regardless of what a hypothetical kwarg would say.
     """
-    source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is a typed parameter (not extracted from kwargs)
-    assert "dry_run" in source
-    assert "dry_run: bool" in source
+    from backend.copilot.tools.run_block import RunBlockTool
 
-    # Scope to _execute method source only — module-wide search is brittle
-    # and can match unrelated text/comments.
-    source_execute = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is passed through to execute_block call
-    assert "dry_run=dry_run" in source_execute
+    tool = RunBlockTool()
+    session = MagicMock()
+    session.dry_run = True
+    session.session_id = "test-session-id"
+
+    captured = {}
+
+    async def capture_prep(**kwargs):
+        captured["dry_run"] = kwargs.get("dry_run")
+        # Return an error response to short-circuit execution
+        from backend.copilot.tools.models import ErrorResponse
+
+        return ErrorResponse(message="stub", session_id="test-session-id")
+
+    with patch(
+        "backend.copilot.tools.run_block.prepare_block_for_execution",
+        side_effect=capture_prep,
+    ):
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            block_id="block-id-123",
+            input_data={},
+        )
+
+    # dry_run must come from session, not from a default or kwarg
+    assert captured["dry_run"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_block_tool_uses_session_dry_run_false():
+    """RunBlockTool._execute passes dry_run=False when session.dry_run is False.
+
+    Symmetric counterpart to test_run_block_tool_uses_session_dry_run (True case).
+    """
+    from backend.copilot.tools.run_block import RunBlockTool
+
+    tool = RunBlockTool()
+    session = MagicMock()
+    session.dry_run = False
+    session.session_id = "test-session-id"
+
+    captured = {}
+
+    async def capture_prep(**kwargs):
+        captured["dry_run"] = kwargs.get("dry_run")
+        from backend.copilot.tools.models import ErrorResponse
+
+        return ErrorResponse(message="stub", session_id="test-session-id")
+
+    with patch(
+        "backend.copilot.tools.run_block.prepare_block_for_execution",
+        side_effect=capture_prep,
+    ):
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            block_id="block-id-123",
+            input_data={},
+        )
+
+    assert captured["dry_run"] is False
 
 
 @pytest.mark.asyncio
@@ -371,7 +455,7 @@ async def test_execute_block_dry_run_no_empty_error_from_simulator():
     """
     mock_block = make_mock_block()
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         # Simulator now omits empty error pins at source
         yield "result", "simulated output"
 
@@ -401,7 +485,7 @@ async def test_execute_block_dry_run_keeps_nonempty_error_pin():
     """Dry-run should keep the 'error' pin when it contains a real error message."""
     mock_block = make_mock_block()
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         yield "result", ""
         yield "error", "API rate limit exceeded"
 
@@ -431,7 +515,7 @@ async def test_execute_block_dry_run_message_includes_completed_status():
     """Dry-run message should clearly indicate COMPLETED status."""
     mock_block = make_mock_block()
 
-    async def fake_simulate(block, input_data):
+    async def fake_simulate(block, input_data, **_kwargs):
         yield "result", "simulated"
 
     with patch(
@@ -457,7 +541,7 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
     """When simulate_block yields a SIMULATOR ERROR tuple, execute_block returns ErrorResponse."""
     mock_block = make_mock_block()
 
-    async def fake_simulate_error(block, input_data):
+    async def fake_simulate_error(block, input_data, **_kwargs):
         yield (
             "error",
             "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
@@ -501,7 +585,8 @@ def test_prepare_dry_run_orchestrator_block():
     assert result is not None
     # Model is overridden to the simulation model (not the user's model).
     assert result["model"] != "gpt-4o"
-    assert result["agent_mode_max_iterations"] == 1
+    # Capped to min(original, 10); user's 10 passes through unchanged.
+    assert result["agent_mode_max_iterations"] == 10
     assert result["_dry_run_api_key"] == "sk-or-test-key"
     # Original input_data should not be mutated.
     assert input_data["model"] == "gpt-4o"
@@ -622,3 +707,156 @@ async def test_simulate_agent_output_block_no_name():
         outputs.append((name, data))
 
     assert outputs == [("output", 42)]
+
+
+# ---------------------------------------------------------------------------
+# RunAgentTool session-level dry_run override tests
+# ---------------------------------------------------------------------------
+
+
+def _make_dry_run_session(dry_run: bool = True):
+    """Return a real ``ChatSession`` with *dry_run* set on metadata."""
+    from backend.copilot.model import ChatSession
+
+    return ChatSession.new("test-user", dry_run=dry_run)
+
+
+def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
+    """Return a minimal GraphModel mock."""
+    graph = MagicMock()
+    graph.id = graph_id
+    graph.name = "Test Agent"
+    graph.version = 1
+    graph.description = "A test agent"
+    graph.input_schema = {"type": "object", "properties": {}, "required": []}
+    graph.credentials_input_schema = {"type": "object", "properties": {}}
+    graph.trigger_setup_info = None
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_overrides_kwargs():
+    """session.dry_run=True must override any dry_run=False from LLM kwargs.
+
+    The LLM can pass dry_run=False, but when the session is a dry-run session,
+    the session-level flag wins and forces dry_run=True for all runs.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=True)
+    graph = _make_graph_mock()
+
+    captured_params = {}
+
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+            new_callable=AsyncMock,
+            return_value=(graph, None),
+        ),
+        patch.object(tool, "_check_prerequisites", side_effect=capture_prerequisites),
+        patch.object(tool, "_run_agent", new_callable=AsyncMock) as mock_run_agent,
+    ):
+        mock_run_agent.return_value = MagicMock()
+
+        # Pass dry_run=False in kwargs — session.dry_run=True should win.
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            dry_run=False,  # LLM would pass this; session should override it
+        )
+
+    # Session-level flag must have overridden the False kwarg
+    assert captured_params["dry_run"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_false_allows_scheduling():
+    """session.dry_run=False must pass dry_run=False through to _check_prerequisites.
+
+    Verifies that when the session is not a dry run, params.dry_run=False
+    is what reaches the prerequisite check — not some stale True value.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=False)
+    graph = _make_graph_mock()
+
+    captured_params = {}
+
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+            new_callable=AsyncMock,
+            return_value=(graph, None),
+        ),
+        patch.object(tool, "_check_prerequisites", side_effect=capture_prerequisites),
+        patch.object(tool, "_schedule_agent", new_callable=AsyncMock) as mock_schedule,
+    ):
+        mock_schedule.return_value = MagicMock()
+
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            schedule_name="daily",
+            cron="0 9 * * *",
+        )
+
+    # Non-dry-run session must propagate dry_run=False
+    assert captured_params["dry_run"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_false_allows_llm_dry_run_true():
+    """session.dry_run=False must NOT override an explicit dry_run=True kwarg.
+
+    In a normal session the LLM can still request a dry run on individual
+    run_agent calls (e.g. "test this agent without executing it").
+    Only session.dry_run=True forces dry_run — the False value does not force
+    the opposite direction.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=False)
+    graph = _make_graph_mock()
+
+    captured_params = {}
+
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+            new_callable=AsyncMock,
+            return_value=(graph, None),
+        ),
+        patch.object(tool, "_check_prerequisites", side_effect=capture_prerequisites),
+        patch.object(tool, "_run_agent", new_callable=AsyncMock) as mock_run_agent,
+    ):
+        mock_run_agent.return_value = MagicMock()
+
+        # LLM passes dry_run=True; normal session must NOT override it to False
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            dry_run=True,
+        )
+
+    # LLM-requested dry_run=True is preserved in a normal session
+    assert captured_params["dry_run"] is True

@@ -207,6 +207,9 @@ class AIConditionBlock(AIBlockBase):
             NodeExecutionStats(
                 input_token_count=response.prompt_tokens,
                 output_token_count=response.completion_tokens,
+                cache_read_token_count=response.cache_read_tokens,
+                cache_creation_token_count=response.cache_creation_tokens,
+                provider_cost=response.provider_cost,
             )
         )
         self.prompt = response.prompt

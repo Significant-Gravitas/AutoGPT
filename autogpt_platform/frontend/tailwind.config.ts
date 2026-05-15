@@ -175,6 +175,13 @@ const config = {
             boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
           },
         },
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-4px)" },
+          "40%": { transform: "translateX(4px)" },
+          "60%": { transform: "translateX(-3px)" },
+          "80%": { transform: "translateX(3px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -182,6 +189,7 @@ const config = {
         "fade-in": "fade-in 0.2s ease-out",
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
+        shake: "shake 0.5s ease-in-out",
       },
       transitionDuration: {
         "2000": "2000ms",

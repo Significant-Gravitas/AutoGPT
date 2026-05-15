@@ -1,7 +1,7 @@
 "use client";
 import {
   getGetV2ListSessionsQueryKey,
-  useDeleteV2DeleteSession,
+  getV2GetSession,
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -26,61 +26,55 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   CircleNotch,
+  DownloadSimpleIcon,
   DotsThree,
+  HourglassIcon,
+  PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
+  TrashIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
+import { formatNotificationTitle } from "../../helpers";
+import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
+import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-import { UsageLimits } from "../UsageLimits/UsageLimits";
+import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const {
-    sessionToDelete,
-    setSessionToDelete,
-    completedSessionIDs,
-    clearCompletedSession,
-  } = useCopilotUIStore();
+  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const sessionNeedsReload = useCopilotChatRuntimeStore(
+    (state) => state.sessionNeedsReload,
+  );
 
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
     useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
 
-  const { mutate: deleteSession, isPending: isDeleting } =
-    useDeleteV2DeleteSession({
-      mutation: {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListSessionsQueryKey(),
-          });
-          if (sessionToDelete?.id === sessionId) {
-            setSessionId(null);
-          }
-          setSessionToDelete(null);
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete chat",
-            description:
-              error instanceof Error ? error.message : "An error occurred",
-            variant: "destructive",
-          });
-          setSessionToDelete(null);
-        },
-      },
-    });
+  const {
+    sessionToDelete,
+    isDeleting,
+    requestDelete,
+    confirmDelete,
+    cancelDelete,
+  } = useSessionDeletion();
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [exportingSessionIds, setExportingSessionIds] = useState<Set<string>>(
+    new Set(),
+  );
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
 
@@ -123,9 +117,8 @@ export function ChatSidebar() {
   useEffect(() => {
     if (!sessionId || !completedSessionIDs.has(sessionId)) return;
     clearCompletedSession(sessionId);
-    const remaining = completedSessionIDs.size - 1;
-    document.title =
-      remaining > 0 ? `(${remaining}) Otto is ready - AutoGPT` : "AutoGPT";
+    const remaining = Math.max(0, completedSessionIDs.size - 1);
+    document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   const sessions =
@@ -165,19 +158,36 @@ export function ChatSidebar() {
     title: string | null | undefined,
   ) {
     e.stopPropagation();
-    if (isDeleting) return;
-    setSessionToDelete({ id, title });
+    requestDelete(id, title);
   }
 
-  function handleConfirmDelete() {
-    if (sessionToDelete) {
-      deleteSession({ sessionId: sessionToDelete.id });
-    }
-  }
-
-  function handleCancelDelete() {
-    if (!isDeleting) {
-      setSessionToDelete(null);
+  async function handleExportClick(
+    e: React.MouseEvent,
+    id: string,
+    title: string | null | undefined,
+  ) {
+    e.stopPropagation();
+    if (exportingSessionIds.has(id)) return;
+    setExportingSessionIds((prev) => new Set(prev).add(id));
+    try {
+      await fetchAndExportChat(id, title, getV2GetSession);
+      toast({ title: "Chat exported" });
+    } catch (error) {
+      console.error("Failed to export chat:", { id, title, error });
+      toast({
+        title: "Export failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Could not export this chat. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -246,7 +256,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-4 pt-4 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -258,7 +268,7 @@ export function ChatSidebar() {
                   Your chats
                 </Text>
                 <div className="flex items-center">
-                  <UsageLimits />
+                  <UsagePopover />
                   <NotificationToggle />
                   <SidebarTrigger />
                 </div>
@@ -334,7 +344,12 @@ export function ChatSidebar() {
                     ) : (
                       <button
                         onClick={() => handleSelectSession(session.id)}
-                        className="w-full px-3 py-2.5 pr-10 text-left"
+                        className={cn(
+                          "w-full px-3 py-2.5 text-left",
+                          exportingSessionIds.has(session.id)
+                            ? "pr-[68px]"
+                            : "pr-10",
+                        )}
                       >
                         <div className="flex min-w-0 max-w-full items-center gap-2">
                           <div className="min-w-0 flex-1">
@@ -364,9 +379,40 @@ export function ChatSidebar() {
                               {formatDate(session.updated_at)}
                             </Text>
                           </div>
-                          {session.is_processing &&
-                            session.id !== sessionId &&
-                            !completedSessionIDs.has(session.id) && (
+                          {session.chat_status === "running" && (
+                            <span
+                              aria-label="Session running"
+                              title="Running"
+                              data-testid="session-status-running"
+                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
+                            >
+                              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                            </span>
+                          )}
+                          {session.chat_status === "queued" && (
+                            <span
+                              aria-label="Session queued"
+                              title="Queued"
+                              data-testid="session-status-queued"
+                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-purple-600"
+                            >
+                              <HourglassIcon
+                                className="h-3.5 w-3.5"
+                                weight="bold"
+                              />
+                            </span>
+                          )}
+                          {session.chat_status !== "running" &&
+                            session.is_processing &&
+                            shouldShowSessionProcessingIndicator({
+                              sessionId: session.id,
+                              currentSessionId: sessionId,
+                              isProcessing: session.is_processing,
+                              hasCompletedIndicator: completedSessionIDs.has(
+                                session.id,
+                              ),
+                              needsReload: !!sessionNeedsReload[session.id],
+                            }) && (
                               <CircleNotch
                                 className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                                 weight="bold"
@@ -381,6 +427,18 @@ export function ChatSidebar() {
                             )}
                         </div>
                       </button>
+                    )}
+                    {exportingSessionIds.has(session.id) && (
+                      <div
+                        className="pointer-events-none absolute right-9 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-sm"
+                        aria-label="Exporting chat"
+                        title="Exporting chat…"
+                      >
+                        <div className="relative h-7 w-7">
+                          <div className="absolute inset-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
+                          <DownloadSimpleIcon className="absolute inset-0 m-auto h-3.5 w-3.5" />
+                        </div>
+                      </div>
                     )}
                     {editingSessionId !== session.id && (
                       <DropdownMenu>
@@ -399,7 +457,30 @@ export function ChatSidebar() {
                               handleRenameClick(e, session.id, session.title)
                             }
                           >
+                            <PencilSimpleIcon className="mr-2 h-4 w-4" />
                             Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) =>
+                              handleExportClick(e, session.id, session.title)
+                            }
+                            onSelect={(e) => {
+                              if (exportingSessionIds.has(session.id))
+                                e.preventDefault();
+                            }}
+                            disabled={exportingSessionIds.has(session.id)}
+                          >
+                            {exportingSessionIds.has(session.id) ? (
+                              <CircleNotch
+                                className="mr-2 h-4 w-4 animate-spin"
+                                weight="bold"
+                              />
+                            ) : (
+                              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                            )}
+                            {exportingSessionIds.has(session.id)
+                              ? "Exporting…"
+                              : "Export chat"}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) =>
@@ -408,6 +489,7 @@ export function ChatSidebar() {
                             disabled={isDeleting}
                             className="text-red-600 focus:bg-red-50 focus:text-red-600"
                           >
+                            <TrashIcon className="mr-2 h-4 w-4" />
                             Delete chat
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -424,8 +506,8 @@ export function ChatSidebar() {
       <DeleteChatDialog
         session={sessionToDelete}
         isDeleting={isDeleting}
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
       />
     </>
   );

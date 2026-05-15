@@ -3,49 +3,43 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
-### Clarifying — Before or During Building
-
-Use `ask_question` whenever the user's intent is ambiguous — whether
-that's before starting or midway through the workflow. Common moments:
-
-- **Before building**: output format, delivery channel, data source, or
-  trigger is unspecified.
-- **During block discovery**: multiple blocks could fit and the user
-  should choose.
-- **During JSON generation**: a wiring decision depends on user
-  preference.
-
-Steps:
-1. Call `find_block` (or another discovery tool) to learn what the
-   platform actually supports for the ambiguous dimension.
-2. Call `ask_question` with a concrete question listing the discovered
-   options (e.g. "The platform supports Gmail, Slack, and Google Docs —
-   which should the agent use for delivery?").
-3. **Wait for the user's answer** before continuing.
-
-**Skip this** when the goal already specifies all dimensions (e.g.
-"scrape prices from Amazon and email me daily").
-
 ### Workflow for Creating/Editing Agents
 
-1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
+   returns the full graph structure (nodes + links). **Never edit blindly** —
+   always inspect the current graph first so you know exactly what to change.
+   Avoid using `include_graph=true` with broad keyword searches, as fetching
+   multiple graphs at once is expensive and consumes LLM context budget.
+2. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
-   and full input/output schemas.
-2. **Find library agents**: Call `find_library_agent` to discover reusable
+   and full input/output schemas. The `for_agent_generation=true` flag is
+   required to surface graph-only blocks such as AgentInputBlock,
+   AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
+   and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
+   in CoPilot outside agent generation, use `run_mcp_tool` instead.)
+3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
-3. **Generate JSON**: Build the agent JSON using block schemas:
-   - Use block IDs from step 1 as `block_id` in nodes
+4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 2 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
-4. **Write to workspace**: Save the JSON to a workspace file so the user
+   - When editing, apply targeted changes and preserve unchanged parts
+5. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-5. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
    the final `agent_json`
+8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+   `wait_for_result=120` to verify the agent works end-to-end.
+9. **Inspect & fix**: Check the dry-run output for errors. If issues are
+   found, call `edit_agent` to fix and dry-run again. Repeat until the
+   simulation passes or the problems are clearly unfixable.
+   See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
 
@@ -112,6 +106,14 @@ These define the agent's interface — what it accepts and what it produces.
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
+Specialized input subclasses (`AgentDropdownInputBlock`,
+`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
+this requirement on their own — do NOT add a throwaway base
+`AgentInputBlock` alongside a specialized one. Each subclass carries its
+own usage guidance (when it is required, how to configure it, how to
+wire it to consumers, concrete link shape) in its block and field
+descriptions; read and follow those when `find_block` surfaces a match.
+
 ### Key Rules
 
 - **Name & description**: Include `name` and `description` in the agent JSON
@@ -122,6 +124,12 @@ inputs or see outputs. NEVER skip them.
   output to the consuming block's input.
 - **Credentials**: Do NOT require credentials upfront. Users configure
   credentials later in the platform UI after the agent is saved.
+  Do NOT call `create_agent` / `edit_agent` to handle credentials, and
+  do NOT redirect to the Builder. Credentials are set up inline as part
+  of the run flow: `run_agent` surfaces the setup card automatically
+  when credentials are missing or invalid, then proceeds to execute once
+  connected. Use `connect_integration` only for a standalone provider
+  setup not tied to a specific run.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
   sink_name/source_name to access nested object fields.
@@ -157,6 +165,12 @@ To compose agents using other agents as sub-agents:
    the library agent IDs used, so the fixer can validate schemas
 
 ### Using MCP Tools (MCPToolBlock)
+
+> **Agent graph vs CoPilot direct execution**: This section covers embedding MCP
+> tools as persistent nodes in an agent graph. When running MCP tools directly in
+> CoPilot (outside agent generation), use `run_mcp_tool` instead — it handles
+> server discovery and authentication interactively. Use `MCPToolBlock` here only
+> when the user wants the MCP call baked into a reusable agent graph.
 
 To use an MCP (Model Context Protocol) tool as a node in the agent:
 1. The user must specify which MCP server URL and tool name they want
@@ -239,19 +253,55 @@ call in a loop until the task is complete:
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the Orchestrator side.
 
-### Testing with Dry Run
+### REQUIRED: Dry-Run Verification Loop (create -> dry-run -> fix)
 
-After saving an agent, suggest a dry run to validate wiring without consuming
-real API calls, credentials, or credits:
+After creating or editing an agent, you MUST dry-run it before telling the
+user the agent is ready. NEVER skip this step.
 
-1. **Run**: Call `run_agent` or `run_block` with `dry_run=True` and provide
-   sample inputs. This executes the graph with mock outputs, verifying that
-   links resolve correctly and required inputs are satisfied.
-2. **Check results**: Call `view_agent_output` with `show_execution_details=True`
-   to inspect the full node-by-node execution trace. This shows what each node
-   received as input and produced as output, making it easy to spot wiring issues.
-3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
-   the agent JSON and re-save before suggesting a real execution.
+#### Step-by-step workflow
+
+1. **Create/Edit**: Call `create_agent` or `edit_agent` to save the agent.
+2. **Dry-run**: Call `run_agent` with `dry_run=True`, `wait_for_result=120`,
+   and realistic sample inputs that exercise every path in the agent. This
+   simulates execution using an LLM for each block — no real API calls,
+   credentials, or credits are consumed.
+3. **Inspect output**: Examine the dry-run result for problems.
+   `run_agent(dry_run=True, wait_for_result=...)` now returns the
+   per-node trace directly in `execution.node_executions` on completion,
+   so read it from the result and do NOT make a follow-up
+   `view_agent_output` call. (Only call `view_agent_output(...,
+   show_execution_details=True)` if you need the trace for a real,
+   non-dry-run execution or for an execution started in a prior turn.)
+   Look for:
+   - **Errors / failed nodes** — a node raised an exception or returned an
+     error status. Common causes: wrong `source_name`/`sink_name` in links,
+     missing `input_default` values, or referencing a nonexistent block output.
+   - **Null / empty outputs** — data did not flow through a link. Verify that
+     `source_name` and `sink_name` match the block schemas exactly (case-
+     sensitive, including nested `_#_` notation).
+   - **Nodes that never executed** — the node was not reached. Likely a
+     missing or broken link from an upstream node.
+   - **Unexpected values** — data arrived but in the wrong type or
+     structure. Check type compatibility between linked ports.
+4. **Fix**: If any issues are found, call `edit_agent` with the corrected
+   agent JSON, then go back to step 2.
+5. **Repeat**: Continue the dry-run -> fix cycle until the simulation passes
+   or the problems are clearly unfixable. If you stop making progress,
+   report the remaining issues to the user and ask for guidance.
+
+#### Good vs bad dry-run output
+
+**Good output** (agent is ready):
+- All nodes executed successfully (no errors in the execution trace)
+- Data flows through every link with non-null, correctly-typed values
+- The final `AgentOutputBlock` contains a meaningful result
+- Status is `COMPLETED`
+
+**Bad output** (needs fixing):
+- Status is `FAILED` — check the error message for the failing node
+- An output node received `null` — trace back to find the broken link
+- A node received data in the wrong format (e.g. string where list expected)
+- Nodes downstream of a failing node were skipped entirely
 
 **Special block behaviour in dry-run mode:**
 - **OrchestratorBlock** and **AgentExecutorBlock** execute for real so the
@@ -274,3 +324,67 @@ A minimal agent with input, processing, and output:
 - Node 3: `AgentOutputBlock` (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`,
   input_default: {"name": "summary", "title": "Summary"},
   input: "value" linked from Node 2's output)
+
+### Building Trigger Agents
+
+A **trigger agent** is a scheduled agent that watches for changes in an
+external source (e.g. email inbox, RSS feed, API) and runs a parent agent
+or AutoPilot session for each new item. Trigger agents are hidden from the
+user's library but listed under the parent agent's triggers.
+
+**Pattern: Fetch → Compare → Store → Sink**
+
+1. **Fetch current state**: Use a data-fetching block (e.g. RSS, email,
+   HTTP request) to get the latest items from the source.
+2. **Retrieve stored state**: Use `RetrieveInformationBlock`
+   (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`) with scope `within_agent`
+   to load the previously stored state (e.g. list of seen item IDs).
+3. **Compare**: Use a `CodeExecutionBlock` to diff the fetched items
+   against the stored state. Output the new items (if any).
+4. **Store updated state**: Use `PersistInformationBlock`
+   (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`) with scope `within_agent`
+   to save the current state for the next run.
+5. **Sink** — for each new item, do one of:
+   - **Run an agent**: Use `AgentExecutorBlock`
+     (ID: `e189baac-8c20-45a1-94a7-55177ea42565`) to run the parent
+     agent with the new item as input.
+   - **Start an AutoPilot session**: Use `AutoPilotBlock`
+     (ID: `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) with a prompt
+     describing the new item (e.g. "New email from {sender} about
+     {subject}. Analyze and draft a reply.").
+
+**Creating a trigger agent:**
+
+1. Build the trigger agent JSON following the pattern above. When using
+   the AgentExecutorBlock sink, set its `graph_id` (in `input_default`)
+   to the parent agent's graph_id — this is how the trigger is linked
+   to the parent agent.
+2. Save it with `is_hidden=true` via `create_agent` so it doesn't
+   clutter the user's library.
+3. Schedule it to run on a cron interval (e.g. every 15 minutes:
+   `*/15 * * * *`) using `run_agent` with `schedule_name` and `cron`.
+
+The parent → trigger relationship is **derived from the graph
+contents**: any hidden agent whose graph contains an AgentExecutorBlock
+referencing the parent's graph_id is listed under that parent's
+triggers. No explicit linking is needed.
+
+**Inspecting an agent's existing triggers:**
+
+- Use `list_agent_triggers` with the parent's `library_agent_id` to see
+  all triggers configured for that agent — both trigger agents
+  (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
+  before adding a new trigger (to avoid duplicates) or before deleting
+  one (to find the right ID).
+
+**Managing schedules:**
+
+- Use `list_schedules` to see existing schedules (optionally filtered by
+  `graph_id`).
+- Use `delete_schedule` with a `schedule_id` to remove one.
+- To change a schedule's cron, delete it and re-create via `run_agent`
+  with the new `cron`.
+
+**Note**: When a trigger agent is edited and a new version is created,
+the existing schedule will still run the old version. Delete the old
+schedule and re-create it with the new version after editing.

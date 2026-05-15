@@ -1,30 +1,21 @@
 "use client";
 import {
-  getV1IsOnboardingEnabled,
+  getV1CheckIfOnboardingIsCompleted,
   getV1OnboardingState,
   patchV1UpdateOnboardingState,
   postV1CompleteOnboardingStep,
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 import { resolveResponse } from "@/app/api/helpers";
-import { Button } from "@/components/__legacy__/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import {
+  ApiError,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -92,7 +83,6 @@ export default function OnboardingProvider({
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
   const [step, setStep] = useState(1);
-  const [npsDialogOpen, setNpsDialogOpen] = useState(false);
   const hasInitialized = useRef(false);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
@@ -142,13 +132,16 @@ export default function OnboardingProvider({
 
     async function initializeOnboarding() {
       try {
-        // Check onboarding enabled only for onboarding routes
-        if (isOnOnboardingRoute) {
-          const enabled = await resolveResponse(getV1IsOnboardingEnabled());
-          if (!enabled) {
-            router.push("/");
-            return;
-          }
+        const { is_completed } = await resolveResponse(
+          getV1CheckIfOnboardingIsCompleted(),
+        );
+
+        if (!is_completed && !isOnOnboardingRoute) {
+          router.replace("/onboarding");
+          return;
+        } else if (is_completed && isOnOnboardingRoute) {
+          router.replace("/copilot");
+          return;
         }
 
         const onboarding = await fetchOnboarding();
@@ -158,9 +151,14 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/");
+          router.replace("/copilot");
         }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({
@@ -179,10 +177,6 @@ export default function OnboardingProvider({
     (notification: WebSocketNotification) => {
       if (!isLoggedIn || notification.type !== "onboarding") {
         return;
-      }
-
-      if (notification.step === "RUN_AGENTS") {
-        setNpsDialogOpen(true);
       }
 
       fetchOnboarding().catch((error) => {
@@ -281,33 +275,6 @@ export default function OnboardingProvider({
         completeStep,
       }}
     >
-      <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>We&apos;d love your feedback</DialogTitle>
-            <DialogDescription>
-              You&apos;ve run 10 agents — amazing! We&apos;re constantly
-              improving the platform, and your thoughts help shape what we build
-              next. This 1-minute form is just a few quick questions to share
-              how things are going.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setNpsDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Link href="https://tally.so/r/w4El0b" target="_blank">
-              <Button type="button" onClick={() => setNpsDialogOpen(false)}>
-                Give Feedback
-              </Button>
-            </Link>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {children}
     </OnboardingContext.Provider>
   );

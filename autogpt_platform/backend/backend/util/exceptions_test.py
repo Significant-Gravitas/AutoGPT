@@ -10,29 +10,29 @@ from backend.util.exceptions import (
 class TestBlockError:
     """Tests for BlockError and its subclasses."""
 
-    def test_block_error_message_format(self):
-        """Test that BlockError formats the message correctly."""
+    def test_block_error_surfaces_message_unframed(self):
+        """``str(exc)`` is just the message so ``yield "error", str(exc)``
+        shows the actual upstream cause to the user instead of wrapping it
+        in a "raised by X with message: Y" framing."""
         error = BlockError(
             message="Test error", block_name="TestBlock", block_id="test-123"
         )
-        assert (
-            str(error)
-            == "raised by TestBlock with message: Test error. block_id: test-123"
-        )
+        assert str(error) == "Test error"
+        assert error.block_name == "TestBlock"
+        assert error.block_id == "test-123"
 
     def test_block_input_error_inherits_format(self):
-        """Test that BlockInputError uses parent's message format."""
         error = BlockInputError(
             message="Invalid input", block_name="TestBlock", block_id="test-123"
         )
-        assert "raised by TestBlock with message: Invalid input" in str(error)
+        assert str(error) == "Invalid input"
+        assert error.block_name == "TestBlock"
 
     def test_block_output_error_inherits_format(self):
-        """Test that BlockOutputError uses parent's message format."""
         error = BlockOutputError(
             message="Invalid output", block_name="TestBlock", block_id="test-123"
         )
-        assert "raised by TestBlock with message: Invalid output" in str(error)
+        assert str(error) == "Invalid output"
 
 
 class TestBlockExecutionErrorNoneHandling:
@@ -43,24 +43,21 @@ class TestBlockExecutionErrorNoneHandling:
         error = BlockExecutionError(
             message=None, block_name="TestBlock", block_id="test-123"
         )
-        assert "Output error was None" in str(error)
-        assert "raised by TestBlock with message: Output error was None" in str(error)
+        assert str(error) == "Output error was None"
 
     def test_execution_error_with_valid_message(self):
         """Test that valid messages are preserved."""
         error = BlockExecutionError(
             message="Actual error", block_name="TestBlock", block_id="test-123"
         )
-        assert "Actual error" in str(error)
-        assert "Output error was None" not in str(error)
+        assert str(error) == "Actual error"
 
     def test_execution_error_with_empty_string(self):
         """Test that empty string message is NOT replaced (only None is)."""
         error = BlockExecutionError(
             message="", block_name="TestBlock", block_id="test-123"
         )
-        # Empty string is falsy but not None, so it's preserved
-        assert "raised by TestBlock with message: . block_id:" in str(error)
+        assert str(error) == ""
 
 
 class TestBlockUnknownErrorNoneHandling:

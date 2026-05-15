@@ -112,6 +112,7 @@ export function useLoginPage() {
             : "Unexpected error during login",
         variant: "destructive",
       });
+
       setIsLoading(false);
       setIsLoggingIn(false);
     }

@@ -12,6 +12,7 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
 import { environment } from "@/services/environment";
+import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 
@@ -46,14 +47,6 @@ export default async function RootLayout({
       className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <SetupAnalytics
-          host={host}
-          ga={{
-            gaId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-          }}
-        />
-      </head>
       <body className="min-h-screen">
         <ErrorBoundary context="application">
           <Providers
@@ -63,6 +56,13 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
+            <SetupAnalytics
+              host={host}
+              ga={{
+                gaId:
+                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
+              }}
+            />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
               <TallyPopupSimple />
@@ -78,6 +78,7 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <CookieConsentBanner />
+            {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

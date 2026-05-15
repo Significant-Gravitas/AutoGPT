@@ -39,10 +39,14 @@
       "is_favorite": false,
       "folder_id": null,
       "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     },
@@ -85,10 +89,14 @@
       "is_favorite": false,
       "folder_id": null,
       "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     }

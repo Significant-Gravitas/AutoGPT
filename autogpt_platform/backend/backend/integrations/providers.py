@@ -46,6 +46,7 @@ class ProviderName(str, Enum):
     REVID = "revid"
     SARDIS = "sardis"
     SCREENSHOTONE = "screenshotone"
+    SLACK = "slack"
     SLANT3D = "slant3d"
     SMARTLEAD = "smartlead"
     SMTP = "smtp"

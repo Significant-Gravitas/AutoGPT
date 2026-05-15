@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,9 @@ class CreateAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "Create a new agent from JSON (nodes + links). Validates, "
+            "auto-fixes, and saves. "
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -54,6 +56,16 @@ class CreateAgentTool(BaseTool):
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
                 },
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": (
+                        "Hide from the user's library listing. "
+                        "Use for trigger agents — they appear under "
+                        "the parent agent's triggers (auto-derived "
+                        "from AgentExecutorBlock usage in the graph)."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["agent_json"],
         }
@@ -66,9 +78,14 @@ class CreateAgentTool(BaseTool):
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
+        is_hidden: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+
+        guide_gate = require_guide_read(session, "create_agent")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_json:
             return ErrorResponse(
@@ -86,7 +103,9 @@ class CreateAgentTool(BaseTool):
         nodes = agent_json.get("nodes", [])
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message=(
+                    "The agent JSON has no nodes. " "An agent needs at least one block."
+                ),
                 error="empty_agent",
                 session_id=session_id,
             )
@@ -111,4 +130,5 @@ class CreateAgentTool(BaseTool):
             default_name="Generated Agent",
             library_agents=library_agents,
             folder_id=folder_id,
+            is_hidden=is_hidden,
         )
