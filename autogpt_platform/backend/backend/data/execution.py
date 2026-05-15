@@ -748,7 +748,7 @@ class UserDailyCost(BaseModel):
     run_count: int
 
 
-class UserCostSummary(BaseModel):
+class UserExecutionCostSummary(BaseModel):
     total_cents: int
     run_count: int
     failed_cost_cents: int
@@ -766,7 +766,7 @@ async def get_user_cost_summary(
     since: datetime | None = None,
     until: datetime | None = None,
     top_runs_limit: int = 10,
-) -> UserCostSummary:
+) -> UserExecutionCostSummary:
     """Aggregate per-user execution costs from AgentGraphExecution.stats JSON.
 
     Defaults to the current calendar month (UTC) when `since`/`until` are not provided.
@@ -842,7 +842,7 @@ async def get_user_cost_summary(
     )
 
     totals = totals_rows[0] if totals_rows else {}
-    return UserCostSummary(
+    return UserExecutionCostSummary(
         total_cents=int(totals.get("total_cents") or 0),
         run_count=int(totals.get("run_count") or 0),
         failed_cost_cents=int(totals.get("failed_cost_cents") or 0),

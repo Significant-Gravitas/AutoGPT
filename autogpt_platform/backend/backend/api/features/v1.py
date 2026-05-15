@@ -80,7 +80,7 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
-from backend.data.execution import UserCostSummary, get_user_cost_summary
+from backend.data.execution import UserExecutionCostSummary, get_user_cost_summary
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
@@ -1929,7 +1929,7 @@ async def get_executions_cost_summary(
         le=50,
         description="Maximum number of top-cost runs to return.",
     ),
-) -> UserCostSummary:
+) -> UserExecutionCostSummary:
     """Aggregated cost breakdown for the calling user's graph executions."""
     return await get_user_cost_summary(
         user_id=user_id,

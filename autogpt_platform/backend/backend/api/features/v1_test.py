@@ -539,12 +539,12 @@ def test_executions_cost_summary_returns_payload(
 
     from backend.data.execution import (
         UserAgentCostRollup,
-        UserCostSummary,
+        UserExecutionCostSummary,
         UserDailyCost,
         UserTopRun,
     )
 
-    summary = UserCostSummary(
+    summary = UserExecutionCostSummary(
         total_cents=4200,
         run_count=12,
         failed_cost_cents=500,
@@ -597,12 +597,12 @@ def test_executions_cost_summary_forwards_since_until(
     test_user_id: str,
 ) -> None:
     """since/until query params should reach get_user_cost_summary."""
-    from backend.data.execution import UserCostSummary
+    from backend.data.execution import UserExecutionCostSummary
 
     mock_fn = mocker.patch(
         "backend.api.features.v1.get_user_cost_summary",
         AsyncMock(
-            return_value=UserCostSummary(
+            return_value=UserExecutionCostSummary(
                 total_cents=0,
                 run_count=0,
                 failed_cost_cents=0,

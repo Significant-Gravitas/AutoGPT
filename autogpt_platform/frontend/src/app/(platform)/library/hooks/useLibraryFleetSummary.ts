@@ -3,9 +3,11 @@
 import {
   getGetV1ListAllExecutionsQueryKey,
   useGetV1ListAllExecutions,
+  useGetV1UserCostSummary,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/userExecutionCostSummary";
 import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,21 +37,6 @@ function isRecentCompletion(
   return Date.now() - ts < SEVENTY_TWO_HOURS_MS;
 }
 
-function toTimestamp(value?: string | Date | null): number | null {
-  if (!value) return null;
-  const ts =
-    value instanceof Date ? value.getTime() : new Date(value).getTime();
-  return Number.isFinite(ts) ? ts : null;
-}
-
-function startOfCurrentMonth(now: Date = new Date()): number {
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
-}
-
-function currentDayKey(now: Date = new Date()): number {
-  return Math.floor(now.getTime() / 86_400_000);
-}
-
 export function useLibraryFleetSummary(
   agents: LibraryAgent[],
 ): FleetSummary | undefined {
@@ -59,12 +46,16 @@ export function useLibraryFleetSummary(
     query: { select: okData },
   });
 
-  const graphIDs = useMemo(() => agents.map((a) => a.graph_id), [agents]);
+  // Authoritative monthly total comes from the server-side aggregator so it
+  // stays correct above the 250-row /executions cap.
+  const { data: costSummary } = useGetV1UserCostSummary(undefined, {
+    query: {
+      select: (res) => res.data as UserExecutionCostSummary,
+      staleTime: 60_000,
+    },
+  });
 
-  // Recompute when the UTC day rolls over so `monthStart` stays fresh on a
-  // long-open tab — read on every render; cheap. React Query refetches keep
-  // the memo re-evaluating in practice.
-  const dayKey = currentDayKey();
+  const graphIDs = useMemo(() => agents.map((a) => a.graph_id), [agents]);
 
   const handleExecutionUpdate = useCallback(() => {
     queryClient.invalidateQueries({
@@ -84,8 +75,6 @@ export function useLibraryFleetSummary(
     const agentsWithActiveExecution = new Set<string>();
     const agentsWithRecentFailure = new Set<string>();
     const agentsWithRecentCompletion = new Set<string>();
-    const monthStart = startOfCurrentMonth();
-    let monthlySpendCents = 0;
 
     for (const exec of executions) {
       if (isActive(exec.status)) {
@@ -97,14 +86,6 @@ export function useLibraryFleetSummary(
       if (isRecentCompletion(exec.status, exec.ended_at)) {
         agentsWithRecentCompletion.add(exec.graph_id);
       }
-
-      const startedTs = toTimestamp(exec.started_at);
-      if (startedTs !== null && startedTs >= monthStart) {
-        const cost = exec.stats?.cost;
-        if (typeof cost === "number" && Number.isFinite(cost)) {
-          monthlySpendCents += cost;
-        }
-      }
     }
 
     const summary: FleetSummary = {
@@ -114,7 +95,7 @@ export function useLibraryFleetSummary(
       listening: 0,
       scheduled: 0,
       idle: 0,
-      monthlySpend: monthlySpendCents,
+      monthlySpend: costSummary?.total_cents ?? 0,
     };
 
     for (const agent of agents) {
@@ -142,5 +123,5 @@ export function useLibraryFleetSummary(
     }
 
     return summary;
-  }, [agents, executions, isSuccess, dayKey]);
+  }, [agents, executions, isSuccess, costSummary]);
 }
