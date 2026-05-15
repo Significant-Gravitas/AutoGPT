@@ -1,4 +1,3 @@
-import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
@@ -19,6 +18,7 @@ import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
+import { useSessionList } from "../../useSessionList";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 
 function formatDate(dateString: string) {
@@ -64,12 +64,8 @@ export function MobileDrawer() {
     (state) => state.sessionNeedsReload,
   );
 
-  const { data: sessionsResponse, isLoading } = useGetV2ListSessions(
-    { limit: 50 },
-    { query: { enabled: !isUserLoading && isLoggedIn } },
-  );
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+  const { sessions, isLoading, hasMore, isLoadingMore, loadMore } =
+    useSessionList({ enabled: !isUserLoading && isLoggedIn });
 
   const { sessionToDelete, isDeleting, confirmDelete, cancelDelete } =
     useSessionDeletion();
@@ -216,6 +212,18 @@ export function MobileDrawer() {
                     </div>
                   </button>
                 ))
+              )}
+              {hasMore && (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => loadMore()}
+                  loading={isLoadingMore}
+                  disabled={isLoadingMore}
+                  className="mt-2 w-full justify-center text-neutral-500"
+                >
+                  {isLoadingMore ? "Loading…" : "Load older chats"}
+                </Button>
               )}
             </div>
           </Drawer.Content>
