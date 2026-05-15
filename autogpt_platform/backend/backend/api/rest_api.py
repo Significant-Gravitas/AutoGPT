@@ -53,6 +53,7 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
@@ -156,6 +157,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Each cleanup is wrapped so one failure doesn't block the rest. The
     # Redis close in particular silences asyncio's "Unclosed ClusterNode"
     # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
     try:
         await backend.data.redis_client.disconnect_async()
     except Exception:
@@ -419,7 +425,8 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
-register_webhook_adapters(app)
+_webhook_bot_backend = BotBackend()
+register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
 

@@ -11,9 +11,12 @@ from .handler import MessageHandler
 logger = logging.getLogger(__name__)
 
 
-def register_webhook_adapters(app: FastAPI) -> None:
-    """Wire every configured webhook adapter's routes onto `app`."""
-    api = BotBackend()
+def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
+    """Wire every configured webhook adapter's routes onto `app`.
+
+    The caller owns the `api` lifecycle (close it in the app's lifespan
+    cleanup) — matching the pattern used by the socket bridge in `app.py`.
+    """
     handler = MessageHandler(api)
     adapters = _build_webhook_adapters(api)
     for adapter in adapters:
