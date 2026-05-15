@@ -37,6 +37,40 @@ function isRecentCompletion(
   return Date.now() - ts < SEVENTY_TWO_HOURS_MS;
 }
 
+function toTimestamp(value?: string | Date | null): number | null {
+  if (!value) return null;
+  const ts =
+    value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function startOfCurrentMonthUTC(now: Date = new Date()): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+}
+
+// Fallback monthly total computed from the executions list. Capped at 250 rows
+// (server-side limit on /executions), so it is structurally a lower bound —
+// only used to render *something* while the authoritative cost-summary
+// endpoint is still in-flight. Once that resolves, this value is discarded.
+function fallbackMonthlySpendCents(
+  executions: {
+    started_at?: string | Date | null;
+    stats?: { cost?: number } | null;
+  }[],
+): number {
+  const monthStart = startOfCurrentMonthUTC();
+  let total = 0;
+  for (const exec of executions) {
+    const startedTs = toTimestamp(exec.started_at);
+    if (startedTs === null || startedTs < monthStart) continue;
+    const cost = exec.stats?.cost;
+    if (typeof cost === "number" && Number.isFinite(cost)) {
+      total += cost;
+    }
+  }
+  return total;
+}
+
 export function useLibraryFleetSummary(
   agents: LibraryAgent[],
 ): FleetSummary | undefined {
@@ -88,6 +122,12 @@ export function useLibraryFleetSummary(
       }
     }
 
+    // Prefer the authoritative server total; fall back to the (capped) local
+    // sum while the cost-summary endpoint is in-flight so the tile shows a
+    // value instead of $0.00 on first paint.
+    const monthlySpend =
+      costSummary?.total_cents ?? fallbackMonthlySpendCents(executions);
+
     const summary: FleetSummary = {
       running: 0,
       error: 0,
@@ -95,7 +135,7 @@ export function useLibraryFleetSummary(
       listening: 0,
       scheduled: 0,
       idle: 0,
-      monthlySpend: costSummary?.total_cents ?? 0,
+      monthlySpend,
     };
 
     for (const agent of agents) {

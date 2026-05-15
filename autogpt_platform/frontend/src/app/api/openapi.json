@@ -19379,7 +19379,7 @@
       },
       "UserDailyCost": {
         "properties": {
-          "date": { "type": "string", "title": "Date" },
+          "date": { "type": "string", "format": "date", "title": "Date" },
           "cost_cents": { "type": "integer", "title": "Cost Cents" },
           "run_count": { "type": "integer", "title": "Run Count" }
         },

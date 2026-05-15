@@ -30,9 +30,13 @@ export function DailySpendBars({ daily }: Props) {
             bucket.cost_cents > 0 ? 4 : 1,
             heightPct,
           );
+          const key =
+            bucket.date instanceof Date
+              ? bucket.date.toISOString()
+              : String(bucket.date);
           return (
             <div
-              key={bucket.date}
+              key={key}
               role="listitem"
               className="group relative flex flex-1 flex-col items-center justify-end"
               title={`${formatShortDate(bucket.date)} · ${formatCents(bucket.cost_cents)} · ${bucket.run_count} run${bucket.run_count === 1 ? "" : "s"}`}

@@ -539,8 +539,8 @@ def test_executions_cost_summary_returns_payload(
 
     from backend.data.execution import (
         UserAgentCostRollup,
-        UserExecutionCostSummary,
         UserDailyCost,
+        UserExecutionCostSummary,
         UserTopRun,
     )
 
@@ -638,6 +638,25 @@ def test_executions_cost_summary_rejects_out_of_range_limit(
     )
 
     response = client.get("/executions/cost-summary?top_runs_limit=500")
+
+    assert response.status_code == 422
+    mock_fn.assert_not_awaited()
+
+
+def test_executions_cost_summary_rejects_inverted_window(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """`since > until` is bad client input — surface 422, don't quietly return zeros."""
+    mock_fn = mocker.patch(
+        "backend.api.features.v1.get_user_cost_summary",
+        AsyncMock(),
+    )
+
+    response = client.get(
+        "/executions/cost-summary"
+        "?since=2026-05-15T00:00:00Z"
+        "&until=2026-05-01T00:00:00Z"
+    )
 
     assert response.status_code == 422
     mock_fn.assert_not_awaited()

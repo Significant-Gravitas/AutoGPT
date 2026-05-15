@@ -2,7 +2,7 @@ import asyncio
 import logging
 import queue
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import (
     Annotated,
@@ -743,7 +743,7 @@ class UserTopRun(BaseModel):
 
 
 class UserDailyCost(BaseModel):
-    date: str
+    date: date
     cost_cents: int
     run_count: int
 
@@ -758,6 +758,7 @@ class UserExecutionCostSummary(BaseModel):
 
 
 _MAX_BY_AGENT_ROWS = 50
+_MAX_TOP_RUNS = 50
 
 
 async def get_user_cost_summary(
@@ -771,7 +772,17 @@ async def get_user_cost_summary(
 
     Defaults to the current calendar month (UTC) when `since`/`until` are not provided.
     Dry-run executions are excluded.
+
+    Window filters use `createdAt` so the existing
+    `@@index([userId, isDeleted, createdAt])` is hit on `AgentGraphExecution`
+    — bucketing by `startedAt` instead would force a full per-user scan for
+    heavy users.
     """
+    # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
+    # this function is callable directly and an unbounded LIMIT would scan
+    # the whole per-user history on the cost-ordered `top_runs` query.
+    top_runs_limit = max(1, min(_MAX_TOP_RUNS, top_runs_limit))
+
     now = datetime.now(timezone.utc)
     if since is None:
         since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -781,9 +792,8 @@ async def get_user_cost_summary(
     base_where = (
         '"userId" = $1'
         ' AND "isDeleted" = false'
-        ' AND "startedAt" IS NOT NULL'
-        ' AND "startedAt" >= $2'
-        ' AND "startedAt" <= $3'
+        ' AND "createdAt" >= $2'
+        ' AND "createdAt" <= $3'
         " AND COALESCE((stats->>'is_dry_run')::boolean, false) = false"
     )
     params = (user_id, since, until)
@@ -793,7 +803,7 @@ async def get_user_cost_summary(
             "SELECT"
             "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS total_cents,"
             "  COUNT(*)::bigint AS run_count,"
-            "  COALESCE(SUM(CASE WHEN \"executionStatus\" = 'FAILED'"
+            "  COALESCE(SUM(CASE WHEN \"executionStatus\" IN ('FAILED', 'TERMINATED')"
             "    THEN (stats->>'cost')::numeric ELSE 0 END), 0)::bigint"
             "    AS failed_cost_cents"
             ' FROM {schema_prefix}"AgentGraphExecution"'
@@ -816,26 +826,27 @@ async def get_user_cost_summary(
             "SELECT"
             "  id AS execution_id,"
             '  "agentGraphId" AS graph_id,'
-            "  COALESCE((stats->>'cost')::numeric, 0) AS cost_cents,"
-            '  "startedAt" AS started_at,'
+            "  COALESCE((stats->>'cost')::numeric, 0)::bigint AS cost_cents,"
+            '  COALESCE("startedAt", "createdAt") AS started_at,'
             '  "executionStatus" AS status,'
             "  COALESCE((stats->>'duration')::numeric, 0) AS duration_seconds,"
             "  COALESCE((stats->>'node_error_count')::int, 0) AS node_error_count"
             ' FROM {schema_prefix}"AgentGraphExecution"'
             f" WHERE {base_where}"
-            '  ORDER BY cost_cents DESC, "startedAt" DESC'
+            "  AND COALESCE((stats->>'cost')::numeric, 0) > 0"
+            '  ORDER BY cost_cents DESC, "createdAt" DESC'
             "  LIMIT $4",
             *params,
             top_runs_limit,
         ),
         query_raw_with_schema(
             "SELECT"
-            "  to_char(\"startedAt\" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,"
+            "  (\"createdAt\" AT TIME ZONE 'UTC')::date AS date,"
             "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS cost_cents,"
             "  COUNT(*)::bigint AS run_count"
             ' FROM {schema_prefix}"AgentGraphExecution"'
             f" WHERE {base_where}"
-            "  GROUP BY to_char(\"startedAt\" AT TIME ZONE 'UTC', 'YYYY-MM-DD')"
+            "  GROUP BY (\"createdAt\" AT TIME ZONE 'UTC')::date"
             "  ORDER BY date ASC",
             *params,
         ),

@@ -1,7 +1,7 @@
 """Integration tests for the SQL-aggregated user cost summary."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -276,7 +276,10 @@ async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
             until=day2 + timedelta(hours=1),
         )
 
-        assert [d.date for d in summary.daily] == ["2026-01-10", "2026-01-11"]
+        assert [d.date for d in summary.daily] == [
+            date(2026, 1, 10),
+            date(2026, 1, 11),
+        ]
         assert summary.daily[0].cost_cents == 350
         assert summary.daily[0].run_count == 2
         assert summary.daily[1].cost_cents == 400

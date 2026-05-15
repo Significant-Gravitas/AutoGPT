@@ -1931,6 +1931,11 @@ async def get_executions_cost_summary(
     ),
 ) -> UserExecutionCostSummary:
     """Aggregated cost breakdown for the calling user's graph executions."""
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="`since` must be earlier than or equal to `until`.",
+        )
     return await get_user_cost_summary(
         user_id=user_id,
         since=since,
