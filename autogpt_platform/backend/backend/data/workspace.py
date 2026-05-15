@@ -204,6 +204,22 @@ async def get_workspace_file(
     return WorkspaceFile.from_db(file) if file else None
 
 
+async def get_workspace_file_by_id(
+    file_id: str,
+) -> Optional[WorkspaceFile]:
+    """
+    Get a workspace file by ID without workspace scoping.
+
+    Only use this when access has already been validated through another
+    mechanism (e.g. SharedExecutionFile allowlist). For user-facing
+    endpoints, use get_workspace_file() which enforces workspace scoping.
+    """
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "isDeleted": False}
+    )
+    return WorkspaceFile.from_db(file) if file else None
+
+
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,

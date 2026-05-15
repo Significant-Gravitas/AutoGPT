@@ -4,42 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
-
-type TierInfo = {
-  key: string;
-  label: string;
-  multiplier: string;
-  description: string;
-};
-
-const TIERS: TierInfo[] = [
-  {
-    key: "FREE",
-    label: "Free",
-    multiplier: "1x",
-    description: "Base AutoPilot capacity with standard rate limits",
-  },
-  {
-    key: "PRO",
-    label: "Pro",
-    multiplier: "5x",
-    description: "5x AutoPilot capacity — run 5× more tasks per day/week",
-  },
-  {
-    key: "BUSINESS",
-    label: "Business",
-    multiplier: "20x",
-    description: "20x AutoPilot capacity — ideal for teams and heavy workloads",
-  },
-];
-
-const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
-
-function formatCost(cents: number, tierKey: string): string {
-  if (tierKey === "FREE") return "Free";
-  if (cents === 0) return "Pricing available soon";
-  return `$${(cents / 100).toFixed(2)}/mo`;
-}
+import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
+import {
+  TIERS,
+  TIER_ORDER,
+  formatCost,
+  formatPendingDate,
+  formatRelativeMultiplier,
+  getTierLabel,
+} from "./helpers";
 
 export function SubscriptionTierSection() {
   const {
@@ -55,10 +28,14 @@ export function SubscriptionTierSection() {
     isPaymentEnabled,
     changeTier,
     handleTierChange,
+    cancelPendingChange,
   } = useSubscriptionTierSection();
   const [confirmDowngradeTo, setConfirmDowngradeTo] = useState<string | null>(
     null,
   );
+  const [confirmReplacePendingTo, setConfirmReplacePendingTo] = useState<
+    string | null
+  >(null);
 
   if (isLoading) {
     return (
@@ -115,9 +92,55 @@ export function SubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function confirmReplacePending() {
+    if (!confirmReplacePendingTo) return;
+    const tier = confirmReplacePendingTo;
+    setConfirmReplacePendingTo(null);
+    handleTierChange(tier, currentTier, setConfirmDowngradeTo);
+  }
+
+  const pendingTierFromSubscription = subscription.pending_tier ?? null;
+  const hasPendingChange =
+    pendingTierFromSubscription !== null &&
+    pendingTierFromSubscription !== currentTier;
+
+  function onTierButtonClick(targetTierKey: string) {
+    // If a pending change is queued and the user clicks a DIFFERENT non-current,
+    // non-pending tier, surface a confirmation so they don't silently overwrite
+    // their own scheduled change. The on-card button for the pending tier itself
+    // is already disabled; the primary cancel path is the banner.
+    if (
+      hasPendingChange &&
+      targetTierKey !== pendingTierFromSubscription &&
+      targetTierKey !== currentTier
+    ) {
+      setConfirmReplacePendingTo(targetTierKey);
+      return;
+    }
+    handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
+  }
+
+  // Gate the "Pick a plan" banner on the DB tier rather than
+  // has_active_stripe_subscription so a transient Stripe outage doesn't show
+  // the banner to active subscribers. Same rationale as PaywallGate.
+  const needsSubscription = isPaymentEnabled && subscription.tier === "NO_TIER";
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">Subscription Plan</h3>
+
+      {needsSubscription && (
+        <div
+          role="status"
+          className="rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+        >
+          <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
+          <p className="mt-1">
+            Your account doesn&apos;t have an active subscription. Choose a tier
+            below to unlock AutoPilot and start running agents.
+          </p>
+        </div>
+      )}
 
       {tierError && (
         <p
@@ -128,8 +151,20 @@ export function SubscriptionTierSection() {
         </p>
       )}
 
+      {hasPendingChange && pendingTierFromSubscription ? (
+        <PendingChangeBanner
+          currentTier={currentTier}
+          pendingTier={pendingTierFromSubscription}
+          pendingEffectiveAt={subscription.pending_tier_effective_at}
+          onKeepCurrent={() => void cancelPendingChange()}
+          isBusy={isPending}
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {TIERS.map((tier) => {
+        {TIERS.filter(
+          (tier) => subscription.tier_costs[tier.key] !== undefined,
+        ).map((tier) => {
           const isCurrent = currentTier === tier.key;
           const cost = subscription.tier_costs[tier.key] ?? 0;
           const currentIdx = TIER_ORDER.indexOf(currentTier);
@@ -137,6 +172,12 @@ export function SubscriptionTierSection() {
           const isUpgrade = targetIdx > currentIdx;
           const isDowngrade = targetIdx < currentIdx;
           const isThisPending = pendingTier === tier.key;
+          const isScheduledTier =
+            hasPendingChange && pendingTierFromSubscription === tier.key;
+          const rateLimitLabel = formatRelativeMultiplier(
+            tier.key,
+            subscription.tier_multipliers ?? {},
+          );
 
           return (
             <div
@@ -160,9 +201,11 @@ export function SubscriptionTierSection() {
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
-              <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                {tier.multiplier} rate limits
-              </p>
+              {rateLimitLabel && (
+                <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                  {rateLimitLabel}
+                </p>
+              )}
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>
@@ -171,22 +214,18 @@ export function SubscriptionTierSection() {
                 <Button
                   className="w-full"
                   variant={isUpgrade ? "default" : "outline"}
-                  disabled={isPending}
-                  onClick={() =>
-                    handleTierChange(
-                      tier.key,
-                      currentTier,
-                      setConfirmDowngradeTo,
-                    )
-                  }
+                  disabled={isPending || isScheduledTier}
+                  onClick={() => onTierButtonClick(tier.key)}
                 >
                   {isThisPending
                     ? "Updating..."
-                    : isUpgrade
-                      ? `Upgrade to ${tier.label}`
-                      : isDowngrade
-                        ? `Downgrade to ${tier.label}`
-                        : `Switch to ${tier.label}`}
+                    : isScheduledTier
+                      ? "Scheduled"
+                      : isUpgrade
+                        ? `Upgrade to ${tier.label}`
+                        : isDowngrade
+                          ? `Downgrade to ${tier.label}`
+                          : `Switch to ${tier.label}`}
                 </Button>
               )}
             </div>
@@ -194,12 +233,24 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "FREE" && isPaymentEnabled && (
-        <p className="text-sm text-neutral-500">
-          Your subscription is managed through Stripe. Upgrades and paid-tier
-          changes take effect immediately; downgrades to Free are scheduled for
-          the end of the current billing period.
-        </p>
+      {currentTier !== "NO_TIER" && isPaymentEnabled && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-neutral-500">
+            Your subscription is managed through Stripe. Upgrades take effect
+            immediately. Downgrades take effect at the end of your current
+            billing period.
+          </p>
+          {!hasPendingChange && (
+            <Button
+              variant="ghost"
+              className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
+              disabled={isPending}
+              onClick={() => setConfirmDowngradeTo("NO_TIER")}
+            >
+              Cancel subscription
+            </Button>
+          )}
+        </div>
       )}
 
       <Dialog
@@ -213,9 +264,9 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "FREE"
-              ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
-              : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect immediately.`}{" "}
+            {confirmDowngradeTo === "NO_TIER"
+              ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
+              : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate.`}{" "}
             Are you sure?
           </p>
           <Dialog.Footer>
@@ -236,6 +287,42 @@ export function SubscriptionTierSection() {
       </Dialog>
 
       <Dialog
+        title="Replace pending change?"
+        controlled={{
+          isOpen: !!confirmReplacePendingTo,
+          set: (open) => {
+            if (!open) setConfirmReplacePendingTo(null);
+          },
+        }}
+      >
+        <Dialog.Content>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            You have a pending change to{" "}
+            {getTierLabel(pendingTierFromSubscription ?? "")}
+            {subscription.pending_tier_effective_at
+              ? ` scheduled for ${formatPendingDate(subscription.pending_tier_effective_at)}`
+              : ""}
+            . Switching to {getTierLabel(confirmReplacePendingTo ?? "")} will
+            replace it. Continue?
+          </p>
+          <Dialog.Footer>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReplacePendingTo(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmReplacePending()}
+            >
+              Replace pending change
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
+
+      <Dialog
         title="Confirm Upgrade"
         controlled={{
           isOpen: !!pendingUpgradeTier,
@@ -246,13 +333,9 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {subscription &&
-              subscription.proration_credit_cents > 0 &&
-              `Your unused ${currentTier.charAt(0) + currentTier.slice(1).toLowerCase()} subscription ($${(subscription.proration_credit_cents / 100).toFixed(2)}) will be applied as a credit to your next Stripe invoice. `}
-            You will be redirected to Stripe to complete your upgrade to{" "}
-            {TIERS.find((t) => t.key === pendingUpgradeTier)?.label ??
-              pendingUpgradeTier}
-            .
+            {subscription.has_active_stripe_subscription
+              ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted.`
+              : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription.`}
           </p>
           <Dialog.Footer>
             <Button
@@ -262,7 +345,9 @@ export function SubscriptionTierSection() {
               Cancel
             </Button>
             <Button onClick={() => void confirmUpgrade()}>
-              Continue to Checkout
+              {subscription.has_active_stripe_subscription
+                ? "Confirm Upgrade"
+                : "Continue to Checkout"}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

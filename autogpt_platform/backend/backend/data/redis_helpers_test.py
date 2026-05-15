@@ -11,6 +11,7 @@ import pytest
 
 from backend.data.redis_helpers import (
     capped_rpush,
+    capped_rpush_if_hash_field,
     hash_compare_and_set,
     incr_with_ttl,
     incr_with_ttl_sync,
@@ -56,7 +57,17 @@ class _Fake:
         return len(self.lists.get(key, []))
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
-        # Shim for hash-CAS only.
+        if numkeys == 2:
+            hash_key, list_key = args[0], args[1]
+            field, expected, value, max_len, ttl_seconds = args[2:7]
+            h = self.hashes.setdefault(hash_key, {})
+            if h.get(field) != expected:
+                return -1
+            await self.rpush(list_key, value)
+            await self.ltrim(list_key, -int(max_len), -1)
+            await self.expire(list_key, int(ttl_seconds))
+            return await self.llen(list_key)
+
         key, field, expected, new = args[0], args[1], args[2], args[3]
         h = self.hashes.setdefault(key, {})
         if h.get(field) == expected:
@@ -196,6 +207,50 @@ async def test_capped_rpush_first_push_returns_one() -> None:
     length = await capped_rpush(r, "buf", "only", max_len=10, ttl_seconds=60)  # type: ignore[arg-type]
     assert length == 1
     assert r.lists["buf"] == ["only"]
+
+
+# ── capped_rpush_if_hash_field ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_capped_rpush_if_hash_field_pushes_when_expected_matches() -> None:
+    r = _Fake()
+    r.hashes["meta"] = {"status": "running"}
+
+    length = await capped_rpush_if_hash_field(
+        r,  # type: ignore[arg-type]
+        hash_key="meta",
+        hash_field="status",
+        expected="running",
+        list_key="buf",
+        value="only",
+        max_len=10,
+        ttl_seconds=60,
+    )
+
+    assert length == 1
+    assert r.lists["buf"] == ["only"]
+    assert r.ttls["buf"] == 60
+
+
+@pytest.mark.asyncio
+async def test_capped_rpush_if_hash_field_skips_when_expected_differs() -> None:
+    r = _Fake()
+    r.hashes["meta"] = {"status": "completed"}
+
+    length = await capped_rpush_if_hash_field(
+        r,  # type: ignore[arg-type]
+        hash_key="meta",
+        hash_field="status",
+        expected="running",
+        list_key="buf",
+        value="lost",
+        max_len=10,
+        ttl_seconds=60,
+    )
+
+    assert length is None
+    assert "buf" not in r.lists
 
 
 # ── hash_compare_and_set ───────────────────────────────────────────────

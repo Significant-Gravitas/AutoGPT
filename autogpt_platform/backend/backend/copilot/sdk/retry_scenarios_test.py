@@ -1034,12 +1034,22 @@ def _make_sdk_patches(
                 active_e2b_api_key=None,
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
-                claude_agent_max_turns=1000,
+                agent_max_turns=1000,
                 claude_agent_max_budget_usd=100.0,
+                claude_agent_max_thinking_tokens=0,
+                claude_agent_thinking_effort=None,
                 claude_agent_fallback_model=None,
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
+        # Bypass dynamic budget resolution — the helper hits Redis via
+        # get_global_rate_limits / get_remaining_usd_budget, which the
+        # retry_scenarios mocks don't stand up.  Static cap is fine for
+        # retry-flow assertions (covered directly in service_test).
+        (
+            f"{_SVC}._resolve_dynamic_max_budget_usd",
+            dict(new_callable=AsyncMock, return_value=100.0),
+        ),
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.
         (

@@ -3,29 +3,6 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
-### Clarifying — Before or During Building
-
-Use `ask_question` whenever the user's intent is ambiguous — whether
-that's before starting or midway through the workflow. Common moments:
-
-- **Before building**: output format, delivery channel, data source, or
-  trigger is unspecified.
-- **During block discovery**: multiple blocks could fit and the user
-  should choose.
-- **During JSON generation**: a wiring decision depends on user
-  preference.
-
-Steps:
-1. Call `find_block` (or another discovery tool) to learn what the
-   platform actually supports for the ambiguous dimension.
-2. Call `ask_question` with a concrete question listing the discovered
-   options (e.g. "The platform supports Gmail, Slack, and Google Docs —
-   which should the agent use for delivery?").
-3. **Wait for the user's answer** before continuing.
-
-**Skip this** when the goal already specifies all dimensions (e.g.
-"scrape prices from Amazon and email me daily").
-
 ### Workflow for Creating/Editing Agents
 
 1. **If editing**: First narrow to the specific agent by UUID, then fetch its
@@ -128,6 +105,14 @@ These define the agent's interface — what it accepts and what it produces.
 
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
+
+Specialized input subclasses (`AgentDropdownInputBlock`,
+`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
+this requirement on their own — do NOT add a throwaway base
+`AgentInputBlock` alongside a specialized one. Each subclass carries its
+own usage guidance (when it is required, how to configure it, how to
+wire it to consumers, concrete link shape) in its block and field
+descriptions; read and follow those when `find_block` surfaces a match.
 
 ### Key Rules
 
@@ -280,10 +265,14 @@ user the agent is ready. NEVER skip this step.
    and realistic sample inputs that exercise every path in the agent. This
    simulates execution using an LLM for each block — no real API calls,
    credentials, or credits are consumed.
-3. **Inspect output**: Examine the dry-run result for problems. If
-   `wait_for_result` returns only a summary, call
-   `view_agent_output(execution_id=..., show_execution_details=True)` to
-   see the full node-by-node execution trace. Look for:
+3. **Inspect output**: Examine the dry-run result for problems.
+   `run_agent(dry_run=True, wait_for_result=...)` now returns the
+   per-node trace directly in `execution.node_executions` on completion,
+   so read it from the result and do NOT make a follow-up
+   `view_agent_output` call. (Only call `view_agent_output(...,
+   show_execution_details=True)` if you need the trace for a real,
+   non-dry-run execution or for an execution started in a prior turn.)
+   Look for:
    - **Errors / failed nodes** — a node raised an exception or returned an
      error status. Common causes: wrong `source_name`/`sink_name` in links,
      missing `input_default` values, or referencing a nonexistent block output.
@@ -335,3 +324,67 @@ A minimal agent with input, processing, and output:
 - Node 3: `AgentOutputBlock` (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`,
   input_default: {"name": "summary", "title": "Summary"},
   input: "value" linked from Node 2's output)
+
+### Building Trigger Agents
+
+A **trigger agent** is a scheduled agent that watches for changes in an
+external source (e.g. email inbox, RSS feed, API) and runs a parent agent
+or AutoPilot session for each new item. Trigger agents are hidden from the
+user's library but listed under the parent agent's triggers.
+
+**Pattern: Fetch → Compare → Store → Sink**
+
+1. **Fetch current state**: Use a data-fetching block (e.g. RSS, email,
+   HTTP request) to get the latest items from the source.
+2. **Retrieve stored state**: Use `RetrieveInformationBlock`
+   (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`) with scope `within_agent`
+   to load the previously stored state (e.g. list of seen item IDs).
+3. **Compare**: Use a `CodeExecutionBlock` to diff the fetched items
+   against the stored state. Output the new items (if any).
+4. **Store updated state**: Use `PersistInformationBlock`
+   (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`) with scope `within_agent`
+   to save the current state for the next run.
+5. **Sink** — for each new item, do one of:
+   - **Run an agent**: Use `AgentExecutorBlock`
+     (ID: `e189baac-8c20-45a1-94a7-55177ea42565`) to run the parent
+     agent with the new item as input.
+   - **Start an AutoPilot session**: Use `AutoPilotBlock`
+     (ID: `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) with a prompt
+     describing the new item (e.g. "New email from {sender} about
+     {subject}. Analyze and draft a reply.").
+
+**Creating a trigger agent:**
+
+1. Build the trigger agent JSON following the pattern above. When using
+   the AgentExecutorBlock sink, set its `graph_id` (in `input_default`)
+   to the parent agent's graph_id — this is how the trigger is linked
+   to the parent agent.
+2. Save it with `is_hidden=true` via `create_agent` so it doesn't
+   clutter the user's library.
+3. Schedule it to run on a cron interval (e.g. every 15 minutes:
+   `*/15 * * * *`) using `run_agent` with `schedule_name` and `cron`.
+
+The parent → trigger relationship is **derived from the graph
+contents**: any hidden agent whose graph contains an AgentExecutorBlock
+referencing the parent's graph_id is listed under that parent's
+triggers. No explicit linking is needed.
+
+**Inspecting an agent's existing triggers:**
+
+- Use `list_agent_triggers` with the parent's `library_agent_id` to see
+  all triggers configured for that agent — both trigger agents
+  (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
+  before adding a new trigger (to avoid duplicates) or before deleting
+  one (to find the right ID).
+
+**Managing schedules:**
+
+- Use `list_schedules` to see existing schedules (optionally filtered by
+  `graph_id`).
+- Use `delete_schedule` with a `schedule_id` to remove one.
+- To change a schedule's cron, delete it and re-create via `run_agent`
+  with the new `cron`.
+
+**Note**: When a trigger agent is edited and a new version is created,
+the existing schedule will still run the old version. Delete the old
+schedule and re-create it with the new version after editing.

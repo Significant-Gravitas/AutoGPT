@@ -19,7 +19,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | post | The post text (max 3,000 chars, hashtags supported with #) | str | No |
 | media_urls | Optional list of media URLs. LinkedIn supports up to 9 images, videos, or documents (PPT, PPTX, DOC, DOCX, PDF <100MB, <300 pages). | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

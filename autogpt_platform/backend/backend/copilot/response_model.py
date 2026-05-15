@@ -52,7 +52,8 @@ class ResponseType(str, Enum):
     ERROR = "error"
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
-    STATUS = "status"
+    STATUS = "data-status"
+    CURSOR = "data-cursor"
 
 
 class StreamBaseResponse(BaseModel):
@@ -275,10 +276,18 @@ class StreamError(StreamBaseResponse):
 
         The AI SDK uses z.strictObject({type, errorText}) which rejects
         any extra fields like `code` or `details`.
+
+        When ``code`` is set we prefix ``errorText`` with ``[code:<id>]`` so
+        the frontend can still parse a machine-readable code out of the
+        otherwise opaque text. Idempotent: if the caller already embedded
+        the prefix, we don't double it.
         """
+        text = self.errorText
+        if self.code and not text.lstrip().startswith(f"[code:{self.code}]"):
+            text = f"[code:{self.code}] {text}"
         data = {
             "type": self.type.value,
-            "errorText": self.errorText,
+            "errorText": text,
         }
         return f"data: {json_dumps(data)}\n\n"
 
@@ -300,17 +309,46 @@ class StreamHeartbeat(StreamBaseResponse):
         return ": heartbeat\n\n"
 
 
+class StreamCursor(StreamBaseResponse):
+    """Deprecated Redis-stream cursor data part.
+
+    Kept so older stored chunks or tests can still be reconstructed, but new
+    stream subscriptions no longer emit it. AI SDK resume needs a full replay
+    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
+    """
+
+    type: ResponseType = ResponseType.CURSOR
+    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {
+            "type": self.type.value,
+            "data": {"chunkId": self.chunkId},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
-    Used to provide feedback when the backend performs behind-the-scenes work
-    (e.g., compacting conversation context on a retry) that would otherwise
-    leave the user staring at an unexplained pause.
-
-    Sent as a proper ``data:`` event so the frontend can display it to the
-    user.  The AI SDK stream parser gracefully skips unknown chunk types
-    (logs a console warning), so this does not break the stream.
+    Emitted when the backend is about to enter a phase that would otherwise
+    leave the user staring at a silent "Thinking…" bubble — e.g. the first
+    LLM call, the continuation after a tool result, compacting conversation
+    context on retry, or activating a fallback model. The frontend reads
+    the latest `data-status` part on the current assistant message and uses
+    its `message` in place of the generic "Thinking…" copy.
     """
 
     type: ResponseType = ResponseType.STATUS
     message: str = Field(..., description="Human-readable status message")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part so the client surfaces it as
+        `type="data-status"` on `message.parts` instead of dropping it as
+        an unknown chunk type."""
+        data = {
+            "type": self.type.value,
+            "data": {"message": self.message},
+        }
+        return f"data: {json.dumps(data)}\n\n"

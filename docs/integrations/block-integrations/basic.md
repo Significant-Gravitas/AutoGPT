@@ -247,7 +247,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 ## Agent Google Drive File Input
 
 ### What it is
-Block for selecting a file from Google Drive.
+Agent-level input for a Google Drive file. REQUIRED for any agent that reads or writes a Drive file (Sheets, Docs, Slides, or generic Drive) — the picker is the only source of the _credentials_id needed at runtime, so consuming blocks cannot receive a hardcoded ID. Set allowed_views to match the consumer: ["SPREADSHEETS"] for Sheets, ["DOCUMENTS"] for Docs, ["PRESENTATIONS"] for Slides (leave default for generic Drive). Wire `result` to the consumer block's Drive field and leave that field unset in the consumer's input_default. Example link to a Google Sheets block: {"source_name": "result", "sink_name": "spreadsheet"} (use "document" for Docs, "presentation" for Slides). Use one input block per distinct file; multiple consumers of the same file share it.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

@@ -29,32 +29,21 @@ from typing import Any, cast
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import capped_rpush
+from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
 
 logger = logging.getLogger(__name__)
 
-# Per-session cap.  Higher values risk a runaway consumer; lower values
-# risk dropping user input under heavy typing.  10 was chosen as a
-# reasonable ceiling — a user typing faster than the copilot can drain
-# between tool rounds is already an unusual usage pattern.
+# Per-session cap; typing faster than the copilot drains is already unusual.
 MAX_PENDING_MESSAGES = 10
 
-# Redis key + TTL.  The buffer is ephemeral: if a turn completes or the
-# executor dies, the pending messages should either have been drained
-# already or are safe to drop (the user can resend).
+# Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
-# Secondary queue that carries drained-but-awaiting-persist PendingMessages
-# from the MCP tool wrapper (which drains the primary buffer and injects
-# into tool output for the LLM) to sdk/service.py's _dispatch_response
-# handler for StreamToolOutputAvailable, which pops and persists them as a
-# separate user row chronologically after the tool_result row.  This is the
-# hand-off between "Claude saw the follow-up mid-turn" (wrapper) and "UI
-# renders a user bubble for it" (service).  Rollback path re-queues into
-# the PRIMARY buffer so the next turn-start drain picks them up if the
-# user-row persist fails.
+# Secondary queue: carries drained-but-awaiting-persist PendingMessages from
+# the tool wrapper (which injects them into tool output) to sdk/service.py
+# (which persists a user row after the tool_result row).
 _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
@@ -65,13 +54,8 @@ _NOTIFY_PAYLOAD = "1"
 class PendingMessageContext(BaseModel):
     """Structured page context attached to a pending message.
 
-    Default ``extra='ignore'`` (pydantic's default): unknown keys from
-    the loose HTTP-level ``StreamChatRequest.context: dict[str, str]``
-    are silently dropped rather than raising ``ValidationError`` on
-    forward-compat additions.  The strict ``extra='forbid'`` mode was
-    removed after sentry r3105553772 — strict validation at this
-    boundary only added a 500 footgun; the upstream request model is
-    already schemaless so strict mode protects nothing.
+    Unknown keys are silently dropped: the upstream request model is
+    ``dict[str, str]``, so strict validation here only adds 500 footguns.
     """
 
     url: str | None = Field(default=None, max_length=2_000)
@@ -84,19 +68,16 @@ class PendingMessage(BaseModel):
     content: str = Field(min_length=1, max_length=32_000)
     file_ids: list[str] = Field(default_factory=list, max_length=20)
     context: PendingMessageContext | None = None
-    # Wall-clock time (unix seconds, float) the message was queued by the
-    # user.  Used by the turn-start drain to order pending relative to the
-    # turn's ``current`` message: items typed *before* the current's
-    # /stream arrival go ahead of it; items typed *after* (race path,
-    # queued while the /stream HTTP request was still processing) go
-    # after.  Defaults to 0.0 for backward compatibility with entries
-    # written before this field existed — those sort as "before everything"
-    # which matches the pre-fix behaviour.
+    # Enqueue time (unix seconds) so the turn-start drain can order pending
+    # messages relative to the turn's ``current`` message.
     enqueued_at: float = Field(default_factory=time.time)
 
 
 def _buffer_key(session_id: str) -> str:
-    return f"{_PENDING_KEY_PREFIX}{session_id}"
+    # Hash-tag braces colocate this key with stream_registry's session-meta key
+    # on the same Redis Cluster slot, which the gated-rpush Lua script needs
+    # (multi-key scripts return CROSSSLOT when KEYS hash to different slots).
+    return f"{_PENDING_KEY_PREFIX}{{{session_id}}}"
 
 
 def _notify_channel(session_id: str) -> str:
@@ -104,12 +85,7 @@ def _notify_channel(session_id: str) -> str:
 
 
 def _decode_redis_item(item: Any) -> str:
-    """Decode a redis-py list item to a str.
-
-    redis-py returns ``bytes`` when ``decode_responses=False`` and ``str``
-    when ``decode_responses=True``.  This helper handles both so callers
-    don't have to repeat the isinstance guard.
-    """
+    """Decode a redis-py list item to str (handles ``bytes`` and ``str``)."""
     return item.decode("utf-8") if isinstance(item, bytes) else str(item)
 
 
@@ -117,22 +93,11 @@ async def push_pending_message(
     session_id: str,
     message: PendingMessage,
 ) -> int:
-    """Append a pending message to the session's buffer.
+    """Append a pending message to the session's buffer, capped at
+    ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
 
-    Returns the new buffer length.  Enforces ``MAX_PENDING_MESSAGES`` by
-    trimming from the left (oldest) — the newest message always wins if
-    the user has been typing faster than the copilot can drain.
-
-    Delegates to :func:`backend.data.redis_helpers.capped_rpush` so RPUSH
-    + LTRIM + EXPIRE + LLEN run atomically (MULTI/EXEC) in one round
-    trip; a concurrent drain (LPOP) can no longer observe the list
-    temporarily over ``MAX_PENDING_MESSAGES``.
-
-    Note on durability: if the executor turn crashes after a push but before
-    the drain window runs, the message remains in Redis until the TTL expires
-    (``_PENDING_TTL_SECONDS``, currently 1 hour).  It is delivered on the
-    next turn that drains the buffer.  If no turn runs within the TTL the
-    message is silently dropped; the user may resend it.
+    The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
+    expires; messages not drained within that window are dropped.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
@@ -146,15 +111,64 @@ async def push_pending_message(
         ttl_seconds=_PENDING_TTL_SECONDS,
     )
 
-    # Fire-and-forget notify.  Subscribers use this as a wake-up hint;
-    # the buffer itself is authoritative so a lost notify is harmless.
+    # Fire-and-forget wake-up hint via sharded pub/sub (SPUBLISH routes to
+    # one shard vs classic PUBLISH's cluster-bus broadcast). Use
+    # execute_command because redis-py 6.x AsyncRedisCluster has no
+    # spublish() wrapper.
     try:
-        await redis.publish(_notify_channel(session_id), _NOTIFY_PAYLOAD)
+        await redis.execute_command(
+            "SPUBLISH", _notify_channel(session_id), _NOTIFY_PAYLOAD
+        )
     except Exception as e:  # pragma: no cover
         logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
 
     logger.info(
         "pending_messages: pushed message to session=%s (buffer_len=%d)",
+        session_id,
+        new_length,
+    )
+    return new_length
+
+
+async def push_pending_message_if_session_running(
+    session_id: str,
+    message: PendingMessage,
+    *,
+    session_meta_key: str,
+) -> int | None:
+    """Append a pending message only while the stream meta is still running."""
+    redis = await get_redis_async()
+    key = _buffer_key(session_id)
+    payload = message.model_dump_json()
+
+    new_length = await capped_rpush_if_hash_field(
+        redis,
+        hash_key=session_meta_key,
+        hash_field="status",
+        expected="running",
+        list_key=key,
+        value=payload,
+        max_len=MAX_PENDING_MESSAGES,
+        ttl_seconds=_PENDING_TTL_SECONDS,
+    )
+    if new_length is None:
+        logger.info(
+            "pending_messages: skipped push to session=%s because no running turn exists",
+            session_id,
+        )
+        return None
+
+    # Match push_pending_message: SPUBLISH via execute_command so it works on
+    # both Redis and AsyncRedisCluster (the cluster client has no publish()).
+    try:
+        await redis.execute_command(
+            "SPUBLISH", _notify_channel(session_id), _NOTIFY_PAYLOAD
+        )
+    except Exception as e:  # pragma: no cover
+        logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
+
+    logger.info(
+        "pending_messages: pushed message to running session=%s (buffer_len=%d)",
         session_id,
         new_length,
     )
@@ -171,13 +185,8 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # Redis LPOP with count (Redis 6.2+) returns None for missing key,
-    # empty list if we somehow race an empty key, or the popped items.
-    # Draining MAX_PENDING_MESSAGES at once is safe because the push side
-    # uses RPUSH + LTRIM(-MAX_PENDING_MESSAGES, -1) to cap the list to that
-    # same value, so the list can never hold more items than we drain here.
-    # If the cap is raised on the push side, raise the drain count here too
-    # (or switch to a loop drain).
+    # LPOP with count drains everything in one round-trip; the push side
+    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
     lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
     if not lpop_result:
         return []
@@ -240,26 +249,18 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
-async def _clear_pending_messages_unsafe(session_id: str) -> None:
-    """Drop the session's pending buffer — **not** the normal turn cleanup.
+async def clear_pending_messages_unsafe(session_id: str) -> None:
+    """Drop the session's pending buffer — operator/debug escape hatch.
 
-    Named ``_unsafe`` because reaching for this at turn end drops queued
-    follow-ups on the floor instead of running them (the bug fixed by
-    commit b64be73).  The atomic ``LPOP`` drain at turn start is the
-    primary consumer; anything pushed after the drain window belongs to
-    the next turn by definition.  Retained only as an operator/debug
-    escape hatch for manually clearing a stuck session and as a fixture
-    in the unit tests.
+    The ``_unsafe`` suffix warns: normal turn cleanup uses the atomic LPOP
+    drain; this bypass drops queued follow-ups on the floor.
     """
     redis = await get_redis_async()
     await redis.delete(_buffer_key(session_id))
 
 
-# Per-message and total-block caps for inline tool-boundary injection.
-# Per-message keeps a single long paste from dominating; the total cap
-# keeps the follow-up block small relative to the 100 KB MCP truncation
-# boundary so tool output always stays the larger share of the wrapper
-# return value.
+# Per-message + total caps keep the follow-up block bounded relative to the
+# 100 KB MCP tool-output truncation boundary.
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
 _FOLLOWUP_TOTAL_MAX_CHARS = 6_000
 
@@ -274,17 +275,9 @@ async def stash_pending_for_persist(
 ) -> None:
     """Enqueue drained PendingMessages for UI-row persistence.
 
-    Writes each message as a JSON payload to
-    ``copilot:pending-persist:{session_id}``.  The SDK service's
-    tool-result dispatch handler LPOPs this queue right after appending
-    the tool_result row to ``session.messages``, so the resulting user
-    row lands at the correct chronological position (after the tool
-    output the follow-up was drained against).
-
-    Fire-and-forget on Redis failures: a stash failure means Claude
-    still saw the follow-up in tool output (the injection step ran
-    first), so the only consequence is a missing UI bubble.  Logged
-    so it can be spotted.
+    The SDK service LPOPs this right after appending the tool_result row so
+    the user bubble lands after the tool output. Stash failures are logged
+    but not raised — the only consequence is a missing UI bubble.
     """
     if not messages:
         return
@@ -337,8 +330,7 @@ async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:
             )
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
-                "pending_messages: dropping malformed persist-queue entry "
-                "for %s: %s",
+                "pending_messages: dropping malformed persist-queue entry for %s: %s",
                 session_id,
                 e,
             )

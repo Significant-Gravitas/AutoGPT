@@ -1,16 +1,15 @@
 "use client";
 
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import {
   formatResetTime,
-  formatCents,
+  formatTierLabel,
+  TIER_BADGE_CLASS_NAME,
 } from "@/app/(platform)/copilot/components/usageHelpers";
-import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
@@ -42,21 +41,20 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
 }
 
 function UsageSection() {
-  const { data: usage } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
   });
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
 
-  if (!usage?.daily || !usage?.weekly) return null;
+  if (!isSuccess || !usage) return null;
+  if (!usage.daily && !usage.weekly) return null;
+
+  const tierLabel = formatTierLabel(usage.tier);
 
   return (
     <div className="py-2">
@@ -64,15 +62,15 @@ function UsageSection() {
         <Text variant="h5" className="text-neutral-800">
           Usage limits
         </Text>
-        {usage.tier && (
-          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
-            {usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()} plan
+        {tierLabel && (
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
+            {tierLabel} plan
           </Badge>
         )}
         <div className="flex-1" />
         {isBillingEnabled && (
           <Link
-            href="/profile/credits"
+            href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
           >
             Manage billing
@@ -80,28 +78,21 @@ function UsageSection() {
         )}
       </div>
       <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {usage.daily.limit > 0 && (
+        {usage.daily && (
           <UsageMeter
             label="Today"
-            used={usage.daily.used}
-            limit={usage.daily.limit}
+            percentUsed={usage.daily.percent_used}
             resetsAt={usage.daily.resets_at}
           />
         )}
-        {usage.weekly.limit > 0 && (
+        {usage.weekly && (
           <UsageMeter
             label="This week"
-            used={usage.weekly.used}
-            limit={usage.weekly.limit}
+            percentUsed={usage.weekly.percent_used}
             resetsAt={usage.weekly.resets_at}
           />
         )}
       </div>
-      <UsageFooter
-        usage={usage}
-        hasInsufficientCredits={hasInsufficientCredits}
-        onCreditChange={fetchCredits}
-      />
     </div>
   );
 }
@@ -239,77 +230,19 @@ function AgentListSection({
   );
 }
 
-function UsageFooter({
-  usage,
-  hasInsufficientCredits,
-  onCreditChange,
-}: {
-  usage: CoPilotUsageStatus;
-  hasInsufficientCredits: boolean;
-  onCreditChange?: () => void;
-}) {
-  const isDailyExhausted =
-    usage.daily.limit > 0 && usage.daily.used >= usage.daily.limit;
-  const isWeeklyExhausted =
-    usage.weekly.limit > 0 && usage.weekly.used >= usage.weekly.limit;
-  const resetCost = usage.reset_cost ?? 0;
-  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
-
-  const showReset =
-    isDailyExhausted &&
-    !isWeeklyExhausted &&
-    resetCost > 0 &&
-    !hasInsufficientCredits;
-
-  const showAddCredits =
-    isDailyExhausted && !isWeeklyExhausted && hasInsufficientCredits;
-
-  if (!showReset && !showAddCredits) return null;
-
-  return (
-    <div className="mt-4 flex items-center gap-3">
-      {showReset && (
-        <Button
-          variant="primary"
-          size="small"
-          onClick={() => resetUsage()}
-          loading={isPending}
-        >
-          {isPending
-            ? "Resetting..."
-            : `Reset daily limit for ${formatCents(resetCost)}`}
-        </Button>
-      )}
-      {showAddCredits && (
-        <Link
-          href="/profile/credits"
-          className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Add credits to reset
-        </Link>
-      )}
-    </div>
-  );
-}
-
 function UsageMeter({
   label,
-  used,
-  limit,
+  percentUsed,
   resetsAt,
 }: {
   label: string;
-  used: number;
-  limit: number;
+  percentUsed: number;
   resetsAt: Date | string;
 }) {
-  if (limit <= 0) return null;
-
-  const rawPercent = (used / limit) * 100;
-  const percent = Math.min(100, Math.round(rawPercent));
+  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
   const isHigh = percent >= 80;
   const percentLabel =
-    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -323,20 +256,20 @@ function UsageMeter({
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
         <div
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}
-          style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
+          style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <div className="flex items-baseline justify-between">
-        <Text variant="small" className="tabular-nums text-neutral-500">
-          {used.toLocaleString()} / {limit.toLocaleString()}
-        </Text>
-        <Text variant="small" className="text-neutral-400">
-          Resets {formatResetTime(resetsAt)}
-        </Text>
-      </div>
+      <Text variant="small" className="text-neutral-400">
+        Resets {formatResetTime(resetsAt)}
+      </Text>
     </div>
   );
 }

@@ -479,6 +479,190 @@ class TestRunBlockInputValidation:
 
         assert isinstance(response, BlockDetailsResponse)
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_returns_block_details_without_executing(self):
+        """validate_only=True returns BlockDetailsResponse and never calls execute."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        # Block with zero required fields — would normally execute on {}.
+        mock_block = make_mock_block_with_schema(
+            block_id="noop-id",
+            name="Noop",
+            input_properties={"optional": {"type": "string"}},
+            required_fields=[],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="noop-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "all required inputs provided" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_reports_missing_required(self):
+        """validate_only surfaces missing required fields without executing."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="needs-prompt-id",
+            name="AI Gen",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="needs-prompt-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "'prompt'" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_bypasses_picker_setup_card(self):
+        """Regression guard for Sentry r3135709745: validate_only=True on a
+        block with missing picker-backed required fields must NOT return a
+        SetupRequirementsResponse (that would render the picker, violating
+        the no-side-effects contract). BlockDetailsResponse instead."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                    "auto_credentials": {"provider": "google"},
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+                validate_only=True,
+            )
+
+        from .models import SetupRequirementsResponse
+
+        assert not isinstance(response, SetupRequirementsResponse)
+        assert isinstance(response, BlockDetailsResponse)
+        assert "'spreadsheet'" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_picker_field_returns_setup_requirements(self):
+        """When a missing required field is picker-backed, skip the schema
+        preview and return SetupRequirementsResponse directly so the
+        frontend renders the picker inline."""
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                    "google_drive_picker_config": {
+                        "allowed_views": ["SPREADSHEETS"],
+                    },
+                    "auto_credentials": {"provider": "google"},
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+                dry_run=False,
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "'spreadsheet'" in response.message
+        inputs = response.setup_info.requirements["inputs"]
+        picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
+        assert picker_field is not None
+        assert picker_field["format"] == "google-drive-picker"
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
@@ -874,3 +1058,102 @@ class TestExecuteBlockTimeout:
             f"spend_credits must be called exactly once, got {len(spend_calls)} "
             "(double-charge — sentry r3105216985)"
         )
+
+
+class TestRunBlockCredentialsHidden:
+    """The schema returned to the LLM must hide credential fields.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out (Replicate "Seed Dance 2.0" copilot session, May 2026 release).
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_credentials_field_stripped_from_block_details(self):
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="replicate-block-id",
+            name="Replicate Model",
+            input_properties={
+                "credentials": {
+                    "type": "object",
+                    "credentials_provider": ["replicate"],
+                    "credentials_types": ["api_key"],
+                },
+                "model_name": {"type": "string"},
+                "model_inputs": {"type": "object"},
+            },
+            required_fields=["credentials", "model_name"],
+        )
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="replicate-block-id",
+                input_data={},
+                dry_run=False,
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        inputs = response.block.inputs
+        assert "credentials" not in inputs.get("properties", {}), (
+            "credentials picker shape leaked into LLM-facing schema — the LLM "
+            "will try to construct it and fail"
+        )
+        assert "credentials" not in inputs.get(
+            "required", []
+        ), "credentials must not be listed as required — backend resolves it"
+        assert "model_name" in inputs["properties"]
+        assert "model_name" in inputs["required"]
+
+    def test_strip_credentials_helper(self):
+        """Direct unit test for the schema-stripping helper."""
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {
+            "properties": {
+                "credentials": {"type": "object"},
+                "prompt": {"type": "string"},
+            },
+            "required": ["credentials", "prompt"],
+        }
+        cleaned = _strip_credentials_from_schema(schema, {"credentials"})
+        assert "credentials" not in cleaned["properties"]
+        assert cleaned["required"] == ["prompt"]
+        # Original must not be mutated.
+        assert "credentials" in schema["properties"]
+        assert schema["required"] == ["credentials", "prompt"]
+
+    def test_strip_credentials_helper_no_creds(self):
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {"properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}
+        # Empty credentials_fields → return unchanged.
+        assert _strip_credentials_from_schema(schema, set()) is schema
+
+    def test_strip_credentials_helper_drops_empty_required(self):
+        from backend.copilot.tools.run_block import _strip_credentials_from_schema
+
+        schema = {
+            "properties": {"credentials": {"type": "object"}},
+            "required": ["credentials"],
+        }
+        cleaned = _strip_credentials_from_schema(schema, {"credentials"})
+        assert "required" not in cleaned

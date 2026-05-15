@@ -3,6 +3,7 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
+import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
@@ -89,6 +90,48 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
   );
 }
 
+/**
+ * Whether the trailing assistant message has at least one part the UI
+ * would visibly render: text with non-empty content, reasoning with
+ * non-empty content, or any tool part (tool cards render regardless of
+ * state). Used to gate the resume-snapshot discard — the replay may stream
+ * empty reasoning-start / step-start chunks for minutes before any
+ * rendered content (e.g. Perplexity deep research), and we do not want to
+ * drop the pre-replay snapshot until the user actually sees something.
+ */
+export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return false;
+  return last.parts.some((part) => {
+    if (part.type === "text" && part.text.trim().length > 0) return true;
+    if (part.type === "reasoning" && part.text.trim().length > 0) return true;
+    if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
+    return false;
+  });
+}
+
+/**
+ * Surface the latest backend-emitted status message for the trailing assistant
+ * message, if that status has not already been invalidated by newer visible
+ * parts. Used to show progress during restore/replay before answer text lands.
+ */
+export function getLatestAssistantStatusMessage(
+  messages: UIMessage[],
+): string | null {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return null;
+  for (let i = last.parts.length - 1; i >= 0; i--) {
+    const part = last.parts[i];
+    if (part.type === "data-cursor") continue;
+    if (part.type === "data-status") {
+      const data = (part as { data?: { message?: unknown } }).data;
+      return typeof data?.message === "string" ? data.message : null;
+    }
+    return null;
+  }
+  return null;
+}
+
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(
   messages: UIMessage[],
@@ -105,6 +148,79 @@ export function resolveInProgressTools(
         : part,
     ),
   }));
+}
+
+const IN_PROGRESS_PART_STATES = new Set([
+  "streaming",
+  "input-streaming",
+  "input-available",
+]);
+
+/**
+ * True if the message is an assistant message with at least one part that
+ * the stream never finalised — i.e. text / reasoning in ``streaming`` or
+ * tool parts in ``input-streaming`` / ``input-available``. Used both for
+ * the partial-snapshot discard during resume and for zombie-part recovery
+ * on session re-entry.
+ */
+export function hasInProgressAssistantParts(
+  message: UIMessage | undefined,
+): boolean {
+  if (message?.role !== "assistant") return false;
+  return message.parts.some((part) => {
+    if (!("state" in part) || typeof part.state !== "string") return false;
+    return IN_PROGRESS_PART_STATES.has(part.state);
+  });
+}
+
+const COPILOT_INTERRUPTED_MARKER =
+  "[__COPILOT_RETRYABLE_ERROR_a9c2__] Response was interrupted. Resend to try again.";
+
+/**
+ * Close the last assistant message when the stream ended without
+ * finalising it (backend crash mid-write, the user switched away and the
+ * DB snapshot rehydrated with orphaned in-progress parts, etc.). Tool
+ * parts in ``input-streaming`` / ``input-available`` flip to
+ * ``output-error`` "Interrupted" so their spinners stop; text / reasoning
+ * parts in ``streaming`` flip to ``done`` so their typing animation ends
+ * but the partial content is preserved. A retryable-error marker is
+ * appended so the UI renders a "resend to try again" affordance.
+ *
+ * Only the last message is touched — earlier messages can't have unclosed
+ * parts in a healthy session. Returns the original array when no repair
+ * is needed, so callers can cheaply compare references.
+ */
+export function resolveInterruptedMessage(messages: UIMessage[]): UIMessage[] {
+  if (messages.length === 0) return messages;
+  const lastIdx = messages.length - 1;
+  const last = messages[lastIdx];
+  if (!hasInProgressAssistantParts(last)) return messages;
+
+  const resolvedParts = last.parts.map((part) => {
+    if (!("state" in part) || typeof part.state !== "string") return part;
+    if (part.state === "input-streaming" || part.state === "input-available") {
+      return {
+        ...part,
+        state: "output-error" as const,
+        errorText: "Interrupted",
+      };
+    }
+    if (part.state === "streaming") {
+      return { ...part, state: "done" as const };
+    }
+    return part;
+  });
+
+  return [
+    ...messages.slice(0, lastIdx),
+    {
+      ...last,
+      parts: [
+        ...resolvedParts,
+        { type: "text" as const, text: COPILOT_INTERRUPTED_MARKER },
+      ],
+    },
+  ];
 }
 
 /**
@@ -182,6 +298,28 @@ export function shouldSuppressDuplicateSend(
  */
 export function disconnectSessionStream(sessionId: string): void {
   deleteV2DisconnectSessionStream(sessionId).catch(() => {});
+}
+
+/**
+ * Decide whether a reconnect request must be coalesced onto the debounce
+ * window boundary, rather than firing immediately.
+ *
+ * Returns the remaining milliseconds until the window closes (so the caller
+ * can schedule a `setTimeout` for that delay) when the previous resume
+ * happened inside the window, or `null` to let the reconnect proceed now.
+ *
+ * `lastResumeAt === 0` signals "no reconnect has fired yet in this session"
+ * — the first reconnect always passes through regardless of `now`.
+ */
+export function shouldDebounceReconnect(
+  lastResumeAt: number,
+  now: number,
+  windowMs: number,
+): number | null {
+  if (lastResumeAt <= 0) return null;
+  const sinceLastResume = now - lastResumeAt;
+  if (sinceLastResume >= windowMs) return null;
+  return windowMs - sinceLastResume;
 }
 
 /**

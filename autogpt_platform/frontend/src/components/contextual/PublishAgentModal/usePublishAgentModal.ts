@@ -282,7 +282,7 @@ export function usePublishAgentModal({
   }
 
   function handleGoToDashboard() {
-    router.push("/profile/dashboard");
+    router.push("/settings/creator-dashboard");
     handleClose();
   }
 

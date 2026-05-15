@@ -42,6 +42,13 @@ class ResponseType(str, Enum):
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
 
+    # Schedules
+    SCHEDULE_LIST = "schedule_list"
+    SCHEDULE_DELETED = "schedule_deleted"
+
+    # Agent triggers
+    AGENT_TRIGGER_LIST = "agent_trigger_list"
+
     # MCP
     MCP_GUIDE = "mcp_guide"
     MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
@@ -76,6 +83,7 @@ class ResponseType(str, Enum):
 
     # Web
     WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
 
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
@@ -86,6 +94,12 @@ class ResponseType(str, Enum):
     MEMORY_SEARCH = "memory_search"
     MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
     MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
+    # Planning
+    TODO_WRITE = "todo_write"
+
+    # Platform info
+    PLATFORM_INFO = "platform_info"
 
 
 # Base response model
@@ -418,6 +432,7 @@ class AgentSavedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
@@ -582,6 +597,32 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
+    results: list[WebSearchResult] = Field(default_factory=list)
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):
@@ -813,3 +854,45 @@ class MemoryForgetConfirmResponse(ToolResponseBase):
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+
+
+# --- Planning ---
+
+
+class TodoItem(BaseModel):
+    """One entry in a ``TodoWrite`` checklist.
+
+    Mirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so
+    the frontend's ``GenericTool`` accordion renders baseline-emitted todos
+    identically to SDK-emitted ones.
+    """
+
+    content: str = Field(description="Imperative description of the task.")
+    activeForm: str = Field(
+        description="Present-continuous form shown while the task is running.",
+    )
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
+class TodoWriteResponse(ToolResponseBase):
+    """Ack returned by ``TodoWrite``.
+
+    The tool is effectively stateless — the authoritative task list lives in
+    the assistant's latest tool-call arguments, which are replayed from the
+    transcript on each turn. The tool output only needs to confirm that the
+    update was accepted so the model can proceed.
+    """
+
+    type: ResponseType = ResponseType.TODO_WRITE
+    todos: list[TodoItem] = Field(default_factory=list)
+
+
+class PlatformInfoResponse(ToolResponseBase):
+    """Response from the ``get_platform_info`` tool."""
+
+    type: ResponseType = ResponseType.PLATFORM_INFO
+    topic: str
+    tier: str | None = None
+    billing_url: str | None = "/settings/billing"

@@ -10,7 +10,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Tray } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
@@ -271,6 +271,7 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
+                variant="default"
                 disabled={isEnqueueing}
                 onClick={async () => {
                   if (isEnqueueing) return;
@@ -285,9 +286,9 @@ export function ChatInput({
                     }
                   }
                 }}
-                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
+                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
               >
-                <Tray className="size-4" weight="bold" />
+                <ArrowUpIcon className="size-4" weight="bold" />
               </PromptInputButton>
             )}
             {isStreaming ? (

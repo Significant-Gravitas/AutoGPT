@@ -8,10 +8,12 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.copilot.tools import TOOL_REGISTRY
-
-# Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = """\
+# Workflow rules appended to the system prompt on every copilot turn
+# (baseline appends directly; SDK appends via the storage-supplement
+# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# tool-discovery priority, sub-agent etiquette) that don't belong on any
+# individual tool schema.
+SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -129,45 +131,122 @@ After building the file, reference it with `@@agptfile:` in other tools:
   non-overlapping scope to avoid redundant searches.
 
 
-### Tool Discovery Priority
+### Tool Discovery Priority — `find_block` is MANDATORY before any "no integration" reply
 
-When the user asks to interact with a service or API, follow this order:
+When the user asks to interact with a service, integration, platform, or API,
+your **first action** in that turn MUST be a `find_block` call with the
+service name. This is non-negotiable. Your prior knowledge of which
+integrations exist is unreliable — the block registry changes constantly
+and is the only source of truth.
 
-1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+Order of fallbacks (only after `find_block` returns nothing usable):
 
-2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+1. **`find_block` first — ALWAYS.** Search platform blocks with the service
+   name (e.g. `find_block(query="linkedin post")`,
+   `find_block(query="shopify orders")`). Hundreds of built-in blocks exist
+   (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, LinkedIn via Ayrshare,
+   etc.). Most "obscure" integrations have a block.
 
-3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+2. **`run_mcp_tool`** — If `find_block` returns no match, check if a hosted MCP
+   server is available for the service. Only use known MCP server URLs from
+   the registry.
 
-4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+3. **`SendAuthenticatedWebRequestBlock`** — If no block or MCP server exists,
+   use `SendAuthenticatedWebRequestBlock` with existing host-scoped
+   credentials. Check available credentials via `connect_integration`.
 
-**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+4. **Manual API call** — As a last resort, guide the user to set up
+   credentials and use `SendAuthenticatedWebRequestBlock` with direct API
+   calls.
 
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
+### Anti-pattern: refusing without searching (CRITICAL)
 
-### Delegating to another autopilot (sub-autopilot pattern)
-Use the **`run_sub_session`** tool to delegate a task to a fresh
-sub-AutoPilot. The sub has its own full tool set and can perform
-multi-step work autonomously.
+**Never** emit any variant of these without a preceding `find_block` call in
+the current turn:
 
-- `prompt` (required): the task description.
-- `system_context` (optional): extra context prepended to the prompt.
-- `sub_autopilot_session_id` (optional): continue an existing
-  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
-  previous completed run.
-- `wait_for_result` (default 60, max 300): seconds to wait inline. If
-  the sub isn't done by then you get `status="running"` + a
-  `sub_session_id` — call **`get_sub_session_result`** with that id
-  (wait up to 300s more per call) until it returns `completed` or
-  `error`. Works across turns — safe to reconnect in a later message.
+- "We don't have a native X integration yet."
+- "X isn't supported on the platform."
+- "We can't do X / I can't access X."
+- "There's no block for X."
+- Any feature-request flow ("I'll flag this as a requested integration").
 
-Use this when a task is complex enough to benefit from a separate
-autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
-via `run_block` — it's hidden from `run_block` by design because the
-dedicated tool handles the async lifecycle correctly.
+If you have not called `find_block` for the service the user named, you do
+**not yet know** whether it exists. Refusing or pivoting to a workaround
+before searching wastes the user's turn and is a known regression. This rule
+overrides any worked example earlier in this prompt that shows a capability
+gap being declared without a preceding `find_block` call — those examples
+are wrong and should be ignored.
+
+Correct flow for *any* integration request, even ones you "know" don't
+exist:
+
+```
+1. find_block(query="<service> <action>")
+2. If a matching block exists → use it (or run with validate_only to inspect).
+3. If find_block returns no match → THEN state the gap and offer
+   SendAuthenticatedWebRequestBlock / browser automation / feature request.
+```
+
+### Complex multi-step work
+- Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
+- Delegate self-contained subtasks to `run_sub_session` to keep their
+  intermediate tool calls out of the parent context.
+- Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
+  instead.
+
+### Picker-backed inputs via `run_block` (READ BEFORE CALLING)
+
+Some block input fields are populated by a platform-rendered picker at
+run time — the user clicks a button, authenticates, and selects a
+resource in one step. **The picker is the ONLY source of the hidden
+credentials attached to the selected value.** A bare ID or URL will
+never authenticate. You can spot a picker field by a `format` hint or
+an `auto_credentials` entry in the schema returned by `find_block`.
+
+**The correct flow — just call `run_block` with the field set to
+`null` (or omit it for non-required fields); the platform handles the
+picker and credentials.**
+
+✅ Correct — triggers the inline picker:
+```
+run_block(block_id="...", input_data={"<picker_field>": null, ...other inputs...})
+```
+
+The tool returns a setup card with the picker in chat. The user picks
+the resource, and `run_block` is re-invoked automatically with the
+full picker payload (including the hidden credentials field) merged
+in. You do NOT need to collect URLs, IDs, or credentials from the
+user — just call the tool.
+
+❌ Do NOT:
+- Ask the user for a URL, ID, or any identifier for a picker-backed
+  resource before calling `run_block`. The picker inside the setup
+  card is the answer.
+- Hardcode an ID parsed from a URL the user happens to mention — a
+  bare ID has no attached credentials and the block fails at auth.
+- Refuse the task ("I can't access private resources") — you can, via
+  the picker. Call `run_block` first.
+
+**Chained calls**: if a prior tool already returned a full picker
+object (with its hidden credentials field attached), you MAY pass that
+object through as-is to a downstream `run_block`; do not strip or
+modify its fields.
+
+### Pre-flight with `validate_only`
+
+`run_block(id, {})` is NOT always a safe probe — for blocks with no
+required inputs, it executes immediately. When you need to inspect
+what a block does or what it needs without side effects, pass
+`validate_only: true`:
+
+```
+run_block(block_id="...", input_data={...}, validate_only=true)
+```
+
+This returns the block's input/output schema and a list of missing
+required fields — never executes, never renders picker cards, never
+charges credits. Use it when you're unsure whether a block has
+required inputs, or to plan multi-step work without committing.
 
 """
 
@@ -180,14 +259,18 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before asking them to connect it.
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
-- If `gh` or `git` fails with an authentication error (e.g. "authentication
-  required", "could not read Username", or exit code 128), call
+- **MANDATORY:** You MUST run `gh auth status` before EVER calling
+  `connect_integration(provider="github")`. If it shows `Logged in`,
+  proceed directly — no integration connection needed. Never skip this check.
+- If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
+  authentication error (e.g. "authentication required", "could not read
+  Username", or exit code 128), THEN call
   `connect_integration(provider="github")` to surface the GitHub credentials
   setup card so the user can connect their account. Once connected, retry
   the operation.
@@ -261,7 +344,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{_SHARED_TOOL_NOTES}{extra_notes}"""
+{SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -310,35 +393,6 @@ def _get_cloud_sandbox_supplement() -> str:
         file_move_name_2_to_1="Persistent → Sandbox",
         extra_notes=_E2B_TOOL_NOTES,
     )
-
-
-def _generate_tool_documentation() -> str:
-    """Auto-generate tool documentation from TOOL_REGISTRY.
-
-    NOTE: This is ONLY used in baseline mode (direct OpenAI API).
-    SDK mode doesn't need it since Claude gets tool schemas automatically.
-
-    This generates a complete list of available tools with their descriptions,
-    ensuring the documentation stays in sync with the actual tool implementations.
-    All workflow guidance is now embedded in individual tool descriptions.
-
-    Only documents tools that are available in the current environment
-    (checked via tool.is_available property).
-    """
-    docs = "\n## AVAILABLE TOOLS\n\n"
-
-    # Sort tools alphabetically for consistent output
-    # Filter by is_available to match get_available_tools() behavior
-    for name in sorted(TOOL_REGISTRY.keys()):
-        tool = TOOL_REGISTRY[name]
-        if not tool.is_available:
-            continue
-        schema = tool.as_openai_tool()
-        desc = schema["function"].get("description", "No description available")
-        # Format as bullet list with tool name in code style
-        docs += f"- **`{name}`**: {desc}\n"
-
-    return docs
 
 
 _USER_FOLLOW_UP_NOTE = """
@@ -438,17 +492,3 @@ You have access to persistent temporal memory tools that remember facts across s
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
-
-
-def get_baseline_supplement() -> str:
-    """Get the supplement for baseline mode (direct OpenAI API).
-
-    Baseline mode INCLUDES auto-generated tool documentation because the
-    direct API doesn't automatically provide tool schemas to Claude.
-    Also includes shared technical notes (but NOT SDK-specific environment details).
-
-    Returns:
-        The supplement string to append to the system prompt
-    """
-    tool_docs = _generate_tool_documentation()
-    return tool_docs + _SHARED_TOOL_NOTES

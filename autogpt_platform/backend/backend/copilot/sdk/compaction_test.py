@@ -162,10 +162,11 @@ class TestFilterCompactionMessages:
 
 
 class TestCompactionTracker:
-    def test_on_compact_sets_event(self):
+    def test_on_compact_registers_pending_attempt(self):
         tracker = CompactionTracker()
         tracker.on_compact()
-        assert tracker._compact_start.is_set()
+        assert tracker.attempt_count == 1
+        assert list(tracker._pending_transcript_paths) == [""]
 
     def test_emit_start_if_ready_no_event(self):
         tracker = CompactionTracker()
@@ -244,36 +245,39 @@ class TestCompactionTracker:
         evts = tracker.emit_pre_query(session)
         assert len(evts) == 5
         assert len(session.messages) == 2
-        assert tracker._done is True
+        assert tracker.attempt_count == 1
+        assert tracker.completed_count == 1
+        assert tracker.get_observability_metadata() == {
+            "compaction_attempt_count": 1,
+            "compaction_attempt_sources": "pre_query",
+            "compaction_count": 1,
+            "compaction_sources": "pre_query",
+        }
 
     def test_reset_for_query(self):
         tracker = CompactionTracker()
-        tracker._done = True
+        tracker.on_compact("/some/path")
         tracker._start_emitted = True
         tracker._tool_call_id = "old"
-        tracker._transcript_path = "/some/path"
+        tracker._active_transcript_path = "/active/path"
         tracker.reset_for_query()
-        assert tracker._done is False
         assert tracker._start_emitted is False
         assert tracker._tool_call_id == ""
-        assert tracker._transcript_path == ""
+        assert tracker._active_transcript_path == ""
+        assert list(tracker._pending_transcript_paths) == []
 
     @pytest.mark.asyncio
-    async def test_pre_query_blocks_sdk_compaction_until_reset(self):
-        """After pre-query compaction, SDK compaction is blocked until
-        reset_for_query is called."""
+    async def test_pre_query_does_not_block_sdk_compaction_within_query(self):
+        """SDK auto-compaction can still fire after a pre-query compaction."""
         tracker = CompactionTracker()
         session = _make_session()
         tracker.emit_pre_query(session)
         tracker.on_compact()
-        # _done is True so emit_start_if_ready is blocked
-        evts = tracker.emit_start_if_ready()
-        assert evts == []
-        # Reset clears _done, allowing subsequent compaction
-        tracker.reset_for_query()
-        tracker.on_compact()
         evts = tracker.emit_start_if_ready()
         assert len(evts) == 3
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert tracker.completed_count == 2
 
     @pytest.mark.asyncio
     async def test_reset_allows_new_compaction(self):
@@ -318,43 +322,18 @@ class TestCompactionTracker:
         assert len(result1.events) == 2
         assert result1.transcript_path == "/path/1"
 
-        # Second compaction cycle (should NOT be blocked — _done resets
-        # because emit_end_if_ready sets it True, but the next on_compact
-        # + emit_start_if_ready checks !_done which IS True now.
-        # So we need reset_for_query between queries, but within a single
-        # query multiple compactions work because _done blocks emit_start
-        # until the next message arrives, at which point emit_end detects it)
-        #
-        # Actually: _done=True blocks emit_start_if_ready, so we need
-        # the stream loop to reset. In practice service.py doesn't call
-        # reset between compactions within the same query — let's verify
-        # the actual behavior.
+        # Second compaction cycle in the same query
         tracker.on_compact("/path/2")
-        # _done is True from first compaction, so start is blocked
         start_evts = tracker.emit_start_if_ready()
-        assert start_evts == []
-        # But emit_end returns no-op because _done is True
+        assert len(start_evts) == 3
         result2 = await tracker.emit_end_if_ready(session)
-        assert result2.just_ended is False
+        assert result2.just_ended is True
+        assert result2.transcript_path == "/path/2"
+        assert tracker.completed_count == 2
 
     @pytest.mark.asyncio
     async def test_multiple_compactions_with_intervening_message(self):
-        """Multiple compactions work when the stream loop processes messages between them.
-
-        In the real service.py flow:
-        1. PreCompact fires → on_compact()
-        2. emit_start shows spinner
-        3. Next message arrives → emit_end completes compaction (_done=True)
-        4. Stream continues processing messages...
-        5. If a second PreCompact fires, _done=True blocks emit_start
-        6. But the next message triggers emit_end, which sees _done=True → no-op
-        7. The stream loop needs to detect this and handle accordingly
-
-        The actual flow for multiple compactions within a query requires
-        _done to be cleared between them. The service.py code uses
-        CompactionResult.just_ended to trigger replace_entries, and _done
-        stays True until reset_for_query.
-        """
+        """Multiple compactions remain supported across query boundaries."""
         tracker = CompactionTracker()
         session = _make_session()
 
@@ -376,10 +355,10 @@ class TestCompactionTracker:
         assert result2.just_ended is True
         assert result2.transcript_path == "/path/2"
 
-    def test_on_compact_stores_transcript_path(self):
+    def test_on_compact_queues_transcript_path(self):
         tracker = CompactionTracker()
         tracker.on_compact("/some/path.jsonl")
-        assert tracker._transcript_path == "/some/path.jsonl"
+        assert list(tracker._pending_transcript_paths) == ["/some/path.jsonl"]
 
     @pytest.mark.asyncio
     async def test_emit_end_returns_transcript_path(self):
@@ -391,17 +370,71 @@ class TestCompactionTracker:
         result = await tracker.emit_end_if_ready(session)
         assert result.just_ended is True
         assert result.transcript_path == "/my/session.jsonl"
-        # transcript_path is cleared after emit_end
-        assert tracker._transcript_path == ""
+        assert tracker._active_transcript_path == ""
 
     @pytest.mark.asyncio
-    async def test_emit_end_clears_transcript_path(self):
-        """After emit_end, _transcript_path is reset so it doesn't leak to
-        subsequent non-compaction emit_end calls."""
+    async def test_emit_end_clears_active_transcript_path(self):
+        """After emit_end, the active transcript path is reset."""
         tracker = CompactionTracker()
         session = _make_session()
         tracker.on_compact("/first/path.jsonl")
         tracker.emit_start_if_ready()
         await tracker.emit_end_if_ready(session)
-        # After compaction, _transcript_path is cleared
-        assert tracker._transcript_path == ""
+        assert tracker._active_transcript_path == ""
+
+    @pytest.mark.asyncio
+    async def test_multiple_pending_hooks_are_counted_even_before_completion(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.on_compact("/path/1")
+        tracker.emit_start_if_ready()
+        tracker.on_compact("/path/2")
+        tracker.on_compact("/path/3")
+
+        result1 = await tracker.emit_end_if_ready(session)
+        assert result1.just_ended is True
+        assert result1.transcript_path == "/path/1"
+        assert tracker.attempt_count == 3
+        assert tracker.completed_count == 1
+
+        tracker.emit_start_if_ready()
+        result2 = await tracker.emit_end_if_ready(session)
+        assert result2.just_ended is True
+        assert result2.transcript_path == "/path/2"
+
+        tracker.emit_start_if_ready()
+        result3 = await tracker.emit_end_if_ready(session)
+        assert result3.just_ended is True
+        assert result3.transcript_path == "/path/3"
+        assert tracker.completed_count == 3
+
+    def test_get_observability_metadata_includes_attempts_and_completions(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.emit_pre_query(session)
+        tracker.on_compact("/path/1")
+        tracker.on_compact("/path/2")
+
+        assert tracker.get_observability_metadata() == {
+            "compaction_attempt_count": 3,
+            "compaction_attempt_sources": "pre_query,sdk_internal:2",
+            "compaction_count": 1,
+            "compaction_sources": "pre_query",
+        }
+
+    def test_get_log_summary_includes_attempts_and_completions(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+
+        tracker.emit_pre_query(session)
+        tracker.on_compact("/path/1")
+        tracker.on_compact("/path/2")
+
+        assert tracker.get_log_summary() == {
+            "attempt_count": 3,
+            "attempt_sources": "pre_query,sdk_internal:2",
+            "completed_count": 1,
+            "completed_sources": "pre_query",
+        }

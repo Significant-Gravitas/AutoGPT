@@ -214,7 +214,7 @@ export function WalletRefill() {
               To update your billing details, head to{" "}
             </span>
             <Link
-              href="/profile/credits"
+              href="/settings/billing"
               className="cursor-pointer text-zinc-800 underline"
             >
               Billing settings

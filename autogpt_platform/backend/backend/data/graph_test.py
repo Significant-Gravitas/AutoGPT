@@ -39,6 +39,22 @@ def mock_embedding_functions():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _enable_google_blocks_for_auto_cred_tests(request, monkeypatch):
+    # The Google Sheets / Gmail blocks auto-disable when OAuth client
+    # env vars are unset — which is the case in CI. The graph validator
+    # short-circuits disabled blocks at graph.py:798 before reaching the
+    # auto-credentials branch we want to exercise. Flip the disable
+    # flags for the ``test_auto_credentials_*`` group so the validator
+    # actually runs the new anti-pattern check; other tests in this
+    # file are unaffected.
+    if not request.node.name.startswith("test_auto_credentials_"):
+        return
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+    monkeypatch.setattr("backend.blocks.google.gmail.GOOGLE_OAUTH_IS_CONFIGURED", True)
+    monkeypatch.setattr("backend.blocks.google._auth.GOOGLE_OAUTH_IS_CONFIGURED", True)
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_creation(server: SpinTestServer, snapshot: Snapshot):
     """
@@ -486,6 +502,332 @@ def test_node_credentials_optional_with_other_metadata():
     assert node.credentials_optional is True
     assert node.metadata["position"] == {"x": 100, "y": 200}
     assert node.metadata["customized_name"] == "My Custom Node"
+
+
+# ============================================================================
+# Tests for CredentialsFieldInfo.combine() field propagation
+def test_combine_preserves_is_auto_credential_flag():
+    """
+    CredentialsFieldInfo.combine() must propagate is_auto_credential and
+    input_field_name to the combined result. Regression test for reviewer
+    finding that combine() dropped these fields.
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    auto_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["drive.readonly"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+        },
+        by_alias=True,
+    )
+
+    # combine() takes *args of (field_info, key) tuples
+    combined = CredentialsFieldInfo.combine(
+        (auto_field, ("node-1", "credentials")),
+        (auto_field, ("node-2", "credentials")),
+    )
+
+    assert len(combined) == 1
+    group_key = next(iter(combined))
+    combined_info, combined_keys = combined[group_key]
+
+    assert combined_info.is_auto_credential is True
+    assert combined_info.input_field_name == "spreadsheet"
+    assert combined_keys == {("node-1", "credentials"), ("node-2", "credentials")}
+
+
+def test_combine_preserves_regular_credential_defaults():
+    """Regular credentials should have is_auto_credential=False after combine()."""
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    combined = CredentialsFieldInfo.combine(
+        (regular_field, ("node-1", "credentials")),
+    )
+
+    group_key = next(iter(combined))
+    combined_info, _ = combined[group_key]
+
+    assert combined_info.is_auto_credential is False
+    assert combined_info.input_field_name is None
+
+
+# ============================================================================
+# Tests for _reassign_ids credential clearing (Fix 3: SECRT-1772)
+
+
+def test_reassign_ids_clears_credentials_id():
+    """
+    [SECRT-1772] _reassign_ids should null out the entire
+    GoogleDriveFile-style input_default field so forked agents
+    don't retain the original creator's credential references AND
+    don't leave a partial file object (which would be rejected by
+    the auto-credentials validator).
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "spreadsheet": {
+                "_credentials_id": "original-cred-id",
+                "id": "file-123",
+                "name": "test.xlsx",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/file-123",
+            },
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    # The entire field is nulled — leaving a partial file object behind
+    # would be rejected by the auto-credentials validator, breaking
+    # fork_graph() for agents that previously had a picker-selected file.
+    assert graph.nodes[0].input_default["spreadsheet"] is None
+
+
+def test_reassign_ids_preserves_non_credential_fields():
+    """
+    Regression guard: _reassign_ids should NOT null fields that don't
+    carry a _credentials_id (e.g., plain user-entered values).
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            # No _credentials_id — a plain dict that should be preserved
+            "config": {
+                "id": "file-123",
+                "name": "test.xlsx",
+            },
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    field = graph.nodes[0].input_default["config"]
+    assert field == {"id": "file-123", "name": "test.xlsx"}
+
+
+def test_reassign_ids_handles_no_credentials():
+    """
+    Regression guard: _reassign_ids should not error when input_default
+    has no dict fields with _credentials_id.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "input": "some value",
+            "another_input": 42,
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    # Should not error, fields unchanged
+    assert graph.nodes[0].input_default["input"] == "some value"
+    assert graph.nodes[0].input_default["another_input"] == 42
+
+
+def test_reassign_ids_handles_multiple_credential_fields():
+    """
+    [SECRT-1772] When a node has multiple dict fields with _credentials_id,
+    ALL of them should be cleared.
+    """
+    from backend.data.graph import GraphModel
+
+    node = Node(
+        id="node-1",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "spreadsheet": {
+                "_credentials_id": "cred-1",
+                "id": "file-1",
+                "name": "file1.xlsx",
+            },
+            "doc_file": {
+                "_credentials_id": "cred-2",
+                "id": "file-2",
+                "name": "file2.docx",
+            },
+            "plain_input": "not a dict",
+        },
+    )
+
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+
+    # Each auto-credential field is nulled entirely — not just the id key —
+    # so the validator accepts the forked graph.
+    assert graph.nodes[0].input_default["spreadsheet"] is None
+    assert graph.nodes[0].input_default["doc_file"] is None
+    assert graph.nodes[0].input_default["plain_input"] == "not a dict"
+
+
+# ============================================================================
+# Tests for discriminate() field propagation
+def test_discriminate_preserves_is_auto_credential_flag():
+    """
+    CredentialsFieldInfo.discriminate() must propagate is_auto_credential and
+    input_field_name to the discriminated result. Regression test for
+    discriminate() dropping these fields (same class of bug as combine()).
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    auto_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google", "openai"],
+            "credentials_types": ["oauth2"],
+            "credentials_scopes": ["drive.readonly"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+            "discriminator": "model",
+            "discriminator_mapping": {"gpt-4": "openai", "gemini": "google"},
+        },
+        by_alias=True,
+    )
+
+    discriminated = auto_field.discriminate("gemini")
+
+    assert discriminated.is_auto_credential is True
+    assert discriminated.input_field_name == "spreadsheet"
+    assert discriminated.provider == frozenset(["google"])
+
+
+def test_discriminate_preserves_regular_credential_defaults():
+    """Regular credentials should have is_auto_credential=False after discriminate()."""
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google", "openai"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+            "discriminator": "model",
+            "discriminator_mapping": {"gpt-4": "openai", "gemini": "google"},
+        },
+        by_alias=True,
+    )
+
+    discriminated = regular_field.discriminate("gpt-4")
+
+    assert discriminated.is_auto_credential is False
+    assert discriminated.input_field_name is None
+    assert discriminated.provider == frozenset(["openai"])
+
+
+# ============================================================================
+# Tests for credentials_input_schema excluding auto_credentials
+def test_credentials_input_schema_excludes_auto_creds():
+    """
+    GraphModel.credentials_input_schema should exclude auto_credentials
+    (is_auto_credential=True) from the schema. Auto_credentials are
+    transparently resolved at execution time via file picker data.
+    """
+    from datetime import datetime, timezone
+    from unittest.mock import PropertyMock, patch
+
+    from backend.data.graph import GraphModel, NodeModel
+    from backend.data.model import CredentialsFieldInfo
+
+    regular_field_info = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[
+            NodeModel(
+                id="node-1",
+                block_id=StoreValueBlock().id,
+                input_default={},
+                graph_id="test-graph",
+                graph_version=1,
+            ),
+        ],
+        links=[],
+    )
+
+    # Mock regular_credentials_inputs to return only the non-auto field (3-tuple)
+    regular_only = {
+        "github_credentials": (
+            regular_field_info,
+            {("node-1", "credentials")},
+            True,
+        ),
+    }
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=regular_only,
+    ):
+        schema = graph.credentials_input_schema
+        field_names = set(schema.get("properties", {}).keys())
+        # Should include regular credential but NOT auto_credential
+        assert "github_credentials" in field_names
+        assert "google_credentials" not in field_names
 
 
 # ============================================================================
@@ -1479,3 +1821,381 @@ def test_generate_schema_raises_value_error_when_name_missing():
     """
     with pytest.raises(ValueError):
         GraphModel._generate_schema((AgentInputBlock.Input, {}))
+
+
+# ============================================================================
+# Tests for the auto-credentials hardcoded-input anti-pattern validator
+# (catches what Mehmet's agent-builder session produced: CoPilot hardcoded
+# file IDs into GoogleSheetsReadBlock.constantInput.spreadsheet across 13
+# save attempts instead of wiring an AgentGoogleDriveFileInputBlock).
+# ============================================================================
+
+
+def _sheets_graph(spreadsheet_value: Any) -> Graph:
+    """Build a 1-node graph with a GoogleSheetsReadBlock whose `spreadsheet`
+    input_default is whatever the test wants to pin. No incoming links."""
+    from backend.blocks.google.sheets import GoogleSheetsReadBlock
+
+    node = Node(
+        id="00000000-0000-0000-0000-000000000001",
+        block_id=GoogleSheetsReadBlock().id,
+        input_default={
+            "spreadsheet": spreadsheet_value,
+            "range": "Sheet1!A1:B2",
+        },
+    )
+    return Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+
+def test_auto_credentials_bare_string_real_id_rejected():
+    """Mehmet's v7-v10 shape: CoPilot stuffed the bare Drive ID into
+    constantInput.spreadsheet. Pydantic already rejects this at schema
+    validation, but the Node model stores whatever dict the caller gave —
+    so the graph validator is the last line of defence when code paths
+    bypass that (e.g. raw API callers). Must emit a clean error naming
+    AgentGoogleDriveFileInputBlock."""
+    graph = _sheets_graph("1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I")
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors, errors
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    assert "bare string" in msg
+    assert "AgentGoogleDriveFileInputBlock" in msg
+    assert "'result'" in msg
+
+
+def test_auto_credentials_placeholder_string_rejected():
+    """Mehmet's v4-v6 shape: a non-ID placeholder the LLM made up
+    ("SHEETS_ID_BURAYA"). Same anti-pattern, same error — we don't try
+    to distinguish "looks like a Drive ID" from "obvious placeholder";
+    any bare string here is wrong."""
+    graph = _sheets_graph("SHEETS_ID_BURAYA")
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    assert "bare string" in msg
+    assert "AgentGoogleDriveFileInputBlock" in msg
+
+
+def test_auto_credentials_partial_object_missing_cred_id_rejected():
+    """Mehmet's v11-v13 shape: CoPilot finally learned to wrap the ID in
+    an object (`{"id": "..."}`), so pydantic's `GoogleDriveFile` schema
+    accepts it — but there's still no `_credentials_id`, so
+    `_acquire_auto_credentials` in the executor would raise
+    "Authentication missing" at run time. Validator must catch this
+    before save and tell the author to use the input block."""
+    graph = _sheets_graph({"id": "1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I"})
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    assert "_credentials_id" in msg
+    assert "AgentGoogleDriveFileInputBlock" in msg
+
+
+def test_auto_credentials_empty_credentials_id_rejected():
+    """An empty-string `_credentials_id` has the same runtime effect as
+    no `_credentials_id` at all — `_acquire_auto_credentials` treats
+    falsy cred_id as missing. Validator must reject this too."""
+    graph = _sheets_graph(
+        {
+            "id": "1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I",
+            "_credentials_id": "",
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors
+    assert "_credentials_id" in errors[graph.nodes[0].id]["spreadsheet"]
+
+
+def test_auto_credentials_fully_hydrated_object_accepted():
+    """Author pre-selected a file via the builder's Drive picker: the
+    object carries a real `_credentials_id` plus metadata. Validator
+    must NOT flag this — it's the legitimate author-flow shape and
+    forking clears `_credentials_id` separately via `_reassign_ids`."""
+    graph = _sheets_graph(
+        {
+            "_credentials_id": "cred-abc-def",
+            "id": "1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I",
+            "name": "Q4 Budget",
+            "mimeType": "application/vnd.google-apps.spreadsheet",
+            "url": "https://docs.google.com/spreadsheets/d/1KAv8…",
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert (
+        graph.nodes[0].id not in errors
+        or "spreadsheet" not in errors[graph.nodes[0].id]
+    ), errors
+
+
+def test_auto_credentials_with_upstream_link_accepted():
+    """The correct pattern: an AgentGoogleDriveFileInputBlock feeds its
+    `result` output into `GoogleSheetsReadBlock.spreadsheet`. Even with
+    no `input_default.spreadsheet`, validator must pass — because the
+    link guarantees the value (with `_credentials_id`) arrives at run
+    time."""
+    from backend.blocks.google.sheets import GoogleSheetsReadBlock
+    from backend.blocks.io import AgentGoogleDriveFileInputBlock
+
+    drive_input_node = Node(
+        id="00000000-0000-0000-0000-000000000001",
+        block_id=AgentGoogleDriveFileInputBlock().id,
+        input_default={
+            "name": "spreadsheet_input",
+            "title": "Select Spreadsheet",
+            "allowed_views": ["SPREADSHEETS"],
+        },
+    )
+    sheets_node = Node(
+        id="00000000-0000-0000-0000-000000000002",
+        block_id=GoogleSheetsReadBlock().id,
+        input_default={"range": "Sheet1!A1:B2"},  # spreadsheet omitted on purpose
+    )
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[drive_input_node, sheets_node],
+        links=[
+            Link(
+                source_id=drive_input_node.id,
+                source_name="result",
+                sink_id=sheets_node.id,
+                sink_name="spreadsheet",
+            )
+        ],
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert (
+        sheets_node.id not in errors or "spreadsheet" not in errors[sheets_node.id]
+    ), errors
+
+
+def test_auto_credentials_unset_does_not_emit_double_error():
+    """If the field is missing AND not linked, the existing required-field
+    check — not our new rule — owns the error. Drive fields default to
+    None so they aren't required, meaning validator should simply emit
+    nothing for `spreadsheet` here."""
+    from backend.blocks.google.sheets import GoogleSheetsReadBlock
+
+    node = Node(
+        id="00000000-0000-0000-0000-000000000001",
+        block_id=GoogleSheetsReadBlock().id,
+        input_default={"range": "Sheet1!A1:B2"},
+    )
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert node.id not in errors or "spreadsheet" not in errors[node.id], errors
+
+
+def test_auto_credentials_bare_string_does_not_over_match_non_auto_fields():
+    """Sanity: a non-auto-credential field on the same node with a bare
+    string value must NOT be flagged by the auto-credentials rule. The
+    `range` field is a plain string — validator should leave it alone."""
+    graph = _sheets_graph(
+        {
+            "_credentials_id": "cred-abc",
+            "id": "file-id",
+            "mimeType": "application/vnd.google-apps.spreadsheet",
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    # spreadsheet is fine (fully hydrated), range is a plain string (fine)
+    assert graph.nodes[0].id not in errors, errors
+
+
+def test_auto_credentials_error_on_every_bad_node_independently():
+    """Mehmet's real graph had THREE Drive-consuming blocks in one graph,
+    each with the same anti-pattern (Sheets x2, Docs, SheetsUpdate in
+    v13 — actually 3 Sheets-family nodes + Docs). The validator must
+    flag each separately; it must not stop at the first bad one."""
+    from backend.blocks.google.sheets import (
+        GoogleSheetsReadBlock,
+        GoogleSheetsUpdateCellBlock,
+    )
+
+    bad1 = Node(
+        id="00000000-0000-0000-0000-000000000001",
+        block_id=GoogleSheetsReadBlock().id,
+        input_default={
+            "spreadsheet": "bare-id-1",
+            "range": "Sheet1!A1",
+        },
+    )
+    bad2 = Node(
+        id="00000000-0000-0000-0000-000000000002",
+        block_id=GoogleSheetsUpdateCellBlock().id,
+        input_default={
+            "spreadsheet": {"id": "partial-object-only"},
+            "cell": "A1",
+            "value_input_option": "RAW",
+        },
+    )
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[bad1, bad2],
+        links=[],
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert bad1.id in errors, errors
+    assert "bare string" in errors[bad1.id]["spreadsheet"]
+    assert bad2.id in errors
+    assert "_credentials_id" in errors[bad2.id]["spreadsheet"]
+
+
+def test_auto_credentials_non_picker_format_gets_generic_remediation():
+    """Defence against future regression: if a block ever exposes an
+    auto-credentials field whose `format` isn't `google-drive-picker`,
+    the validator must still flag the same bad shapes but the error
+    text must NOT reference AgentGoogleDriveFileInputBlock (which is
+    Drive-specific). Otherwise we'd ship misleading guidance the moment
+    another provider gets its own picker. We simulate the future case
+    by patching get_field_schema on a real block."""
+    from backend.blocks.google.sheets import GoogleSheetsReadBlock
+
+    graph = _sheets_graph({"id": "only-id-no-creds"})
+
+    sheets_schema = GoogleSheetsReadBlock.Input
+    real_get_field_schema = sheets_schema.get_field_schema
+
+    def mock_get_field_schema(name: str):
+        schema = real_get_field_schema(name)
+        if name == "spreadsheet":
+            schema = {**schema, "format": "future-provider-picker"}
+        return schema
+
+    with patch.object(
+        sheets_schema, "get_field_schema", staticmethod(mock_get_field_schema)
+    ):
+        errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    # Still catches the missing-creds anti-pattern
+    assert "_credentials_id" in msg
+    # But does NOT mention the Drive-specific block name
+    assert "AgentGoogleDriveFileInputBlock" not in msg
+    assert "Google Drive" not in msg
+
+
+def test_auto_credentials_validator_ignores_regular_credentials_fields():
+    """Regression guard: blocks with regular `credentials: CredentialsMetaInput`
+    fields (GmailSendBlock, AITextGeneratorBlock, etc.) must NOT be
+    flagged by this rule — it applies only to auto-credentials fields
+    derived via `GoogleDriveFileField` (or any future picker-sourced
+    auto-credentials field)."""
+    from backend.blocks.google.gmail import GmailSendBlock
+
+    gmail_block = GmailSendBlock()
+    node = Node(
+        id="00000000-0000-0000-0000-000000000001",
+        block_id=gmail_block.id,
+        input_default={
+            "to": ["user@example.com"],
+            "subject": "hi",
+            "body": "hello",
+        },
+    )
+    graph = Graph(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    # Gmail's `credentials` field is a regular CredentialsMetaInput, not
+    # an auto-credentials picker field. No auto-credentials error should
+    # be emitted. (Existing credential-availability validation happens
+    # elsewhere in the execution path, not here.)
+    node_err = errors.get(node.id, {})
+    assert "AgentGoogleDriveFileInputBlock" not in " ".join(node_err.values()), (
+        f"Unexpected Drive-picker remediation on a non-auto-credentials "
+        f"block: {node_err}"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        pytest.param(42, id="int"),
+        pytest.param(True, id="bool"),
+        pytest.param(["1KAv8h", "fileid"], id="list"),
+    ],
+)
+def test_auto_credentials_non_str_non_dict_value_rejected(bad_value):
+    """Cursor Low (thread PRRT_kwDOJKSTjM58r5Vu): the validator's
+    auto-credential anti-pattern branch only covered `isinstance(value,
+    str)` and `isinstance(value, dict)`. Any other type (int, bool,
+    list, ...) fell through silently — which later crashes inside
+    ``_acquire_auto_credentials`` at execute time when it tries to
+    ``.get("_credentials_id")`` on a non-dict.
+
+    Pin the catch-all: any non-str/non-dict value must emit the same
+    re-auth guidance pointing at ``AgentGoogleDriveFileInputBlock``."""
+    graph = _sheets_graph(bad_value)
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors, f"no error emitted for {bad_value!r}"
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    # Must point the user at the correct fix (the Drive input block).
+    assert "AgentGoogleDriveFileInputBlock" in msg
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_uses_schema_prefix_placeholder():
+    """Regression: migrate_llm_models must use the {schema_prefix} placeholder
+    so environments where the Prisma datasource lands in `public` (no
+    ?schema=platform on DATABASE_URL) don't blow up with
+    `relation "platform.AgentNode" does not exist`."""
+    from backend.blocks.llm import LlmModel
+    from backend.data.graph import migrate_llm_models
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LlmModel)))
+
+    for call in mock_execute.await_args_list:
+        query_template = call.args[0]
+        assert "{schema_prefix}" in query_template, (
+            "migrate_llm_models must pass the {schema_prefix} placeholder "
+            "to execute_raw_with_schema; hardcoding 'platform.' breaks when "
+            "DATABASE_URL has no ?schema= param."
+        )
+        assert 'platform."AgentNode"' not in query_template

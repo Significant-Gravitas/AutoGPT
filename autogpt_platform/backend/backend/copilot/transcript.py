@@ -20,16 +20,16 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from uuid import uuid4
 
+from backend.data.db_accessors import chat_db
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
-if TYPE_CHECKING:
-    from .model import ChatMessage
+from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -195,16 +195,17 @@ def strip_stale_thinking_blocks(content: str) -> str:
         is_last_turn = (
             last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
         ) or (last_asst_msg_id is None and i == last_asst_idx)
-        if (
-            msg.get("role") == "assistant"
-            and not is_last_turn
-            and isinstance(msg.get("content"), list)
-        ):
+        if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
             content_blocks = msg["content"]
+            producing_model = msg.get("model") if isinstance(msg, dict) else None
             filtered = [
                 b
                 for b in content_blocks
-                if not (isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES)
+                if not _should_strip_thinking_block(
+                    b,
+                    is_last_turn=is_last_turn,
+                    producing_model=producing_model,
+                )
             ]
             if len(filtered) < len(content_blocks):
                 stripped_count += len(content_blocks) - len(filtered)
@@ -310,23 +311,30 @@ def strip_for_upload(content: str) -> str:
         if uid in reparented:
             needs_reserialize = True
 
-        # Strip stale thinking blocks from non-last assistant entries
+        # Strip stale thinking blocks from non-last assistant entries.
+        # Also strip *signature-less* thinking blocks from the last entry —
+        # those come from non-Anthropic providers (e.g. Kimi K2.6 via
+        # OpenRouter) and are rejected with ``Invalid `signature` in
+        # `thinking` block`` if a subsequent turn is dispatched to an
+        # Anthropic model that re-validates them.  Anthropic-emitted
+        # thinking blocks always carry a non-empty ``signature`` field, so
+        # this filter is a no-op on Sonnet/Opus turns and only kicks in
+        # when the prior turn ran on a non-Anthropic vendor.
         if last_asst_idx is not None:
             msg = entry.get("message", {})
             is_last_turn = (
                 last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
             ) or (last_asst_msg_id is None and i == last_asst_idx)
-            if (
-                msg.get("role") == "assistant"
-                and not is_last_turn
-                and isinstance(msg.get("content"), list)
-            ):
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
                 content_blocks = msg["content"]
+                producing_model = msg.get("model") if isinstance(msg, dict) else None
                 filtered = [
                     b
                     for b in content_blocks
-                    if not (
-                        isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES
+                    if not _should_strip_thinking_block(
+                        b,
+                        is_last_turn=is_last_turn,
+                        producing_model=producing_model,
                     )
                 ]
                 if len(filtered) < len(content_blocks):
@@ -809,109 +817,241 @@ async def download_transcript(
     return TranscriptDownload(content=content, message_count=message_count, mode=mode)
 
 
+def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
+    """Return the watermark to upload alongside this transcript.
+
+    Equals ``max(sequence) + 1`` over non-reasoning rows in the loaded
+    window, or ``0`` when there are no eligible rows.  The window always
+    contains the most-recent rows (paginated tail-load), so this is correct
+    even when the eager-load cap engaged on a long session — the max in the
+    window is still the absolute max in DB.
+
+    Reasoning rows are excluded because they live only in the DB for
+    frontend replay; they never appear in the JSONL transcript.
+    """
+    seqs = [
+        m.sequence
+        for m in session_messages
+        if m.role != "reasoning" and m.sequence is not None
+    ]
+    return max(seqs) + 1 if seqs else 0
+
+
+def _gap_by_index(
+    session_messages: list[ChatMessage], watermark: int
+) -> list[ChatMessage]:
+    """Index-based gap fallback: ``session_messages`` is treated as the full
+    history (list-index == absolute sequence).  Used when no message in the
+    candidate set carries a sequence — only test fixtures and the post-DB-
+    failure cache state hit this in practice.
+    """
+    total = len(session_messages)
+    if watermark >= total - 1:
+        return []
+    if session_messages[watermark - 1].role != "assistant":
+        return []
+    return list(session_messages[watermark : total - 1])
+
+
+def _gap_by_sequence(
+    candidates: list[tuple[int, ChatMessage]],
+    watermark: int,
+) -> list[ChatMessage]:
+    """Sequence-based gap with role-shape sanity check.
+
+    ``watermark`` is the "next uncovered DB sequence" — the value persisted in
+    the transcript's ``message_count`` field.  Gap = candidates whose sequence
+    is at or above the watermark.
+
+    Returns [] when:
+    - No post-watermark candidates (transcript is current).
+    - The pre-watermark message immediately before the gap isn't an assistant
+      turn (data shift / deletion).
+    - The window starts above the watermark and the first gap message is a
+      tool row that boundary expansion failed to pair with its owner
+      (malformed window — would emit an orphan tool_result).
+    """
+    gap = [m for seq, m in candidates if seq >= watermark]
+    pre_gap = [(seq, m) for seq, m in candidates if seq < watermark]
+    if not gap:
+        return []
+
+    if pre_gap:
+        _, prev = max(pre_gap, key=lambda item: item[0])
+        if prev.role != "assistant":
+            return []
+        return gap
+
+    # Window starts above the watermark — can't see the pre-gap row to verify
+    # its role. ``get_chat_messages_paginated`` already does tool-pair boundary
+    # expansion so ``gap[0]`` is normally user (fresh turn) or assistant (turn
+    # that began before the cap).  Reject only when it's still a tool row
+    # (boundary expansion couldn't find the owner) — leaving that in would
+    # emit an unmatched tool_result.  The DB-side hole-fill prepends the
+    # missing user turn that bridges the transcript and ``gap[0]``.
+    if gap[0].role == "tool":
+        return []
+    window_start = min(seq for seq, _ in candidates if seq >= watermark)
+    if window_start > watermark:
+        logger.warning(
+            "detect_gap: window starts at seq=%d but watermark is %d — "
+            "DB-side hole-fill required",
+            window_start,
+            watermark,
+        )
+    return gap
+
+
 def detect_gap(
     download: TranscriptDownload,
     session_messages: list[ChatMessage],
 ) -> list[ChatMessage]:
-    """Return chat-db messages after the transcript watermark (excluding current user turn).
+    """Return chat-db messages at or after the transcript watermark
+    (excluding the current user turn).
 
-    Returns [] if transcript is current, watermark is zero, or the watermark
-    position doesn't end on an assistant turn (misaligned watermark).
+    ``download.message_count`` is the *next uncovered DB sequence* — the
+    sequence the next message will receive.  The gap is candidates with
+    ``sequence >= watermark`` after dropping reasoning rows (those are
+    persisted for frontend replay only and never sent to the model).
+
+    Two paths:
+    - **Sequence-based** (production): every prior message has a ``sequence``
+      (NOT NULL in schema). Filter by ``sequence >= watermark`` with a
+      role-shape sanity check at the boundary.
+    - **Index fallback**: triggered when no prior message has a sequence —
+      only test fixtures and the post-DB-failure cache state. Treats the list
+      as the full history and slices by index.
+
+    Hole-fill (sequences in DB but neither in transcript nor window) is
+    performed by ``extract_context_messages``, not here — this function stays
+    pure / sync.
     """
     if download.message_count == 0:
         return []
-    wm = download.message_count
-    total = len(session_messages)
-    if wm >= total - 1:
+    session_messages = [m for m in session_messages if m.role != "reasoning"]
+    if len(session_messages) < 2:
         return []
-    # Sanity: position wm-1 should be an assistant turn; misaligned watermark
-    # means the DB messages shifted (e.g. deletion) — skip gap to avoid wrong context.
-    # In normal operation ``message_count`` is always written after a complete
-    # user→assistant exchange (never mid-turn), so the last covered position is
-    # always assistant.  This guard fires only on data corruption or message deletion.
-    if session_messages[wm - 1].role != "assistant":
-        return []
-    return list(session_messages[wm : total - 1])
+
+    candidates: list[tuple[int, ChatMessage]] = [
+        (m.sequence, m) for m in session_messages[:-1] if m.sequence is not None
+    ]
+    if not candidates:
+        return _gap_by_index(session_messages, download.message_count)
+    return _gap_by_sequence(candidates, download.message_count)
 
 
-def extract_context_messages(
+def _decode_transcript_content(content: bytes | str) -> str | None:
+    """Return decoded transcript content, or ``None`` on UTF-8 errors."""
+    if isinstance(content, str):
+        return content
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _parse_transcript_to_messages(
+    download: TranscriptDownload,
+) -> list[ChatMessage] | None:
+    """Decode + parse a transcript download into ``ChatMessage`` rows, or
+    ``None`` if the download is empty / malformed."""
+    if not download.content:
+        return None
+    content_str = _decode_transcript_content(download.content)
+    if content_str is None:
+        return None
+    raw = _transcript_to_messages(content_str)
+    if not raw:
+        return None
+    return [ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
+
+
+async def fill_hole_between_transcript_and_gap(
+    session_id: str,
+    watermark: int,
+    gap: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Fetch DB rows in the range ``[watermark, gap[0].sequence)``.
+
+    When the cap engaged and the transcript is stale, the windowed view
+    starts above the watermark — sequences in between live in DB but
+    neither in transcript nor in the loaded gap.  Returns [] when there is
+    no hole or the fetch fails (best-effort — partial context beats crash).
+    Reasoning rows in the range are filtered.
+    """
+    if not gap or gap[0].sequence is None:
+        return []
+    hole_end = gap[0].sequence
+    if watermark >= hole_end:
+        return []
+    try:
+        page = await chat_db().get_chat_messages_paginated(
+            session_id,
+            limit=hole_end - watermark,
+            after_sequence=watermark,
+            before_sequence=hole_end,
+        )
+        if page is None:
+            return []
+        return [m for m in page.messages if m.role != "reasoning"]
+    except Exception as e:
+        logger.error(
+            "fill_hole_between_transcript_and_gap: fetch failed for "
+            "session=%s range=[%d,%d): %s",
+            session_id,
+            watermark,
+            hole_end,
+            e,
+        )
+        return []
+
+
+async def extract_context_messages(
     download: TranscriptDownload | None,
     session_messages: "list[ChatMessage]",
+    *,
+    session_id: str | None = None,
 ) -> "list[ChatMessage]":
-    """Return context messages for the current turn: transcript content + gap.
+    """Return context messages for the current turn: transcript + (hole-fill) + gap.
 
-    This is the shared context primitive used by both the SDK path
-    (``use_resume=False`` → ``<conversation_history>`` injection) and the
-    baseline path (OpenAI messages array).
+    Shared primitive used by both SDK (``use_resume=False`` →
+    ``<conversation_history>`` injection) and baseline (OpenAI messages array)
+    paths.
 
-    How it works:
+    Layered structure:
+    - **Transcript**: GCS-cached compaction (preserves ``isCompactSummary=True``).
+      Tool-use blocks are flattened to text via ``_flatten_assistant_content``.
+    - **Hole-fill** (only when cap-engaged + stale-transcript): sequences
+      ``[watermark, window_start)`` fetched directly from DB so the LLM never
+      sees a mid-conversation hole.  Requires ``session_id``.
+    - **Gap**: DB messages from the loaded window with ``sequence >= watermark``,
+      preserving structured ``tool_calls``.
 
-    - When a transcript exists, ``TranscriptBuilder.load_previous`` preserves
-      ``isCompactSummary=True`` compaction entries, so the returned messages
-      mirror the compacted context the CLI would see via ``--resume``.
-    - The gap (DB messages after the transcript watermark) is always small in
-      normal operation; it only grows during mode switches or when an upload
-      was missed.
-    - Falls back to full DB messages when no transcript exists (first turn,
-      upload failure, or GCS unavailable).
-    - Returns *prior* messages only (excluding the current user turn at
-      ``session_messages[-1]``).  Callers that need the current turn append
-      ``session_messages[-1]`` themselves.
-    - **Tool calls from transcript entries are flattened to text**: assistant
-      messages derived from the JSONL use ``_flatten_assistant_content``, which
-      serialises ``tool_use`` blocks as human-readable text rather than
-      structured ``tool_calls``.  Gap messages (from DB) preserve their
-      original ``tool_calls`` field.  This is the same trade-off as the old
-      ``_compress_session_messages(session.messages)`` approach — no regression.
-
-    Args:
-        download: The ``TranscriptDownload`` from GCS, or ``None`` when no
-            transcript is available.  ``content`` may be either ``bytes`` or
-            ``str`` (the baseline path decodes + strips before returning).
-        session_messages: All messages in the session, with the current user
-            turn as the last element.
-
-    Returns:
-        A list of ``ChatMessage`` objects covering the prior conversation
-        context, suitable for injection as conversation history.
+    Falls back to full prior messages (``session_messages[:-1]``) when no
+    transcript is available.  Excludes ``role="reasoning"`` rows.  The
+    current user turn at ``session_messages[-1]`` is excluded — callers append
+    it themselves.
     """
-    from .model import ChatMessage as _ChatMessage  # runtime import
-
-    # ``role="reasoning"`` rows are persisted for frontend replay of
-    # extended_thinking content but are NOT conversation context — the
-    # transcript-based --resume path already carries thinking separately,
-    # and sending them back to the model as user/assistant turns would be
-    # both redundant and malformed.  Drop them before any gap detection
-    # or transcript comparison so ordering invariants still hold.
+    # Drop reasoning rows — their content lives in transcript paths,
+    # not the public turn list.  Queue lifecycle is tracked on the
+    # owning ChatSession, not per message, so no per-row filtering
+    # for queued/running rows is needed here.
     session_messages = [m for m in session_messages if m.role != "reasoning"]
-
     prior = session_messages[:-1]
 
     if download is None:
         return prior
-
-    raw_content = download.content
-    if not raw_content:
+    transcript_msgs = _parse_transcript_to_messages(download)
+    if transcript_msgs is None:
         return prior
 
-    # Handle both bytes (raw GCS download) and str (pre-decoded baseline path).
-    if isinstance(raw_content, bytes):
-        try:
-            content_str: str = raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            return prior
-    else:
-        content_str = raw_content
-
-    raw = _transcript_to_messages(content_str)
-    if not raw:
-        return prior
-
-    transcript_msgs = [
-        _ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw
-    ]
     gap = detect_gap(download, session_messages)
-    return transcript_msgs + gap
+    hole: list[ChatMessage] = []
+    if session_id and download.message_count > 0:
+        hole = await fill_hole_between_transcript_and_gap(
+            session_id, download.message_count, gap
+        )
+    return transcript_msgs + hole + gap
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
@@ -949,6 +1089,92 @@ ENTRY_TYPE_MESSAGE = "message"
 
 
 _THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
+
+def _is_anthropic_model(model: str | None) -> bool:
+    """True when *model* is an Anthropic-issued slug.
+
+    Used to decide whether a thinking block's signature is
+    cryptographically valid for Anthropic replay.  Non-Anthropic vendors
+    routed through OpenRouter's Anthropic-compat shim (Kimi K2.6,
+    DeepSeek, GPT-OSS) sometimes emit thinking blocks with a
+    placeholder signature — it passes a non-empty string check but
+    fails Anthropic's cryptographic validation, producing the opaque
+    ``Invalid signature in thinking block`` 400 on the next turn
+    whenever the model toggle switches to Sonnet/Opus.
+    """
+    return isinstance(model, str) and model.startswith("anthropic/")
+
+
+def _should_strip_thinking_block(
+    block: object,
+    *,
+    is_last_turn: bool,
+    producing_model: str | None = None,
+) -> bool:
+    """Return True when *block* is a thinking block that should be removed
+    from a transcript entry before upload.
+
+    Strip only when the block CAN'T be replayed safely.  Never strip a
+    valid Anthropic-issued thinking block — it carries real reasoning
+    state that preserves context continuity on ``--resume``.
+
+    Strip rules (first match wins):
+
+    1. **Non-Anthropic producer (any position)** — thinking blocks from
+       Kimi / DeepSeek / GPT-OSS via OpenRouter's Anthropic-compat shim
+       carry either no signature or a placeholder string that passes a
+       non-empty check but fails Anthropic's cryptographic validation.
+       Strip unconditionally; they also add low-value tokens to the
+       replay context.
+    2. **Malformed ``thinking`` (any position, Anthropic producer,
+       empty signature)** — shouldn't happen in practice, but if the
+       signature is missing / empty the block can't be validated.
+       Safer to drop than to 400 the next turn.
+    3. **Stale non-last entry with unknown producer** — when the
+       caller doesn't wire ``producing_model`` through (legacy paths /
+       older tests) we can't tell if the block is safe to keep; fall
+       back to the old behaviour of dropping non-last thinking blocks
+       to avoid replaying an unverifiable block to Anthropic.
+
+    Preserved:
+
+    * Anthropic ``thinking`` with non-empty signature — at any
+      position, last OR non-last.  Keeping prior-turn reasoning
+      chains helps continuity on multi-round SDK resumes without any
+      risk of signature rejection.
+    * Anthropic ``redacted_thinking`` — carries an encrypted ``data``
+      payload instead of a ``signature``; by design signature-less,
+      but Anthropic-issued and safely replayable.
+    """
+    if not isinstance(block, dict):
+        return False
+    btype = block.get("type")
+    if btype not in _THINKING_BLOCK_TYPES:
+        return False
+    # Legacy call sites pass producing_model=None — preserve the old
+    # "strip-all-non-last-thinking" heuristic for those so we don't
+    # regress callers that haven't been updated.
+    if producing_model is None:
+        if not is_last_turn:
+            return True
+        if btype != "thinking":
+            return False
+        signature = block.get("signature")
+        return not (isinstance(signature, str) and signature)
+    # Non-Anthropic producer — strip at any position.  These blocks
+    # CAN'T be cryptographically validated by Anthropic on replay.
+    if not _is_anthropic_model(producing_model):
+        return True
+    # Anthropic producer, redacted_thinking: always preserve — the
+    # ``data`` field is the signature analog.
+    if btype == "redacted_thinking":
+        return False
+    # Anthropic producer, ``thinking``: keep iff it has a real
+    # (non-empty) signature.  Empty-signature Anthropic thinking
+    # shouldn't happen but guard against it anyway.
+    signature = block.get("signature")
+    return not (isinstance(signature, str) and signature)
 
 
 def _flatten_assistant_content(blocks: list) -> str:
@@ -1245,6 +1471,7 @@ async def compact_transcript(
     *,
     model: str,
     log_prefix: str = "[Transcript]",
+    target_tokens: int | None = None,
 ) -> str | None:
     """Compact an oversized JSONL transcript using LLM summarization.
 
@@ -1284,7 +1511,9 @@ async def compact_transcript(
         logger.warning("%s Nothing to compress (only tail entries remain)", log_prefix)
         return None
     try:
-        result = await _run_compression(messages, model, log_prefix)
+        result = await _run_compression(
+            messages, model, log_prefix, target_tokens=target_tokens
+        )
         if not result.was_compacted:
             logger.warning(
                 "%s Compressor reports within budget but SDK rejected — "

@@ -33,6 +33,20 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-create_feature_request",
 ]);
 
+const REASONING_TOOL_TYPES = new Set([
+  "tool-find_block",
+  "tool-find_agent",
+  "tool-find_library_agent",
+  "tool-search_docs",
+  "tool-get_doc_page",
+  "tool-search_feature_requests",
+  "tool-ask_question",
+]);
+
+export function isReasoningToolPart(part: MessagePart): boolean {
+  return REASONING_TOOL_TYPES.has(part.type);
+}
+
 const WORKSPACE_FILE_PATTERN =
   /\/api\/proxy\/api\/workspace\/files\/([a-f0-9-]+)\/download/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
@@ -122,26 +136,30 @@ export function buildRenderSegments(
   return segments;
 }
 
+function isReasoningBoundary(part: MessagePart): boolean {
+  return part.type === "reasoning" || isReasoningToolPart(part);
+}
+
 export function splitReasoningAndResponse(parts: MessagePart[]): {
   reasoning: MessagePart[];
   response: MessagePart[];
 } {
-  const lastToolIndex = parts.findLastIndex((p) => p.type.startsWith("tool-"));
+  const lastReasoningIndex = parts.findLastIndex(isReasoningBoundary);
 
-  if (lastToolIndex === -1) {
+  if (lastReasoningIndex === -1) {
     return { reasoning: [], response: parts };
   }
 
-  const hasResponseAfterTools = parts
-    .slice(lastToolIndex + 1)
+  const hasResponseAfterReasoning = parts
+    .slice(lastReasoningIndex + 1)
     .some((p) => p.type === "text");
 
-  if (!hasResponseAfterTools) {
+  if (!hasResponseAfterReasoning) {
     return { reasoning: [], response: parts };
   }
 
-  const rawReasoning = parts.slice(0, lastToolIndex + 1);
-  const rawResponse = parts.slice(lastToolIndex + 1);
+  const rawReasoning = parts.slice(0, lastReasoningIndex + 1);
+  const rawResponse = parts.slice(lastReasoningIndex + 1);
 
   const reasoning: MessagePart[] = [];
   const pinnedParts: MessagePart[] = [];
@@ -258,6 +276,9 @@ export function filePartToArtifactRef(
   };
 }
 
+const FULL_UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+
 export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
   const seen = new Set<string>();
   const artifacts: ArtifactRef[] = [];
@@ -267,6 +288,11 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
     const parsed = parseWorkspaceURI(fullUri);
 
     if (!parsed || seen.has(parsed.fileID)) continue;
+
+    // During streaming, workspace:// URIs arrive character-by-character.
+    // The regex matches progressively longer partial IDs — reject them so
+    // ArtifactCards don't mount/unmount with garbage IDs.
+    if (!FULL_UUID.test(parsed.fileID)) continue;
 
     // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
     // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
@@ -296,28 +322,32 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
 export function getMessageArtifacts(
   message: UIMessage<unknown, UIDataTypes, UITools>,
 ): ArtifactRef[] {
-  const seen = new Set<string>();
-  const artifacts: ArtifactRef[] = [];
+  const byId = new Map<string, ArtifactRef>();
+
+  // Process file parts first — they carry richer metadata (mediaType from the
+  // server, real filename) compared to workspace:// URIs extracted from text,
+  // which often lack a MIME fragment and fall back to "File {id}".
+  for (const part of message.parts) {
+    if (part.type === "file") {
+      const origin = message.role === "user" ? "user-upload" : "agent";
+      const artifact = filePartToArtifactRef(part, origin);
+      if (artifact) {
+        byId.set(artifact.id, artifact);
+      }
+    }
+  }
 
   for (const part of message.parts) {
     if (part.type === "text") {
       for (const artifact of extractWorkspaceArtifacts(part.text)) {
-        if (seen.has(artifact.id)) continue;
-        seen.add(artifact.id);
-        artifacts.push(artifact);
+        if (!byId.has(artifact.id)) {
+          byId.set(artifact.id, artifact);
+        }
       }
-    }
-
-    if (part.type === "file") {
-      const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin);
-      if (!artifact || seen.has(artifact.id)) continue;
-      seen.add(artifact.id);
-      artifacts.push(artifact);
     }
   }
 
-  return artifacts;
+  return Array.from(byId.values());
 }
 
 /**
