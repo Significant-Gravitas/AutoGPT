@@ -102,6 +102,7 @@ pymssql = "^2.3.2"
 pymysql = "^1.1.1"
 pyarrow = "^23.0.0"
 sqlparse = "^0.5.5"
+slack-sdk = "^3.41.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

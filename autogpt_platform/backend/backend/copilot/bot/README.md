@@ -1,6 +1,6 @@
 # CoPilot Bot
 
-Multi-platform chat bot that bridges AutoPilot to Discord (and later Telegram, Slack, etc).
+Multi-platform chat bot that bridges AutoPilot to Discord and Slack (with Telegram, Teams, WhatsApp on the roadmap).
 
 ## Running
 
@@ -19,6 +19,8 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 | Variable | Purpose |
 |----------|---------|
 | `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord adapter |
+| `AUTOPILOT_BOT_SLACK_TOKEN` | Slack bot OAuth token (`xoxb-…`) — pair with the signing secret to enable Slack |
+| `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack signing secret for verifying inbound Events API + slash command requests |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
 | `PLATFORMLINKINGMANAGER_HOST` | DNS name of the `PlatformLinkingManager` service pod (cluster-internal RPC) |
@@ -27,7 +29,8 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 
 ```
 bot/
-├── app.py              # CoPilotChatBridge(AppService), adapter factory, outbound @expose RPC
+├── app.py              # CoPilotChatBridge(AppService) — runs socket adapters (Discord)
+├── webhook_routes.py   # register_webhook_adapters(app) — mounts webhook adapters onto the main API
 ├── config.py           # Shared (platform-agnostic) config
 ├── handler.py          # Core logic: routing, linking, batched streaming
 ├── bot_backend.py      # Thin facade over PlatformLinkingManagerClient + stream_registry
@@ -35,20 +38,29 @@ bot/
 ├── threads.py          # Redis-backed thread subscription tracking
 └── adapters/
     ├── base.py         # PlatformAdapter + SocketAdapter / WebhookAdapter, MessageContext
-    └── discord/
-        ├── adapter.py  # Gateway connection, events, sends, thread creation
-        ├── commands.py # Slash commands (/setup, /help, /unlink)
-        └── config.py   # Discord token + platform limits
+    ├── discord/
+    │   ├── adapter.py  # Gateway connection, events, sends, thread creation
+    │   ├── commands.py # Slash commands (/setup, /help, /unlink)
+    │   └── config.py   # Discord token + platform limits
+    └── slack/
+        ├── adapter.py       # Events API + slash command routes, sends, thread routing
+        ├── app-manifest.yaml# Slack app manifest for reproducible app creation
+        ├── commands.py      # Slash commands (/setup, /help, /unlink)
+        ├── config.py        # Slack token + signing secret + platform limits
+        ├── signing.py       # HMAC-SHA256 request signature verification
+        └── text.py          # Markdown → mrkdwn + mention substitution
 ```
 
 **Connector types:** adapters extend one of two base classes — `SocketAdapter`
 (holds a long-lived per-token connection; Discord today) or `WebhookAdapter`
 (receives inbound HTTPS POSTs; stateless, mounted onto the main backend API
-via `webhook_routes.register_webhook_adapters`).
+via `webhook_routes.register_webhook_adapters` — Slack today).
 
 **Locality rule:** anything platform-specific lives under `adapters/<platform>/`.
-The only file that names specific platforms is `app.py`, which is the factory
-that decides which adapters to instantiate based on which tokens are set.
+The two factory functions (`app.py::_build_socket_adapters` and
+`webhook_routes.py::_build_webhook_adapters`) are the only files that name
+specific platforms — they decide which adapters to instantiate based on
+configured credentials.
 
 ## How messaging works
 
