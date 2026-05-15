@@ -161,7 +161,7 @@ class SardisPayBlock(Block):
                 ("message", "Payment approved"),
                 # Error outputs
                 ("status", "ERROR"),
-                ("error", "insufficient funds"),
+                ("message", "insufficient funds"),
                 # Blocked outputs
                 ("status", "BLOCKED"),
                 ("message", "Exceeds daily spending limit"),
@@ -223,7 +223,7 @@ class SardisPayBlock(Block):
             yield "message", result.get("message", "Payment approved")
         elif "error" in result:
             yield "status", "ERROR"
-            yield "error", str(result["error"])
+            yield "message", str(result["error"])
         else:
             yield "status", "BLOCKED"
             yield "message", result.get(
