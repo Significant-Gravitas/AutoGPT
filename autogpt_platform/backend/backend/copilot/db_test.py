@@ -664,6 +664,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             isShared=False,
             shareToken=None,
             sharedAt=None,
+            autoShareExecutions=False,
         ),
         PrismaChatSession(
             id="s2",
@@ -680,6 +681,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             isShared=False,
             shareToken=None,
             sharedAt=None,
+            autoShareExecutions=False,
         ),
     ]
     find_many = AsyncMock(return_value=rows)
