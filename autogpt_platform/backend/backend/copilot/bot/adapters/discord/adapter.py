@@ -19,7 +19,7 @@ from ..base import (
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
-    PlatformAdapter,
+    SocketAdapter,
 )
 from . import commands, config
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 20
 
 
-class DiscordAdapter(PlatformAdapter):
+class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True

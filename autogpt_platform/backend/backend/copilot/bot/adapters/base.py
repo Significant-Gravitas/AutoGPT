@@ -1,13 +1,16 @@
 """Abstract base for platform adapters.
 
-Each chat platform (Discord, Telegram, Slack, etc.) implements this interface.
-The core bot logic in handler.py is platform-agnostic — it only speaks through
-these methods.
+`PlatformAdapter` is the outbound contract the platform-agnostic core handler
+speaks through. Concrete adapters extend one of two subtypes depending on how
+inbound events arrive: `SocketAdapter` (owns a long-lived connection) or
+`WebhookAdapter` (receives inbound HTTPS POSTs).
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
+
+from fastapi import FastAPI
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
@@ -54,7 +57,7 @@ class MessageContext:
 
 
 class PlatformAdapter(ABC):
-    """Interface that each chat platform must implement."""
+    """Outbound contract shared by every platform adapter."""
 
     @property
     @abstractmethod
@@ -62,12 +65,6 @@ class PlatformAdapter(ABC):
 
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None: ...
-
-    @abstractmethod
-    async def start(self) -> None: ...
-
-    @abstractmethod
-    async def stop(self) -> None: ...
 
     @abstractmethod
     async def send_message(
@@ -146,5 +143,31 @@ class PlatformAdapter(ABC):
         Should be slightly under max_message_length to leave headroom for
         any trailing content that the splitter might pull into the current
         chunk.
+        """
+        ...
+
+
+class SocketAdapter(PlatformAdapter):
+    """Adapter that owns a long-lived connection (Discord Gateway, Slack
+    Socket Mode). The connection is a per-token singleton, so each socket
+    adapter needs its own pod.
+    """
+
+    @abstractmethod
+    async def start(self) -> None: ...
+
+    @abstractmethod
+    async def stop(self) -> None: ...
+
+
+class WebhookAdapter(PlatformAdapter):
+    """Adapter driven by inbound HTTPS webhooks (Slack Events API, Telegram,
+    Teams, WhatsApp). Stateless — webhook adapters share one pod.
+    """
+
+    @abstractmethod
+    def register_routes(self, app: FastAPI) -> None:
+        """Mount inbound webhook route(s) onto `app`; owns its own request
+        signature verification.
         """
         ...

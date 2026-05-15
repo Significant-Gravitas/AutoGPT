@@ -53,6 +53,7 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
@@ -417,6 +418,8 @@ app.include_router(
     tags=["platform-linking"],
     prefix="/api/platform-linking",
 )
+
+register_webhook_adapters(app)
 
 app.mount("/external-api", external_api)
 
