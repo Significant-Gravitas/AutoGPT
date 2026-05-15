@@ -83,6 +83,10 @@ logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 
+# Owned at module level so `lifespan_context` can close it on shutdown;
+# routes are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
+
 
 @contextlib.contextmanager
 def launch_darkly_context():
@@ -425,7 +429,6 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
-_webhook_bot_backend = BotBackend()
 register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
