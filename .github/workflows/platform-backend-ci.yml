@@ -111,7 +111,7 @@ jobs:
   test:
     permissions:
       contents: read
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -119,10 +119,12 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
+      # Redis is provisioned as a real 3-shard cluster below via docker
+      # run (see the "Start Redis Cluster" step). GHA services can't
+      # override the image CMD or stand up multi-container clusters, so
+      # that setup is inlined — it mirrors the topology of the local dev
+      # compose stack (autogpt_platform/docker-compose.platform.yml) and
+      # prod helm chart.
       rabbitmq:
         image: rabbitmq:4.1.4
         ports:
@@ -165,6 +167,68 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Start Redis Cluster (3 shards)
+        run: |
+          # 3-master Redis Cluster matching the local compose stack
+          # (autogpt_platform/docker-compose.platform.yml) and prod. Each
+          # shard runs in its own container on a dedicated bridge network,
+          # announces its compose-style hostname for intra-network clients,
+          # and publishes 1700N on the GHA host so tests can reach every
+          # shard via localhost. The backend's ``_address_remap`` rewrites
+          # every CLUSTER SLOTS reply to localhost:<announced-port>, which
+          # picks the right published port per shard.
+          #
+          # Not reusing docker-compose.platform.yml directly because compose
+          # validates the full file even when only some services are ``up``,
+          # and that file references services (db/kong/...) defined in a
+          # sibling compose file — pulling both in would needlessly couple
+          # CI to the full local-dev stack.
+          docker network create redis-cluster-ci
+          for i in 0 1 2; do
+            port=$((17000 + i))
+            bus=$((27000 + i))
+            docker run -d --name redis-$i --network redis-cluster-ci \
+              --network-alias redis-$i \
+              -p $port:$port \
+              redis:7 \
+              redis-server --port $port \
+                --cluster-enabled yes \
+                --cluster-config-file nodes.conf \
+                --cluster-node-timeout 5000 \
+                --cluster-require-full-coverage no \
+                --cluster-announce-hostname redis-$i \
+                --cluster-announce-port $port \
+                --cluster-announce-bus-port $bus \
+                --cluster-preferred-endpoint-type hostname
+          done
+          # Wait for each shard to accept commands.
+          for i in 0 1 2; do
+            port=$((17000 + i))
+            for _ in $(seq 1 30); do
+              docker exec redis-$i redis-cli -p $port ping 2>/dev/null | grep -q PONG && break
+              sleep 1
+            done
+          done
+          # Form the cluster from an init container on the same network so
+          # --cluster-preferred-endpoint-type hostname resolves redis-0/1/2.
+          docker run --rm --network redis-cluster-ci redis:7 \
+            redis-cli --cluster create \
+              redis-0:17000 redis-1:17001 redis-2:17002 \
+              --cluster-replicas 0 --cluster-yes
+          # Confirm convergence.
+          for _ in $(seq 1 30); do
+            state=$(docker exec redis-0 redis-cli -p 17000 cluster info | awk -F: '/^cluster_state:/ {print $2}' | tr -d '[:cntrl:]')
+            if [ "$state" = "ok" ]; then
+              echo "Redis Cluster ready (3 shards, state=ok)"
+              docker exec redis-0 redis-cli -p 17000 cluster nodes
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Redis Cluster failed to reach ok state" >&2
+          docker exec redis-0 redis-cli -p 17000 cluster info >&2 || true
+          exit 1
 
       - name: Setup Supabase
         uses: supabase/setup-cli@v1
@@ -286,8 +350,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
           JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
           REDIS_HOST: "localhost"
-          REDIS_PORT: "6379"
+          REDIS_PORT: "17000"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
+          # Opt-in: lets backend/data/e2e_redis_restart_test.py spin up its
+          # own isolated 3-shard cluster (ports 27110–27112) and exercise
+          # ``docker restart <shard>`` mid-stream. Off locally so a
+          # contributor's ``poetry run test`` doesn't pay the ~15s cost.
+          E2E_RESTART_ISOLATED: "1"
 
       - name: Upload coverage reports to Codecov
         if: ${{ !cancelled() }}

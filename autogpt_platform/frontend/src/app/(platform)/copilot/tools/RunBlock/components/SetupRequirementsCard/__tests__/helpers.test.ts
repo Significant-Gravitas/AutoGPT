@@ -280,6 +280,43 @@ describe("coerceExpectedInputs", () => {
     expect(result[0].value).toBeUndefined();
   });
 
+  it("preserves arbitrary schema keys (format, picker configs, etc.)", () => {
+    const result = coerceExpectedInputs([
+      {
+        name: "spreadsheet",
+        type: "object",
+        format: "google-drive-picker",
+        google_drive_picker_config: {
+          multiselect: false,
+          allowed_views: ["SPREADSHEETS"],
+        },
+        auto_credentials: { provider: "google", type: "oauth2" },
+      },
+    ]);
+    expect(result[0].format).toBe("google-drive-picker");
+    expect(result[0].google_drive_picker_config).toEqual({
+      multiselect: false,
+      allowed_views: ["SPREADSHEETS"],
+    });
+    expect(result[0].auto_credentials).toEqual({
+      provider: "google",
+      type: "oauth2",
+    });
+  });
+
+  it("skips undefined extra keys but keeps other extras", () => {
+    const result = coerceExpectedInputs([
+      {
+        name: "q",
+        type: "string",
+        format: "email",
+        extra_hint: undefined,
+      },
+    ]);
+    expect(result[0].format).toBe("email");
+    expect(result[0]).not.toHaveProperty("extra_hint");
+  });
+
   it("omits non-string discriminator_values from scopes in coerceCredentialFields", () => {
     const input = {
       cred1: {
@@ -427,6 +464,49 @@ describe("buildExpectedInputsSchema", () => {
     ];
     expect(buildExpectedInputsSchema(advancedOnly)).toBeNull();
     expect(buildExpectedInputsSchema(advancedOnly, true)).not.toBeNull();
+  });
+
+  it("propagates arbitrary schema keys (e.g. format, picker config) into properties", () => {
+    const pickerInput = [
+      {
+        name: "spreadsheet",
+        title: "Spreadsheet",
+        type: "object",
+        required: true,
+        advanced: false,
+        format: "google-drive-picker",
+        google_drive_picker_config: {
+          multiselect: false,
+          allowed_views: ["SPREADSHEETS"],
+        },
+        auto_credentials: { provider: "google" },
+      },
+    ];
+    const schema = buildExpectedInputsSchema(pickerInput);
+    const props = schema!.properties as Record<string, Record<string, unknown>>;
+    expect(props.spreadsheet.format).toBe("google-drive-picker");
+    expect(props.spreadsheet.google_drive_picker_config).toEqual({
+      multiselect: false,
+      allowed_views: ["SPREADSHEETS"],
+    });
+    expect(props.spreadsheet.auto_credentials).toEqual({ provider: "google" });
+  });
+
+  it("does not leak reserved keys (name, required, advanced) into properties", () => {
+    const input = [
+      {
+        name: "query",
+        title: "Query",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+    ];
+    const schema = buildExpectedInputsSchema(input);
+    const props = schema!.properties as Record<string, Record<string, unknown>>;
+    expect(props.query).not.toHaveProperty("name");
+    expect(props.query).not.toHaveProperty("required");
+    expect(props.query).not.toHaveProperty("advanced");
   });
 });
 

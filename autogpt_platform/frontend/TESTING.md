@@ -121,35 +121,49 @@ Only when the component has complex internal logic that is hard to exercise thro
 ### Running
 
 ```bash
-pnpm test                   # build + run all Playwright tests
-pnpm test-ui                # run with Playwright UI
-pnpm test:no-build          # run against a running dev server
+pnpm test                   # build + run the Playwright E2E suite used in CI
+pnpm test-ui                # run the same E2E suite with Playwright UI
+pnpm test:e2e:no-build      # run the same E2E suite against a running dev server
+pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 ```
 
 ### Setup
 
 1. Start the backend + Supabase stack:
    - From `autogpt_platform`: `docker compose --profile local up deps_backend -d`
-2. Seed rich E2E data (creates `test123@gmail.com` with library agents):
+2. Seed rich E2E data (creates `test123@example.com` with library agents):
    - From `autogpt_platform/backend`: `poetry run python test/e2e_test_data.py`
 
 ### How Playwright setup works
 
-- Playwright runs from `frontend/playwright.config.ts` with a global setup step
-- Global setup creates a user pool via the real signup UI, stored in `frontend/.auth/user-pool.json`
-- `getTestUser()` (from `src/tests/utils/auth.ts`) pulls a random user from the pool
+- Playwright runs from `frontend/playwright.config.ts` and keeps browser-only code in `frontend/src/playwright/`
+- Global setup creates reusable auth states for deterministic seeded accounts in `frontend/.auth/states/`
+- `getTestUser()` (from `src/playwright/utils/auth.ts`) picks one seeded account for general auth coverage
 - `getTestUserWithLibraryAgents()` uses the rich user created by the data script
 
 ### Test users
 
-- **User pool (basic users)** — created automatically by Playwright global setup. Used by `getTestUser()`
+- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getTestUser()` and `E2E_AUTH_STATES`
 - **Rich user with library agents** — created by `backend/test/e2e_test_data.py`. Used by `getTestUserWithLibraryAgents()`
+
+### Current Playwright E2E suite
+
+The CI suite is intentionally limited to the cross-page journeys we still require a real browser for. Playwright discovers the PR-gating specs by the `*-happy-path.spec.ts` naming pattern inside `src/playwright/`:
+
+- `src/playwright/auth-happy-path.spec.ts`
+- `src/playwright/settings-happy-path.spec.ts`
+- `src/playwright/api-keys-happy-path.spec.ts`
+- `src/playwright/builder-happy-path.spec.ts`
+- `src/playwright/library-happy-path.spec.ts`
+- `src/playwright/marketplace-happy-path.spec.ts`
+- `src/playwright/publish-happy-path.spec.ts`
+- `src/playwright/copilot-happy-path.spec.ts`
 
 ### Resetting the DB
 
 If you reset the Docker DB and logins start failing:
 
-1. Delete `frontend/.auth/user-pool.json`
+1. Delete `frontend/.auth/states/*` and `frontend/.auth/user-pool.json` if it exists
 2. Re-run `poetry run python test/e2e_test_data.py`
 
 ## Storybook

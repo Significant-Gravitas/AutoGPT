@@ -118,7 +118,22 @@ interface ExpectedInput {
   required: boolean;
   advanced: boolean;
   value?: unknown;
+  // Any additional JSON-schema fields (format, json_schema_extra entries,
+  // custom widget configs, etc.) are preserved verbatim so the generic
+  // custom-field dispatch on the frontend can read them. Keeps this
+  // layer free of widget-specific knowledge.
+  [key: string]: unknown;
 }
+
+const RESERVED_EXPECTED_INPUT_KEYS = new Set([
+  "name",
+  "title",
+  "type",
+  "description",
+  "required",
+  "advanced",
+  "value",
+]);
 
 export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
   if (!Array.isArray(rawInputs)) return [];
@@ -148,6 +163,14 @@ export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
     if (description) item.description = description;
     if (input.value !== undefined && input.value !== null) {
       item.value = input.value;
+    }
+    // Preserve any additional schema fields (format, custom widget
+    // configs, etc.) verbatim — dispatch is handled by the generic
+    // custom-field layer in FormRenderer.
+    for (const [key, value] of Object.entries(input)) {
+      if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
+      if (value === undefined) continue;
+      item[key] = value;
     }
     results.push(item);
   });
@@ -195,6 +218,13 @@ export function buildExpectedInputsSchema(
     };
     if (input.description) prop.description = input.description;
     if (input.value !== undefined) prop.default = input.value;
+    // Pass through any additional schema fields (format, custom widget
+    // configs, etc.) so the generic custom-field dispatch can use them.
+    for (const [key, value] of Object.entries(input)) {
+      if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
+      if (value === undefined) continue;
+      prop[key] = value;
+    }
     properties[input.name] = prop;
     if (input.required) required.push(input.name);
   }

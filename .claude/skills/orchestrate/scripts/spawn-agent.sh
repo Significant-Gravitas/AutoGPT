@@ -90,26 +90,33 @@ fi
 #   claude --resume SESSION_ID --permission-mode bypassPermissions
 tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions --session-id '${SESSION_ID}'" Enter
 
-# Wait up to 60s for claude to be fully interactive:
-# both pane_current_command == 'node' AND the '❯' prompt is visible.
-PROMPT_FOUND=false
-for i in $(seq 1 60); do
-  CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
-  PANE=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
-  if echo "$PANE" | grep -q "Enter to confirm"; then
-    tmux send-keys -t "$WINDOW" Down Enter
-    sleep 2
-    continue
-  fi
-  if [[ "$CMD" == "node" ]] && echo "$PANE" | grep -q "❯"; then
-    PROMPT_FOUND=true
-    break
-  fi
-  sleep 1
-done
+# wait_for_claude_idle — poll until the pane shows idle ❯ with no spinner in the last 3 lines.
+# Returns 0 when idle, 1 on timeout.
+_wait_idle() {
+  local window="$1" timeout="${2:-60}" elapsed=0
+  while (( elapsed < timeout )); do
+    local cmd pane_tail
+    cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
+    pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    pane_tail=$(echo "$pane" | tail -3)
+    # Check full pane (not just tail) — 'Enter to confirm' dialog can appear above the last 3 lines
+    if echo "$pane" | grep -q "Enter to confirm"; then
+      tmux send-keys -t "$window" Down Enter
+      sleep 2; (( elapsed += 2 )); continue
+    fi
+    if [[ "$cmd" == "node" ]] && \
+       echo "$pane_tail" | grep -q "❯" && \
+       ! echo "$pane_tail" | grep -qE '[✳✽✢✶·✻✼✿❋✤]|Running…|Compacting'; then
+      return 0
+    fi
+    sleep 2; (( elapsed += 2 ))
+  done
+  return 1
+}
 
-if ! $PROMPT_FOUND; then
-  echo "[spawn-agent] WARNING: timed out waiting for ❯ prompt on $WINDOW — sending objective anyway" >&2
+# Wait up to 60s for claude to be fully interactive and idle (❯ visible, no spinner).
+if ! _wait_idle "$WINDOW" 60; then
+  echo "[spawn-agent] WARNING: timed out waiting for idle ❯ prompt on $WINDOW — sending objective anyway" >&2
 fi
 
 # Send the task. Split text and Enter — if combined, Enter can fire before the string

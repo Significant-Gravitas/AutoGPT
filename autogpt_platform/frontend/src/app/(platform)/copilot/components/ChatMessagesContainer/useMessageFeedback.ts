@@ -1,6 +1,6 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { getWebSocketToken } from "@/lib/supabase/actions";
 import { environment } from "@/services/environment";
+import { getCopilotAuthHeaders } from "@/app/(platform)/copilot/helpers";
 import { useState } from "react";
 
 interface Args {
@@ -16,16 +16,14 @@ async function submitFeedbackToBackend(args: {
   comment?: string;
 }) {
   try {
-    const { token } = await getWebSocketToken();
-    if (!token) return;
-
+    const authHeaders = await getCopilotAuthHeaders();
     await fetch(
       `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${args.sessionID}/feedback`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...authHeaders,
         },
         body: JSON.stringify({
           message_id: args.messageID,
@@ -35,8 +33,9 @@ async function submitFeedbackToBackend(args: {
         }),
       },
     );
-  } catch {
+  } catch (err) {
     // Feedback submission is best-effort; silently ignore failures
+    console.debug("[Copilot] Feedback submission failed:", err);
   }
 }
 

@@ -52,6 +52,9 @@ export const DEFAULT_PANEL_WIDTH = 600;
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
 
+/** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
+export type CopilotLlmModel = "standard" | "advanced";
+
 const isClient = typeof window !== "undefined";
 
 function getPersistedWidth(): number {
@@ -121,20 +124,44 @@ interface CopilotUIState {
   artifactPanel: ArtifactPanelState;
   openArtifact: (ref: ArtifactRef) => void;
   closeArtifactPanel: () => void;
+  resetArtifactPanel: () => void;
   minimizeArtifactPanel: () => void;
   maximizeArtifactPanel: () => void;
   restoreArtifactPanel: () => void;
   setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
 
+  // Card-based auto-open: ArtifactCard registers itself on mount, the store
+  // decides whether to auto-open. Much simpler than message-scanning.
+  registerArtifactForAutoOpen: (ref: ArtifactRef) => void;
+  setAutoOpenReady: () => void;
+  markUserClosedForAutoOpen: () => void;
+  resetAutoOpenState: () => void;
+
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
-  copilotMode: CopilotMode;
-  setCopilotMode: (mode: CopilotMode) => void;
+  copilotChatMode: CopilotMode;
+  setCopilotChatMode: (mode: CopilotMode) => void;
+
+  /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
+  copilotLlmModel: CopilotLlmModel;
+  setCopilotLlmModel: (model: CopilotLlmModel) => void;
+
+  /** Developer dry-run mode: sessions created with dry_run=true. */
+  isDryRun: boolean;
+  setIsDryRun: (enabled: boolean) => void;
 
   clearCopilotLocalData: () => void;
 }
 
-export const useCopilotUIStore = create<CopilotUIState>((set) => ({
+// ── Card-based auto-open tracking ───────────────────────────────────
+// Module-level state — not in Zustand to avoid unnecessary re-renders.
+// ArtifactCard calls registerArtifactForAutoOpen on mount; the store
+// decides whether to auto-open based on these flags.
+const _autoOpenKnownIds = new Set<string>();
+let _autoOpenReady = false;
+let _autoOpenUserClosed = false;
+
+export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
 
@@ -202,11 +229,15 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
+      const shouldPushHistory =
+        state.artifactPanel.isOpen &&
+        activeArtifact != null &&
+        activeArtifact.id !== ref.id;
       const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
-        : activeArtifact && activeArtifact.id !== ref.id
-          ? [...prevHistory, activeArtifact].slice(-MAX_HISTORY)
+        : shouldPushHistory
+          ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
       return {
         artifactPanel: {
@@ -224,6 +255,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         ...state.artifactPanel,
         isOpen: false,
         isMinimized: false,
+        history: [],
+      },
+    })),
+  resetArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: false,
+        isMinimized: false,
+        isMaximized: false,
+        activeArtifact: null,
         history: [],
       },
     })),
@@ -271,24 +313,78 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       };
     }),
 
-  copilotMode:
-    isClient && storage.get(Key.COPILOT_MODE) === "fast"
-      ? "fast"
-      : "extended_thinking",
-  setCopilotMode: (mode) => {
+  // ── Card-based auto-open actions ─────────────────────────────────
+  registerArtifactForAutoOpen: (ref) => {
+    if (_autoOpenKnownIds.has(ref.id)) {
+      // Already known — upgrade activeArtifact metadata if this ref is richer
+      // (e.g. file-part ref with real MIME replacing text-extracted null MIME).
+      const active = get().artifactPanel.activeArtifact;
+      if (active?.id === ref.id && !active.mimeType && ref.mimeType) {
+        set((state) => ({
+          artifactPanel: { ...state.artifactPanel, activeArtifact: ref },
+        }));
+      }
+      return;
+    }
+    _autoOpenKnownIds.add(ref.id);
+    if (!_autoOpenReady || _autoOpenUserClosed || ref.origin !== "agent")
+      return;
+    get().openArtifact(ref);
+  },
+  setAutoOpenReady: () => {
+    _autoOpenReady = true;
+  },
+  markUserClosedForAutoOpen: () => {
+    _autoOpenUserClosed = true;
+  },
+  resetAutoOpenState: () => {
+    _autoOpenKnownIds.clear();
+    _autoOpenReady = false;
+    _autoOpenUserClosed = false;
+  },
+
+  copilotChatMode: (() => {
+    const saved = isClient ? storage.get(Key.COPILOT_MODE) : null;
+    return saved === "fast" ? "fast" : "extended_thinking";
+  })(),
+  setCopilotChatMode: (mode) => {
     storage.set(Key.COPILOT_MODE, mode);
-    set({ copilotMode: mode });
+    set({ copilotChatMode: mode });
+  },
+
+  copilotLlmModel: (() => {
+    const saved = isClient ? storage.get(Key.COPILOT_MODEL) : null;
+    return saved === "advanced" ? "advanced" : "standard";
+  })(),
+  setCopilotLlmModel: (model) => {
+    storage.set(Key.COPILOT_MODEL, model);
+    set({ copilotLlmModel: model });
+  },
+
+  isDryRun: isClient && storage.get(Key.COPILOT_DRY_RUN) === "true",
+  setIsDryRun: (enabled) => {
+    if (enabled) {
+      storage.set(Key.COPILOT_DRY_RUN, "true");
+    } else {
+      storage.clean(Key.COPILOT_DRY_RUN);
+    }
+    set({ isDryRun: enabled });
   },
 
   clearCopilotLocalData: () => {
     clearContentCache();
+    _autoOpenKnownIds.clear();
+    _autoOpenReady = false;
+    _autoOpenUserClosed = false;
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-    storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
+    storage.clean(Key.COPILOT_DRY_RUN);
+    storage.clean(Key.COPILOT_MODE);
+    storage.clean(Key.COPILOT_MODEL);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
@@ -301,7 +397,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         activeArtifact: null,
         history: [],
       },
-      copilotMode: "extended_thinking",
+      copilotChatMode: "extended_thinking",
+      copilotLlmModel: "standard",
+      isDryRun: false,
     });
     if (isClient) {
       document.title = ORIGINAL_TITLE;

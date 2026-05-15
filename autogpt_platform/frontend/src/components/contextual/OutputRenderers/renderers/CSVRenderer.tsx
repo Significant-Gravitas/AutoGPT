@@ -6,7 +6,35 @@ import {
   CopyContent,
 } from "../types";
 
-function parseCSV(text: string): { headers: string[]; rows: string[][] } {
+function normalizeMime(mime?: string): string | undefined {
+  return mime?.toLowerCase().split(";")[0]?.trim();
+}
+
+function getDelimiter(metadata?: OutputMetadata): "," | "\t" {
+  if (
+    normalizeMime(metadata?.mimeType) === "text/tab-separated-values" ||
+    metadata?.filename?.toLowerCase().endsWith(".tsv")
+  ) {
+    return "\t";
+  }
+
+  return ",";
+}
+
+function getDelimitedMimeType(metadata?: OutputMetadata): string {
+  return getDelimiter(metadata) === "\t"
+    ? "text/tab-separated-values"
+    : "text/csv";
+}
+
+function getDelimitedFallbackFilename(metadata?: OutputMetadata): string {
+  return getDelimiter(metadata) === "\t" ? "data.tsv" : "data.csv";
+}
+
+function parseDelimitedText(
+  text: string,
+  delimiter: "," | "\t",
+): { headers: string[]; rows: string[][] } {
   const normalized = text
     .replace(/\r\n?/g, "\n")
     .replace(/^\ufeff/, "")
@@ -32,7 +60,7 @@ function parseCSV(text: string): { headers: string[]; rows: string[][] } {
       }
     } else if (ch === '"') {
       inQuotes = true;
-    } else if (ch === ",") {
+    } else if (ch === delimiter) {
       row.push(current);
       current = "";
     } else if (ch === "\n") {
@@ -51,8 +79,17 @@ function parseCSV(text: string): { headers: string[]; rows: string[][] } {
   return { headers, rows: rows.slice(1) };
 }
 
-function CSVTable({ value }: { value: string }) {
-  const { headers, rows } = useMemo(() => parseCSV(value), [value]);
+function CSVTable({
+  value,
+  delimiter,
+}: {
+  value: string;
+  delimiter: "," | "\t";
+}) {
+  const { headers, rows } = useMemo(
+    () => parseDelimitedText(value, delimiter),
+    [delimiter, value],
+  );
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -134,16 +171,17 @@ function CSVTable({ value }: { value: string }) {
 
 function canRenderCSV(value: unknown, metadata?: OutputMetadata): boolean {
   if (typeof value !== "string") return false;
-  if (metadata?.mimeType === "text/csv") return true;
+  const mime = normalizeMime(metadata?.mimeType);
+  if (mime === "text/csv" || mime === "text/tab-separated-values") {
+    return true;
+  }
   if (metadata?.filename?.toLowerCase().endsWith(".csv")) return true;
+  if (metadata?.filename?.toLowerCase().endsWith(".tsv")) return true;
   return false;
 }
 
-function renderCSV(
-  value: unknown,
-  _metadata?: OutputMetadata,
-): React.ReactNode {
-  return <CSVTable value={String(value)} />;
+function renderCSV(value: unknown, metadata?: OutputMetadata): React.ReactNode {
+  return <CSVTable value={String(value)} delimiter={getDelimiter(metadata)} />;
 }
 
 function getCopyContentCSV(
@@ -159,10 +197,11 @@ function getDownloadContentCSV(
   metadata?: OutputMetadata,
 ): DownloadContent | null {
   const text = String(value);
+  const mimeType = getDelimitedMimeType(metadata);
   return {
-    data: new Blob([text], { type: "text/csv" }),
-    filename: metadata?.filename || "data.csv",
-    mimeType: "text/csv",
+    data: new Blob([text], { type: mimeType }),
+    filename: metadata?.filename || getDelimitedFallbackFilename(metadata),
+    mimeType,
   };
 }
 

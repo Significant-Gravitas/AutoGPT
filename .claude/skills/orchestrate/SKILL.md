@@ -25,7 +25,7 @@ STATE_FILE=~/.claude/orchestrator-state.json
 | `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE [PR_NUMBER] [STEPS...]` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** |
 | `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch |
 | `run-loop.sh` | **Mechanical babysitter** — idle restart + dialog approval + recycle on ORCHESTRATOR:DONE + supervisor health check + all-done notification |
-| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green. Repo auto-derived from state file `.repo` or git remote. |
+| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green + no fresh CHANGES_REQUESTED. Repo auto-derived from state file `.repo` or git remote. |
 | `notify.sh MESSAGE` | Send notification via Discord webhook (env `DISCORD_WEBHOOK_URL` or state `.discord_webhook`), macOS notification center, and stdout |
 | `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees |
 | `status.sh` | Print fleet status + live pane commands |
@@ -64,7 +64,7 @@ spare/N branch  →  spawn-agent.sh (--session-id UUID)  →  window + feat/bran
                                                                  ↓
                                                         ORCHESTRATOR:DONE
                                                                  ↓
-                                    verify-complete.sh: checkpoints ✓ + 0 threads + CI green
+                                    verify-complete.sh: checkpoints ✓ + 0 threads + CI green + no fresh CHANGES_REQUESTED
                                                                  ↓
                                               state → "done", notify, window KEPT OPEN
                                                                  ↓
@@ -323,12 +323,69 @@ For each agent, decide:
 | Stuck in error loop | Send targeted fix with exact error + solution |
 | Waiting for input / question | Answer and unblock via `tmux send-keys` |
 | CI red | `gh pr checks PR_NUMBER --repo REPO` → tell agent exactly what's failing |
+| GitHub abuse rate limit error | Nudge: "Wait 60 seconds then continue posting replies with sleep 3 between each" |
 | Context compacted / agent lost | Send recovery: `cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window=="WIN")'` + `gh pr view PR_NUMBER --json title,body` |
-| `ORCHESTRATOR:DONE` in output | Run `verify-complete.sh` — if it fails, re-brief with specific reason |
+| `ORCHESTRATOR:DONE` in output | Query GraphQL for actual unresolved count. If >0, re-brief. If 0, run `verify-complete.sh` |
+
+**Poll all windows from state, not from memory.** Before each poll, run:
+```bash
+jq -r '.agents[] | select(.state | test("running|idle|stuck|waiting_approval|pending_evaluation")) | .window' ~/.claude/orchestrator-state.json
+```
+and capture every window listed. If you manually added a window outside spawn-agent.sh, ensure it's in the state file first.
+
+### RUNNING count includes waiting_approval agents
+
+The `RUNNING` count from run-loop.sh includes agents in `waiting_approval` state (they match the regex `running|stuck|waiting_approval|idle`). This means a fleet that is only `waiting_approval` still shows RUNNING > 0 in the log — it does **not** mean agents are actively working.
+
+When you see `RUNNING > 0` in the run-loop log but suspect agents are actually blocked, check state directly:
+```bash
+jq '.agents[] | {window, state, worktree}' ~/.claude/orchestrator-state.json
+```
+A count of `running=1 waiting=1` in the log actually means one agent is waiting for approval — the orchestrator should check and approve, not wait.
+
+### State file staleness recovery
+
+The state file is written by scripts but can drift from reality when windows are closed, sessions expire, or the orchestrator restarts across conversations.
+
+**Signs of stale state:**
+- `loop_window` points to a window that no longer exists in the tmux session
+- An agent's `state` is `running` but tmux window is closed or shows a shell prompt (not claude)
+- `last_seen_at` is hours old but state still says `running`
+
+**Recovery steps:**
+
+1. **Verify actual tmux windows:**
+```bash
+tmux list-windows -t SESSION -F '#{window_index}: #{window_name} (#{pane_current_command})'
+```
+
+2. **Cross-reference with state file:**
+```bash
+jq -r '.agents[] | "\(.window) \(.state) \(.worktree)"' ~/.claude/orchestrator-state.json
+```
+
+3. **Fix stale entries:**
+```bash
+# Agent window closed — mark idle so run-loop.sh will restart it
+jq --arg w "SESSION:WIN" '(.agents[] | select(.window==$w)).state = "idle"' \
+  ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+
+# loop_window gone — kill the stale reference, then restart run-loop.sh
+jq '.loop_window = null' ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+LOOP_WIN=$(tmux new-window -t "$SESSION" -n "orchestrator" -P -F '#{window_index}')
+LOOP_WINDOW="${SESSION}:${LOOP_WIN}"
+tmux send-keys -t "$LOOP_WINDOW" "bash $SKILLS_DIR/run-loop.sh" Enter
+jq --arg w "$LOOP_WINDOW" '.loop_window = $w' ~/.claude/orchestrator-state.json \
+  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+```
+
+4. **After any state repair, re-run `status.sh` to confirm coherence before resuming supervision.**
 
 ### Strict ORCHESTRATOR:DONE gate
 
-`verify-complete.sh` handles the main checks automatically (checkpoints, threads, CHANGES_REQUESTED, CI green, spawned_at). Run it:
+`verify-complete.sh` handles the main checks automatically (checkpoints, threads, CI green, spawned_at, and CHANGES_REQUESTED). Run it:
+
+**CHANGES_REQUESTED staleness rule**: a `CHANGES_REQUESTED` review only blocks if it was submitted *after* the latest commit. If the latest commit postdates the review, the review is considered stale (feedback already addressed) and does not block. This avoids false negatives when a bot reviewer hasn't re-reviewed after the agent's fixing commits.
 
 ```bash
 SKILLS_DIR=~/.claude/orchestrator/scripts
@@ -339,6 +396,14 @@ If it passes → run-loop.sh will recycle the window automatically. No manual ac
 If it fails → re-brief the agent with the failure reason. Never manually mark state `done` to bypass this.
 
 ### Re-brief a stalled agent
+
+**Before sending any nudge, verify the pane is at an idle ❯ prompt.** Sending text into a still-processing pane produces stuck `[Pasted text +N lines]` that the agent never sees.
+
+Check:
+```bash
+tmux capture-pane -t SESSION:WIN -p 2>/dev/null | tail -5
+```
+If the last line shows a spinner (✳✽✢✶·), `Running…`, or no `❯` — wait 10–15s and check again before sending.
 
 ```bash
 OBJ=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .objective' ~/.claude/orchestrator-state.json)
@@ -393,8 +458,8 @@ When run-loop marks an agent `pending_evaluation` and you're notified, do all of
 
 **When multiple PRs reach `pending_evaluation` at the same time, use TodoWrite to queue them:**
 ```
-- [ ] /pr-test PR #12636 — fix copilot retry logic
-- [ ] /pr-test PR #12699 — builder chat panel
+- [ ] /pr-test https://github.com/Significant-Gravitas/AutoGPT/pull/NNNN — <feature description>
+- [ ] /pr-test https://github.com/Significant-Gravitas/AutoGPT/pull/MMMM — <feature description>
 ```
 Run one at a time. Check off as you go.
 
@@ -412,6 +477,38 @@ Please verify: <specific behaviors to check>.
 
 Only one `/pr-test` at a time — they share ports and DB.
 
+### /pr-test result evaluation
+
+**PARTIAL on any headline feature scenario is an immediate blocker.** Do not approve, do not mark done, do not let the agent output `ORCHESTRATOR:DONE`.
+
+| `/pr-test` result | Action |
+|---|---|
+| All headline scenarios **PASS** | Proceed to evaluation step 2 |
+| Any headline scenario **PARTIAL** | Re-brief the agent immediately — see below |
+| Any headline scenario **FAIL** | Re-brief the agent immediately |
+
+**What PARTIAL means**: the feature is only partly working. Example: the Apply button never appeared, or the AI returned no action blocks. The agent addressed part of the objective but not all of it.
+
+**When any headline scenario is PARTIAL or FAIL:**
+
+1. Do NOT mark the agent done or accept `ORCHESTRATOR:DONE`
+2. Re-brief the agent with the specific scenario that failed and what was missing:
+   ```bash
+   tmux send-keys -t SESSION:WIN "PARTIAL result on /pr-test — S5 (Apply button) never appeared. The AI must output JSON action blocks for the Apply button to render. Fix this before re-running /pr-test."
+   sleep 0.3
+   tmux send-keys -t SESSION:WIN Enter
+   ```
+3. Set state back to `running`:
+   ```bash
+   jq --arg w "SESSION:WIN" '(.agents[] | select(.window == $w)).state = "running"' \
+     ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+   ```
+4. Wait for new `ORCHESTRATOR:DONE`, then re-run `/pr-test` from scratch
+
+**Rule: only ALL-PASS qualifies for approval.** A mix of PASS + PARTIAL is a failure.
+
+> **Why this matters**: A PR was once wrongly approved with S5 PARTIAL — the AI never output JSON action blocks so the Apply button never appeared. The fix was already in the agent's reach but slipped through because PARTIAL was not treated as blocking.
+
 ### 2. Do your own evaluation
 
 1. **Read the PR diff and objective** — does the code actually implement what was asked? Is anything obviously missing or half-done?
@@ -421,8 +518,9 @@ Only one `/pr-test` at a time — they share ports and DB.
 
 ### 3. Decide
 
-- `/pr-test` passes + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
-- `/pr-test` fails or evaluation finds gaps → re-brief the agent with specific failures, set state back to `running`
+- `/pr-test` all scenarios PASS + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
+- `/pr-test` any scenario PARTIAL or FAIL → re-brief the agent with the specific failing scenario, set state back to `running` (see `/pr-test result evaluation` above)
+- Evaluation finds gaps even with all PASS → re-brief the agent with specific gaps, set state back to `running`
 
 **Never mark done based purely on script output.** You hold the full objective context; the script does not.
 
@@ -441,6 +539,7 @@ Stop the fleet (`active = false`) when **all** of the following are true:
 | All agents are `done` or `escalated` | `jq '[.agents[] | select(.state | test("running\|stuck\|idle\|waiting_approval"))] | length' ~/.claude/orchestrator-state.json` == 0 |
 | All PRs have 0 unresolved review threads | GraphQL `isResolved` check per PR |
 | All PRs have green CI **on a run triggered after the agent's last push** | `gh run list --branch BRANCH --limit 1` timestamp > `spawned_at` in state |
+| No fresh CHANGES_REQUESTED (after latest commit) | `verify-complete.sh` checks this — stale pre-commit reviews are ignored |
 | No agents are `escalated` without human review | If any are escalated, surface to user first |
 
 **Do NOT stop just because agents output `ORCHESTRATOR:DONE`.** That is a signal to verify, not a signal to stop.
@@ -490,6 +589,102 @@ When `dx/orchestrate-skill` is merged into `dev`, `AutoGPT1` becomes a normal sp
 
 ---
 
+## Thread resolution integrity (critical)
+
+**Agents MUST NOT resolve review threads via GraphQL unless a real code fix has been committed and pushed first.**
+
+This is the most common failure mode: agents call `resolveReviewThread` to make unresolved counts drop without actually fixing anything. This produces a false "done" signal that gets past verify-complete.sh.
+
+**The only valid resolution sequence:**
+1. Read the thread and understand what it's asking
+2. Make the actual code change
+3. `git commit` and `git push`
+4. Reply to the thread with the commit SHA (e.g. "Fixed in `abc1234`")
+5. THEN call `resolveReviewThread`
+
+**The supervisor must verify actual thread counts via GraphQL** — never trust an agent's claim of "0 unresolved." After any agent's ORCHESTRATOR:DONE, always run:
+
+```bash
+# Step 1: get total count
+TOTAL=$(gh api graphql -f query='{ repository(owner: "OWNER", name: "REPO") { pullRequest(number: PR) { reviewThreads { totalCount } } } }' \
+  | jq '.data.repository.pullRequest.reviewThreads.totalCount')
+echo "Total threads: $TOTAL"
+
+# Step 2: paginate all pages and count unresolved
+CURSOR=""; UNRESOLVED=0
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="{ repository(owner: \"OWNER\", name: \"REPO\") { pullRequest(number: PR) { reviewThreads(first: 100${AFTER}) { pageInfo { hasNextPage endCursor } nodes { isResolved } } } } }")
+  UNRESOLVED=$(( UNRESOLVED + $(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length') ))
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+echo "Unresolved: $UNRESOLVED"
+```
+
+If unresolved > 0, the agent is NOT done — re-brief with the actual count and the rule.
+
+**Include this in every agent objective:**
+> IMPORTANT: Do NOT resolve any review thread via GraphQL unless the code fix is committed and pushed first. Fix the code → commit → push → reply with SHA → then resolve. Never resolve without a real commit. "Accepted" or "Acknowledged" replies are NOT resolutions — only real commits qualify.
+
+### Detecting fake resolutions
+
+When an agent claims "0 unresolved threads", query GitHub GraphQL yourself and also inspect how each thread was resolved. A resolved thread whose last comment is `"Acknowledged"`, `"Same as above"`, `"Accepted trade-off"`, or `"Deferred"` — with no commit SHA — is a fake resolution.
+
+To spot these, paginate all pages and collect resolved threads with missing SHA links:
+```bash
+# Paginate all pages — first:100 misses threads beyond page 1 on large PRs
+CURSOR=""; FAKE_RESOLUTIONS="[]"
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: PR_NUMBER) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            isResolved
+            comments(last: 1) {
+              nodes { body author { login } }
+            }
+          }
+        }
+      }
+    }
+  }")
+  PAGE_FAKES=$(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+    | select(.isResolved == true)
+    | {body: .comments.nodes[0].body[:120], author: .comments.nodes[0].author.login}
+    | select(.body | test("Fixed in|Removed in|Addressed in") | not)]')
+  FAKE_RESOLUTIONS=$(echo "$FAKE_RESOLUTIONS $PAGE_FAKES" | jq -s 'add')
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+echo "$FAKE_RESOLUTIONS"
+```
+Any resolved thread whose last comment does NOT contain `"Fixed in"`, `"Removed in"`, or `"Addressed in"` (with a commit link) should be investigated — either the agent falsely resolved it, or it was a genuine false positive that needs explanation.
+
+## GitHub abuse rate limits
+
+Two distinct rate limits exist with different recovery times:
+
+| Error | HTTP status | Cause | Recovery |
+|---|---|---|---|
+| `{"code":"abuse"}` in body | 403 | Secondary rate limit — too many write operations (comments, mutations) in a short window | Wait **2–3 minutes**. 60s is often not enough. |
+| `API rate limit exceeded` | 429 | Primary rate limit — too many read calls per hour | Wait until `X-RateLimit-Reset` timestamp |
+
+**Prevention:** Agents must add `sleep 3` between individual thread reply API calls. For >20 unresolved threads, increase to `sleep 5`.
+
+If you see a 403 `abuse` error from an agent's pane:
+1. Nudge the agent: `"You hit a GitHub secondary rate limit (403). Stop all API writes. Wait 2 minutes, then resume with sleep 3 between each thread reply."`
+2. Do NOT nudge again during the 2-minute wait — a second nudge restarts the clock.
+
+Add this to agent briefings when there are >20 unresolved threads:
+> Post replies with `sleep 3` between each reply. If you hit a 403 abuse error, wait 2 minutes (not 60s — secondary limits take longer to clear) then continue.
+
 ## Key rules
 
 1. **Scripts do all the heavy lifting** — don't reimplement their logic inline in this file
@@ -507,3 +702,8 @@ When `dx/orchestrate-skill` is merged into `dev`, `AutoGPT1` becomes a normal sp
 13. **Protected worktrees** — never use the worktree hosting the skill scripts as a spare
 14. **Images via file path** — save screenshots to `/tmp/orchestrator-context-<ts>.png`, pass path in objective; agents read with the `Read` tool
 15. **Split send-keys** — always separate text and Enter with `sleep 0.3` between calls for long strings
+16. **Poll ALL windows from state file** — never hardcode window count. Derive active windows dynamically: `jq -r '.agents[] | select(.state | test("running|idle|stuck")) | .window' ~/.claude/orchestrator-state.json`. If you added a window mid-session outside spawn-agent.sh, add it to the state file immediately.
+20. **Orchestrator handles its own approvals** — when spawning a subagent to make edits (SKILL.md, scripts, config), review the diff yourself and approve/reject without surfacing it to the user. The user should never have to open a file to check the orchestrator's work. Use the Agent tool with `subagent_type: general-purpose` for drafting, then verify the result yourself before considering the task done.
+17. **Update state file on re-task** — whenever an agent is re-tasked mid-session (objective changes, new PR assigned), update the state file record immediately so objectives stay accurate for re-briefing after compaction.
+18. **No GraphQL resolveReviewThread without a commit** — see Thread resolution integrity above. This is rule #1 for pr-address work.
+19. **Verify thread counts yourself** — after any agent claims "0 unresolved threads", query GitHub GraphQL directly before accepting. Never trust the agent's self-report.

@@ -20,7 +20,7 @@ The block waits for completion and returns the model output along with status in
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | model_name | The Replicate model name (format: 'owner/model-name') | str | Yes |
-| model_inputs | Dictionary of inputs to pass to the model | Dict[str, str \| int] | No |
+| model_inputs | Dictionary of inputs to pass to the model. Values may be strings, integers, floats, or booleans — Replicate model schemas commonly require booleans (e.g. ``generate_audio``, ``safety_checker``) and floats (e.g. ``temperature``, ``guidance_scale``). | Dict[str, str \| int \| float \| bool] | No |
 | version | Specific version hash of the model (optional) | str | No |
 
 ### Outputs

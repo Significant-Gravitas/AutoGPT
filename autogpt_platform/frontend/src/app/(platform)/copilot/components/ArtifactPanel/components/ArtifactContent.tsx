@@ -2,12 +2,15 @@
 
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
   wrapWithHeadInjection,
 } from "@/lib/iframe-sandbox-csp";
@@ -52,12 +55,114 @@ function ArtifactContentLoader({
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <ArtifactRenderer
-        artifact={artifact}
-        content={content}
-        pdfUrl={pdfUrl}
-        isSourceView={isSourceView}
-        classification={classification}
+      <ArtifactErrorBoundary
+        artifactID={artifact.id}
+        artifactTitle={artifact.title}
+        artifactType={classification.type}
+      >
+        <ArtifactRenderer
+          artifact={artifact}
+          content={content}
+          pdfUrl={pdfUrl}
+          isSourceView={isSourceView}
+          classification={classification}
+        />
+      </ArtifactErrorBoundary>
+    </div>
+  );
+}
+
+function withCacheBust(src: string, nonce: number): string {
+  if (nonce === 0) return src;
+  const sep = src.includes("?") ? "&" : "?";
+  return `${src}${sep}_retry=${nonce}`;
+}
+
+function ArtifactImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  // Incremented on every Try Again so the URL changes and the browser
+  // can't reuse a negative-cached response (SECRT-2221).
+  const [retryNonce, setRetryNonce] = useState(0);
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
+        <p className="text-sm text-zinc-500">Failed to load image</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoaded(false);
+            setRetryNonce((n) => n + 1);
+          }}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex items-center justify-center p-4">
+      {!loaded && (
+        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={withCacheBust(src, retryNonce)}
+        alt={alt}
+        className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+}
+
+function ArtifactVideo({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
+        <p className="text-sm text-zinc-500">Failed to load video</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoaded(false);
+            setRetryNonce((n) => n + 1);
+          }}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex items-center justify-center p-4">
+      {!loaded && (
+        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+      )}
+      <video
+        src={withCacheBust(src, retryNonce)}
+        controls
+        preload="metadata"
+        className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoadedMetadata={() => setLoaded(true)}
+        onError={() => setError(true)}
       />
     </div>
   );
@@ -79,15 +184,17 @@ function ArtifactRenderer({
   // Image: render directly from URL (no content fetch)
   if (classification.type === "image") {
     return (
-      <div className="flex items-center justify-center p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={artifact.sourceUrl}
-          alt={artifact.title}
-          className="max-h-full max-w-full object-contain"
-        />
-      </div>
+      <ArtifactImage
+        key={artifact.sourceUrl}
+        src={artifact.sourceUrl}
+        alt={artifact.title}
+      />
     );
+  }
+
+  // Video: render with <video> controls (no content fetch)
+  if (classification.type === "video") {
+    return <ArtifactVideo key={artifact.sourceUrl} src={artifact.sourceUrl} />;
   }
 
   if (classification.type === "pdf" && pdfUrl) {
@@ -113,7 +220,10 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const wrapped = wrapWithHeadInjection(content, tailwindScript);
+    const wrapped = wrapWithHeadInjection(
+      content,
+      tailwindScript + FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+    );
     return (
       <iframe
         sandbox="allow-scripts"
@@ -164,7 +274,16 @@ function ArtifactRenderer({
 
   // CSV: pass with explicit metadata so CSVRenderer matches
   if (classification.type === "csv") {
-    const csvMeta = { mimeType: "text/csv", filename: artifact.title };
+    const normalizedMime = artifact.mimeType
+      ?.toLowerCase()
+      .split(";")[0]
+      ?.trim();
+    const csvMimeType =
+      normalizedMime === "text/tab-separated-values" ||
+      artifact.title.toLowerCase().endsWith(".tsv")
+        ? "text/tab-separated-values"
+        : "text/csv";
+    const csvMeta = { mimeType: csvMimeType, filename: artifact.title };
     const csvRenderer = globalRegistry.getRenderer(content, csvMeta);
     if (csvRenderer) {
       return <div className="p-4">{csvRenderer.render(content, csvMeta)}</div>;

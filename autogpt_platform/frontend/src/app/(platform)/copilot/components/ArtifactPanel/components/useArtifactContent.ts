@@ -7,11 +7,115 @@ import type { ArtifactClassification } from "../helpers";
 // Cap on cached text artifacts. Long sessions with many large artifacts
 // would otherwise hold every opened one in memory.
 const CONTENT_CACHE_MAX = 12;
+const CONTENT_FETCH_MAX_RETRIES = 2;
+const CONTENT_FETCH_RETRY_DELAY_MS = 500;
 
 // Module-level LRU keyed by artifact id so a sibling action (e.g. Copy
 // in ArtifactPanelHeader) can read what the panel already fetched without
 // re-hitting the network.
 const contentCache = new Map<string, string>();
+
+class ArtifactFetchError extends Error {}
+
+function isTransientArtifactFetchStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getArtifactErrorMessage(body: unknown): string | null {
+  if (typeof body === "string") {
+    const trimmed = body.replace(/\s+/g, " ").trim();
+    return trimmed || null;
+  }
+
+  if (!body || typeof body !== "object") return null;
+
+  if (
+    "detail" in body &&
+    typeof body.detail === "string" &&
+    body.detail.trim().length > 0
+  ) {
+    return body.detail.trim();
+  }
+
+  if (
+    "error" in body &&
+    typeof body.error === "string" &&
+    body.error.trim().length > 0
+  ) {
+    return body.error.trim();
+  }
+
+  if (
+    "detail" in body &&
+    body.detail &&
+    typeof body.detail === "object" &&
+    "message" in body.detail &&
+    typeof body.detail.message === "string" &&
+    body.detail.message.trim().length > 0
+  ) {
+    return body.detail.message.trim();
+  }
+
+  return null;
+}
+
+async function parseArtifactFetchError(response: Response): Promise<string> {
+  const prefix = `Failed to fetch: ${response.status}`;
+  const contentType =
+    response.headers?.get?.("content-type")?.toLowerCase() ?? "";
+
+  try {
+    if (
+      contentType.includes("application/json") &&
+      typeof response.json === "function"
+    ) {
+      const body = await response.json();
+      const detail = getArtifactErrorMessage(body);
+      return detail ? `${prefix} ${detail}` : prefix;
+    }
+
+    if (typeof response.text === "function") {
+      const text = await response.text();
+      const detail = getArtifactErrorMessage(text);
+      return detail ? `${prefix} ${detail}` : prefix;
+    }
+  } catch {
+    return prefix;
+  }
+
+  return prefix;
+}
+
+async function fetchArtifactResponse(url: string): Promise<Response> {
+  for (let attempt = 0; attempt <= CONTENT_FETCH_MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return response;
+
+      if (
+        !isTransientArtifactFetchStatus(response.status) ||
+        attempt === CONTENT_FETCH_MAX_RETRIES
+      ) {
+        throw new ArtifactFetchError(await parseArtifactFetchError(response));
+      }
+    } catch (error) {
+      if (error instanceof ArtifactFetchError) throw error;
+      if (attempt === CONTENT_FETCH_MAX_RETRIES) {
+        throw error instanceof Error
+          ? error
+          : new Error("Failed to fetch artifact");
+      }
+    }
+
+    await sleep(CONTENT_FETCH_RETRY_DELAY_MS);
+  }
+
+  throw new Error("Failed to fetch artifact");
+}
 
 export function getCachedArtifactContent(id: string): string | undefined {
   return contentCache.get(id);
@@ -37,6 +141,11 @@ export function useArtifactContent(
   function retry() {
     // Drop any cached failure/content for this id so we actually re-fetch.
     contentCache.delete(artifact.id);
+    // Flip into loading + clear error synchronously with the click so the
+    // user always sees the skeleton (rather than the error UI re-flashing
+    // instantly for same-error retries). See SECRT-2224.
+    setIsLoading(true);
+    setError(null);
     setRetryNonce((n) => n + 1);
   }
 
@@ -64,7 +173,7 @@ export function useArtifactContent(
   }, [artifact.id, isLoading]);
 
   useEffect(() => {
-    if (classification.type === "image") {
+    if (classification.type === "image" || classification.type === "video") {
       setContent(null);
       setPdfUrl(null);
       setError(null);
@@ -80,11 +189,8 @@ export function useArtifactContent(
       let objectUrl: string | null = null;
       setContent(null);
       setPdfUrl(null);
-      fetch(artifact.sourceUrl)
-        .then((res) => {
-          if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-          return res.blob();
-        })
+      fetchArtifactResponse(artifact.sourceUrl)
+        .then((res) => res.blob())
         .then((blob) => {
           objectUrl = URL.createObjectURL(blob);
           if (cancelled) {
@@ -121,11 +227,8 @@ export function useArtifactContent(
         cancelled = true;
       };
     }
-    fetch(artifact.sourceUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-        return res.text();
-      })
+    fetchArtifactResponse(artifact.sourceUrl)
+      .then((res) => res.text())
       .then((text) => {
         if (!cancelled) {
           if (cache.size >= CONTENT_CACHE_MAX) {

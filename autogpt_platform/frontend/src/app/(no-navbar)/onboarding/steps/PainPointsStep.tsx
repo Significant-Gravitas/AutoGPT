@@ -147,7 +147,7 @@ export function PainPointsStep() {
           disabled={!canContinue}
           className="w-full max-w-xs"
         >
-          Launch AutoPilot
+          Continue
         </Button>
       </div>
     </FadeIn>

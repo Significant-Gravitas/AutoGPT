@@ -2,51 +2,56 @@
 
 import { cn } from "@/lib/utils";
 import { Brain, Lightning } from "@phosphor-icons/react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { CopilotMode } from "../../../store";
 
 interface Props {
   mode: CopilotMode;
-  isStreaming: boolean;
   onToggle: () => void;
 }
 
-export function ModeToggleButton({ mode, isStreaming, onToggle }: Props) {
+export function ModeToggleButton({ mode, onToggle }: Props) {
   const isExtended = mode === "extended_thinking";
+
+  const tooltipText = isExtended
+    ? "Extended Thinking — deeper reasoning (click to switch to Fast)"
+    : "Fast mode — quicker responses (click to switch to Thinking)";
+
   return (
-    <button
-      type="button"
-      aria-pressed={isExtended}
-      disabled={isStreaming}
-      onClick={onToggle}
-      className={cn(
-        "inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-        isExtended
-          ? "bg-purple-100 text-purple-900 hover:bg-purple-200"
-          : "bg-amber-100 text-amber-900 hover:bg-amber-200",
-        isStreaming && "cursor-not-allowed opacity-50",
-      )}
-      aria-label={
-        isExtended ? "Switch to Fast mode" : "Switch to Extended Thinking mode"
-      }
-      title={
-        isStreaming
-          ? "Mode cannot be changed while streaming"
-          : isExtended
-            ? "Extended Thinking mode — deeper reasoning (click to switch to Fast mode)"
-            : "Fast mode — quicker responses (click to switch to Extended Thinking)"
-      }
-    >
-      {isExtended ? (
-        <>
-          <Brain size={14} />
-          Thinking
-        </>
-      ) : (
-        <>
-          <Lightning size={14} />
-          Fast
-        </>
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-pressed={isExtended}
+          onClick={onToggle}
+          className={cn(
+            "ml-2 inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
+            isExtended ? "text-purple-900" : "text-amber-900",
+          )}
+          aria-label={
+            isExtended
+              ? "Switch to Fast mode"
+              : "Switch to Extended Thinking mode"
+          }
+        >
+          {isExtended ? (
+            <>
+              <Brain size={14} />
+              Thinking
+            </>
+          ) : (
+            <>
+              <Lightning size={14} />
+              Fast
+            </>
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }

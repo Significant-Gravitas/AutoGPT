@@ -33,8 +33,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -91,8 +93,10 @@ jobs:
 
       # ------------------------ Frontend setup ------------------------
 
-      - name: Set up Frontend - Enable corepack
-        run: corepack enable
+      - name: Set up Frontend - Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Frontend - Set up Node
         uses: actions/setup-node@v6
@@ -160,6 +164,7 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -278,8 +283,10 @@ jobs:
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
-      - name: Set up tests - Enable corepack
-        run: corepack enable
+      - name: Set up tests - Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up tests - Set up Node
         uses: actions/setup-node@v6
@@ -287,6 +294,14 @@ jobs:
           node-version: "22.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Set up tests - Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Copy source maps from Docker for E2E coverage
         run: |
@@ -299,8 +314,8 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Run Playwright tests
-        run: pnpm test:no-build
+      - name: Run Playwright E2E suite
+        run: pnpm test:e2e:no-build
         continue-on-error: false
 
       - name: Upload E2E coverage to Codecov

@@ -6,15 +6,17 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
-from backend.data.db_accessors import graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus
+from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
+from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -70,8 +72,8 @@ class RunAgentInput(BaseModel):
     schedule_name: str = ""
     cron: str = ""
     timezone: str = "UTC"
-    wait_for_result: int = Field(default=0, ge=0, le=300)
-    dry_run: bool
+    wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
+    dry_run: bool = Field(default=False)
 
     @field_validator(
         "username_agent_slug",
@@ -106,7 +108,9 @@ class RunAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Run or schedule an agent. Automatically checks inputs and credentials. "
+            "Run or schedule an agent. Automatically checks inputs and credentials "
+            "and surfaces the inline credentials-setup card if anything is missing — "
+            "do NOT redirect to the Builder for credential setup. "
             "Identify by username_agent_slug ('user/agent') or library_agent_id. "
             "For scheduling, provide schedule_name + cron."
         )
@@ -147,20 +151,22 @@ class RunAgentTool(BaseTool):
                 },
                 "wait_for_result": {
                     "type": "integer",
-                    "description": "Max seconds to wait for completion (0-300).",
+                    "description": (
+                        f"Seconds to wait (0-{MAX_TOOL_WAIT_SECONDS}). "
+                        "0 = fire-and-forget (returns execution_id). "
+                        ">0 blocks for final status/outputs, plus "
+                        "node_executions when dry_run. "
+                        "Prefer 120 for dry-run, 0 for real runs."
+                    ),
                     "minimum": 0,
-                    "maximum": 300,
+                    "maximum": MAX_TOOL_WAIT_SECONDS,
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": (
-                        "When true, simulates execution using an LLM for each block "
-                        "— no real API calls, credentials, or credits. "
-                        "See agent_generation_guide for the full workflow."
-                    ),
+                    "description": "Simulate the agent run without executing real actions (default: false). Use when testing agent behaviour or when the user explicitly asks for a dry run.",
                 },
             },
-            "required": ["dry_run"],
+            "required": [],
         }
 
     @property
@@ -181,7 +187,8 @@ class RunAgentTool(BaseTool):
         validators defined in the Pydantic model.
         """
         params = RunAgentInput(**kwargs)
-        # Session-level dry_run forces all tool calls to use dry-run mode.
+        # Session-level dry_run forces all runs to be dry. In normal sessions
+        # the LLM may still request dry_run=True on individual calls.
         if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
@@ -189,6 +196,17 @@ class RunAgentTool(BaseTool):
         # Validate at least one identifier is provided
         has_slug = params.username_agent_slug and "/" in params.username_agent_slug
         has_library_id = bool(params.library_agent_id)
+
+        # Builder-bound sessions can omit the identifier — default to the
+        # bound graph so the LLM doesn't have to pass IDs the user never sees.
+        builder_graph_id = session.metadata.builder_graph_id
+        if builder_graph_id and user_id and not has_slug and not has_library_id:
+            library_agent = await library_db().get_library_agent_by_graph_id(
+                user_id, builder_graph_id
+            )
+            if library_agent:
+                params.library_agent_id = library_agent.id
+                has_library_id = True
 
         if not has_slug and not has_library_id:
             return ErrorResponse(
@@ -255,6 +273,20 @@ class RunAgentTool(BaseTool):
                 )
                 return ErrorResponse(
                     message=f"Agent '{identifier}' not found",
+                    session_id=session_id,
+                )
+
+            # Builder-bound sessions can only run their bound agent.  We
+            # resolve the graph first so the user sees a precise error that
+            # references the agent they actually asked to run, rather than
+            # pre-emptively rejecting every run request.
+            if builder_graph_id and graph.id != builder_graph_id:
+                return ErrorResponse(
+                    message=(
+                        "This chat is bound to the builder's current agent. "
+                        "Running a different agent is not allowed here."
+                    ),
+                    error="builder_session_graph_mismatch",
                     session_id=session_id,
                 )
 
@@ -365,6 +397,93 @@ class RunAgentTool(BaseTool):
             trigger_info=trigger_info,
         )
 
+    def _build_setup_requirements_from_validation_error(
+        self,
+        graph: GraphModel,
+        error: GraphValidationError,
+        session_id: str,
+    ) -> SetupRequirementsResponse | None:
+        """Turn a credential-only ``GraphValidationError`` into the inline
+        setup-requirements card; return ``None`` if *any* non-credential
+        error is present so the caller falls back to the plain text path
+        (otherwise structural errors would be hidden)."""
+        messages = [
+            msg
+            for node_errors in error.node_errors.values()
+            for msg in node_errors.values()
+        ]
+        if not messages or not all(
+            is_credential_validation_error_message(msg) for msg in messages
+        ):
+            return None
+
+        # Show ALL credential fields as missing — the previously-matched
+        # creds are now invalid, so narrowing to `error.node_errors` would
+        # leak the stale mapping. Passing ``None`` means no field is
+        # treated as "already connected".
+        credentials_dict = build_missing_credentials_from_graph(graph, None)
+        return SetupRequirementsResponse(
+            message=(
+                f"Agent '{graph.name}' has credentials that are missing or "
+                "no longer valid. Please connect the required account(s) "
+                "and try again."
+            ),
+            session_id=session_id,
+            setup_info=SetupInfo(
+                agent_id=graph.id,
+                agent_name=graph.name,
+                user_readiness=UserReadiness(
+                    has_all_credentials=False,
+                    missing_credentials=credentials_dict,
+                    ready_to_run=False,
+                ),
+                requirements={
+                    "credentials": list(credentials_dict.values()),
+                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "execution_modes": self._get_execution_modes(graph),
+                },
+            ),
+            graph_id=graph.id,
+            graph_version=graph.version,
+        )
+
+    def _handle_graph_validation_race(
+        self,
+        error: GraphValidationError,
+        graph: GraphModel,
+        user_id: str,
+        session_id: str,
+        action_verb: str,
+    ) -> ToolResponseBase:
+        """Handle a ``GraphValidationError`` that slipped past the prereq check.
+
+        Shared by both the run and schedule paths — logs the race, attempts to
+        rebuild the credential setup card, and falls back to a user-friendly
+        ``ErrorResponse`` when the error is structural (not credential-related).
+        """
+        logger.warning(
+            "Race: GraphValidationError after prereq check passed "
+            "(user_id=%s graph_id=%s failing_fields=%s)",
+            user_id,
+            graph.id,
+            {node_id: list(fields) for node_id, fields in error.node_errors.items()},
+        )
+        creds_setup = self._build_setup_requirements_from_validation_error(
+            graph=graph,
+            error=error,
+            session_id=session_id,
+        )
+        if creds_setup is not None:
+            return creds_setup
+        return ErrorResponse(
+            message=(
+                f"Agent has configuration issues that need to be resolved "
+                f"before {action_verb}: {error}"
+            ),
+            error="graph_validation_failed",
+            session_id=session_id,
+        )
+
     async def _check_prerequisites(
         self,
         graph: GraphModel,
@@ -374,8 +493,9 @@ class RunAgentTool(BaseTool):
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
-        Dry runs skip all prerequisite gates (credentials, input prompts)
-        since simulate_block doesn't need real credentials or complete inputs.
+        Dry runs skip all prerequisite gates (credentials, input prompts).
+        The dry_run flag is read from params.dry_run (which may be set by the
+        LLM per-call, or forced to True when session.dry_run is True).
 
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.
@@ -497,14 +617,29 @@ class RunAgentTool(BaseTool):
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
 
-        # Execute
-        execution = await execution_utils.add_graph_execution(
-            graph_id=library_agent.graph_id,
-            user_id=user_id,
-            inputs=inputs,
-            graph_credentials_inputs=graph_credentials,
-            dry_run=dry_run,
-        )
+        # Execute — ``add_graph_execution`` ultimately calls
+        # ``validate_and_construct_node_execution_input`` which raises
+        # ``GraphValidationError`` on missing/invalid credentials.  The
+        # common case is caught by ``_check_prerequisites`` above, but
+        # defend against a race (creds deleted between prereq and
+        # execute) by turning credential errors back into the inline
+        # setup card.
+        try:
+            execution = await execution_utils.add_graph_execution(
+                graph_id=library_agent.graph_id,
+                user_id=user_id,
+                inputs=inputs,
+                graph_credentials_inputs=graph_credentials,
+                dry_run=dry_run,
+            )
+        except GraphValidationError as e:
+            return self._handle_graph_validation_race(
+                error=e,
+                graph=graph,
+                user_id=user_id,
+                session_id=session_id,
+                action_verb="running",
+            )
 
         # Track successful run (dry runs don't count against the session limit)
         if not dry_run:
@@ -538,6 +673,46 @@ class RunAgentTool(BaseTool):
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
                 outputs = get_execution_outputs(completed)
+                # Inline the per-node execution trace on dry-runs so the
+                # LLM can inspect "did every block run, what did each
+                # produce?" without a follow-up view_agent_output call.
+                # Empty final outputs on a COMPLETED dry-run almost always
+                # mean a node silently produced nothing / a link was wired
+                # wrong — the trace is what lets the model debug that.
+                node_executions_data = None
+                if dry_run:
+                    try:
+                        detailed = await execution_db().get_graph_execution(
+                            user_id=user_id,
+                            execution_id=execution.id,
+                            include_node_executions=True,
+                        )
+                        if isinstance(detailed, GraphExecutionWithNodes):
+                            node_executions_data = [
+                                {
+                                    "node_id": ne.node_id,
+                                    "block_id": ne.block_id,
+                                    "status": ne.status.value,
+                                    "input_data": ne.input_data,
+                                    "output_data": dict(ne.output_data),
+                                    "start_time": (
+                                        ne.start_time.isoformat()
+                                        if ne.start_time
+                                        else None
+                                    ),
+                                    "end_time": (
+                                        ne.end_time.isoformat() if ne.end_time else None
+                                    ),
+                                }
+                                for ne in detailed.node_executions
+                            ]
+                    except Exception:
+                        logger.warning(
+                            "run_agent: failed to load node executions for "
+                            "dry-run %s; returning summary only",
+                            execution.id,
+                            exc_info=True,
+                        )
                 return AgentOutputResponse(
                     message=(
                         f"Agent '{library_agent.name}' completed successfully. "
@@ -554,6 +729,7 @@ class RunAgentTool(BaseTool):
                         started_at=completed.started_at,
                         ended_at=completed.ended_at,
                         outputs=outputs or {},
+                        node_executions=node_executions_data,
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
@@ -667,17 +843,34 @@ class RunAgentTool(BaseTool):
         user = await user_db().get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
 
-        # Create schedule
-        result = await get_scheduler_client().add_execution_schedule(
-            user_id=user_id,
-            graph_id=library_agent.graph_id,
-            graph_version=library_agent.graph_version,
-            name=schedule_name,
-            cron=cron,
-            input_data=inputs,
-            input_credentials=graph_credentials,
-            user_timezone=user_timezone,
-        )
+        # Create schedule — the scheduler re-validates credentials via
+        # ``validate_and_construct_node_execution_input`` and will raise
+        # ``GraphValidationError`` if any required credential is missing
+        # or invalid.  ``_check_prerequisites`` already catches the
+        # common case at the top of ``_execute``, but a race (creds
+        # deleted between prereq check and scheduler call) or any other
+        # validation drift could hit here — turn credential errors back
+        # into the inline ``SetupRequirementsResponse`` so the user
+        # sees the credential setup card instead of a generic error.
+        try:
+            result = await get_scheduler_client().add_execution_schedule(
+                user_id=user_id,
+                graph_id=library_agent.graph_id,
+                graph_version=library_agent.graph_version,
+                name=schedule_name,
+                cron=cron,
+                input_data=inputs,
+                input_credentials=graph_credentials,
+                user_timezone=user_timezone,
+            )
+        except GraphValidationError as e:
+            return self._handle_graph_validation_race(
+                error=e,
+                graph=graph,
+                user_id=user_id,
+                session_id=session_id,
+                action_verb="scheduling",
+            )
 
         # Convert next_run_time to user timezone for display
         if result.next_run_time:

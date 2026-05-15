@@ -331,9 +331,17 @@ async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    sort_by: store_model.MyAgentsSortBy = Query(
+        default=store_model.MyAgentsSortBy.MOST_RECENT
+    ),
 ) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
-    agents = await store_db.get_my_agents(user_id, page=page, page_size=page_size)
+    agents = await store_db.get_my_agents(
+        user_id,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+    )
     return agents
 
 

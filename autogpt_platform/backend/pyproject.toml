@@ -17,13 +17,15 @@ anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
-claude-agent-sdk = "0.1.45"  # see copilot/sdk/sdk_compat_test.py for capability checks
+cachetools = "^5.5.0"
+claude-agent-sdk = "^0.1.64"  # bundled CLI 2.1.116 -- 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 env var strips the broken context-management beta. See sdk_compat_test.py.
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
 e2b = "^2.15.2"
 e2b-code-interpreter = "^2.0"
 elevenlabs = "^1.50.0"
+falkordb = "^1.1.2"
 fastapi = "^0.128.6"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
@@ -32,6 +34,7 @@ google-auth-oauthlib = "^1.2.2"
 google-cloud-storage = "^3.2.0"
 googlemaps = "^4.10.0"
 gravitasml = "^0.1.4"
+graphiti-core = "^0.28.2"
 groq = "^0.30.0"
 html2text = "^2024.2.26"
 jinja2 = "^3.1.6"
@@ -57,6 +60,7 @@ psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
 pydantic = { extras = ["email"], version = "^2.12.5" }
 pydantic-settings = "^2.12.0"
+pywebpush = "^2.3"
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
@@ -126,10 +130,12 @@ db = "backend.db:main"
 ws = "backend.ws:main"
 scheduler = "backend.scheduler:main"
 notification = "backend.notification:main"
+platform-linking-manager = "backend.platform_linking_manager:main"
 executor = "backend.exec:main"
 analytics-setup = "scripts.generate_views:main_setup"
 analytics-views = "scripts.generate_views:main_views"
 copilot-executor = "backend.copilot.executor.__main__:main"
+copilot-bot = "backend.copilot.bot.__main__:main"
 cli = "backend.cli:main"
 format = "scripts.linter:format"
 lint = "scripts.linter:lint"
@@ -160,6 +166,7 @@ addopts = "-p no:syrupy"
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
+    "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
@@ -168,4 +175,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-

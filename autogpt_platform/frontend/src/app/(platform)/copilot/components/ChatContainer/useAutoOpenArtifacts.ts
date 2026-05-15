@@ -2,90 +2,101 @@
 
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef } from "react";
-import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
-import { getMessageArtifacts } from "../ChatMessagesContainer/helpers";
-
-function fingerprintArtifacts(artifacts: ArtifactRef[]): string {
-  return artifacts
-    .map((a) => `${a.id}:${a.title}:${a.mimeType ?? ""}:${a.sourceUrl}`)
-    .join("|");
-}
 
 interface UseAutoOpenArtifactsOptions {
-  messages: UIMessage<unknown, UIDataTypes, UITools>[];
   sessionId: string | null;
+  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  isLoadingSession: boolean;
+  isArtifactsEnabled: boolean;
 }
 
+/**
+ * Manages the auto-open lifecycle for the artifact panel.
+ *
+ * Auto-open is now **card-based**: each `ArtifactCard` calls
+ * `registerArtifactForAutoOpen` on mount — the store decides whether to open
+ * the panel. This hook only manages lifecycle:
+ * - Resets state on session change
+ * - Gates readiness (don't auto-open stale artifacts on session load)
+ * - Detects user-close to suppress re-opening
+ * - Cleans up on unmount
+ *
+ * This replaces the previous message-scanning approach which iterated all
+ * messages on every streaming render tick.
+ */
 export function useAutoOpenArtifacts({
-  messages,
   sessionId,
+  messages,
+  isLoadingSession,
+  isArtifactsEnabled,
 }: UseAutoOpenArtifactsOptions) {
-  const openArtifact = useCopilotUIStore((state) => state.openArtifact);
-  const messageFingerprintsRef = useRef<Map<string, string>>(new Map());
-  const hasInitializedRef = useRef(false);
+  const resetArtifactPanel = useCopilotUIStore((s) => s.resetArtifactPanel);
+  const resetAutoOpenState = useCopilotUIStore((s) => s.resetAutoOpenState);
+  const setAutoOpenReady = useCopilotUIStore((s) => s.setAutoOpenReady);
+  const markUserClosedForAutoOpen = useCopilotUIStore(
+    (s) => s.markUserClosedForAutoOpen,
+  );
+  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
-  useEffect(() => {
-    messageFingerprintsRef.current = new Map();
-    hasInitializedRef.current = false;
-  }, [sessionId]);
+  const prevSessionIdRef = useRef(sessionId);
+  const wasOpenRef = useRef(false);
+  const wasEverLoadingRef = useRef(isLoadingSession);
+  const hasMessages = messages.length > 0;
 
+  // Detect the user explicitly closing the panel (isOpen: true → false).
+  // Suppress auto-open for the remainder of this session once detected.
   useEffect(() => {
-    if (messages.length === 0) {
-      messageFingerprintsRef.current = new Map();
+    if (wasOpenRef.current && !isOpen) {
+      markUserClosedForAutoOpen();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, markUserClosedForAutoOpen]);
+
+  // Session change: fully clear the panel and auto-open state so stale
+  // artifacts don't bleed into the next chat.
+  useEffect(() => {
+    if (prevSessionIdRef.current !== sessionId) {
+      resetArtifactPanel();
+      resetAutoOpenState();
+      wasOpenRef.current = false;
+    }
+    prevSessionIdRef.current = sessionId;
+  }, [sessionId, resetArtifactPanel, resetAutoOpenState]);
+
+  // Mark auto-open as ready once the session is fully loaded.
+  //
+  // React fires child effects (ArtifactCard) before parent effects (this hook),
+  // so all existing cards have already called registerArtifactForAutoOpen by the
+  // time this effect fires. Those registrations populate _autoOpenKnownIds
+  // without triggering auto-open (ready is still false). Once we set ready=true,
+  // only *new* cards mounting in subsequent renders will auto-open.
+  //
+  // The wasEverLoadingRef guard handles a race where isLoadingSession goes false
+  // before messages are hydrated — without it, ready would be set while the
+  // messages array is empty, causing all cards that mount during hydration to
+  // look "new" and auto-open.
+  useEffect(() => {
+    if (isLoadingSession) {
+      wasEverLoadingRef.current = true;
       return;
     }
+    if (!sessionId || !isArtifactsEnabled) return;
+    if (wasEverLoadingRef.current && !hasMessages) return;
+    setAutoOpenReady();
+  }, [
+    sessionId,
+    isLoadingSession,
+    isArtifactsEnabled,
+    hasMessages,
+    setAutoOpenReady,
+  ]);
 
-    // Only scan messages whose fingerprint might have changed since the
-    // last pass: that's the last assistant message (currently streaming)
-    // plus any assistant message whose id isn't in the baseline yet.
-    // This keeps the cost O(new+tail), not O(all messages), on every chunk.
-    const previous = messageFingerprintsRef.current;
-    const nextFingerprints = new Map<string, string>(previous);
-    let nextArtifact: ArtifactRef | null = null;
-    const lastAssistantIdx = (() => {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") return i;
-      }
-      return -1;
-    })();
-
-    for (let i = 0; i < messages.length; i++) {
-      const message = messages[i];
-      if (message.role !== "assistant") continue;
-      const isTailAssistant = i === lastAssistantIdx;
-      const isNewMessage = !previous.has(message.id);
-      if (!isTailAssistant && !isNewMessage) continue;
-
-      const artifacts = getMessageArtifacts(message);
-      const fingerprint = fingerprintArtifacts(artifacts);
-      nextFingerprints.set(message.id, fingerprint);
-
-      if (!hasInitializedRef.current || fingerprint.length === 0) {
-        continue;
-      }
-
-      const previousFingerprint = previous.get(message.id) ?? "";
-      if (previousFingerprint === fingerprint) continue;
-
-      nextArtifact = artifacts[artifacts.length - 1] ?? nextArtifact;
-    }
-
-    // Drop entries for messages that no longer exist (e.g. history truncated).
-    const liveIds = new Set(messages.map((m) => m.id));
-    for (const id of nextFingerprints.keys()) {
-      if (!liveIds.has(id)) nextFingerprints.delete(id);
-    }
-
-    messageFingerprintsRef.current = nextFingerprints;
-
-    if (!hasInitializedRef.current) {
-      hasInitializedRef.current = true;
-      return;
-    }
-
-    if (nextArtifact) {
-      openArtifact(nextArtifact);
-    }
-  }, [messages, openArtifact]);
+  // Reset on unmount so navigating away from /copilot can't leave stale state.
+  useEffect(() => {
+    return () => {
+      resetArtifactPanel();
+      resetAutoOpenState();
+    };
+  }, [resetArtifactPanel, resetAutoOpenState]);
 }

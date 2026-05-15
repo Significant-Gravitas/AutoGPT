@@ -29,6 +29,7 @@ from backend.sdk import (
 
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from .helpers import merge_exa_cost
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -297,6 +298,7 @@ class ExaCreateImportBlock(Block):
         sdk_import = await aexa.websets.imports.create(
             params=payload, csv_data=input_data.csv_data
         )
+        merge_exa_cost(self, sdk_import)
 
         import_obj = ImportModel.from_sdk(sdk_import)
 
@@ -361,6 +363,7 @@ class ExaGetImportBlock(Block):
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_import = await aexa.websets.imports.get(import_id=input_data.import_id)
+        merge_exa_cost(self, sdk_import)
 
         import_obj = ImportModel.from_sdk(sdk_import)
 
@@ -430,6 +433,7 @@ class ExaListImportsBlock(Block):
             cursor=input_data.cursor,
             limit=input_data.limit,
         )
+        merge_exa_cost(self, response)
 
         # Convert SDK imports to our stable models
         imports = [ImportModel.from_sdk(i) for i in response.data]
@@ -477,6 +481,7 @@ class ExaDeleteImportBlock(Block):
         deleted_import = await aexa.websets.imports.delete(
             import_id=input_data.import_id
         )
+        merge_exa_cost(self, deleted_import)
 
         yield "import_id", deleted_import.id
         yield "success", "true"
@@ -599,7 +604,7 @@ class ExaExportWebsetBlock(Block):
         try:
             all_items = []
 
-            # Use SDK's list_all iterator to fetch items
+            # list_all paginates internally; cost_dollars is not surfaced per-page
             item_iterator = aexa.websets.items.list_all(
                 webset_id=input_data.webset_id, limit=input_data.max_items
             )

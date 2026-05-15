@@ -7,10 +7,22 @@ import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { buildCookieConsentStorageState } from "./src/playwright/credentials/storage-state";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
 
 const frontendRoot = __dirname.replaceAll("\\", "/");
+const configuredBaseURL =
+  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const parsedBaseURL = new URL(configuredBaseURL);
+const baseURL = parsedBaseURL.toString().replace(/\/$/, "");
+const baseOrigin = parsedBaseURL.origin;
+const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
+const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
+  ? Number(process.env.PLAYWRIGHT_WORKERS)
+  : process.env.CI
+    ? 8
+    : undefined;
 
 // Directory where CI copies .next/static from the Docker container
 const staticCoverageDir = path.resolve(__dirname, ".next-static-coverage");
@@ -57,17 +69,18 @@ function resolveSourceMap(sourcePath: string) {
 }
 
 export default defineConfig({
-  testDir: "./src/tests",
+  testDir: "./src/playwright",
+  testMatch: /.*-happy-path\.spec\.ts/,
   /* Global setup file that runs before all tests */
-  globalSetup: "./src/tests/global-setup.ts",
+  globalSetup: "./src/playwright/global-setup.ts",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: process.env.CI ? 1 : 0,
-  /* use more workers on CI. */
-  workers: process.env.CI ? 4 : undefined,
+  retries: process.env.CI ? Number(process.env.PLAYWRIGHT_RETRIES ?? 2) : 0,
+  /* Higher worker count keeps PR smoke runtime down without sharing page state. */
+  workers: configuredWorkers,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ["list"],
@@ -92,40 +105,25 @@ export default defineConfig({
         },
       },
     ],
+    ...(jsonReporterOutputFile
+      ? [["json", { outputFile: jsonReporterOutputFile }] as const]
+      : []),
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: "http://localhost:3000/",
+    baseURL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     screenshot: "only-on-failure",
     bypassCSP: true,
 
     /* Helps debugging failures */
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
+    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    video: process.env.CI ? "off" : "retain-on-failure",
 
     /* Auto-accept cookies in all tests to prevent banner interference */
-    storageState: {
-      cookies: [],
-      origins: [
-        {
-          origin: "http://localhost:3000",
-          localStorage: [
-            {
-              name: "autogpt_cookie_consent",
-              value: JSON.stringify({
-                hasConsented: true,
-                timestamp: Date.now(),
-                analytics: true,
-                monitoring: true,
-              }),
-            },
-          ],
-        },
-      ],
-    },
+    storageState: buildCookieConsentStorageState(baseOrigin),
   },
   /* Maximum time one test can run for */
   timeout: 25000,
@@ -133,7 +131,7 @@ export default defineConfig({
   /* Configure web server to start automatically (local dev only) */
   webServer: {
     command: "pnpm start",
-    url: "http://localhost:3000",
+    url: baseURL,
     reuseExistingServer: true,
   },
 
