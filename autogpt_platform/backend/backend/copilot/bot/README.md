@@ -84,7 +84,15 @@ Then:
    `chunk_flush_at`, etc.
 3. `config.py` declares the platform's env vars and any platform-specific
    numbers (message limits, token name, etc.)
-4. Register the adapter in its factory:
+4. Register the adapter in the factory that matches its connector type:
+
+   **Socket adapter** — add to `app.py::_build_socket_adapters`:
+   ```python
+   if <platform>_config.get_bot_token():
+       adapters.append(<Platform>Adapter(api))
+   ```
+
+   **Webhook adapter** — add to `webhook_routes.py::_build_webhook_adapters`:
    ```python
    if <platform>_config.get_bot_token():
        adapters.append(<Platform>Adapter(api))
