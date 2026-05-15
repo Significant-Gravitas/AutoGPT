@@ -40,9 +40,7 @@ _MAX_WALLET_ID_LEN = 128
 def validate_wallet_id(v: str) -> str:
     """Validate that a wallet ID matches the ``wal_<alnum>`` pattern."""
     if len(v) > _MAX_WALLET_ID_LEN:
-        raise ValueError(
-            f"wallet_id must be at most {_MAX_WALLET_ID_LEN} characters"
-        )
+        raise ValueError(f"wallet_id must be at most {_MAX_WALLET_ID_LEN} characters")
     if not _WALLET_ID_RE.match(v):
         raise ValueError(
             "wallet_id must start with 'wal_' followed by alphanumeric "

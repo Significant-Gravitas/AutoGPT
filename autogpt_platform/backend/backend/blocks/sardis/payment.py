@@ -96,6 +96,24 @@ class SardisPayBlock(Block):
         )
 
     def __init__(self):
+        payment_results = iter(
+            [
+                {
+                    "success": True,
+                    "tx_id": "tx_mock123",
+                    "message": "Payment approved",
+                    "amount": "10.00",
+                },
+                {"error": "insufficient funds"},
+                {
+                    "message": "Exceeds daily spending limit",
+                },
+            ]
+        )
+
+        def mock_send_payment(*args, **kwargs) -> dict:
+            return next(payment_results)
+
         super().__init__(
             id="353e4e7f-f4c7-4091-badc-59170ef15500",
             description="Execute a policy-controlled payment from a Sardis wallet. "
@@ -148,23 +166,7 @@ class SardisPayBlock(Block):
                 ("status", "BLOCKED"),
                 ("message", "Exceeds daily spending limit"),
             ],
-            test_mock={
-                "send_payment": [
-                    # Happy path
-                    lambda *a, **kw: {
-                        "success": True,
-                        "tx_id": "tx_mock123",
-                        "message": "Payment approved",
-                        "amount": "10.00",
-                    },
-                    # Error
-                    lambda *a, **kw: {"error": "insufficient funds"},
-                    # Blocked
-                    lambda *a, **kw: {
-                        "message": "Exceeds daily spending limit",
-                    },
-                ]
-            },
+            test_mock={"send_payment": mock_send_payment},
             test_credentials=TEST_CREDENTIALS,
             is_sensitive_action=True,
         )
