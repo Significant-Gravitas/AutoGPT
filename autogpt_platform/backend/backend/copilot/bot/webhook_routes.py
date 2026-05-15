@@ -5,6 +5,8 @@ import logging
 from fastapi import FastAPI
 
 from .adapters.base import WebhookAdapter
+from .adapters.slack import config as slack_config
+from .adapters.slack.adapter import SlackAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
 
@@ -28,5 +30,8 @@ def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
 def _build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     """Instantiate webhook adapters from configured platform credentials."""
     adapters: list[WebhookAdapter] = []
-    # Slack / Telegram / Teams / WhatsApp adapters slot in here as they land.
+    if slack_config.get_bot_token() and slack_config.get_signing_secret():
+        adapters.append(SlackAdapter(api))
+        logger.info("Slack adapter enabled")
+    # Telegram / Teams / WhatsApp adapters slot in here as they land.
     return adapters

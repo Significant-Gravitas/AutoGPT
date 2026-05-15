@@ -726,6 +726,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="Discord bot token for the CoPilot chat bridge. When set, "
         "the bridge enables its Discord adapter.",
     )
+    autopilot_bot_slack_token: str = Field(
+        default="",
+        description="Slack bot OAuth token (xoxb-...) for the CoPilot webhook "
+        "bridge. When set together with the signing secret, the Slack adapter "
+        "is enabled.",
+    )
+    autopilot_bot_slack_signing_secret: str = Field(
+        default="",
+        description="Slack signing secret used to verify inbound Events API + "
+        "slash command requests.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")
