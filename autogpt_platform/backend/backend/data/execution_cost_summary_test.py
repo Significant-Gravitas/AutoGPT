@@ -157,6 +157,17 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
             started_at=now - timedelta(minutes=15),
             node_error_count=2,
         )
+        # TERMINATED is also "wasted" cost — locks the `IN ('FAILED', 'TERMINATED')`
+        # branch in the failed_cost_cents aggregator.
+        terminated_run_id = f"e5-{uuid4()}"
+        await _create_run(
+            run_id=terminated_run_id,
+            user_id=user_id,
+            graph_id=graph_b,
+            status=AgentExecutionStatus.TERMINATED,
+            cost_cents=20,
+            started_at=now - timedelta(minutes=10),
+        )
 
         summary = await get_user_cost_summary(
             user_id=user_id,
@@ -165,15 +176,16 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
             top_runs_limit=3,
         )
 
-        assert summary.total_cents == 1550
-        assert summary.run_count == 4
-        assert summary.failed_cost_cents == 50
+        assert summary.total_cents == 1570
+        assert summary.run_count == 5
+        # 50 FAILED + 20 TERMINATED
+        assert summary.failed_cost_cents == 70
 
         by_agent = {row.graph_id: row for row in summary.by_agent}
         assert by_agent[graph_a].cost_cents == 500
         assert by_agent[graph_a].run_count == 2
-        assert by_agent[graph_b].cost_cents == 1050
-        assert by_agent[graph_b].run_count == 2
+        assert by_agent[graph_b].cost_cents == 1070
+        assert by_agent[graph_b].run_count == 3
         # graph_b leads on total spend so it sorts first
         assert summary.by_agent[0].graph_id == graph_b
 
