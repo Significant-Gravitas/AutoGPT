@@ -188,4 +188,61 @@ describe("creator-dashboard search", () => {
 
     expect(await scoped.findByText("Hello Agent")).toBeDefined();
   });
+
+  test("status filter forwards statuses to the submissions request", async () => {
+    const observedStatuses: (string | null)[] = [];
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        const statuses = url.searchParams.get("statuses");
+        observedStatuses.push(statuses);
+
+        const all = [
+          makeSubmission({
+            listing_version_id: "lv-1",
+            name: "Pending Agent",
+            status: SubmissionStatus.PENDING,
+          }),
+          makeSubmission({
+            listing_version_id: "lv-2",
+            name: "Approved Agent",
+            status: SubmissionStatus.APPROVED,
+          }),
+        ];
+        const selectedStatuses = statuses?.split(",") ?? [];
+        const filtered =
+          selectedStatuses.length > 0
+            ? all.filter((submission) =>
+                selectedStatuses.includes(submission.status),
+              )
+            : all;
+
+        return makeResponse(filtered);
+      }),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect(
+      (await screen.findAllByText("Pending Agent")).length,
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /filter status/i })[0],
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /in review/i,
+        pressed: false,
+      }),
+    );
+
+    await waitFor(
+      () => {
+        expect(observedStatuses).toContain(SubmissionStatus.PENDING);
+        expect(screen.queryByText("Approved Agent")).toBeNull();
+      },
+      { timeout: 3000 },
+    );
+  });
 });

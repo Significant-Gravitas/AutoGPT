@@ -659,13 +659,15 @@ async def get_store_submissions(
     page: int = 1,
     page_size: int = 20,
     search_query: str | None = None,
+    statuses: list[prisma.enums.SubmissionStatus] | None = None,
 ) -> store_model.StoreSubmissionsResponse:
     """Get store submissions for the authenticated user -- not an admin"""
     logger.debug(
-        "Getting store submissions for user %s, page=%s, search_query=%r",
+        "Getting store submissions for user %s, page=%s, search_query=%r, statuses=%r",
         user_id,
         page,
         search_query,
+        statuses,
     )
 
     try:
@@ -683,9 +685,9 @@ async def get_store_submissions(
                 {"slug": {"contains": normalized_query, "mode": "insensitive"}},
                 {"sub_heading": {"contains": normalized_query, "mode": "insensitive"}},
             ]
+        if statuses:
+            where["status"] = {"in": statuses}
 
-        # When searching, stats stay creator-wide while pagination reflects
-        # the filtered page count.
         submissions_task = prisma.models.StoreSubmission.prisma().find_many(
             where=where,
             skip=skip,
@@ -693,7 +695,7 @@ async def get_store_submissions(
             order=[{"submitted_at": "desc"}],
         )
         stats_task = _get_submission_stats(user_id)
-        if normalized_query:
+        if normalized_query or statuses:
             count_task = prisma.models.StoreSubmission.prisma().count(where=where)
             submissions, stats, total = await asyncio.gather(
                 submissions_task, stats_task, count_task

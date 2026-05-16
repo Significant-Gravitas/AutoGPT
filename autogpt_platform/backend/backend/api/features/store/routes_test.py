@@ -587,7 +587,11 @@ def test_get_submissions_success(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
     mock_db_call.assert_called_once_with(
-        user_id=test_user_id, page=1, page_size=20, search_query=None
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=None,
     )
 
 
@@ -624,7 +628,11 @@ def test_get_submissions_pagination(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_pagination")
     mock_db_call.assert_called_once_with(
-        user_id=test_user_id, page=2, page_size=5, search_query=None
+        user_id=test_user_id,
+        page=2,
+        page_size=5,
+        search_query=None,
+        statuses=None,
     )
 
 
@@ -650,8 +658,54 @@ def test_get_submissions_forwards_search_query(
     response = client.get("/submissions?search_query=invoice%20agent")
     assert response.status_code == 200
     mock_db_call.assert_called_once_with(
-        user_id=test_user_id, page=1, page_size=20, search_query="invoice agent"
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query="invoice agent",
+        statuses=None,
     )
+
+
+def test_get_submissions_forwards_statuses(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.StoreSubmissionsResponse(
+        submissions=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=0, approved=0, pending=0, total_runs=0, average_rating=None
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/submissions?statuses=PENDING,APPROVED")
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=[
+            prisma.enums.SubmissionStatus.PENDING,
+            prisma.enums.SubmissionStatus.APPROVED,
+        ],
+    )
+
+
+def test_get_submissions_rejects_invalid_status(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?statuses=INVALID")
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
 
 
 def test_get_submissions_search_query_too_long(

@@ -8984,6 +8984,15 @@
               ],
               "title": "Search Query"
             }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Statuses"
+            }
           }
         ],
         "responses": {

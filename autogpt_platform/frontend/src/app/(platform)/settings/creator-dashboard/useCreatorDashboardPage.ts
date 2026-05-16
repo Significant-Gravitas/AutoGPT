@@ -103,6 +103,10 @@ export function useCreatorDashboardPage() {
       page: queryPage,
       page_size: PAGE_SIZE,
       search_query: debouncedSearch || undefined,
+      statuses:
+        filterState.statuses.length > 0
+          ? filterState.statuses.join(",")
+          : undefined,
     },
     {
       query: {

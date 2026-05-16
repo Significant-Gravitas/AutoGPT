@@ -610,6 +610,56 @@ async def test_get_store_submissions_search_filters_and_counts_matches(mocker):
     )
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_status_filters_and_counts_matches(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=3)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        statuses=[
+            prisma.enums.SubmissionStatus.PENDING,
+            prisma.enums.SubmissionStatus.APPROVED,
+        ],
+    )
+
+    expected_where = {
+        "user_id": "user-id",
+        "is_deleted": False,
+        "status": {
+            "in": [
+                prisma.enums.SubmissionStatus.PENDING,
+                prisma.enums.SubmissionStatus.APPROVED,
+            ]
+        },
+    }
+    assert result.pagination.total_items == 3
+    assert result.stats.total == 7
+    mock_store_sub.return_value.find_many.assert_called_once()
+    mock_store_sub.return_value.count.assert_called_once_with(where=expected_where)
+    assert (
+        mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+        == expected_where
+    )
+
+
 def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
     graph = prisma.models.AgentGraph(
         id=f"graph-{idx}",
