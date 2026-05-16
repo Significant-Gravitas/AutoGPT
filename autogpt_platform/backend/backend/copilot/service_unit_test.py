@@ -74,6 +74,14 @@ class TestFallbackTitleFromMessage:
         title = _fallback_title_from_message("  Build\n\nan\tinvoice   tool  ")
         assert title == "Build an invoice tool"
 
+    def test_injected_context_prefixes_are_stripped(self):
+        title = _fallback_title_from_message(
+            "<memory_context>\nfacts\n</memory_context>\n\n"
+            "<budget_context>\nlimit: $1\n</budget_context>\n\n"
+            "Build an invoice tool"
+        )
+        assert title == "Build an invoice tool"
+
     def test_empty_message_returns_new_chat(self):
         title = _fallback_title_from_message("  \n\t ")
         assert title == "New chat"

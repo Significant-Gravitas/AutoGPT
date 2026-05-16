@@ -683,7 +683,7 @@ async def _generate_session_title(
 
 
 def _fallback_title_from_message(message: str) -> str:
-    cleaned = " ".join(message.split())
+    cleaned = " ".join(strip_injected_context_for_display(message).split())
     if not cleaned:
         return "New chat"
 
