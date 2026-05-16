@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+  .dark body {
+    @apply bg-gray-950 text-gray-100;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm;
+  }
+  .input-field {
+    @apply block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 text-sm font-medium transition;
+  }
+  .metric-card {
+    @apply card p-4 flex flex-col gap-1;
+  }
+  .label {
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide;
+  }
+  .value-lg {
+    @apply text-2xl font-bold text-gray-900 dark:text-white;
+  }
+  .table-header {
+    @apply text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 py-2 text-right;
+  }
+  .table-cell {
+    @apply px-3 py-2 text-sm text-right tabular-nums;
+  }
+  .table-row-alt {
+    @apply bg-gray-50 dark:bg-gray-700/30;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-gray-100 dark:bg-gray-800; }
+::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-600 rounded-full; }

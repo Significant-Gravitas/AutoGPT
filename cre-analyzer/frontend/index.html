@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRE Deal Analyzer</title>
+    <style>
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; }
+      #loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 12px; color: #64748b; }
+      #loading .logo { width: 48px; height: 48px; background: #2563eb; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+      #loading h1 { font-size: 20px; font-weight: 700; color: #1e293b; margin: 0; }
+      #loading p { margin: 0; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">
+      <div class="logo">🏢</div>
+      <h1>CRE Deal Analyzer</h1>
+      <p>Loading application...</p>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Hide loading indicator once React mounts
+      document.addEventListener('DOMContentLoaded', () => {
+        const obs = new MutationObserver(() => {
+          const root = document.getElementById('root');
+          if (root && root.children.length > 0) {
+            const loading = document.getElementById('loading');
+            if (loading) loading.style.display = 'none';
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.getElementById('root'), { childList: true });
+      });
+    </script>
+  </body>
+</html>
