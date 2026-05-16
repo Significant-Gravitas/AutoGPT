@@ -9,7 +9,7 @@ interface Props {
   href?: string;
   onClick?: () => void;
   destructive?: boolean;
-  as?: "link" | "button" | "div";
+  as?: "link" | "button";
   external?: boolean;
 }
 
@@ -100,26 +100,13 @@ export function AccountMenuRow({
     );
   }
 
-  if (as === "button") {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(baseRowClasses, colorClasses)}
-      >
-        <RowBody icon={icon} label={label} destructive={destructive} />
-      </button>
-    );
-  }
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onClick}
-      className={cn(baseRowClasses, colorClasses, "cursor-pointer")}
+      className={cn(baseRowClasses, colorClasses)}
     >
       <RowBody icon={icon} label={label} destructive={destructive} />
-    </div>
+    </button>
   );
 }

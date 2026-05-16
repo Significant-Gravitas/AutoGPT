@@ -15,7 +15,9 @@ export function AccountLogoutOption() {
       as="button"
       destructive
       label="Log out"
-      icon={<SignOutIcon className="h-[18px] w-[18px] shrink-0" weight="bold" />}
+      icon={
+        <SignOutIcon className="h-[18px] w-[18px] shrink-0" weight="bold" />
+      }
       onClick={handleLogout}
     />
   );

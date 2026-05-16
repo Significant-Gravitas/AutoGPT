@@ -40,11 +40,7 @@ export function AccountMenu({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <InitialAvatar
-            src={avatarSrc}
-            name={userName}
-            className="h-8 w-8"
-          />
+          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
         </button>
       </PopoverTrigger>
 
