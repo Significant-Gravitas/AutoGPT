@@ -476,11 +476,10 @@ class TestUpdateTitleAsync:
         record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_empty_title_with_response_still_records_cost(self):
-        """Title came back empty but we still paid for the LLM call —
-        cost recording runs even though the title write is skipped."""
+    async def test_fallback_title_with_response_persists_and_records_cost(self):
+        """Fallback title is persisted while cost recording still runs."""
         resp = _build_completion(usage=_usage_with_cost(0.0001))
-        gen = AsyncMock(return_value=(None, resp))
+        gen = AsyncMock(return_value=("fallback title", resp))
         update = AsyncMock()
         record = AsyncMock()
         with (
@@ -499,7 +498,9 @@ class TestUpdateTitleAsync:
         ):
             await _update_title_async("sess-6", "msg", user_id="u")
 
-        update.assert_not_awaited()
+        update.assert_awaited_once_with(
+            "sess-6", "u", "fallback title", only_if_empty=True
+        )
         record.assert_awaited_once()
 
 
