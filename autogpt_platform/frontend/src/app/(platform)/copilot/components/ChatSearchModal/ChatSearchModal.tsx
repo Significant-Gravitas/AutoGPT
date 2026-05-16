@@ -128,7 +128,7 @@ export function ChatSearchModal({
             onClick={closeSearch}
             className="shrink-0 rounded-full border-zinc-400"
           >
-            <X className="h-4 w-4" />
+            <XIcon className="h-4 w-4" />
           </Button>
         </div>
         <Separator />
