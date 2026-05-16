@@ -21,9 +21,16 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: mockUseSupabase,
 }));
 
-vi.mock("@sentry/nextjs", () => ({
-  captureException: vi.fn(),
-}));
+vi.mock("@sentry/nextjs", async () => {
+  const actual =
+    await vi.importActual<typeof import("@sentry/nextjs")>("@sentry/nextjs");
+  return {
+    ...actual,
+    captureException: vi.fn(),
+    getTraceData: vi.fn(() => ({})),
+    withServerActionInstrumentation: vi.fn((_, __, callback) => callback()),
+  };
+});
 
 vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({
   CronExpressionDialog: () => null,
@@ -128,9 +135,24 @@ describe("PublishToMarketplace (builder)", () => {
 
     expect(screen.queryByText(/choose an agent/i)).toBeNull();
 
+    expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
+  });
+
+  test("closes the modal when going back from the pre-scoped listing form", async () => {
+    installScopedHandlers();
+
+    render(
+      <PublishToMarketplace flowID={FLOW_ID} flowVersion={FLOW_VERSION} />,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /back/i }));
+
     await waitFor(() => {
-      const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement;
-      expect(titleInput.value).toBe(AGENT_NAME);
+      expect(screen.queryByTestId("publish-agent-modal")).toBeNull();
     });
   });
 
