@@ -1,6 +1,6 @@
 import logging
-from typing import Literal
 import urllib.parse
+from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
