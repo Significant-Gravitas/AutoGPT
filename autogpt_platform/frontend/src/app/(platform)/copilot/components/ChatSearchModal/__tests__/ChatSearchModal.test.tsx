@@ -1,4 +1,9 @@
-import { fireEvent, render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotChatRuntimeStore } from "../../../copilotChatRegistry";
@@ -6,7 +11,9 @@ import { useCopilotUIStore } from "../../../store";
 import { ChatSearchModal } from "../ChatSearchModal";
 import type { SearchSession } from "../helpers";
 
-function makeSession(overrides: Partial<SearchSession> & { id: string }): SearchSession {
+function makeSession(
+  overrides: Partial<SearchSession> & { id: string },
+): SearchSession {
   return {
     title: `Session ${overrides.id}`,
     updated_at: "2025-01-01T00:00:00Z",
@@ -83,7 +90,9 @@ describe("ChatSearchModal", () => {
 
   it("closes when the close button is clicked", async () => {
     renderModal({ sessions: [makeSession({ id: "a" })] });
-    fireEvent.click(await screen.findByRole("button", { name: /close search/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /close search/i }),
+    );
     expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
   });
 
@@ -97,9 +106,21 @@ describe("ChatSearchModal", () => {
   it("navigates with ArrowDown/ArrowUp, clamps at the bounds, and selects via Enter", async () => {
     const onSelect = vi.fn();
     const sessions = [
-      makeSession({ id: "a", title: "Alpha", updated_at: "2025-01-03T00:00:00Z" }),
-      makeSession({ id: "b", title: "Beta", updated_at: "2025-01-02T00:00:00Z" }),
-      makeSession({ id: "c", title: "Gamma", updated_at: "2025-01-01T00:00:00Z" }),
+      makeSession({
+        id: "a",
+        title: "Alpha",
+        updated_at: "2025-01-03T00:00:00Z",
+      }),
+      makeSession({
+        id: "b",
+        title: "Beta",
+        updated_at: "2025-01-02T00:00:00Z",
+      }),
+      makeSession({
+        id: "c",
+        title: "Gamma",
+        updated_at: "2025-01-01T00:00:00Z",
+      }),
     ];
     renderModal({ sessions, onSelectSession: onSelect });
 
@@ -151,8 +172,16 @@ describe("ChatSearchModal", () => {
     const onSelect = vi.fn();
     renderModal({
       sessions: [
-        makeSession({ id: "a", title: "Alpha", updated_at: "2025-01-02T00:00:00Z" }),
-        makeSession({ id: "b", title: "Beta", updated_at: "2025-01-01T00:00:00Z" }),
+        makeSession({
+          id: "a",
+          title: "Alpha",
+          updated_at: "2025-01-02T00:00:00Z",
+        }),
+        makeSession({
+          id: "b",
+          title: "Beta",
+          updated_at: "2025-01-01T00:00:00Z",
+        }),
       ],
       onSelectSession: onSelect,
     });
@@ -257,7 +286,9 @@ describe("ChatSearchModal", () => {
     const input = screen.getByRole("textbox", { name: /search chats/i });
     await user.type(input, "fore");
 
-    const option = await screen.findByRole("option", { name: /revenue forecast/i });
+    const option = await screen.findByRole("option", {
+      name: /revenue forecast/i,
+    });
     const bold = await within(option).findByText("fore");
     expect(bold.className).toContain("font-semibold");
   });

@@ -30,7 +30,9 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/services/feature-flags/use-get-flag")>();
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
   return {
     ...actual,
     useGetFlag: (flag: string) => flag === "chat-search",

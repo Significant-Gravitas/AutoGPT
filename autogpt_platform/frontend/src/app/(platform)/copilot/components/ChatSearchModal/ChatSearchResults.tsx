@@ -9,11 +9,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { MutableRefObject } from "react";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
-import {
-  getSessionTitle,
-  highlightMatch,
-  type SearchSession,
-} from "./helpers";
+import { getSessionTitle, highlightMatch, type SearchSession } from "./helpers";
 
 const indicatorTransition = {
   type: "spring" as const,
@@ -73,13 +69,17 @@ export function ChatSearchResults({
                   layoutId="chat-search-highlight"
                   aria-hidden="true"
                   className="absolute inset-0 z-0 rounded-md bg-zinc-100"
-                  transition={reduceMotion ? { duration: 0 } : indicatorTransition}
+                  transition={
+                    reduceMotion ? { duration: 0 } : indicatorTransition
+                  }
                 />
                 <motion.div
                   layoutId="chat-search-highlight-bar"
                   aria-hidden="true"
                   className="absolute inset-y-0 left-0 z-[1] my-auto h-5 w-[3px] rounded-full bg-zinc-900"
-                  transition={reduceMotion ? { duration: 0 } : indicatorTransition}
+                  transition={
+                    reduceMotion ? { duration: 0 } : indicatorTransition
+                  }
                 />
               </>
             )}

@@ -19,7 +19,9 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/services/feature-flags/use-get-flag")>();
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
   return {
     ...actual,
     useGetFlag: (flag: string) => flag === "chat-search",
