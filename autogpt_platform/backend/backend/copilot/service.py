@@ -595,7 +595,7 @@ async def _generate_session_title(
     message: str,
     user_id: str | None = None,
     session_id: str | None = None,
-) -> tuple[str | None, ChatCompletion | None]:
+) -> tuple[str, ChatCompletion | None]:
     """Generate a concise title for a chat session based on the first message.
 
     Returns ``(title, response)``.  The caller is responsible for
@@ -610,9 +610,10 @@ async def _generate_session_title(
         session_id: Session ID for OpenRouter tracing (optional)
 
     Returns:
-        ``(title, response)`` on success; ``(None, None)`` if the LLM
-        call raised.  ``response`` is returned even when ``title`` is
-        empty so the caller can still record the (paid-for) cost.
+        ``(title, response)``. ``title`` falls back to the user's first
+        message when the LLM call raises or returns an empty title.
+        ``response`` is returned even when the LLM title is empty so the
+        caller can still record the (paid-for) cost.
     """
     try:
         # Build extra_body for OpenRouter tracing and PostHog analytics.
@@ -661,7 +662,7 @@ async def _generate_session_title(
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
-        return None, None
+        return _fallback_title_from_message(message), None
 
     # Robust against an empty ``choices`` list OR a choice whose
     # ``message`` is missing ``content`` (shouldn't happen on the OpenAI
@@ -676,7 +677,24 @@ async def _generate_session_title(
         title = title.strip().strip("\"'")
         if len(title) > 50:
             title = title[:47] + "..."
+    if not title:
+        title = _fallback_title_from_message(message)
     return title, response
+
+
+def _fallback_title_from_message(message: str) -> str:
+    cleaned = " ".join(message.split())
+    if not cleaned:
+        return "New chat"
+
+    words = cleaned.split()
+    title = " ".join(words[:6])
+    is_shortened = len(words) > 6
+    if len(title) > 50 or (is_shortened and len(title) > 47):
+        return title[:47] + "..."
+    if is_shortened:
+        return title + "..."
+    return title
 
 
 def _title_usage_from_response(
