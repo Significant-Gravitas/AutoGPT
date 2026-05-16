@@ -397,6 +397,9 @@ def _parse_submission_statuses(
 
     parsed_statuses: list[prisma.enums.SubmissionStatus] = []
     for status in statuses.split(","):
+        status = status.strip()
+        if not status:
+            continue
         try:
             parsed_statuses.append(prisma.enums.SubmissionStatus(status))
         except ValueError:
@@ -404,7 +407,7 @@ def _parse_submission_statuses(
                 status_code=422,
                 detail=f"Invalid submission status: {status}",
             )
-    return parsed_statuses
+    return parsed_statuses or None
 
 
 @router.post(
