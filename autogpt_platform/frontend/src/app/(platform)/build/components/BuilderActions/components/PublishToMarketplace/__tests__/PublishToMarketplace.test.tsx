@@ -51,7 +51,9 @@ const FLOW_ID = "graph-1";
 const FLOW_VERSION = 3;
 const AGENT_NAME = "My Builder Agent";
 
-function makeAgent(overrides: Partial<MyUnpublishedAgent> = {}): MyUnpublishedAgent {
+function makeAgent(
+  overrides: Partial<MyUnpublishedAgent> = {},
+): MyUnpublishedAgent {
   return {
     graph_id: FLOW_ID,
     graph_version: FLOW_VERSION,
