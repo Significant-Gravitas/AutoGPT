@@ -2723,8 +2723,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         # paying via their AutoGPT balance, so a card retry here would
         # double-bill the user (card charge + balance debit). Stripe still
         # fires ``invoice.payment_succeeded`` on the transition; the success
-        # handler reads ``paid_out_of_band`` and skips the credit grant so
-        # the balance debit isn't reversed.
+        # handler reads ``paid_out_of_band`` and skips its grant path so the
+        # balance debit isn't reversed if the credit-grant flag is on.
         if invoice_id:
             try:
                 await run_in_threadpool(
@@ -2773,16 +2773,29 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
-    """Grant AutoGPT credits equal to the paid Stripe invoice amount.
+    """Optionally grant AutoGPT credits equal to the paid Stripe invoice amount.
 
-    Fires on every paid subscription invoice (initial signup, monthly renewal,
-    and prorated upgrade charges). Credits = ``invoice.amount_paid`` cents,
-    keyed by ``invoice_id`` for idempotency so Stripe retries don't double-grant.
+    Gated behind ``settings.config.enable_subscription_credit_grant`` which
+    is OFF by default — Pro Monthly subscribers should not receive a matching
+    automation-credit grant on every invoice, and prorated upgrade invoices
+    were producing surprise grants (each fresh invoice id slipped past the
+    per-invoice idempotency key). The handler stays wired into the webhook
+    so the config can be flipped on per environment if/when product wants
+    "$ paid == $ in AutoGPT balance"; turning it on without first revisiting
+    proration/renewal accounting will reintroduce the same surprise grants.
 
-    Skipped:
+    When enabled, grants ``invoice.amount_paid`` cents keyed by ``invoice_id``
+    so Stripe webhook retries for the *same* invoice don't double-grant.
+    Distinct invoices (e.g. prorated upgrade + monthly cycle) are *not*
+    deduplicated against each other — that's an intentional behaviour of the
+    paid-invoice grant, not a bug, and is why the flag should stay off until
+    the accounting model around proration is settled.
+
+    Skipped (even when the flag is on):
     - Non-subscription invoices (no ``subscription`` field).
     - Zero-amount invoices (e.g. card-validation checks, $0 trials).
     - ENTERPRISE users (admin-managed; they don't pay via self-service).
+    - Invoices already covered from balance via ``paid_out_of_band``.
     """
     customer_id = invoice.get("customer")
     if not customer_id:
@@ -2827,6 +2840,16 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             " (paid_out_of_band — covered by balance in failure handler)",
             invoice_id,
             user.id,
+        )
+        return
+
+    if not settings.config.enable_subscription_credit_grant:
+        logger.debug(
+            "handle_subscription_payment_success: credit grant disabled by config"
+            " for user %s (invoice %s, sub %s); skipping",
+            user.id,
+            invoice_id,
+            sub_id,
         )
         return
 

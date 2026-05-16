@@ -22,10 +22,27 @@ export function computePlanPricing({
       : monthlyLocal !== null
         ? monthlyLocal * YEARLY_PRICE_FACTOR * 12
         : null;
-  const displayPrice = isYearly ? yearlyLocal : monthlyLocal;
   const monthlyEquiv =
     isYearly && yearlyLocal !== null ? yearlyLocal / 12 : null;
-  const perLabel = isYearly ? "/ year" : "/ month";
 
-  return { displayPrice, monthlyEquiv, perLabel };
+  const primaryPrice = isYearly ? monthlyEquiv : monthlyLocal;
+  const chargedToday = isYearly ? yearlyLocal : monthlyLocal;
+  const monthlyOriginal =
+    isYearly && monthlyLocal !== null && monthlyEquiv !== null
+      ? monthlyLocal
+      : null;
+  const discountPercent =
+    isYearly &&
+    monthlyLocal !== null &&
+    monthlyLocal > 0 &&
+    monthlyEquiv !== null
+      ? Math.round((1 - monthlyEquiv / monthlyLocal) * 100)
+      : null;
+
+  return {
+    primaryPrice,
+    monthlyOriginal,
+    chargedToday,
+    discountPercent,
+  };
 }
