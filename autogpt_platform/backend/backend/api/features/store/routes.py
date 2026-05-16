@@ -334,6 +334,7 @@ async def get_my_unpublished_agents(
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
+    search_query: str | None = Query(default=None, max_length=100),
 ) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
     agents = await store_db.get_my_agents(
@@ -341,6 +342,7 @@ async def get_my_unpublished_agents(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
+        search_query=search_query,
     )
     return agents
 
@@ -373,12 +375,14 @@ async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    search_query: str | None = Query(default=None, max_length=100),
 ) -> store_model.StoreSubmissionsResponse:
     """List the authenticated user's marketplace listing submissions"""
     listings = await store_db.get_store_submissions(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        search_query=search_query,
     )
     return listings
 

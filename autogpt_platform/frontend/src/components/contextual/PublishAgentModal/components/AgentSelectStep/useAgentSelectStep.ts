@@ -3,6 +3,7 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 export interface Agent {
@@ -50,11 +51,18 @@ export function useAgentSelectStep({
   const [sortBy, setSortBy] = React.useState<MyAgentsSortBy>(
     MyAgentsSortBy.most_recent,
   );
+  const [searchInput, setSearchInput] = React.useState("");
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
   const { isLoggedIn } = useSupabase();
 
   React.useEffect(() => {
     setPage(1);
   }, [sortBy]);
+
+  function handleSearchChange(next: string) {
+    setSearchInput(next);
+    setPage(1);
+  }
 
   const {
     data: agentsData,
@@ -66,6 +74,7 @@ export function useAgentSelectStep({
       page,
       page_size: PAGE_SIZE,
       sort_by: sortBy,
+      search_query: debouncedSearch || undefined,
     },
     {
       query: {
@@ -140,6 +149,9 @@ export function useAgentSelectStep({
     pageSize: PAGE_SIZE,
     sortBy,
     pageDirection,
+    searchInput,
+    setSearchInput: handleSearchChange,
+    debouncedSearch,
     handleAgentClick,
     handleNext,
     handleSortChange,

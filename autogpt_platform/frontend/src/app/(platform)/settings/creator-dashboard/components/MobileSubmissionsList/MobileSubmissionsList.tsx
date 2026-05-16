@@ -9,6 +9,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
 import {
   EASE_OUT,
@@ -35,6 +36,9 @@ interface Props {
   filterState: FilterState;
   onFilterChange: (next: FilterState) => void;
   onResetFilters: () => void;
+  searchInput: string;
+  onSearchChange: (next: string) => void;
+  debouncedSearch: string;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
@@ -51,6 +55,9 @@ export function MobileSubmissionsList({
   filterState,
   onFilterChange,
   onResetFilters,
+  searchInput,
+  onSearchChange,
+  debouncedSearch,
   onView,
   onEdit,
   onDelete,
@@ -104,6 +111,16 @@ export function MobileSubmissionsList({
         </Text>
       </div>
 
+      <div className="px-1">
+        <SearchInput
+          value={searchInput}
+          onChange={onSearchChange}
+          placeholder="Search by agent or listing name"
+          aria-label="Search submissions"
+          size="small"
+        />
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 px-1">
         <FilterChip label="Status">
           <StatusColumnFilter
@@ -149,11 +166,23 @@ export function MobileSubmissionsList({
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
             <Text variant="body-medium" className="text-textBlack">
-              No submissions match these filters
+              {debouncedSearch
+                ? `No submissions match "${debouncedSearch}"`
+                : "No submissions match these filters"}
             </Text>
-            <Button variant="secondary" size="small" onClick={onResetFilters}>
-              Clear filters
-            </Button>
+            {debouncedSearch ? (
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={() => onSearchChange("")}
+              >
+                Clear search
+              </Button>
+            ) : (
+              <Button variant="secondary" size="small" onClick={onResetFilters}>
+                Clear filters
+              </Button>
+            )}
           </div>
         )}
         {pagination && onPageChange ? (

@@ -655,10 +655,16 @@ async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
 
 
 async def get_store_submissions(
-    user_id: str, page: int = 1, page_size: int = 20
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    search_query: str | None = None,
 ) -> store_model.StoreSubmissionsResponse:
     """Get store submissions for the authenticated user -- not an admin"""
-    logger.debug(f"Getting store submissions for user {user_id}, page={page}")
+    logger.debug(
+        f"Getting store submissions for user {user_id}, page={page}, "
+        f"search_query={search_query!r}"
+    )
 
     try:
         skip = (page - 1) * page_size
@@ -668,20 +674,32 @@ async def get_store_submissions(
             "is_deleted": False,
         }
 
-        # Page rows and creator-wide stats run concurrently — stats already
-        # returns COUNT(*) over the same filter, so we reuse it for pagination
-        # instead of issuing a redundant count query.
-        submissions, stats = await asyncio.gather(
-            prisma.models.StoreSubmission.prisma().find_many(
-                where=where,
-                skip=skip,
-                take=page_size,
-                order=[{"submitted_at": "desc"}],
-            ),
-            _get_submission_stats(user_id),
-        )
+        normalized_query = (search_query or "").strip()
+        if normalized_query:
+            where["OR"] = [
+                {"name": {"contains": normalized_query, "mode": "insensitive"}},
+                {"slug": {"contains": normalized_query, "mode": "insensitive"}},
+                {"sub_heading": {"contains": normalized_query, "mode": "insensitive"}},
+            ]
 
-        total = stats.total
+        # When searching, stats stay creator-wide while pagination reflects
+        # the filtered page count.
+        submissions_task = prisma.models.StoreSubmission.prisma().find_many(
+            where=where,
+            skip=skip,
+            take=page_size,
+            order=[{"submitted_at": "desc"}],
+        )
+        stats_task = _get_submission_stats(user_id)
+        if normalized_query:
+            count_task = prisma.models.StoreSubmission.prisma().count(where=where)
+            submissions, stats, total = await asyncio.gather(
+                submissions_task, stats_task, count_task
+            )
+        else:
+            submissions, stats = await asyncio.gather(submissions_task, stats_task)
+            total = stats.total
+
         total_pages = (total + page_size - 1) // page_size
 
         submission_models = [
@@ -1195,27 +1213,40 @@ async def get_my_agents(
     page: int = 1,
     page_size: int = 20,
     sort_by: store_model.MyAgentsSortBy = store_model.MyAgentsSortBy.MOST_RECENT,
+    search_query: str | None = None,
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(
         f"Getting my agents for user {user_id}, page={page}, "
-        f"sort_by={sort_by.value}"
+        f"sort_by={sort_by.value}, search_query={search_query!r}"
     )
 
     try:
+        agent_graph_filter: prisma.types.AgentGraphWhereInput = {
+            "StoreListingVersions": {
+                "none": {
+                    "isAvailable": True,
+                    "StoreListing": {"is": {"isDeleted": False}},
+                }
+            }
+        }
+
+        normalized_query = (search_query or "").strip()
+        if normalized_query:
+            agent_graph_filter["OR"] = [
+                {"name": {"contains": normalized_query, "mode": "insensitive"}},
+                {
+                    "description": {
+                        "contains": normalized_query,
+                        "mode": "insensitive",
+                    }
+                },
+            ]
+
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
             # Filter for unpublished agents only:
-            "AgentGraph": {
-                "is": {
-                    "StoreListingVersions": {
-                        "none": {
-                            "isAvailable": True,
-                            "StoreListing": {"is": {"isDeleted": False}},
-                        }
-                    }
-                }
-            },
+            "AgentGraph": {"is": agent_graph_filter},
             "isArchived": False,
             "isDeleted": False,
         }

@@ -12,6 +12,7 @@ import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetai
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
@@ -61,6 +62,13 @@ export function useCreatorDashboardPage() {
     useState<FilterState>(INITIAL_FILTER_STATE);
 
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
+
+  function handleSearchChange(next: string) {
+    setSearchInput(next);
+    setPage(1);
+  }
 
   const { data: profile } = useGetV2GetUserProfile({
     query: {
@@ -77,7 +85,11 @@ export function useCreatorDashboardPage() {
     error,
     refetch,
   } = useGetV2ListMySubmissions(
-    { page, page_size: PAGE_SIZE },
+    {
+      page,
+      page_size: PAGE_SIZE,
+      search_query: debouncedSearch || undefined,
+    },
     {
       query: {
         select: (x) => x.data as StoreSubmissionsResponse,
@@ -192,6 +204,9 @@ export function useCreatorDashboardPage() {
     filterState,
     setFilterState,
     resetFilters,
+    searchInput,
+    setSearchInput: handleSearchChange,
+    debouncedSearch,
     isLoading: !isSuccess,
     isReady: isSuccess,
     error,
