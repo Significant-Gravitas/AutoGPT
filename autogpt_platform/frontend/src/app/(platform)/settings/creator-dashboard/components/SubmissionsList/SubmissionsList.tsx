@@ -117,14 +117,14 @@ export function SubmissionsList({
         </Text>
       </div>
 
-      <div className="pl-4 pr-1 sm:max-w-sm">
+      <div className="pr-1 sm:max-w-md">
         <SearchInput
           value={searchInput}
           onChange={onSearchChange}
           placeholder="Search by agent or listing name"
           aria-label="Search submissions"
           maxLength={100}
-          size="small"
+          size="medium"
         />
       </div>
 

@@ -60,7 +60,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           disabled={disabled}
           maxLength={maxLength}
           className={cn(
-            "w-full rounded-full border border-zinc-200 bg-white text-textBlack placeholder:text-zinc-400 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-60",
+            "w-full rounded-xl border border-zinc-200 bg-white text-textBlack placeholder:text-zinc-400 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
