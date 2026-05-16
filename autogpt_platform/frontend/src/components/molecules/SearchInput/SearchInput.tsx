@@ -1,7 +1,11 @@
 "use client";
 
 import { forwardRef } from "react";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import {
+  CircleNotchIcon,
+  MagnifyingGlassIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +15,7 @@ interface Props {
   placeholder?: string;
   "aria-label"?: string;
   disabled?: boolean;
+  loading?: boolean;
   maxLength?: number;
   size?: "small" | "medium";
   className?: string;
@@ -34,6 +39,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
       placeholder = "Search",
       "aria-label": ariaLabel,
       disabled,
+      loading,
       maxLength,
       size = "medium",
       className,
@@ -65,7 +71,22 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
         />
-        {hasValue && !disabled ? (
+        {loading ? (
+          <span
+            role="status"
+            aria-label="Searching"
+            className={cn(
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-zinc-500",
+              iconOffset[size].right,
+            )}
+          >
+            <CircleNotchIcon
+              size={size === "small" ? 14 : 16}
+              weight="bold"
+              className="animate-spin"
+            />
+          </span>
+        ) : hasValue && !disabled ? (
           <button
             type="button"
             onClick={() => onChange("")}

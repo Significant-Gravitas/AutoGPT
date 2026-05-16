@@ -123,6 +123,7 @@ export function PublishAgentModal({
         styling={{
           maxWidth: "48rem",
         }}
+        overlayClassName="mr-2"
         controlled={{
           isOpen: currentState.isOpen,
           set: (isOpen) => {

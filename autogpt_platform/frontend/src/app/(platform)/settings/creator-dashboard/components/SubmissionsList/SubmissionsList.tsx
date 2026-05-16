@@ -1,7 +1,6 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { CircleNotchIcon } from "@phosphor-icons/react";
 
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -94,23 +93,6 @@ export function SubmissionsList({
           <Text variant="body-medium" as="span" className="text-textBlack">
             Submissions
           </Text>
-          {isFetching ? (
-            <span
-              role="status"
-              aria-live="polite"
-              className="inline-flex items-center gap-1 text-zinc-500"
-              data-testid="submissions-fetching"
-            >
-              <CircleNotchIcon
-                size={14}
-                weight="bold"
-                className="animate-spin"
-              />
-              <Text variant="small" as="span" className="text-zinc-500">
-                Updating
-              </Text>
-            </span>
-          ) : null}
         </div>
         <Text variant="small" className="text-zinc-500">
           {submissions.length} of {totalCount}
@@ -124,6 +106,7 @@ export function SubmissionsList({
           placeholder="Search by agent or listing name"
           aria-label="Search submissions"
           maxLength={100}
+          loading={isFetching}
           size="medium"
         />
       </div>

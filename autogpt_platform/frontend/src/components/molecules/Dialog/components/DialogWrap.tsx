@@ -34,6 +34,7 @@ export function DialogWrap({
   children,
   title,
   styling = {},
+  overlayClassName,
   isForceOpen,
   handleClose,
 }: Props) {
@@ -88,7 +89,10 @@ export function DialogWrap({
 
   return (
     <RXDialog.Portal>
-      <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
+      <RXDialog.Overlay
+        data-dialog-overlay
+        className={cn(modalStyles.overlay, overlayClassName)}
+      />
       <RXDialog.Content
         data-dialog-content
         onInteractOutside={handleInteractOutside}

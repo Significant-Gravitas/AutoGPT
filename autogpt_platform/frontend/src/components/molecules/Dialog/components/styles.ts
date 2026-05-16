@@ -2,7 +2,7 @@
 const commonStyles = {
   title: "font-poppins text-md md:text-lg leading-none",
   overlay:
-    "fixed inset-0 z-50 ml-2 bg-stone-500/20 dark:bg-black/50 backdrop-blur-md animate-fade-in",
+    "fixed inset-0 z-50 bg-stone-500/20 dark:bg-black/50 backdrop-blur-md animate-fade-in",
   content: "bg-white p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
 };
 

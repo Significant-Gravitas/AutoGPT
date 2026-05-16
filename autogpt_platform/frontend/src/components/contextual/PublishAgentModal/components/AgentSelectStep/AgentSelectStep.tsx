@@ -129,14 +129,15 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="mt-2 flex flex-col gap-2 pb-0 sm:flex-row sm:items-center sm:justify-between">
-            <div className="w-full sm:flex-1">
+          <div className="mt-2 flex flex-col gap-2 px-1 pb-0 sm:flex-row sm:items-center sm:justify-start">
+            <div className="w-full sm:w-[calc((100%-0.5rem)/2)] sm:flex-none">
               <SearchInput
                 value={searchInput}
                 onChange={setSearchInput}
                 placeholder="Search your agents"
                 aria-label="Search your agents"
                 maxLength={100}
+                loading={isFetching}
                 size="small"
               />
             </div>
@@ -149,12 +150,12 @@ export function AgentSelectStep({
                 value={sortBy}
                 onValueChange={handleSortChange}
                 options={SORT_OPTIONS}
-                wrapperClassName="mb-2"
+                wrapperClassName="mb-0"
               />
             </div>
           </div>
 
-          <div className="flex-grow overflow-hidden pb-3">
+          <div className="mt-1 flex-grow overflow-hidden pb-3">
             <h3 className="sr-only">List of agents</h3>
             <div
               className={cn(
