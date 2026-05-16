@@ -64,8 +64,12 @@ export function useAgentSelectStep({
   }, [sortBy]);
 
   function handleSearchChange(next: string) {
-    setSearchInput(next.slice(0, SEARCH_QUERY_MAX_LENGTH));
-    setSearchResetPending(true);
+    const cappedNext = next.slice(0, SEARCH_QUERY_MAX_LENGTH);
+    const prevTrimmed = searchInput.trim();
+    setSearchInput(cappedNext);
+    if (cappedNext.trim() !== prevTrimmed) {
+      setSearchResetPending(true);
+    }
   }
 
   React.useEffect(() => {
