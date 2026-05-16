@@ -3,7 +3,9 @@
 -- leading wildcard, so we install pg_trgm and add GIN indexes on the
 -- columns that the new /submissions and /my-unpublished-agents search
 -- queries scan (Prisma `contains` + `mode: "insensitive"` compiles to
--- ILIKE).
+-- ILIKE). StoreSubmission is a view over StoreListing and
+-- StoreListingVersion, so the /submissions indexes live on those base table
+-- columns instead of the view itself.
 --
 -- CREATE INDEX is NOT CONCURRENT here to stay inside the Prisma
 -- migration transaction; the affected tables are small enough today.

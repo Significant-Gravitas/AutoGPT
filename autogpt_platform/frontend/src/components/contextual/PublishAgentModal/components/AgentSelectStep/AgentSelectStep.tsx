@@ -136,6 +136,7 @@ export function AgentSelectStep({
                 onChange={setSearchInput}
                 placeholder="Search your agents"
                 aria-label="Search your agents"
+                maxLength={100}
                 size="small"
               />
             </div>
@@ -192,6 +193,13 @@ export function AgentSelectStep({
                   <Text variant="small" className="text-zinc-500">
                     Try a different name or clear the search.
                   </Text>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => setSearchInput("")}
+                  >
+                    Clear search
+                  </Button>
                 </div>
               ) : (
                 <AnimatePresence

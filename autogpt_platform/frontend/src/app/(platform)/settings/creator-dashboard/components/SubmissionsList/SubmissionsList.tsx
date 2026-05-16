@@ -123,6 +123,7 @@ export function SubmissionsList({
           onChange={onSearchChange}
           placeholder="Search by agent or listing name"
           aria-label="Search submissions"
+          maxLength={100}
           size="small"
         />
       </div>
