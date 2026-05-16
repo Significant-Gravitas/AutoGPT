@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   ChatCircleIcon,
-  CheckCircle,
-  CircleNotch,
+  CheckCircleIcon,
+  CircleNotchIcon,
   HourglassIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -73,13 +73,13 @@ export function ChatSearchResults({
                   layoutId="chat-search-highlight"
                   aria-hidden="true"
                   className="absolute inset-0 z-0 rounded-md bg-zinc-100"
-                  transition={indicatorTransition}
+                  transition={reduceMotion ? { duration: 0 } : indicatorTransition}
                 />
                 <motion.div
                   layoutId="chat-search-highlight-bar"
                   aria-hidden="true"
                   className="absolute inset-y-0 left-0 z-[1] my-auto h-5 w-[3px] rounded-full bg-zinc-900"
-                  transition={indicatorTransition}
+                  transition={reduceMotion ? { duration: 0 } : indicatorTransition}
                 />
               </>
             )}
@@ -134,7 +134,7 @@ export function ChatSearchResults({
                   hasCompletedIndicator: completedSessionIDs.has(session.id),
                   needsReload: !!sessionNeedsReload[session.id],
                 }) && (
-                  <CircleNotch
+                  <CircleNotchIcon
                     aria-label="Session processing"
                     className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                     weight="bold"
@@ -142,7 +142,7 @@ export function ChatSearchResults({
                 )}
               {completedSessionIDs.has(session.id) &&
                 session.id !== currentSessionId && (
-                  <CheckCircle
+                  <CheckCircleIcon
                     aria-label="Session completed"
                     className="h-4 w-4 shrink-0 text-green-500"
                     weight="fill"

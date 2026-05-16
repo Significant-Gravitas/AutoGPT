@@ -130,6 +130,7 @@ export function ChatSidebar() {
   useEffect(() => {
     if (!isChatSearchEnabled) return;
     function handleSearchShortcut(event: KeyboardEvent) {
+      if (event.repeat) return;
       if (event.key.toLocaleLowerCase() !== "k") return;
       if (!event.metaKey && !event.ctrlKey) return;
       event.preventDefault();

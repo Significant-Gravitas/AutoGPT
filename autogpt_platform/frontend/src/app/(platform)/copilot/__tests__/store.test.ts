@@ -427,6 +427,7 @@ describe("useCopilotUIStore", () => {
 
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
       useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setNotificationsEnabled(true);
@@ -436,6 +437,7 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().clearCopilotLocalData();
 
       const state = useCopilotUIStore.getState();
+      expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
       expect(state.isNotificationsEnabled).toBe(false);

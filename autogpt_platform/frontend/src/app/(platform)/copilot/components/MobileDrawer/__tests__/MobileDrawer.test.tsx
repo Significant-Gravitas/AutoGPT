@@ -1,7 +1,15 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { MobileDrawer } from "../MobileDrawer";
 
@@ -36,10 +44,21 @@ const sessions = [
 ];
 
 describe("MobileDrawer search", () => {
+  const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
+  const originalReleasePointerCapture =
+    HTMLElement.prototype.releasePointerCapture;
+  const originalHasPointerCapture = HTMLElement.prototype.hasPointerCapture;
+
   beforeAll(() => {
     HTMLElement.prototype.setPointerCapture = vi.fn();
     HTMLElement.prototype.releasePointerCapture = vi.fn();
     HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  });
+
+  afterAll(() => {
+    HTMLElement.prototype.setPointerCapture = originalSetPointerCapture;
+    HTMLElement.prototype.releasePointerCapture = originalReleasePointerCapture;
+    HTMLElement.prototype.hasPointerCapture = originalHasPointerCapture;
   });
 
   beforeEach(() => {
