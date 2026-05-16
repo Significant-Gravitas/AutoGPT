@@ -36,6 +36,7 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
             return
 
         provided = request.headers.get(cls.SECRET_HEADER)
+        # constant-time compare to prevent timing side-channel
         if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(
                 status_code=403,
@@ -52,16 +53,33 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
         for preset in getattr(webhook, "triggered_presets", []) or []:
             sources.append(getattr(preset, "inputs", {}) or {})
 
+        found: list[str] = []
         for src in sources:
             value = src.get(cls.SECRET_TOKEN_INPUT)
-            if value:
-                # Stored values may arrive as plain strings or as SecretStr
-                # depending on serialization path; normalize.
-                if hasattr(value, "get_secret_value"):
-                    value = value.get_secret_value()
-                if isinstance(value, str) and value.strip():
-                    return value
-        return None
+            if not value:
+                continue
+            # Stored values may arrive as plain strings or as SecretStr
+            # depending on serialization path; normalize.
+            if hasattr(value, "get_secret_value"):
+                value = value.get_secret_value()
+            if isinstance(value, str) and value.strip():
+                found.append(value)
+
+        if not found:
+            return None
+        if len({*found}) > 1:
+            # Multiple attached targets configured different tokens. We only
+            # have one HMAC comparison to make, so log loudly — the first
+            # token wins but the user almost certainly didn't intend this.
+            logger.warning(
+                "Webhook %s has %d distinct %s values across attached targets; "
+                "using the first one. All targets attached to the same webhook "
+                "must share the same secret.",
+                webhook.id,
+                len({*found}),
+                cls.SECRET_TOKEN_INPUT,
+            )
+        return found[0]
 
     @classmethod
     async def validate_payload(

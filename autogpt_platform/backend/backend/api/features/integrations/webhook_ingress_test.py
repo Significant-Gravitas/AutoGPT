@@ -180,6 +180,22 @@ class TestAlwaysSignedProviders:
         resp = _run(webhook, "github", headers={"X-GitHub-Event": "push"})
         assert resp.status_code == 403, resp.text
 
+    def test_github_wrong_signature_403(self):
+        webhook = _make_webhook(ProviderName.GITHUB)
+        body = b'{"x":1}'
+        # HMAC over the same body but using a different secret — well-formed
+        # `sha256=...` header, wrong digest.
+        wrong_sig = (
+            "sha256=" + hmac.new(b"other-secret", body, hashlib.sha256).hexdigest()
+        )
+        resp = _run(
+            webhook,
+            "github",
+            body=body,
+            headers={"X-Hub-Signature-256": wrong_sig, "X-GitHub-Event": "push"},
+        )
+        assert resp.status_code == 403, resp.text
+
     def test_github_correct_signature_accepted(self):
         webhook = _make_webhook(ProviderName.GITHUB)
         body = b'{"x":1}'
@@ -198,6 +214,15 @@ class TestAlwaysSignedProviders:
     def test_telegram_missing_signature_403(self):
         webhook = _make_webhook(ProviderName.TELEGRAM)
         resp = _run(webhook, "telegram")
+        assert resp.status_code == 403, resp.text
+
+    def test_telegram_wrong_token_403(self):
+        webhook = _make_webhook(ProviderName.TELEGRAM)
+        resp = _run(
+            webhook,
+            "telegram",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-token"},
+        )
         assert resp.status_code == 403, resp.text
 
     def test_telegram_correct_signature_accepted(self):
@@ -338,6 +363,22 @@ class TestAirtableFlagRollout:
                 headers={"X-Airtable-Content-MAC": self._expected_header(body)},
             )
         assert resp.status_code != 403, resp.text
+
+    def test_flag_on_missing_config_mac_secret_403(self):
+        """Symmetric with the Exa case: a stored Airtable webhook lacking
+        `config["mac_secret"]` (legacy/corrupted row) must fail-closed once
+        the flag is on, not silently accept the request."""
+        wh = self._webhook(config_override={})
+        with patch(
+            "backend.blocks.airtable._webhook.is_feature_enabled",
+            AsyncMock(return_value=True),
+        ):
+            resp = _run(
+                wh,
+                "airtable",
+                headers={"X-Airtable-Content-MAC": "hmac-sha256=anything"},
+            )
+        assert resp.status_code == 403, resp.text
 
     def test_flag_on_base64_string_used_as_key_would_fail(self):
         """Regression: the previous implementation used the base64 STRING as

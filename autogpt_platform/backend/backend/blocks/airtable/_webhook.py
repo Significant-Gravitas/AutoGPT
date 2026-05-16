@@ -109,11 +109,14 @@ class AirtableWebhookManager(BaseWebhooksManager):
 
         response = await list_webhook_payloads(credentials, base_id, webhook_id, cursor)
 
-        # update webhook config
+        # Merge cursor update into existing config — `update_webhook` does a
+        # full replace on the config blob, and dropping `mac_secret`/other
+        # fields here would break subsequent signature verification.
         await update_webhook(
             webhook.id,
             config=cast(
-                dict[str, Serializable], {"base_id": base_id, "cursor": response.cursor}
+                dict[str, Serializable],
+                {**webhook.config, "base_id": base_id, "cursor": response.cursor},
             ),
         )
 

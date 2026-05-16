@@ -139,7 +139,6 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 for HMAC computation; Starlette caches the body so a second
                 read inside `validate_payload` is safe.
         """
-        return None
 
     # --8<-- [end:BaseWebhooksManager6]
 
