@@ -31,6 +31,7 @@ interface UseAgentSelectStepProps {
 }
 
 const PAGE_SIZE = 10;
+const SEARCH_QUERY_MAX_LENGTH = 100;
 
 export function useAgentSelectStep({
   onSelect,
@@ -52,7 +53,10 @@ export function useAgentSelectStep({
     MyAgentsSortBy.most_recent,
   );
   const [searchInput, setSearchInput] = React.useState("");
+  const [searchResetPending, setSearchResetPending] = React.useState(false);
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
+  const isDebouncingSearch = searchInput.trim() !== debouncedSearch;
+  const queryPage = searchResetPending ? 1 : page;
   const { isLoggedIn } = useSupabase();
 
   React.useEffect(() => {
@@ -60,9 +64,15 @@ export function useAgentSelectStep({
   }, [sortBy]);
 
   function handleSearchChange(next: string) {
-    setSearchInput(next);
-    setPage(1);
+    setSearchInput(next.slice(0, SEARCH_QUERY_MAX_LENGTH));
+    setSearchResetPending(true);
   }
+
+  React.useEffect(() => {
+    if (!searchResetPending || isDebouncingSearch) return;
+    setPage(1);
+    setSearchResetPending(false);
+  }, [isDebouncingSearch, searchResetPending]);
 
   const {
     data: agentsData,
@@ -71,14 +81,14 @@ export function useAgentSelectStep({
     error,
   } = useGetV2GetMyAgents(
     {
-      page,
+      page: queryPage,
       page_size: PAGE_SIZE,
       sort_by: sortBy,
       search_query: debouncedSearch || undefined,
     },
     {
       query: {
-        enabled: isLoggedIn,
+        enabled: isLoggedIn && !isDebouncingSearch,
         refetchOnMount: "always",
         staleTime: 0,
         placeholderData: keepPreviousData,

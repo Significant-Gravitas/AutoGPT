@@ -24,6 +24,7 @@ import {
 } from "./helpers";
 
 const PAGE_SIZE = 20;
+const SEARCH_QUERY_MAX_LENGTH = 100;
 
 type PublishStep = "select" | "info" | "review";
 
@@ -63,12 +64,21 @@ export function useCreatorDashboardPage() {
 
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
+  const [searchResetPending, setSearchResetPending] = useState(false);
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
+  const isDebouncingSearch = searchInput.trim() !== debouncedSearch;
+  const queryPage = searchResetPending ? 1 : page;
 
   function handleSearchChange(next: string) {
-    setSearchInput(next);
-    setPage(1);
+    setSearchInput(next.slice(0, SEARCH_QUERY_MAX_LENGTH));
+    setSearchResetPending(true);
   }
+
+  useEffect(() => {
+    if (!searchResetPending || isDebouncingSearch) return;
+    setPage(1);
+    setSearchResetPending(false);
+  }, [isDebouncingSearch, searchResetPending]);
 
   const { data: profile } = useGetV2GetUserProfile({
     query: {
@@ -86,14 +96,14 @@ export function useCreatorDashboardPage() {
     refetch,
   } = useGetV2ListMySubmissions(
     {
-      page,
+      page: queryPage,
       page_size: PAGE_SIZE,
       search_query: debouncedSearch || undefined,
     },
     {
       query: {
         select: (x) => x.data as StoreSubmissionsResponse,
-        enabled: !!user,
+        enabled: !!user && !isDebouncingSearch,
         placeholderData: keepPreviousData,
       },
     },

@@ -662,8 +662,10 @@ async def get_store_submissions(
 ) -> store_model.StoreSubmissionsResponse:
     """Get store submissions for the authenticated user -- not an admin"""
     logger.debug(
-        f"Getting store submissions for user {user_id}, page={page}, "
-        f"search_query={search_query!r}"
+        "Getting store submissions for user %s, page=%s, search_query=%r",
+        user_id,
+        page,
+        search_query,
     )
 
     try:
@@ -1217,8 +1219,11 @@ async def get_my_agents(
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(
-        f"Getting my agents for user {user_id}, page={page}, "
-        f"sort_by={sort_by.value}, search_query={search_query!r}"
+        "Getting my agents for user %s, page=%s, sort_by=%s, search_query=%r",
+        user_id,
+        page,
+        sort_by.value,
+        search_query,
     )
 
     try:

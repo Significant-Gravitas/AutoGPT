@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SearchInput } from "./SearchInput";
 
@@ -27,6 +27,11 @@ type Story = StoryObj<typeof SearchInput>;
 
 function ControlledExample(args: React.ComponentProps<typeof SearchInput>) {
   const [value, setValue] = useState(args.value ?? "");
+
+  useEffect(() => {
+    setValue(args.value ?? "");
+  }, [args.value]);
+
   return (
     <div className="w-[360px]">
       <SearchInput {...args} value={value} onChange={setValue} />

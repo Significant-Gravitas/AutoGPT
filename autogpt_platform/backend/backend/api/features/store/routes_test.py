@@ -654,6 +654,15 @@ def test_get_submissions_forwards_search_query(
     )
 
 
+def test_get_submissions_search_query_too_long(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?search_query=" + "x" * 101)
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
+
+
 def test_get_my_unpublished_agents_forwards_search_query(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
