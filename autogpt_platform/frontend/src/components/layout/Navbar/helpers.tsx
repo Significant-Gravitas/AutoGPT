@@ -1,7 +1,5 @@
 import {
   IconBuilder,
-  IconCircleAlert,
-  IconCoin,
   IconEdit,
   IconLibrary,
   IconLogOut,
@@ -12,7 +10,12 @@ import {
   IconType,
   IconUploadCloud,
 } from "@/components/__legacy__/ui/icons";
-import { ChatsIcon, StorefrontIcon } from "@phosphor-icons/react";
+import {
+  ChatsIcon,
+  CreditCardIcon,
+  QuestionIcon,
+  StorefrontIcon,
+} from "@phosphor-icons/react";
 
 type Link = {
   name: string;
@@ -172,9 +175,9 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.Chat:
       return <ChatsIcon className={iconClass} />;
     case IconType.Billing:
-      return <IconCoin className={iconClass} />;
+      return <CreditCardIcon className={iconClass} />;
     case IconType.Help:
-      return <IconCircleAlert className={iconClass} />;
+      return <QuestionIcon className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }
