@@ -562,6 +562,9 @@ async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
     assert result.stats.total == 7
     assert result.stats.average_rating == 3.9
     mock_store_sub.return_value.count.assert_not_called()
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"submitted_at": "desc"}
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -608,6 +611,67 @@ async def test_get_store_submissions_search_filters_and_counts_matches(mocker):
         mock_store_sub.return_value.find_many.call_args.kwargs["where"]
         == expected_where
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_sorts_by_runs(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(
+        side_effect=AssertionError("count() must not be called"),
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        sort_key="runs",
+        sort_dir="asc",
+    )
+
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"run_count": "asc"},
+        {"submitted_at": "desc"},
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_reraises_fetch_errors(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.get_store_submissions(user_id="user-id", page=1, page_size=20)
 
 
 @pytest.mark.asyncio(loop_scope="session")

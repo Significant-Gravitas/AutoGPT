@@ -107,6 +107,8 @@ export function useCreatorDashboardPage() {
         filterState.statuses.length > 0
           ? filterState.statuses.join(",")
           : undefined,
+      sort_key: filterState.sortKey ?? undefined,
+      sort_dir: filterState.sortKey ? filterState.sortDir : undefined,
     },
     {
       query: {

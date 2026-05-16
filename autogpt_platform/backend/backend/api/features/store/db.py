@@ -660,14 +660,21 @@ async def get_store_submissions(
     page_size: int = 20,
     search_query: str | None = None,
     statuses: list[prisma.enums.SubmissionStatus] | None = None,
+    sort_key: str | None = None,
+    sort_dir: str = "desc",
 ) -> store_model.StoreSubmissionsResponse:
     """Get store submissions for the authenticated user -- not an admin"""
     logger.debug(
-        "Getting store submissions for user %s, page=%s, search_query=%r, statuses=%r",
+        (
+            "Getting store submissions for user %s, page=%s, search_query=%r, "
+            "statuses=%r, sort_key=%r, sort_dir=%s"
+        ),
         user_id,
         page,
         search_query,
         statuses,
+        sort_key,
+        sort_dir,
     )
 
     try:
@@ -688,11 +695,17 @@ async def get_store_submissions(
         if statuses:
             where["status"] = {"in": statuses}
 
+        order: list[prisma.types.StoreSubmissionOrderByInput]
+        if sort_key == "runs":
+            order = [{"run_count": sort_dir}, {"submitted_at": "desc"}]
+        else:
+            order = [{"submitted_at": sort_dir}]
+
         submissions_task = prisma.models.StoreSubmission.prisma().find_many(
             where=where,
             skip=skip,
             take=page_size,
-            order=[{"submitted_at": "desc"}],
+            order=order,
         )
         stats_task = _get_submission_stats(user_id)
         if normalized_query or statuses:
@@ -722,25 +735,9 @@ async def get_store_submissions(
             stats=stats,
         )
 
-    except Exception as e:
-        logger.error(f"Error fetching store submissions: {e}")
-        # Return empty response rather than exposing internal errors
-        return store_model.StoreSubmissionsResponse(
-            submissions=[],
-            pagination=store_model.Pagination(
-                current_page=page,
-                total_items=0,
-                total_pages=0,
-                page_size=page_size,
-            ),
-            stats=store_model.SubmissionStats(
-                total=0,
-                approved=0,
-                pending=0,
-                total_runs=0,
-                average_rating=None,
-            ),
-        )
+    except Exception:
+        logger.exception("Error fetching store submissions")
+        raise
 
 
 async def delete_store_submission(

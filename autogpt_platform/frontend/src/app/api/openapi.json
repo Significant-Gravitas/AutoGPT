@@ -8993,6 +8993,29 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Statuses"
             }
+          },
+          {
+            "name": "sort_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "enum": ["submitted", "runs"], "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Sort Key"
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string",
+              "default": "desc",
+              "title": "Sort Dir"
+            }
           }
         ],
         "responses": {

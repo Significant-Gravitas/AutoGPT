@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 import urllib.parse
 
 import autogpt_libs.auth
@@ -23,6 +24,9 @@ from . import model as store_model
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
+
+SubmissionSortKey = Literal["submitted", "runs"]
+SubmissionSortDir = Literal["asc", "desc"]
 
 
 ##############################################
@@ -377,6 +381,8 @@ async def get_submissions(
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
     statuses: str | None = Query(default=None),
+    sort_key: SubmissionSortKey | None = Query(default=None),
+    sort_dir: SubmissionSortDir = Query(default="desc"),
 ) -> store_model.StoreSubmissionsResponse:
     """List the authenticated user's marketplace listing submissions"""
     listings = await store_db.get_store_submissions(
@@ -385,6 +391,8 @@ async def get_submissions(
         page_size=page_size,
         search_query=search_query,
         statuses=_parse_submission_statuses(statuses),
+        sort_key=sort_key,
+        sort_dir=sort_dir,
     )
     return listings
 

@@ -592,6 +592,8 @@ def test_get_submissions_success(
         page_size=20,
         search_query=None,
         statuses=None,
+        sort_key=None,
+        sort_dir="desc",
     )
 
 
@@ -633,6 +635,8 @@ def test_get_submissions_pagination(
         page_size=5,
         search_query=None,
         statuses=None,
+        sort_key=None,
+        sort_dir="desc",
     )
 
 
@@ -663,6 +667,8 @@ def test_get_submissions_forwards_search_query(
         page_size=20,
         search_query="invoice agent",
         statuses=None,
+        sort_key=None,
+        sort_dir="desc",
     )
 
 
@@ -696,7 +702,50 @@ def test_get_submissions_forwards_statuses(
             prisma.enums.SubmissionStatus.PENDING,
             prisma.enums.SubmissionStatus.APPROVED,
         ],
+        sort_key=None,
+        sort_dir="desc",
     )
+
+
+def test_get_submissions_forwards_sort(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocked_value = store_model.StoreSubmissionsResponse(
+        submissions=[],
+        pagination=store_model.Pagination(
+            current_page=1,
+            total_items=0,
+            total_pages=0,
+            page_size=20,
+        ),
+        stats=store_model.SubmissionStats(
+            total=0, approved=0, pending=0, total_runs=0, average_rating=None
+        ),
+    )
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    mock_db_call.return_value = mocked_value
+
+    response = client.get("/submissions?sort_key=runs&sort_dir=asc")
+    assert response.status_code == 200
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        page=1,
+        page_size=20,
+        search_query=None,
+        statuses=None,
+        sort_key="runs",
+        sort_dir="asc",
+    )
+
+
+def test_get_submissions_rejects_invalid_sort(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
+    response = client.get("/submissions?sort_key=name")
+    assert response.status_code == 422
+    mock_db_call.assert_not_called()
 
 
 def test_get_submissions_rejects_invalid_status(

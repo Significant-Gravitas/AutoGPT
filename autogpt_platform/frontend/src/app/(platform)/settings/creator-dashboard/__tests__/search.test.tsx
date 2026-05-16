@@ -245,4 +245,46 @@ describe("creator-dashboard search", () => {
       { timeout: 3000 },
     );
   });
+
+  test("sort filter forwards sorting to the submissions request", async () => {
+    const observedSorts: { key: string | null; dir: string | null }[] = [];
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        observedSorts.push({
+          key: url.searchParams.get("sort_key"),
+          dir: url.searchParams.get("sort_dir"),
+        });
+
+        return makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-1",
+            name: "Alpha",
+            run_count: 100,
+          }),
+          makeSubmission({
+            listing_version_id: "lv-2",
+            name: "Beta",
+            run_count: 500,
+          }),
+        ]);
+      }),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect((await screen.findAllByText("Alpha")).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /filter sort/i })[1]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /lowest first/i }),
+    );
+
+    await waitFor(
+      () => {
+        expect(observedSorts).toContainEqual({ key: "runs", dir: "asc" });
+      },
+      { timeout: 3000 },
+    );
+  });
 });
