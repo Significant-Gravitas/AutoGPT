@@ -10,6 +10,7 @@ interface Props {
   onClick?: () => void;
   destructive?: boolean;
   as?: "link" | "button" | "div";
+  external?: boolean;
 }
 
 const baseRowClasses =
@@ -28,7 +29,7 @@ function RowBody({
 }) {
   const barClasses = destructive
     ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-red-500 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-violet-500 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-neutral-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>
@@ -73,12 +74,25 @@ export function AccountMenuRow({
   onClick,
   destructive = false,
   as = "link",
+  external = false,
 }: Props) {
   const colorClasses = destructive
-    ? "text-neutral-500 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
-    : "text-neutral-500 hover:bg-violet-50 hover:text-violet-700 focus-visible:bg-violet-50 focus-visible:text-violet-700";
+    ? "text-neutral-700 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
+    : "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
 
   if (as === "link" && href) {
+    if (external) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(baseRowClasses, colorClasses)}
+        >
+          <RowBody icon={icon} label={label} destructive={destructive} />
+        </a>
+      );
+    }
     return (
       <Link href={href} className={cn(baseRowClasses, colorClasses)}>
         <LinkRowBody icon={icon} label={label} destructive={destructive} />

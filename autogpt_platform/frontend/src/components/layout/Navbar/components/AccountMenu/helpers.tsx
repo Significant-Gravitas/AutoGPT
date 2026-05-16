@@ -1,7 +1,9 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
 import {
   ChartLineUpIcon,
+  CreditCardIcon,
   GearIcon,
+  QuestionIcon,
   SignOutIcon,
   SlidersHorizontalIcon,
   UploadSimpleIcon,
@@ -22,6 +24,10 @@ export function getAccountMenuPhosphorIcon(icon: IconType) {
       return <SlidersHorizontalIcon className={className} weight={weight} />;
     case IconType.Settings:
       return <GearIcon className={className} weight={weight} />;
+    case IconType.Billing:
+      return <CreditCardIcon className={className} weight={weight} />;
+    case IconType.Help:
+      return <QuestionIcon className={className} weight={weight} />;
     case IconType.LogOut:
       return <SignOutIcon className={className} weight={weight} />;
     default:

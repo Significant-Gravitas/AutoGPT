@@ -1,5 +1,4 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import {
   Popover,
   PopoverContent,
@@ -95,28 +94,13 @@ export function AccountMenu({
                   );
                 }
 
-                if (item.text === "Publish an agent") {
-                  return (
-                    <li key={key}>
-                      <PublishAgentModal
-                        trigger={
-                          <AccountMenuRow
-                            as="div"
-                            icon={icon}
-                            label={item.text}
-                          />
-                        }
-                      />
-                    </li>
-                  );
-                }
-
                 if (item.href) {
                   return (
                     <li key={key}>
                       <AccountMenuRow
                         as="link"
                         href={item.href}
+                        external={item.external}
                         icon={icon}
                         label={item.text}
                       />

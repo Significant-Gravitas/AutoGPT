@@ -18,30 +18,29 @@ const userGroups = [
     items: [
       {
         icon: IconType.Edit,
-        text: "Account",
+        text: "Profile",
         href: "/settings/profile",
       },
-    ],
-  },
-  {
-    items: [
+      {
+        icon: IconType.Settings,
+        text: "Settings",
+        href: "/settings/account",
+      },
+      {
+        icon: IconType.Billing,
+        text: "Billing",
+        href: "/settings/billing",
+      },
       {
         icon: IconType.LayoutDashboard,
         text: "Creator Dashboard",
         href: "/settings/creator-dashboard",
       },
       {
-        icon: IconType.UploadCloud,
-        text: "Publish an agent",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.Settings,
-        text: "Settings",
-        href: "/settings",
+        icon: IconType.Help,
+        text: "Help & Docs",
+        href: "https://agpt.co/docs",
+        external: true,
       },
     ],
   },
@@ -56,7 +55,7 @@ const userGroups = [
 ];
 
 const adminGroups = [
-  ...userGroups.slice(0, 2),
+  userGroups[0],
   {
     items: [
       {
@@ -66,7 +65,7 @@ const adminGroups = [
       },
     ],
   },
-  ...userGroups.slice(2),
+  userGroups[1],
 ];
 
 export const Default: Story = {
