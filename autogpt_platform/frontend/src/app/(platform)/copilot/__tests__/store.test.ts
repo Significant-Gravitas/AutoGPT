@@ -231,6 +231,7 @@ describe("useCopilotUIStore", () => {
       initialPrompt: null,
       sessionToDelete: null,
       isDrawerOpen: false,
+      isSearchOpen: false,
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
@@ -284,6 +285,20 @@ describe("useCopilotUIStore", () => {
 
       useCopilotUIStore.getState().setDrawerOpen(false);
       expect(useCopilotUIStore.getState().isDrawerOpen).toBe(false);
+    });
+  });
+
+  describe("search", () => {
+    it("starts closed", () => {
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
+    });
+
+    it("opens and closes", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(true);
+
+      useCopilotUIStore.getState().setSearchOpen(false);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
     });
   });
 
