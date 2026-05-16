@@ -116,6 +116,33 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         logger.info(f"Webhook #{webhook_id} deleted as it had no remaining triggers")
         return True
 
+    # --8<-- [start:BaseWebhooksManager6]
+    @classmethod
+    async def verify_signature(
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+    ) -> None:
+        """
+        Verify the authenticity of an incoming webhook request.
+
+        Default is a no-op: not every provider's webhook protocol supports
+        signing, so unsigned providers (e.g. Compass, Slant3D) don't override
+        this. Providers whose protocol does sign deliveries (GitHub, Telegram,
+        Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
+        missing or invalid signatures, using `hmac.compare_digest` for any
+        secret comparison.
+
+        Params:
+            webhook: Configured webhook including stored `secret` / config.
+            request: Incoming FastAPI `Request`. Read with `await request.body()`
+                for HMAC computation; Starlette caches the body so a second
+                read inside `validate_payload` is safe.
+        """
+        return None
+
+    # --8<-- [end:BaseWebhooksManager6]
+
     # --8<-- [start:BaseWebhooksManager3]
     @classmethod
     @abstractmethod
