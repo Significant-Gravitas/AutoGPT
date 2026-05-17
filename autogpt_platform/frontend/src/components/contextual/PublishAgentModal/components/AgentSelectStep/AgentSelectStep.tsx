@@ -102,7 +102,8 @@ export function AgentSelectStep({
   }
 
   const hasNoResults = !isLoading && totalItems === 0 && myAgents.length === 0;
-  const showLibraryEmpty = hasNoResults && !debouncedSearch;
+  const hasActiveSearch = Boolean(searchInput.trim() || debouncedSearch);
+  const showLibraryEmpty = hasNoResults && !hasActiveSearch && !isFetching;
   const showNoMatches = hasNoResults && Boolean(debouncedSearch);
 
   return (

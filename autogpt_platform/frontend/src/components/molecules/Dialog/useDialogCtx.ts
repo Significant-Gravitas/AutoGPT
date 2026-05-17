@@ -14,7 +14,6 @@ export interface DialogCtx {
   isForceOpen: boolean;
   isLargeScreen: boolean;
   styling: CSSProperties | undefined;
-  overlayClassName: string | undefined;
 }
 
 export const DialogCtx = createContext<DialogCtx>({
@@ -25,5 +24,4 @@ export const DialogCtx = createContext<DialogCtx>({
   handleOpen: () => undefined,
   handleClose: () => undefined,
   styling: {},
-  overlayClassName: undefined,
 });

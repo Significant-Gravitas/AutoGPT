@@ -12,7 +12,6 @@ import { useDialogInternal } from "./useDialogInternal";
 interface Props extends PropsWithChildren {
   title?: React.ReactNode;
   styling?: CSSProperties;
-  overlayClassName?: string;
 
   forceOpen?: boolean;
   onClose?: (() => void) | undefined;
@@ -30,7 +29,6 @@ function Dialog({
   children,
   title,
   styling,
-  overlayClassName,
 
   forceOpen = false,
   onClose,
@@ -48,7 +46,6 @@ function Dialog({
         isOpen,
         isForceOpen: forceOpen,
         isLargeScreen: config.isLgScreenUp,
-        overlayClassName,
         handleOpen: config.handleOpen,
         handleClose: async () => {
           await config.handleClose();

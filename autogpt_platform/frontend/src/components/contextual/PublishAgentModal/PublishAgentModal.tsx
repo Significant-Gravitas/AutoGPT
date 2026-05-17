@@ -122,8 +122,8 @@ export function PublishAgentModal({
       <Dialog
         styling={{
           maxWidth: "48rem",
+          marginRight: "0.5rem",
         }}
-        overlayClassName="mr-2"
         controlled={{
           isOpen: currentState.isOpen,
           set: (isOpen) => {

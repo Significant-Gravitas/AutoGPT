@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { keepPreviousData } from "@tanstack/react-query";
 
@@ -17,7 +17,6 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 import {
-  applyFiltersAndSort,
   INITIAL_FILTER_STATE,
   toDashboardStats,
   type FilterState,
@@ -156,10 +155,7 @@ export function useCreatorDashboardPage() {
 
   const stats = toDashboardStats(response?.stats);
 
-  const visibleSubmissions = useMemo(
-    () => applyFiltersAndSort(submissions, filterState),
-    [submissions, filterState],
-  );
+  const visibleSubmissions = submissions;
 
   function resetFilters() {
     setFilterState(INITIAL_FILTER_STATE);
