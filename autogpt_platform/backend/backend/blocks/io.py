@@ -54,11 +54,6 @@ class AgentInputBlock(Block):
             default=False,
             advanced=True,
         )
-        secret: bool = SchemaField(
-            description="Whether the input should be treated as a secret.",
-            default=False,
-            advanced=True,
-        )
 
         def generate_schema(self):
             return copy.deepcopy(self.get_field_schema("value"))

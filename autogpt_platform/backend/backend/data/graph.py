@@ -161,52 +161,38 @@ class NodeModel(Node):
 
     def stripped_for_export(self) -> "NodeModel":
         """
-        Returns a copy of the node model, stripped of any non-transferable properties
+        Returns a copy of the node model with non-transferable references removed:
+        the `id` field on any embedded credentials reference (points at the
+        original owner's credentials store) and `webhook_id` (points at the
+        original owner's webhook subscription).
         """
         stripped_node = self.model_copy(deep=True)
 
-        # Remove credentials and other (possible) secrets from node input
         if stripped_node.input_default:
-            stripped_node.input_default = NodeModel._filter_secrets_from_node_input(
-                stripped_node.input_default, self.block.input_schema.jsonschema()
+            stripped_node.input_default = NodeModel._strip_credential_ids(
+                stripped_node.input_default
             )
 
-        # Remove default secret value from secret input nodes
-        if (
-            stripped_node.block.block_type == BlockType.INPUT
-            and stripped_node.input_default.get("secret", False) is True
-            and "value" in stripped_node.input_default
-        ):
-            del stripped_node.input_default["value"]
-
-        # Remove webhook info
         stripped_node.webhook_id = None
 
         return stripped_node
 
     @staticmethod
-    def _filter_secrets_from_node_input(
-        input_data: BlockInput, schema: dict[str, Any] | None
-    ) -> BlockInput:
-        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
-        field_schemas = schema.get("properties", {}) if schema else {}
-        result = {}
+    def _strip_credential_ids(input_data: BlockInput) -> BlockInput:
+        result: BlockInput = {}
         for key, value in input_data.items():
-            field_schema: dict | None = field_schemas.get(key)
-            if (field_schema and field_schema.get("secret", False)) or (
-                any(sensitive_key in key.lower() for sensitive_key in sensitive_keys)
-                # Prevent removing `secret` flag on input nodes
-                and type(value) is not bool
-            ):
-                # This is a secret value -> filter this key-value pair out
-                continue
-            elif isinstance(value, dict):
-                result[key] = NodeModel._filter_secrets_from_node_input(
-                    value, field_schema
-                )
+            if isinstance(value, dict):
+                if NodeModel._looks_like_credentials_ref(value):
+                    result[key] = {k: v for k, v in value.items() if k != "id"}
+                else:
+                    result[key] = NodeModel._strip_credential_ids(value)
             else:
                 result[key] = value
         return result
+
+    @staticmethod
+    def _looks_like_credentials_ref(value: dict[str, Any]) -> bool:
+        return "id" in value and "provider" in value and "type" in value
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -343,7 +329,7 @@ class BaseGraph(GraphBaseMeta):
                             for k, v in p.generate_schema().items()
                             if k not in ["description", "default"]
                         },
-                        "secret": p.secret,
+                        "secret": False,
                         # Default value has to be set for advanced fields.
                         "advanced": p.advanced and p.value is not None,
                         "title": p.title or p.name,
