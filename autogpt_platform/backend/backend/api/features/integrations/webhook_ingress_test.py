@@ -19,6 +19,7 @@ signature checks to each manager's `verify_signature`. This file pins:
 import base64
 import hashlib
 import hmac
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -149,13 +150,12 @@ def _run(webhook, provider_path: str, **kwargs):
             return_value=_manager(webhook.provider),
         )
     ]
-    for p in patches:
-        p.start()
-    try:
-        return _post(provider_path, **kwargs)
-    finally:
+    # ExitStack guarantees previously started patchers are stopped even if
+    # a later one's __enter__ raises.
+    with ExitStack() as stack:
         for p in patches:
-            p.stop()
+            stack.enter_context(p)
+        return _post(provider_path, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -493,13 +493,10 @@ class TestVerificationOrder:
                 return_value=mock_manager,
             )
         ]
-        for p in patches:
-            p.start()
-        try:
-            resp = _post("github")
-        finally:
+        with ExitStack() as stack:
             for p in patches:
-                p.stop()
+                stack.enter_context(p)
+            resp = _post("github")
 
         assert resp.status_code == 403
         mock_manager.verify_signature.assert_awaited_once()

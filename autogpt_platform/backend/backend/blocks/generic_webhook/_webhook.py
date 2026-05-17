@@ -67,17 +67,21 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
 
         if not found:
             return None
-        if len({*found}) > 1:
+        # Compute the distinct-count before logging so the secret values
+        # themselves don't flow into the logger call args (CodeQL's
+        # clear-text-logging taint analysis flags any expression that
+        # derives from a secret-typed variable, even just its length).
+        distinct_count = len(set(found))
+        if distinct_count > 1:
             # Multiple attached targets configured different tokens. We only
             # have one HMAC comparison to make, so log loudly — the first
             # token wins but the user almost certainly didn't intend this.
             logger.warning(
-                "Webhook %s has %d distinct %s values across attached targets; "
-                "using the first one. All targets attached to the same webhook "
-                "must share the same secret.",
+                "Webhook %s has %d distinct secret_token values across "
+                "attached targets; using the first one. All targets attached "
+                "to the same webhook must share the same secret.",
                 webhook.id,
-                len({*found}),
-                cls.SECRET_TOKEN_INPUT,
+                distinct_count,
             )
         return found[0]
 
