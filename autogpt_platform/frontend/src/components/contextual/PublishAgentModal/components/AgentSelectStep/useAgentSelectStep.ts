@@ -166,6 +166,7 @@ export function useAgentSelectStep({
     searchInput,
     setSearchInput: handleSearchChange,
     debouncedSearch,
+    isDebouncingSearch,
     handleAgentClick,
     handleNext,
     handleSortChange,

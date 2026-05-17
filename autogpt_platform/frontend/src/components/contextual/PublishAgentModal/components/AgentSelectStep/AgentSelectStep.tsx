@@ -63,6 +63,7 @@ export function AgentSelectStep({
     searchInput,
     setSearchInput,
     debouncedSearch,
+    isDebouncingSearch,
     handleAgentClick,
     handleNext,
     handleSortChange,
@@ -104,7 +105,11 @@ export function AgentSelectStep({
   const hasNoResults = !isLoading && totalItems === 0 && myAgents.length === 0;
   const hasActiveSearch = Boolean(searchInput.trim() || debouncedSearch);
   const showLibraryEmpty = hasNoResults && !hasActiveSearch && !isFetching;
-  const showNoMatches = hasNoResults && Boolean(debouncedSearch);
+  const showNoMatches =
+    hasNoResults &&
+    Boolean(debouncedSearch) &&
+    !isFetching &&
+    !isDebouncingSearch;
 
   return (
     <div className="mx-auto flex w-full flex-col">
@@ -138,7 +143,7 @@ export function AgentSelectStep({
                 placeholder="Search your agents"
                 aria-label="Search your agents"
                 maxLength={100}
-                loading={isFetching}
+                loading={isFetching || isDebouncingSearch}
                 size="small"
               />
             </div>
