@@ -23,4 +23,4 @@ WHERE "agentBlockId" IN (
   '5603b273-f41e-4020-af7d-fbc9c6a8d928', -- AgentTableInputBlock
   'd3b32f15-6fd7-40e3-be52-e083f51b19a2'  -- AgentGoogleDriveFileInputBlock
 )
-AND ("constantInput"->>'secret')::boolean IS TRUE;
+AND "constantInput"->'secret' = 'true'::jsonb;

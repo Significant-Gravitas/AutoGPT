@@ -269,7 +269,7 @@ async def test_clean_graph(server: SpinTestServer):
                     "_test_id": "node_with_credentials",
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
-                    "api_key": "left_alone_now",  # pragma: allowlist secret # noqa
+                    "api_key": "left_alone_now",  # pragma: allowlist secret
                     "credentials": {
                         "id": "fake-github-credentials-id",
                         "provider": "github",

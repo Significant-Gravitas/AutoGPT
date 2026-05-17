@@ -181,14 +181,18 @@ class NodeModel(Node):
     def _strip_credential_ids(input_data: BlockInput) -> BlockInput:
         result: BlockInput = {}
         for key, value in input_data.items():
-            if isinstance(value, dict):
-                if NodeModel._looks_like_credentials_ref(value):
-                    result[key] = {k: v for k, v in value.items() if k != "id"}
-                else:
-                    result[key] = NodeModel._strip_credential_ids(value)
-            else:
-                result[key] = value
+            result[key] = NodeModel._strip_credential_ids_in(value)
         return result
+
+    @staticmethod
+    def _strip_credential_ids_in(value: Any) -> Any:
+        if isinstance(value, dict):
+            if NodeModel._looks_like_credentials_ref(value):
+                return {k: v for k, v in value.items() if k != "id"}
+            return {k: NodeModel._strip_credential_ids_in(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [NodeModel._strip_credential_ids_in(item) for item in value]
+        return value
 
     @staticmethod
     def _looks_like_credentials_ref(value: dict[str, Any]) -> bool:
