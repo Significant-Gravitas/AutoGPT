@@ -11,6 +11,7 @@ from .rate_limit import (
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
+    CoPilotUsagePublic,
     CoPilotUsageStatus,
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -299,28 +300,402 @@ class TestCheckRateLimit:
                 )
 
     @pytest.mark.asyncio
-    async def test_skips_redis_and_does_not_raise_unavailable_when_unlimited(self):
-        """When both limits are 0 (unlimited) we must not even attempt Redis,
-        so a brown-out cannot 503 unlimited users."""
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=ConnectionError("Redis down"),
-        ) as mock_get:
-            # Should not raise — short-circuited before touching Redis.
-            await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
-            mock_get.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_skips_check_when_limit_is_zero(self):
+    async def test_zero_limit_means_blocked_not_unlimited(self):
+        """A limit of 0 means "no spend allowed", not "unlimited" — there
+        is no real-world unlimited tier. This is the regression behind the
+        autopilot paywall bypass: the previous ``> 0`` check let the
+        multiplier-collapse path (which returns 0 for paywalled users) slip
+        through silently."""
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(side_effect=["999999", "999999"])
-
+        mock_redis.get = AsyncMock(side_effect=["0", "0"])
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             return_value=mock_redis,
         ):
-            # Should not raise — limits of 0 mean unlimited
-            await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+            assert exc_info.value.window == "daily"
+
+
+class TestCoPilotUsagePublicFromStatus:
+    """Public-shape projection must surface a 0-limit window as fully
+    exhausted (the user is paywalled / blocked), not as `None`. Hiding
+    the window would tell the UI "no cap configured" — the same silent
+    bypass that motivated this PR."""
+
+    @staticmethod
+    def _status(daily_limit: int, weekly_limit: int) -> CoPilotUsageStatus:
+        from .rate_limit import UsageWindow
+
+        return CoPilotUsageStatus(
+            daily=UsageWindow(
+                used=0,
+                limit=daily_limit,
+                resets_at=_daily_reset_time(),
+            ),
+            weekly=UsageWindow(
+                used=0,
+                limit=weekly_limit,
+                resets_at=_weekly_reset_time(),
+            ),
+            tier=DEFAULT_TIER,
+            reset_cost=0,
+        )
+
+    def test_zero_limit_renders_as_fully_exhausted(self):
+        public = CoPilotUsagePublic.from_status(self._status(0, 0))
+        assert public.daily is not None
+        assert public.daily.percent_used == 100.0
+        assert public.weekly is not None
+        assert public.weekly.percent_used == 100.0
+
+    def test_positive_limit_renders_normally(self):
+        # daily limit $10, used $0 → 0% used
+        from .rate_limit import UsageWindow
+
+        status = CoPilotUsageStatus(
+            daily=UsageWindow(used=0, limit=10_000_000, resets_at=_daily_reset_time()),
+            weekly=UsageWindow(
+                used=5_000_000, limit=10_000_000, resets_at=_weekly_reset_time()
+            ),
+            tier=DEFAULT_TIER,
+            reset_cost=0,
+        )
+        public = CoPilotUsagePublic.from_status(status)
+        assert public.daily is not None
+        assert public.daily.percent_used == 0.0
+        assert public.weekly is not None
+        assert public.weekly.percent_used == 50.0
+
+
+class TestEnforcePaymentPaywall:
+    """The dep bypasses ``get_user_tier``'s fail-open default and goes
+    through ``_fetch_user_tier`` directly so a transient DB blip raises
+    503 instead of silently 402-ing every paid user."""
+
+    @pytest.mark.asyncio
+    async def test_blocks_no_tier_user_when_flag_on(self, mocker):
+        """Headline behaviour: NO_TIER + ENABLE_PLATFORM_PAYMENT on raises
+        :class:`UserPaywalledError`. The app-level exception handler in
+        ``rest_api.py`` (and the external API's ``fastapi_app.py``) maps
+        this to HTTP 402 — the dep itself doesn't construct an
+        HTTPException so all gates share the same exception type."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import UserPaywalledError, enforce_payment_paywall
+
+        with pytest.raises(UserPaywalledError) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert "subscription" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_allows_no_tier_user_when_flag_off(self, mocker):
+        """Beta cohort: flag off → NO_TIER user passes through (no exception)."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        )
+        from .rate_limit import enforce_payment_paywall
+
+        await enforce_payment_paywall(_USER)  # must not raise
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier",
+        [
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+            SubscriptionTier.ENTERPRISE,
+        ],
+    )
+    async def test_allows_paid_tier_even_when_flag_on(self, mocker, tier):
+        """Even with the flag on, paid tiers must never be blocked."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=tier),
+        )
+        is_feature_enabled_mock = mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import enforce_payment_paywall
+
+        await enforce_payment_paywall(_USER)  # must not raise
+        # Short-circuits on tier check; flag lookup never happens for paid
+        # tiers (avoids an unnecessary LD round-trip per paywalled route).
+        is_feature_enabled_mock.assert_not_called()
+
+
+class TestIsUserPaywalled:
+    """``is_user_paywalled`` is the shared core check used by both the
+    route-level dep and the function-level gate inside ``add_graph_execution``.
+    Strict: propagates lookup failures so the caller decides how to respond
+    (route → 503; background job → fail-open)."""
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_flag_on_is_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is True
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_flag_off_is_not_paywalled(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier",
+        [
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+            SubscriptionTier.ENTERPRISE,
+        ],
+    )
+    async def test_paid_tier_short_circuits_without_flag_lookup(self, mocker, tier):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=tier),
+        )
+        flag_mock = mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import is_user_paywalled
+
+        assert await is_user_paywalled(_USER) is False
+        flag_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_propagates_lookup_failure(self, mocker):
+        """The helper does NOT swallow generic tier-lookup errors — callers
+        decide. The route-dep maps to 503; background callers
+        (add_graph_execution) fail open."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        from .rate_limit import is_user_paywalled
+
+        with pytest.raises(RuntimeError):
+            await is_user_paywalled(_USER)
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_treated_as_no_tier_when_flag_on(self, mocker):
+        """``_UserNotFoundError`` (no DB row, or no ``subscription_tier``
+        set yet on a fresh signup) is treated as NO_TIER so callers without
+        a generic ``except`` (e.g. the external API ``execute_graph_block``
+        route) get a real 402 instead of a leaked 500."""
+        from .rate_limit import _UserNotFoundError, is_user_paywalled
+
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        assert await is_user_paywalled(_USER) is True
+
+    @pytest.mark.asyncio
+    async def test_user_not_found_treated_as_no_tier_when_flag_off(self, mocker):
+        """Beta cohort: missing tier + flag off → not paywalled (same
+        passthrough as a real NO_TIER user with the flag off)."""
+        from .rate_limit import _UserNotFoundError, is_user_paywalled
+
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=_UserNotFoundError(_USER)),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        )
+        assert await is_user_paywalled(_USER) is False
+
+
+class TestUserPaywalledError:
+    def test_default_message(self):
+        from .rate_limit import UserPaywalledError
+
+        assert "subscription" in str(UserPaywalledError()).lower()
+
+    def test_custom_message(self):
+        from .rate_limit import UserPaywalledError
+
+        assert str(UserPaywalledError("custom")) == "custom"
+
+
+class TestFetchUserTierErrorPropagation:
+    """``_fetch_user_tier`` must distinguish "row missing" (raises
+    ``ValueError`` via ``get_user_by_id``) from "transient DB error"
+    (Prisma connection failure etc). Without this distinction a
+    Supabase blip would silently degrade every paying user to NO_TIER
+    and ``enforce_payment_paywall`` would 402 them — contradicting its
+    503-on-blip contract. Regression locked here."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from .rate_limit import _fetch_user_tier
+
+        _fetch_user_tier.cache_clear()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_value_error_collapses_to_user_not_found(self, mocker):
+        """ValueError from get_user_by_id is the documented "missing user"
+        signal — it's correct to map this to NO_TIER (via
+        _UserNotFoundError → caught in is_user_paywalled)."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from .rate_limit import _fetch_user_tier, _UserNotFoundError
+
+        with pytest.raises(_UserNotFoundError):
+            await _fetch_user_tier(_USER)
+
+    @pytest.mark.asyncio
+    async def test_db_outage_propagates(self, mocker):
+        """Non-ValueError exceptions (Prisma connection failure, generic
+        RuntimeError) propagate as-is so route layer can map to 503."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=RuntimeError("Prisma down"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from .rate_limit import _fetch_user_tier
+
+        with pytest.raises(RuntimeError, match="Prisma down"):
+            await _fetch_user_tier(_USER)
+
+    @pytest.mark.asyncio
+    async def test_db_outage_does_not_collapse_to_402_for_paying_user(self, mocker):
+        """End-to-end: a Supabase blip during enforce_payment_paywall
+        for any user (paying or not) maps to 503, NOT 402. Locks the
+        contract advertised in enforce_payment_paywall's docstring."""
+        mock_db = mocker.MagicMock()
+        mock_db.get_user_by_id = AsyncMock(side_effect=RuntimeError("Supabase blip"))
+        mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_payment_paywall
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert exc_info.value.status_code == 503  # not 402
+        assert exc_info.value.headers.get("Retry-After") == "30"
+
+
+class TestEnforcePaymentPaywallInline:
+    """``enforce_payment_paywall`` doubles as both a JWT route dep AND an
+    inline call from non-JWT routes (external API graph + block execute).
+    These tests cover the inline form — the dep form is exercised
+    transitively by the chat / internal-block route tests via FastAPI."""
+
+    @pytest.mark.asyncio
+    async def test_blocks_paywalled_user(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        )
+        mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from .rate_limit import UserPaywalledError, enforce_payment_paywall
+
+        with pytest.raises(UserPaywalledError):
+            await enforce_payment_paywall(_USER)
+
+    @pytest.mark.asyncio
+    async def test_passes_paid_user(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+        from .rate_limit import enforce_payment_paywall
+
+        await enforce_payment_paywall(_USER)  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_503(self, mocker):
+        """Lookup failure → 503 + Retry-After (not 402, not 500). This is
+        the asymmetry fix: external API + internal graph routes used to
+        fail-open via the deep gate; now they fail-closed at the route."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_payment_paywall
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers.get("Retry-After") == "30"
+
+
+class TestEnforcePaymentPaywallContinued:
+    """Additional ``enforce_payment_paywall`` cases that depend on the
+    helpers above. Kept separate so the related ``TestIsUserPaywalled``
+    block stays compact above."""
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_503_not_402(self, mocker):
+        """Transient DB outage during tier lookup must NOT 402 every paid
+        user (the silent-bypass concern raised by sentry/CodeRabbit on
+        the previous round). It must surface as 503 with a Retry-After
+        header so the client retries shortly instead of treating the
+        outage as a permanent paywall."""
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(side_effect=RuntimeError("DB down")),
+        )
+        is_feature_enabled_mock = mocker.patch(
+            "backend.copilot.rate_limit.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        )
+        from fastapi import HTTPException
+
+        from .rate_limit import enforce_payment_paywall
+
+        with pytest.raises(HTTPException) as exc_info:
+            await enforce_payment_paywall(_USER)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers.get("Retry-After") == "30"
+        # Flag lookup never runs when tier is indeterminate — we don't
+        # know which cohort to apply.
+        is_feature_enabled_mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +867,7 @@ class TestGetTierMultipliers:
     async def test_defaults_when_flag_unset(self):
         """With no LD override, the resolver returns the default map."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -503,7 +878,7 @@ class TestGetTierMultipliers:
     async def test_ld_override(self):
         """LD override populates the targeted tiers; others inherit defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"PRO": 7.5, "BUSINESS": 25},
         ):
@@ -522,7 +897,7 @@ class TestGetTierMultipliers:
     async def test_invalid_json_falls_back(self):
         """A non-object LD value (string, list, bool) falls back to defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value="broken",
         ):
@@ -533,7 +908,7 @@ class TestGetTierMultipliers:
     async def test_unknown_tier_key_skipped(self):
         """Unknown tier keys and non-positive values are silently ignored."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"PRO": 3, "BOGUS": 99, "MAX": -1, "BUSINESS": "nope"},
         ):
@@ -550,7 +925,7 @@ class TestGetTierMultipliers:
     async def test_ld_failure_falls_back(self):
         """LD lookup raising propagates to defaults, not up the call stack."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
@@ -568,7 +943,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_defaults_when_flag_unset(self):
         """With no LD override, the resolver returns the default map."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -581,7 +956,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_ld_override(self):
         """LD override populates targeted tiers; others inherit defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"NO_TIER": 300, "PRO": 2048},
         ):
@@ -598,7 +973,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_invalid_json_falls_back(self):
         """A non-object LD value falls back to defaults."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value="broken",
         ):
@@ -611,7 +986,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_unknown_tier_key_and_invalid_values_skipped(self):
         """Unknown tiers and invalid values degrade to defaults per key."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             return_value={"NO_TIER": 300, "BOGUS": 999, "MAX": -1, "BUSINESS": "nope"},
         ):
@@ -627,7 +1002,7 @@ class TestGetWorkspaceStorageLimits:
     async def test_ld_failure_falls_back(self):
         """LD lookup raising propagates to defaults, not up the call stack."""
         with patch(
-            "backend.util.feature_flag.get_feature_flag_value",
+            "backend.copilot.rate_limit.get_feature_flag_value",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
@@ -665,7 +1040,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -690,7 +1065,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -714,7 +1089,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -738,7 +1113,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
             caplog.at_level("WARNING"),
@@ -767,7 +1142,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -793,7 +1168,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -829,7 +1204,7 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -1152,7 +1527,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=_ld,
             ),
         ):
@@ -1177,7 +1552,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1199,7 +1574,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1221,7 +1596,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.MAX,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1243,7 +1618,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1265,7 +1640,7 @@ class TestGetGlobalRateLimitsWithTiers:
                 return_value=SubscriptionTier.ENTERPRISE,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
@@ -1276,6 +1651,44 @@ class TestGetGlobalRateLimitsWithTiers:
         assert daily == 150_000_000
         assert weekly == 750_000_000
         assert tier == SubscriptionTier.ENTERPRISE
+
+    @pytest.mark.asyncio
+    async def test_no_tier_with_payment_disabled_upgrades_to_basic(self):
+        """Beta cohort regression test: a NO_TIER user passing through
+        the route-level paywall (because ENABLE_PLATFORM_PAYMENT is off)
+        must NOT then hit (0, 0) at check_rate_limit. The fallback to
+        BASIC's multiplier (1.0) keeps daily/weekly intact so beta
+        testers retain access without bypassing usage caps."""
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 1_000_000, "weekly": 5_000_000}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+            patch(
+                "backend.copilot.rate_limit.is_feature_enabled",
+                new=AsyncMock(return_value=False),  # beta cohort
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 1_000_000, 5_000_000
+            )
+
+        # BASIC's multiplier is 1.0 → limits arrive non-zero, not the
+        # NO_TIER multiplier-collapsed (0, 0) that would slip past
+        # check_rate_limit's pre-PR `> 0` short-circuit.
+        assert daily == 1_000_000
+        assert weekly == 5_000_000
+        assert tier == SubscriptionTier.NO_TIER
 
 
 # ---------------------------------------------------------------------------
@@ -1320,7 +1733,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1353,7 +1766,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1387,7 +1800,7 @@ class TestTierLimitsRespected:
                 return_value=SubscriptionTier.ENTERPRISE,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1534,7 +1947,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1564,7 +1977,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1598,7 +2011,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1629,7 +2042,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.PRO,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1657,7 +2070,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1697,7 +2110,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BASIC,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -1740,7 +2153,7 @@ class TestTierLimitsEnforced:
                 return_value=SubscriptionTier.BUSINESS,
             ),
             patch(
-                "backend.util.feature_flag.get_feature_flag_value",
+                "backend.copilot.rate_limit.get_feature_flag_value",
                 side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
             ),
             patch(
@@ -2141,12 +2554,19 @@ class TestWarnIfStripeSubscriptionDriftsYearly:
 
 class TestGetRemainingUsdBudget:
     @pytest.mark.asyncio
-    async def test_returns_inf_when_both_limits_unlimited(self):
-        # No Redis call expected — the function short-circuits on 0/0.
-        result = await get_remaining_usd_budget(
-            _USER, daily_cost_limit=0, weekly_cost_limit=0
-        )
-        assert result == float("inf")
+    async def test_zero_limits_return_floor_not_unlimited(self):
+        """With no real-world unlimited tier, both limits at 0 means
+        "no spend allowed" — remaining is 0 → floor_usd is returned."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["0", "0"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await get_remaining_usd_budget(
+                _USER, daily_cost_limit=0, weekly_cost_limit=0, floor_usd=0.5
+            )
+        assert result == 0.5
 
     @pytest.mark.asyncio
     async def test_smaller_of_daily_and_weekly_remaining(self):
@@ -2167,7 +2587,8 @@ class TestGetRemainingUsdBudget:
 
     @pytest.mark.asyncio
     async def test_floor_applies_when_user_at_or_over_cap(self):
-        # daily=$5 used $5 → 0 remaining → floor returned.
+        # daily=$5 used $5 → 0 remaining → floor returned. Weekly cap kept
+        # well above usage so it doesn't drive the result.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["5000000", "0"])
         with patch(
@@ -2177,7 +2598,7 @@ class TestGetRemainingUsdBudget:
             result = await get_remaining_usd_budget(
                 _USER,
                 daily_cost_limit=5_000_000,
-                weekly_cost_limit=0,
+                weekly_cost_limit=50_000_000,
                 floor_usd=0.5,
             )
         assert result == pytest.approx(0.5)
@@ -2197,7 +2618,9 @@ class TestGetRemainingUsdBudget:
         assert result == 0.5
 
     @pytest.mark.asyncio
-    async def test_only_daily_cap_configured(self):
+    async def test_daily_drives_when_weekly_is_loose(self):
+        """Both limits constrain; whichever leaves less budget wins. Here a
+        tight daily ($10 - $1 = $9) wins over a loose weekly."""
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["1000000", None])
         with patch(
@@ -2207,7 +2630,7 @@ class TestGetRemainingUsdBudget:
             result = await get_remaining_usd_budget(
                 _USER,
                 daily_cost_limit=10_000_000,
-                weekly_cost_limit=0,
+                weekly_cost_limit=1_000_000_000,
             )
         assert result == pytest.approx(9.0)
 
@@ -2233,7 +2656,11 @@ class TestBuildBudgetCtx:
         assert result == ""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_unlimited(self):
+    async def test_returns_empty_when_remaining_is_zero(self):
+        """No real-world unlimited tier — when the multiplier-collapse path
+        returns (0, 0, NO_TIER) the user has $0 remaining → empty hint
+        (the paywall dep should already have rejected this turn at 402;
+        we just defend against drift)."""
         with patch(
             "backend.copilot.rate_limit.get_global_rate_limits",
             new=AsyncMock(return_value=(0, 0, DEFAULT_TIER)),
@@ -2247,13 +2674,14 @@ class TestBuildBudgetCtx:
 
     @pytest.mark.asyncio
     async def test_returns_inner_text_with_remaining_in_dollars(self):
-        # daily=$10 used $4.50 → $5.50 remaining.
+        # daily=$10 used $4.50 → $5.50 daily remaining; weekly cap kept
+        # well above usage so daily drives the result.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["4500000", "0"])
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2263,7 +2691,7 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         # No tag wrap — that's inject_user_context's job.
         assert "<budget_context>" not in block
@@ -2278,7 +2706,7 @@ class TestBuildBudgetCtx:
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2288,12 +2716,12 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_remaining_is_zero(self):
+    async def test_returns_empty_when_at_cap(self):
         """At-or-over cap → no hint (the pre-turn gate has already
         rejected this turn at 429; we only emit a hint when there's
         actual headroom to communicate)."""
@@ -2302,7 +2730,7 @@ class TestBuildBudgetCtx:
         with (
             patch(
                 "backend.copilot.rate_limit.get_global_rate_limits",
-                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+                new=AsyncMock(return_value=(10_000_000, 1_000_000_000, DEFAULT_TIER)),
             ),
             patch(
                 "backend.copilot.rate_limit.get_redis_async",
@@ -2312,6 +2740,6 @@ class TestBuildBudgetCtx:
             block = await build_budget_ctx(
                 user_id=_USER,
                 default_daily_cost_limit=10_000_000,
-                default_weekly_cost_limit=0,
+                default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""

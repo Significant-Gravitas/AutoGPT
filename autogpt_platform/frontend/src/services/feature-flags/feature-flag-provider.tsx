@@ -7,6 +7,7 @@ import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { environment } from "../environment";
+import { buildLDContext } from "./helpers";
 
 const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
@@ -17,33 +18,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
 
   const context = useMemo(() => {
     if (isUserLoading) return;
-
-    if (!user) {
-      return {
-        kind: "user" as const,
-        key: "anonymous",
-        anonymous: true,
-      };
-    }
-
-    // Mirror the context built by the backend
-    // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
-    // rules evaluate identically on both sides.
-    return {
-      kind: "user" as const,
-      key: user.id,
-      anonymous: false,
-      ...(user.email && {
-        email: user.email,
-        email_domain: user.email.split("@").at(-1),
-      }),
-      ...(user.role && { role: user.role }),
-      // Supabase JS emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
-      ...(user.created_at && { created_at: user.created_at }),
-      custom: {
-        ...(user.role && { role: user.role }),
-      },
-    };
+    return buildLDContext(user);
   }, [user, isUserLoading]);
 
   if (!envEnabled) {

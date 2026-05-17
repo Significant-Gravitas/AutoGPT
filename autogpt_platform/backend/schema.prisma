@@ -68,7 +68,7 @@ model User {
   PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
-  PlatformCostLogs PlatformCostLog[]
+  PlatformCostLogs      PlatformCostLog[]
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
@@ -79,6 +79,12 @@ model User {
   // Platform bot linking
   PlatformLinks     PlatformLink[]
   PlatformUserLinks PlatformUserLink[]
+}
+
+enum ChatSessionStatus {
+  idle
+  queued
+  running
 }
 
 enum SubscriptionTier {
@@ -155,7 +161,6 @@ model CoPilotUnderstanding {
 
   @@index([userId])
 }
-
 
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
@@ -268,9 +273,24 @@ model ChatSession {
   totalPromptTokens     Int @default(0)
   totalCompletionTokens Int @default(0)
 
+  // Session lifecycle for the per-user soft running cap + cross-session
+  // queue.  ``idle`` (DEFAULT, no turn in flight), ``queued`` (waiting
+  // for a running slot to free), ``running`` (a turn is currently
+  // being processed).  ``updatedAt`` doubles as the status-change
+  // timestamp (every transition touches the row).
+  chatStatus ChatSessionStatus @default(idle)
+
   Messages ChatMessage[]
 
-  @@index([userId, updatedAt])
+  // Single compound index covers (a) the cap-count (count by userId +
+  // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
+  // sidebar list (find_many WHERE userId ORDER BY updatedAt desc).
+  // For (c) Postgres scans the per-userId index range across all
+  // chatStatus sub-buckets and sorts by updatedAt in memory — fine at
+  // typical per-user N (≤100s) and not worth a redundant 2-col index.
+  // The migration drops the previously-existing (userId, updatedAt)
+  // index that this one supersedes.
+  @@index([userId, chatStatus, updatedAt], name: "ChatSession_user_status_idx")
 }
 
 model ChatMessage {
@@ -292,6 +312,13 @@ model ChatMessage {
   // Ordering within session
   sequence   Int
   durationMs Int? // Wall-clock milliseconds for this assistant turn
+
+  // Per-row JSONB metadata bag.  Currently holds the dispatcher's
+  // submit-time payload (file_ids, mode, model, permissions, context,
+  // request_arrival_at) on the user row that triggered a queued turn,
+  // so a later promotion can replay the original turn faithfully.
+  // Generic so future per-row state can land here without a migration.
+  metadata Json?
 
   @@unique([sessionId, sequence])
 }
@@ -627,8 +654,8 @@ model AgentGraphExecution {
   ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
 
   // Sharing fields
-  isShared             Boolean                @default(false)
-  shareToken           String?                @unique
+  isShared             Boolean               @default(false)
+  shareToken           String?               @unique
   sharedAt             DateTime?
   SharedExecutionFiles SharedExecutionFile[]
 
@@ -871,7 +898,7 @@ model PlatformCostLog {
   createdAt DateTime @default(now())
 
   userId       String?
-  User         User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   graphExecId  String?
   nodeExecId   String?
   graphId      String?
@@ -884,16 +911,16 @@ model PlatformCostLog {
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?
 
-  inputTokens  Int?
-  outputTokens Int?
+  inputTokens         Int?
+  outputTokens        Int?
   cacheReadTokens     Int? // Anthropic cache read tokens (billed at 10% of base)
   cacheCreationTokens Int? // Anthropic cache write tokens (billed at 125% of base)
-  dataSize     Int? // bytes
-  duration     Float? // seconds
-  model        String?
-  trackingType   String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
-  trackingAmount Float? // Amount in the unit implied by trackingType
-  metadata       Json?
+  dataSize            Int? // bytes
+  duration            Float? // seconds
+  model               String?
+  trackingType        String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
+  trackingAmount      Float? // Amount in the unit implied by trackingType
+  metadata            Json?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
@@ -1100,7 +1127,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String       @unique
+  agentGraphId String @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])
@@ -1437,12 +1464,12 @@ enum PlatformLinkType {
 // "owner" — all usage from that server is attributed to their account.
 model PlatformLink {
   id                  String       @id @default(uuid())
-  userId              String       // AutoGPT user ID of the owner
+  userId              String // AutoGPT user ID of the owner
   User                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   platform            PlatformType
-  platformServerId    String       // Server/guild/group ID on that platform
-  ownerPlatformUserId String       // Platform user ID of the person who set it up
-  serverName          String?      // Display name of the server (best-effort, may go stale)
+  platformServerId    String // Server/guild/group ID on that platform
+  ownerPlatformUserId String // Platform user ID of the person who set it up
+  serverName          String? // Display name of the server (best-effort, may go stale)
   linkedAt            DateTime     @default(now())
 
   @@unique([platform, platformServerId])
@@ -1455,11 +1482,11 @@ model PlatformLink {
 // separately.
 model PlatformUserLink {
   id               String       @id @default(uuid())
-  userId           String       // AutoGPT user ID
+  userId           String // AutoGPT user ID
   User             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   platform         PlatformType
-  platformUserId   String       // Individual's user ID on the platform
-  platformUsername String?      // Display name at link time (best-effort)
+  platformUserId   String // Individual's user ID on the platform
+  platformUsername String? // Display name at link time (best-effort)
   linkedAt         DateTime     @default(now())
 
   @@unique([platform, platformUserId])
@@ -1476,12 +1503,12 @@ model PlatformLinkToken {
   platform         PlatformType
   linkType         PlatformLinkType @default(SERVER)
   // SERVER token fields (null for USER tokens)
-  platformServerId String?          // Server/guild/group ID being linked
-  serverName       String?          // Server display name
-  channelId        String?          // Channel to send confirmation back to
+  platformServerId String? // Server/guild/group ID being linked
+  serverName       String? // Server display name
+  channelId        String? // Channel to send confirmation back to
   // Always set — platform user ID of the person who will claim ownership
   platformUserId   String
-  platformUsername String?          // Their display name
+  platformUsername String? // Their display name
   expiresAt        DateTime
   usedAt           DateTime?
   createdAt        DateTime         @default(now())

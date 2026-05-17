@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import Profile, SubmissionStats
+from .model import MyAgentsSortBy, Profile, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -562,3 +562,104 @@ async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
     assert result.stats.total == 7
     assert result.stats.average_rating == 3.9
     mock_store_sub.return_value.count.assert_not_called()
+
+
+def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
+    graph = prisma.models.AgentGraph(
+        id=f"graph-{idx}",
+        version=1,
+        userId="user-id",
+        createdAt=now,
+        updatedAt=now,
+        isActive=True,
+        name=f"Agent {idx}",
+        description=f"Description {idx}",
+    )
+    return prisma.models.LibraryAgent.model_construct(
+        id=f"library-{idx}",
+        userId="user-id",
+        agentGraphId=graph.id,
+        agentGraphVersion=graph.version,
+        createdAt=now,
+        updatedAt=now,
+        isArchived=False,
+        isDeleted=False,
+        isFavorite=False,
+        isCreatedByUser=True,
+        useGraphIsActiveVersion=True,
+        settings={},
+        imageUrl=None,
+        AgentGraph=graph,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_default_sort_most_recent(mocker):
+    """Default sort orders by updatedAt desc and returns mapped agents."""
+    now = datetime.now()
+    mock_agents = [_make_library_agent(i, now) for i in range(1, 4)]
+
+    find_many = AsyncMock(return_value=mock_agents)
+    count = AsyncMock(return_value=3)
+    mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library.return_value.find_many = find_many
+    mock_library.return_value.count = count
+
+    result = await db.get_my_agents(user_id="user-id", page=1, page_size=10)
+
+    assert result.pagination.total_items == 3
+    assert result.pagination.total_pages == 1
+    assert [a.graph_id for a in result.agents] == [
+        "graph-1",
+        "graph-2",
+        "graph-3",
+    ]
+    # Default sort_by is MOST_RECENT → updatedAt desc only.
+    kwargs = find_many.call_args.kwargs
+    assert kwargs["order"] == [{"updatedAt": "desc"}]
+    assert kwargs["skip"] == 0
+    assert kwargs["take"] == 10
+
+    # Make sure the enum default is what we expect for callers.
+    assert MyAgentsSortBy.MOST_RECENT.value == "most_recent"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_sort_by_name(mocker):
+    """sort_by=NAME orders by AgentGraph.name asc then updatedAt desc."""
+    now = datetime.now()
+    mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library.return_value.find_many = AsyncMock(return_value=[])
+    mock_library.return_value.count = AsyncMock(return_value=0)
+
+    result = await db.get_my_agents(
+        user_id="user-id",
+        page=1,
+        page_size=10,
+        sort_by=MyAgentsSortBy.NAME,
+    )
+
+    assert result.agents == []
+    assert result.pagination.total_pages == 0
+    kwargs = mock_library.return_value.find_many.call_args.kwargs
+    assert kwargs["order"] == [
+        {"AgentGraph": {"name": "asc"}},
+        {"updatedAt": "desc"},
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_pagination_window(mocker):
+    """skip/take honour the requested page so we hit the right offset."""
+    now = datetime.now()
+    mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library.return_value.find_many = AsyncMock(return_value=[])
+    mock_library.return_value.count = AsyncMock(return_value=47)
+
+    result = await db.get_my_agents(user_id="user-id", page=3, page_size=10)
+
+    assert result.pagination.total_pages == 5
+    assert result.pagination.current_page == 3
+    kwargs = mock_library.return_value.find_many.call_args.kwargs
+    assert kwargs["skip"] == 20
+    assert kwargs["take"] == 10

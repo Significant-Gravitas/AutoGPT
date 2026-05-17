@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { CircleNotchIcon } from "@phosphor-icons/react";
 
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -38,6 +39,7 @@ interface Props {
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
+  creatorUsername?: string;
   index?: number;
 }
 
@@ -55,6 +57,7 @@ export function SubmissionsList({
   onView,
   onEdit,
   onDelete,
+  creatorUsername,
   index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
@@ -80,9 +83,28 @@ export function SubmissionsList({
       data-testid="submissions-list"
     >
       <div className="flex items-center justify-between pl-4 pr-1">
-        <Text variant="body-medium" as="span" className="text-textBlack">
-          Submissions
-        </Text>
+        <div className="flex items-center gap-2">
+          <Text variant="body-medium" as="span" className="text-textBlack">
+            Submissions
+          </Text>
+          {isFetching ? (
+            <span
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-1 text-zinc-500"
+              data-testid="submissions-fetching"
+            >
+              <CircleNotchIcon
+                size={14}
+                weight="bold"
+                className="animate-spin"
+              />
+              <Text variant="small" as="span" className="text-zinc-500">
+                Updating
+              </Text>
+            </span>
+          ) : null}
+        </div>
         <Text variant="small" className="text-zinc-500">
           {submissions.length} of {totalCount}
         </Text>
@@ -150,6 +172,7 @@ export function SubmissionsList({
                     onView={onView}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    creatorUsername={creatorUsername}
                   />
                 ))
               ) : (

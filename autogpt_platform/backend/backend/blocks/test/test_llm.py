@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,14 +29,7 @@ class TestLLMStatsTracking:
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response. Suppress the OpenRouter key so the
-        # auto-reroute branch doesn't divert this test to the chat.completions
-        # path under a local .env that has open_router_api_key set.
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = AsyncMock(return_value=mock_response)
@@ -83,11 +77,7 @@ class TestLLMStatsTracking:
         mock_response.usage = mock_usage
         mock_response.stop_reason = "end_turn"
 
-        with (
-            patch("anthropic.AsyncAnthropic") as mock_anthropic,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic:
             mock_client = AsyncMock()
             mock_anthropic.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_response)
@@ -105,56 +95,6 @@ class TestLLMStatsTracking:
             assert response.cache_read_tokens == 100
             assert response.cache_creation_tokens == 50
             assert response.response == "Test anthropic response"
-
-    @pytest.mark.asyncio
-    async def test_anthropic_routes_through_openrouter_when_key_present(self):
-        """When open_router_api_key is set, Anthropic models route via OpenRouter."""
-        from pydantic import SecretStr
-
-        import backend.blocks.llm as llm
-        from backend.data.model import APIKeyCredentials
-
-        anthropic_creds = APIKeyCredentials(
-            id="test-anthropic-id",
-            provider="anthropic",
-            api_key=SecretStr("mock-anthropic-key"),
-            title="Mock Anthropic key",
-        )
-
-        mock_choice = MagicMock()
-        mock_choice.message.content = "routed response"
-        mock_choice.message.tool_calls = None
-
-        mock_usage = MagicMock()
-        mock_usage.prompt_tokens = 10
-        mock_usage.completion_tokens = 5
-
-        mock_response = MagicMock()
-        mock_response.choices = [mock_choice]
-        mock_response.usage = mock_usage
-
-        mock_create = AsyncMock(return_value=mock_response)
-
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = "sk-or-test-key"
-            mock_client = MagicMock()
-            mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = mock_create
-
-            await llm.llm_call(
-                credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-            )
-
-        # Verify OpenAI client was used (not Anthropic SDK) and model was prefixed
-        mock_openai.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["model"] == "anthropic/claude-3-haiku-20240307"
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
@@ -529,11 +469,7 @@ class TestLLMStatsTracking:
             mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
             mock_client.responses.create = mock_create
@@ -1309,16 +1245,6 @@ class TestAnthropicCacheControl:
     """Verify that llm_call attaches cache_control to the system prompt block
     and to the last tool definition when calling the Anthropic API."""
 
-    @pytest.fixture(autouse=True)
-    def disable_openrouter_routing(self):
-        """Ensure tests exercise the direct-Anthropic path by suppressing the
-        OpenRouter API key. Without this, a local .env with OPEN_ROUTER_API_KEY
-        set would silently reroute all Anthropic calls through OpenRouter,
-        bypassing the cache_control code under test."""
-        with patch("backend.blocks.llm.settings") as mock_settings:
-            mock_settings.secrets.open_router_api_key = ""
-            yield mock_settings
-
     def _make_anthropic_credentials(self) -> llm.APIKeyCredentials:
         from pydantic import SecretStr
 
@@ -1531,3 +1457,94 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestLLMRequestTimeout:
+    """Test that llm_call enforces a hard request timeout regardless of provider."""
+
+    @pytest.mark.asyncio
+    async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
+        """A hanging provider call must not park the caller indefinitely."""
+        # Force a tiny timeout so the test runs quickly.
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+
+        async def hang_forever(*args, **kwargs):
+            await asyncio.sleep(60)
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=hang_forever)
+
+            with pytest.raises(TimeoutError) as exc_info:
+                await llm.llm_call(
+                    credentials=llm.TEST_CREDENTIALS,
+                    llm_model=llm.DEFAULT_LLM_MODEL,
+                    prompt=[{"role": "user", "content": "Hello"}],
+                    max_tokens=100,
+                )
+
+            assert "0.2s" in str(exc_info.value) or "exceeded" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_llm_call_passes_timeout_to_openai_sdk(self):
+        """The OpenAI SDK call must receive a `timeout=` argument so it errors
+        out on its own without waiting for our outer wait_for to fire."""
+        captured_kwargs: dict[str, Any] = {}
+
+        mock_response = MagicMock()
+        mock_response.output_text = "ok"
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        async def capture(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return mock_response
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=capture)
+
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+            )
+
+        assert captured_kwargs.get("timeout") == llm.LLM_REQUEST_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):
+        """A timed-out llm_call must not be retried — retrying a hung request
+        wastes another full timeout window per attempt."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.05)
+
+        call_count = {"n": 0}
+
+        async def always_timeout(*args, **kwargs):
+            call_count["n"] += 1
+            await asyncio.sleep(60)
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=always_timeout)
+
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=5,  # would be 5 attempts × timeout if retry kicked in
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert (
+            call_count["n"] == 1
+        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"

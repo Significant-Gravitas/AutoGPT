@@ -26,6 +26,8 @@ import orjson
 from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.copilot.active_turns import release_turn_slot
+from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
@@ -235,6 +237,27 @@ Used by `publish_chunk` to avoid refreshing on every single chunk
 """
 
 _META_TTL_REFRESH_INTERVAL = 60  # seconds
+
+
+async def delete_session_meta(session_id: str) -> None:
+    """Delete a session's Redis meta entry — used by the dispatcher's
+    rollback path when ``create_session`` succeeded but the subsequent
+    RabbitMQ enqueue failed.  Without this, the session sits with
+    ``status='running'`` in Redis until TTL and ``is_turn_in_flight``
+    keeps reporting True even though no executor will pick the turn up.
+
+    Best-effort: a Redis error here only delays the cleanup to TTL
+    expiry, which is the same window we had before this helper existed.
+    """
+    try:
+        redis = await get_redis_async()
+        await redis.delete(_get_session_meta_key(session_id))
+    except RedisError as exc:
+        logger.warning(
+            "delete_session_meta: redis cleanup failed for session=%s: %s",
+            session_id,
+            exc,
+        )
 
 
 async def publish_chunk(
@@ -866,6 +889,16 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
+    # Release the per-user concurrent-turn slot now that this turn is no
+    # longer in flight. ``meta`` may be an empty dict if the session's
+    # Redis key expired between the ``hgetall`` above and the CAS that
+    # just succeeded — read ``user_id`` directly so we don't skip the
+    # release on an empty-but-not-None payload. ``user_id`` is empty for
+    # anonymous sessions; ``release_turn_slot`` is a no-op then.
+    user_id = meta.get("user_id") or ""
+    if user_id:
+        await release_turn_slot(user_id, session_id)
+
     # Force-release the executor's cluster lock so the next enqueued turn can
     # acquire it immediately. The lock holder's on_run_done will also release
     # (idempotent delete); doing it here unblocks cases where the task hangs
@@ -883,6 +916,22 @@ async def mark_session_completed(
         await redis.delete(f"{STREAM_LOCK_PREFIX}{session_id}")
     except RedisError as e:
         logger.warning(f"Failed to release stream lock for session {session_id}: {e}")
+
+    # Promote the user's oldest queued turn (if any) AFTER the executor
+    # cluster lock and SDK stream lock are cleared — otherwise the
+    # promoted turn races against the just-finished turn's stale locks
+    # and stalls until TTL. Best-effort: dispatcher errors are logged
+    # inside turn_queue; we never let a queue hiccup break the
+    # completion path.
+    if user_id:
+        try:
+            await dispatch_next_for_user(user_id)
+        except Exception as exc:
+            logger.warning(
+                "queue dispatch after session=%s completion failed: %s",
+                session_id,
+                exc,
+            )
 
     if error_message and not skip_error_publish:
         try:

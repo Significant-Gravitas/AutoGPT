@@ -42,10 +42,13 @@ def mock_queue(monkeypatch):
     enqueue_cancel = AsyncMock()
     create_session = AsyncMock()
 
-    # run_sub_session calls enqueue_copilot_turn via session_waiter's
-    # run_copilot_turn_via_queue helper — patch at the helper's source.
+    # run_sub_session reaches enqueue_copilot_turn / create_session via
+    # session_waiter.run_copilot_turn_via_queue → schedule_turn → dispatch_turn.
+    # Patch at the source modules (executor.utils for the queue publish,
+    # stream_registry for the session-meta write) since neither
+    # session_waiter nor schedule_turn holds a re-bound reference anymore.
     monkeypatch.setattr(
-        "backend.copilot.sdk.session_waiter.enqueue_copilot_turn",
+        "backend.copilot.executor.utils.enqueue_copilot_turn",
         enqueue_turn,
     )
     monkeypatch.setattr(
@@ -53,7 +56,7 @@ def mock_queue(monkeypatch):
         enqueue_cancel,
     )
     monkeypatch.setattr(
-        "backend.copilot.sdk.session_waiter.stream_registry.create_session",
+        "backend.copilot.stream_registry.create_session",
         create_session,
     )
     return {

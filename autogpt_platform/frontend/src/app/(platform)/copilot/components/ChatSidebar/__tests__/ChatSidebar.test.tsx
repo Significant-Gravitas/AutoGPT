@@ -156,3 +156,78 @@ describe("ChatSidebar — delete flow", () => {
     expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
   });
 });
+
+describe("ChatSidebar — chat_status indicators", () => {
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  it("renders the green running dot on sessions with chat_status='running'", async () => {
+    const runningSessions = [
+      {
+        id: "s1",
+        title: "Running essay",
+        is_processing: false,
+        chat_status: "running",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      },
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: runningSessions,
+        total: 1,
+      }),
+    );
+    renderSidebar();
+    await screen.findByText("Running essay");
+    expect(screen.getByTestId("session-status-running")).toBeDefined();
+    expect(screen.queryByTestId("session-status-queued")).toBeNull();
+  });
+
+  it("renders the purple hourglass on sessions with chat_status='queued'", async () => {
+    const queuedSessions = [
+      {
+        id: "s1",
+        title: "Robot haiku",
+        is_processing: false,
+        chat_status: "queued",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      },
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: queuedSessions,
+        total: 1,
+      }),
+    );
+    renderSidebar();
+    await screen.findByText("Robot haiku");
+    expect(screen.getByTestId("session-status-queued")).toBeDefined();
+    expect(screen.queryByTestId("session-status-running")).toBeNull();
+  });
+
+  it("renders no status indicator for chat_status='idle' sessions", async () => {
+    const idleSessions = [
+      {
+        id: "s1",
+        title: "Old chat",
+        is_processing: false,
+        chat_status: "idle",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      },
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: idleSessions,
+        total: 1,
+      }),
+    );
+    renderSidebar();
+    await screen.findByText("Old chat");
+    expect(screen.queryByTestId("session-status-running")).toBeNull();
+    expect(screen.queryByTestId("session-status-queued")).toBeNull();
+  });
+});
