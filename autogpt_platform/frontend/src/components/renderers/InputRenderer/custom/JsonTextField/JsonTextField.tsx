@@ -86,6 +86,7 @@ export const JsonTextField = (props: FieldProps) => {
           required={required}
           disabled={props.disabled}
           className="min-h-[60px] pr-8 font-mono text-xs"
+          aria-describedby={`${fieldId}-error`}
         />
 
         <Tooltip delayDuration={0}>

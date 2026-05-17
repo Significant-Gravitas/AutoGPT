@@ -93,6 +93,7 @@ export default function WrapIfAdditionalTemplate(
               onBlur={!readonly ? handleBlur : undefined}
               type="text"
               size="small"
+              aria-describedby={`${id}-error`}
             />
             <div className="mt-2"> {children}</div>
           </div>

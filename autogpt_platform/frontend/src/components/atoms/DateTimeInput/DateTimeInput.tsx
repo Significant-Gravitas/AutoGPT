@@ -45,6 +45,7 @@ export interface DateTimeInputProps {
   id?: string;
   size?: "default" | "small";
   wrapperClassName?: string;
+  "aria-describedby"?: string;
 }
 
 export const DateTimeInput = ({
@@ -62,6 +63,7 @@ export const DateTimeInput = ({
   id,
   size = "default",
   wrapperClassName,
+  "aria-describedby": ariaDescribedBy,
 }: DateTimeInputProps) => {
   const selected = React.useMemo(() => parseISODateTimeString(value), [value]);
   const [open, setOpen] = React.useState(false);
@@ -181,6 +183,7 @@ export const DateTimeInput = ({
             autoFocus={autoFocus}
             id={id}
             {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}

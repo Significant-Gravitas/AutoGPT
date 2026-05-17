@@ -21,6 +21,7 @@ export const TimeWidget = (props: WidgetProps) => {
       wrapperClassName="!mb-0 "
       disabled={disabled || readonly}
       placeholder={placeholder}
+      aria-describedby={id ? `${id}-error` : undefined}
     />
   );
 };
