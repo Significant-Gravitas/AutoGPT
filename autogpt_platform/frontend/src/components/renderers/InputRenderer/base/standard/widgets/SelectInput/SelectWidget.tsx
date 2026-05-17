@@ -23,10 +23,13 @@ export const SelectWidget = (props: WidgetProps) => {
     className,
     id,
     formContext,
+    schema,
+    label,
   } = props;
   const enumOptions = options.enumOptions || [];
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
+  const accessibleLabel = schema.title || label || "";
 
   // Determine select size based on context
   const selectSize = size === "large" ? "medium" : "small";
@@ -40,7 +43,10 @@ export const SelectWidget = (props: WidgetProps) => {
           className="w-full"
         >
           <MultiSelectorTrigger>
-            <MultiSelectorInput placeholder="Select options..." />
+            <MultiSelectorInput
+              aria-label={accessibleLabel || undefined}
+              placeholder="Select options..."
+            />
           </MultiSelectorTrigger>
           <MultiSelectorContent>
             <MultiSelectorList>
@@ -56,7 +62,7 @@ export const SelectWidget = (props: WidgetProps) => {
     }
     return (
       <Select
-        label=""
+        label={accessibleLabel}
         id={id}
         hideLabel={true}
         disabled={disabled || readonly}

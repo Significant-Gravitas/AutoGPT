@@ -94,7 +94,7 @@ export default function TextWidget(props: WidgetProps) {
         id={props.id}
         hideLabel={true}
         type={"textarea"}
-        label={""}
+        label={schema.title || props.label || "Note"}
         size="small"
         wrapperClassName="mb-0"
         value={props.value ?? ""}
@@ -114,7 +114,7 @@ export default function TextWidget(props: WidgetProps) {
           id={props.id}
           hideLabel={true}
           type={config.htmlType as any}
-          label={""}
+          label={schema.title || props.label || ""}
           size={inputSize as any}
           wrapperClassName="mb-0 flex-1"
           value={props.value ?? ""}

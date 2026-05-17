@@ -2,8 +2,17 @@ import { WidgetProps } from "@rjsf/utils";
 import { TimeInput } from "@/components/atoms/TimeInput/TimeInput";
 
 export const TimeWidget = (props: WidgetProps) => {
-  const { value, onChange, disabled, readonly, placeholder, id, formContext } =
-    props;
+  const {
+    value,
+    onChange,
+    disabled,
+    readonly,
+    placeholder,
+    id,
+    formContext,
+    schema,
+    label,
+  } = props;
   const { size = "small" } = formContext || {};
 
   // Determine input size based on context
@@ -14,7 +23,7 @@ export const TimeWidget = (props: WidgetProps) => {
       value={value}
       onChange={onChange}
       className="w-full"
-      label={""}
+      label={schema.title || label || ""}
       id={id}
       hideLabel={true}
       size={inputSize as any}

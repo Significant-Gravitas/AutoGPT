@@ -11,6 +11,8 @@ export const DateTimeWidget = (props: WidgetProps) => {
     autofocus,
     id,
     formContext,
+    schema,
+    label,
   } = props;
   const { size = "small" } = formContext || {};
 
@@ -22,7 +24,7 @@ export const DateTimeWidget = (props: WidgetProps) => {
       size={inputSize as any}
       id={id}
       hideLabel={true}
-      label={""}
+      label={schema.title || label || ""}
       value={value}
       onChange={onChange}
       placeholder={placeholder}

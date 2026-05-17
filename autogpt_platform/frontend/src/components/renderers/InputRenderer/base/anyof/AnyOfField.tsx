@@ -89,7 +89,7 @@ export const AnyOfField = (props: FieldProps) => {
           "border-red-500 bg-red-100 text-red-600 line-through",
       )}
       autofocus={props.autofocus}
-      label=""
+      label={schema.title ? `${schema.title} — variant` : "Variant selector"}
       hideLabel={true}
       readonly={props.readonly}
     />

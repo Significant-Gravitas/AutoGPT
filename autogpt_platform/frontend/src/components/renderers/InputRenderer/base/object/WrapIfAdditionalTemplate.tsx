@@ -82,7 +82,7 @@ export default function WrapIfAdditionalTemplate(
         {!isHandleConnected && (
           <div className="nodrag flex flex-1 items-center gap-2">
             <Input
-              label={""}
+              label={`${label || "Property"} key`}
               hideLabel={true}
               required={required}
               defaultValue={label}

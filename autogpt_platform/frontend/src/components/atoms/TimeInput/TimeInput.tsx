@@ -71,7 +71,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         )}
         disabled={disabled}
         placeholder={placeholder || label}
-        {...(hideLabel ? { "aria-label": label } : {})}
+        {...(hideLabel && label ? { "aria-label": label } : {})}
         id={id}
       />
     </div>
