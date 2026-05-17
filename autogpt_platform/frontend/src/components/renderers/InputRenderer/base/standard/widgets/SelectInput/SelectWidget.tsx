@@ -42,16 +42,38 @@ export function SelectWidget(props: WidgetProps) {
 
   const renderInput = () => {
     if (type === InputType.MULTI_SELECT) {
-      const selectedValues = Array.isArray(selectedIndexes)
-        ? selectedIndexes
-        : [];
+      const enumOptionIndexesByLabel = new Map<string, string>();
+      enumOptions.forEach((option, index) => {
+        if (!enumOptionIndexesByLabel.has(option.label)) {
+          enumOptionIndexesByLabel.set(option.label, String(index));
+        }
+      });
+
+      const selectedValues: string[] = [];
+      if (Array.isArray(selectedIndexes)) {
+        for (const index of selectedIndexes) {
+          const label = enumOptions[Number(index)]?.label;
+          if (typeof label === "string") {
+            selectedValues.push(label);
+          }
+        }
+      }
 
       return (
         <MultiSelector
           values={selectedValues}
-          onValuesChange={(newValues) =>
-            onChange(enumOptionsValueForIndex(newValues, enumOptions))
-          }
+          onValuesChange={(newValues) => {
+            const selectedOptionIndexes: string[] = [];
+            for (const label of newValues) {
+              const optionIndex = enumOptionIndexesByLabel.get(label);
+              if (optionIndex !== undefined) {
+                selectedOptionIndexes.push(optionIndex);
+              }
+            }
+            onChange(
+              enumOptionsValueForIndex(selectedOptionIndexes, enumOptions),
+            );
+          }}
           className="w-full"
         >
           <MultiSelectorTrigger>
@@ -59,10 +81,10 @@ export function SelectWidget(props: WidgetProps) {
           </MultiSelectorTrigger>
           <MultiSelectorContent>
             <MultiSelectorList>
-              {enumOptions.map((option, index) => (
+              {enumOptions.map((option) => (
                 <MultiSelectorItem
                   key={`${String(option.value)}-${option.label}`}
-                  value={String(index)}
+                  value={option.label}
                 >
                   {option.label}
                 </MultiSelectorItem>
