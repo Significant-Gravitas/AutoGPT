@@ -71,6 +71,11 @@ def _make_webhook(
 
 
 def _patch_ingress(webhook):
+    # Important: every downstream DB-touching call on the success path must be
+    # mocked. Real Prisma calls inside FastAPI TestClient's blocking portal
+    # would open connections on the portal's event loop, corrupting Prisma's
+    # global client state for any session-scoped async fixture that runs
+    # later in the suite (e.g. `oauth_test.py::test_user`).
     return [
         patch(
             "backend.api.features.integrations.router.get_webhook",
@@ -79,6 +84,18 @@ def _patch_ingress(webhook):
         patch("backend.api.features.integrations.router.creds_manager"),
         patch(
             "backend.api.features.integrations.router.publish_webhook_event",
+            AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.router.complete_onboarding_step",
+            AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.router._execute_webhook_node_trigger",
+            AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.integrations.router._execute_webhook_preset_trigger",
             AsyncMock(),
         ),
     ]
