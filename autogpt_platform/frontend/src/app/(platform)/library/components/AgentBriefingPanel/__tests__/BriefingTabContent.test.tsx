@@ -311,6 +311,22 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     expect(screen.getByText(/2 errors/)).toBeDefined();
   });
 
+  it("surfaces an inline error when the cost-summary endpoint fails", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+    });
+    mockUseGetV1UserCostSummary.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+    mockUseGetFlag.mockReturnValue(false);
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+    expect(screen.getByText(/Couldn't load cost breakdown/i)).toBeDefined();
+  });
+
   it("falls back to short graph_id label when agent isn't in the library", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: undefined,
