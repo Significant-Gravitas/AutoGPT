@@ -1142,7 +1142,7 @@ class OrchestratorBlock(Block):
                 tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
-                    nodes_input_masks=None,
+                    nodes_input_masks=execution_processor.nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
                 if tool_node_stats is None:
