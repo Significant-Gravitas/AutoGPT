@@ -87,9 +87,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() =>
-      expect(routerReplace).toHaveBeenCalledWith("/copilot"),
-    );
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
   });
 
   test("completed user on /login is redirected to /copilot", async () => {
@@ -102,9 +100,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
       </OnboardingProvider>,
     );
 
-    await waitFor(() =>
-      expect(routerReplace).toHaveBeenCalledWith("/copilot"),
-    );
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/copilot"));
   });
 
   test("a safe ?next= deep link defers to the auth page — no redirect from provider", async () => {
