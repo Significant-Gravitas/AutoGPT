@@ -24,8 +24,8 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   CircleNotch,
-  DownloadSimpleIcon,
   DotsThree,
+  DownloadSimpleIcon,
   HourglassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
@@ -38,14 +38,14 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
-import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
-import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
+import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -501,12 +501,12 @@ export function ChatSidebar() {
               )}
               {hasMore && (
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="small"
                   onClick={() => loadMore()}
                   loading={isLoadingMore}
                   disabled={isLoadingMore}
-                  className="mt-2 w-full justify-center text-neutral-500"
+                  className="mt-2 w-full"
                 >
                   {isLoadingMore ? "Loading…" : "Load older chats"}
                 </Button>
