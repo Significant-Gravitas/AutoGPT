@@ -1,8 +1,6 @@
 "use client";
 import {
-  getGetV2ListSessionsQueryKey,
   getV2GetSession,
-  useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
@@ -28,8 +26,8 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   CheckCircle,
   CircleNotch,
-  DownloadSimpleIcon,
   DotsThree,
+  DownloadSimpleIcon,
   HourglassIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
@@ -43,14 +41,15 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
-import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
-import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
+import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
 import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
+import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -65,8 +64,13 @@ export function ChatSidebar() {
 
   const queryClient = useQueryClient();
 
-  const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
+  const {
+    sessions,
+    isLoading: isLoadingSessions,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  } = useSessionList();
 
   const {
     sessionToDelete,
@@ -88,7 +92,7 @@ export function ChatSidebar() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
+          queryKey: SESSION_LIST_QUERY_KEY,
         });
         setEditingSessionId(null);
       },
@@ -115,7 +119,7 @@ export function ChatSidebar() {
   // Refetch session list when active session changes
   useEffect(() => {
     queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey(),
+      queryKey: SESSION_LIST_QUERY_KEY,
     });
   }, [sessionId, queryClient]);
 
@@ -140,9 +144,6 @@ export function ChatSidebar() {
     document.addEventListener("keydown", handleSearchShortcut);
     return () => document.removeEventListener("keydown", handleSearchShortcut);
   }, [isChatSearchEnabled, setSearchOpen]);
-
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
   function handleNewChat() {
     setSessionId(null);
@@ -542,6 +543,18 @@ export function ChatSidebar() {
                     )}
                   </div>
                 ))
+              )}
+              {hasMore && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={() => loadMore()}
+                  loading={isLoadingMore}
+                  disabled={isLoadingMore}
+                  className="mt-2 w-full"
+                >
+                  {isLoadingMore ? "Loading…" : "Load older chats"}
+                </Button>
               )}
             </motion.div>
           )}

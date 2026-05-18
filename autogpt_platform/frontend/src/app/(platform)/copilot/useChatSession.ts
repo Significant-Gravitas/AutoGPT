@@ -1,9 +1,9 @@
 import {
   getGetV2GetSessionQueryKey,
-  getGetV2ListSessionsQueryKey,
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -125,7 +125,7 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
           if (response.status === 200 && response.data?.id) {
             setSessionId(response.data.id);
             queryClient.invalidateQueries({
-              queryKey: getGetV2ListSessionsQueryKey(),
+              queryKey: SESSION_LIST_QUERY_KEY,
             });
           }
         },
