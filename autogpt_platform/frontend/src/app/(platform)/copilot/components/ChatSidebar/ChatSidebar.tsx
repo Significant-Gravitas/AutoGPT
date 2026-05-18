@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,12 +24,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   CheckCircle,
   CircleNotch,
   DownloadSimpleIcon,
   DotsThree,
   HourglassIcon,
+  MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
@@ -45,6 +48,7 @@ import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
+import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
@@ -52,7 +56,9 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const { completedSessionIDs, clearCompletedSession, setSearchOpen } =
+    useCopilotUIStore();
+  const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
   );
@@ -121,6 +127,20 @@ export function ChatSidebar() {
     document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
+  useEffect(() => {
+    if (!isChatSearchEnabled) return;
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if (event.repeat) return;
+      if (event.key.toLocaleLowerCase() !== "k") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      setSearchOpen(!useCopilotUIStore.getState().isSearchOpen);
+    }
+
+    document.addEventListener("keydown", handleSearchShortcut);
+    return () => document.removeEventListener("keydown", handleSearchShortcut);
+  }, [isChatSearchEnabled, setSearchOpen]);
+
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
@@ -130,6 +150,7 @@ export function ChatSidebar() {
 
   function handleSelectSession(id: string) {
     setSessionId(id);
+    setSearchOpen(false);
   }
 
   function handleRenameClick(
@@ -251,6 +272,18 @@ export function ChatSidebar() {
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
+                {isChatSearchEnabled ? (
+                  <ShadcnButton
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Search chats"
+                    onClick={() => setSearchOpen(true)}
+                    className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                  >
+                    <MagnifyingGlassIcon className="!size-5" />
+                  </ShadcnButton>
+                ) : null}
               </div>
             </motion.div>
           </SidebarHeader>
@@ -268,6 +301,18 @@ export function ChatSidebar() {
                   Your chats
                 </Text>
                 <div className="flex items-center">
+                  {isChatSearchEnabled ? (
+                    <ShadcnButton
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Search chats"
+                      onClick={() => setSearchOpen(true)}
+                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    >
+                      <MagnifyingGlassIcon className="!size-5" />
+                    </ShadcnButton>
+                  ) : null}
                   <UsagePopover />
                   <NotificationToggle />
                   <SidebarTrigger />
@@ -509,6 +554,13 @@ export function ChatSidebar() {
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />
+      {isChatSearchEnabled ? (
+        <ChatSearchModal
+          sessions={sessions}
+          currentSessionId={sessionId}
+          onSelectSession={handleSelectSession}
+        />
+      ) : null}
     </>
   );
 }
