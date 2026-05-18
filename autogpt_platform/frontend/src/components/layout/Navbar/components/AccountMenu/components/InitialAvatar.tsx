@@ -12,10 +12,15 @@ export function InitialAvatar({ src, name, className }: Props) {
 
   return (
     <Avatar className={cn("h-10 w-10", className)}>
-      <div className="absolute inset-0 flex items-center justify-center bg-violet-500 text-sm font-semibold text-white">
+      <div className="absolute inset-0 z-0 flex items-center justify-center bg-violet-500 text-sm font-semibold text-white">
         {initial}
       </div>
-      <AvatarImage src={src} alt="" aria-hidden="true" />
+      <AvatarImage
+        src={src}
+        alt=""
+        aria-hidden="true"
+        className="relative z-10"
+      />
     </Avatar>
   );
 }
