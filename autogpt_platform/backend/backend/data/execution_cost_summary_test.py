@@ -56,6 +56,7 @@ async def _create_run(
     duration: float = 1.0,
     node_error_count: int = 0,
     is_dry_run: bool = False,
+    created_at: datetime | None = None,
 ) -> None:
     stats = {
         "cost": cost_cents,
@@ -71,7 +72,7 @@ async def _create_run(
             "agentGraphVersion": 1,
             "executionStatus": status,
             "userId": user_id,
-            "createdAt": started_at,
+            "createdAt": created_at if created_at is not None else started_at,
             "startedAt": started_at,
             "endedAt": started_at + timedelta(seconds=duration),
             "stats": SafeJson(stats),
@@ -296,5 +297,42 @@ async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
         assert summary.daily[0].run_count == 2
         assert summary.daily[1].cost_cents == 400
         assert summary.daily[1].run_count == 1
+    finally:
+        await _cleanup(user_id, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_daily_buckets_follow_created_at_not_started_at(
+    server: SpinTestServer,
+):
+    # A queued-then-started run lands in the createdAt bucket, not the
+    # startedAt bucket — locks the index-hit invariant documented in
+    # backend/data/execution.py get_user_cost_summary docstring.
+    user_id = f"cs-created-{uuid4()}"
+    graph_id = f"cs-g-c-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    try:
+        created_day = datetime(2026, 2, 5, 23, 30, tzinfo=timezone.utc)
+        started_day = datetime(2026, 2, 7, 9, 0, tzinfo=timezone.utc)
+
+        await _create_run(
+            run_id=f"q-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_id,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=600,
+            started_at=started_day,
+            created_at=created_day,
+        )
+
+        summary = await get_user_cost_summary(
+            user_id=user_id,
+            since=created_day - timedelta(hours=1),
+            until=started_day + timedelta(hours=1),
+        )
+
+        assert [d.date for d in summary.daily] == [date(2026, 2, 5)]
+        assert summary.daily[0].cost_cents == 600
     finally:
         await _cleanup(user_id, [graph_id])

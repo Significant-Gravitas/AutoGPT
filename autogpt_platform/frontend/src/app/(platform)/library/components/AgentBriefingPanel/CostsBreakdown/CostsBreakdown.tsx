@@ -17,7 +17,18 @@ export function CostsBreakdown({ agents }: Props) {
   const { summary, agentLookup, isLoading, isError, hasAnySpend } =
     useCostsBreakdown(agents);
 
-  if (isError) return null;
+  if (isError) {
+    return (
+      <section className="mt-6">
+        <Text variant="body-medium" className="text-neutral-700">
+          Cost breakdown
+        </Text>
+        <Text variant="body" className="mt-1 text-neutral-500">
+          Couldn&apos;t load cost breakdown.
+        </Text>
+      </section>
+    );
+  }
 
   if (isLoading || !summary) {
     return (
