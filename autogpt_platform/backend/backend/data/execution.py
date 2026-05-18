@@ -792,8 +792,8 @@ async def get_user_cost_summary(
     base_where = (
         '"userId" = $1'
         ' AND "isDeleted" = false'
-        ' AND "createdAt" >= $2'
-        ' AND "createdAt" <= $3'
+        ' AND "createdAt" >= $2::timestamp'
+        ' AND "createdAt" <= $3::timestamp'
         " AND COALESCE((stats->>'is_dry_run')::boolean, false) = false"
     )
     params = (user_id, since, until)
