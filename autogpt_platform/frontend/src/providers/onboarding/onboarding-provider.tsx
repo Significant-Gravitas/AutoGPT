@@ -127,6 +127,17 @@ export default function OnboardingProvider({
     return processedOnboarding;
   }, []);
 
+  // If a logged-in user navigates back to /signup or /login after the
+  // initialize-once effect already ran (e.g., browser back from /onboarding,
+  // manual URL edit), the guard below would early-return and leave them
+  // stranded on the auth page's `isLoggedIn` loader. Reset the guard on
+  // re-entry so the main effect re-runs and routes them away.
+  useEffect(() => {
+    if (isLoggedIn && isOnAuthRoute) {
+      hasInitialized.current = false;
+    }
+  }, [isLoggedIn, isOnAuthRoute]);
+
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current || !isLoggedIn) {
