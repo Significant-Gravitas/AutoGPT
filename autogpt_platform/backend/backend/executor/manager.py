@@ -963,6 +963,7 @@ class ExecutionProcessor:
         self.running_node_evaluation: dict[str, Future] = {}
         self.execution_stats = execution_stats
         self.execution_stats_lock = execution_stats_lock
+        self.nodes_input_masks = graph_exec.nodes_input_masks
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
 
         running_node_execution = self.running_node_execution

@@ -1079,6 +1079,16 @@ class OrchestratorBlock(Block):
         # so the execution record is complete for from_db() reconstruction.
         merged_input_data = {**target_node.input_default, **raw_input_data}
 
+        # Also merge credential metadata from the graph execution's
+        # nodes_input_masks so tool nodes get their credentials even when
+        # launched by the orchestrator (e.g. from Library or AutoPilot).
+        # Without this, the credential metadata is only merged during the
+        # normal graph execution queue dispatch (manager.py:_on_graph_execution)
+        # but orchestrator tool calls bypass that path.
+        node_creds = getattr(execution_processor, "nodes_input_masks", None)
+        if node_creds and sink_node_id in node_creds:
+            merged_input_data.update(node_creds[sink_node_id])
+
         # Add all inputs to the execution
         if not merged_input_data:
             raise ValueError(f"Tool call has no input data: {tool_call}")
