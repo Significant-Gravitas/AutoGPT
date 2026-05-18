@@ -162,7 +162,7 @@ class TestIsReasoningRoute:
     def test_other_providers_rejected(self):
         assert not _is_reasoning_route("openai/gpt-4o")
         assert not _is_reasoning_route("google/gemini-2.5-pro")
-        assert not _is_reasoning_route("xai/grok-4")
+        assert not _is_reasoning_route("xai/grok-4.3")
         assert not _is_reasoning_route("meta-llama/llama-3.3-70b-instruct")
         assert not _is_reasoning_route("deepseek/deepseek-r1")
 
@@ -215,7 +215,7 @@ class TestReasoningExtraBody:
     def test_non_reasoning_route_returns_none(self):
         assert reasoning_extra_body("openai/gpt-4o", 4096) is None
         assert reasoning_extra_body("google/gemini-2.5-pro", 4096) is None
-        assert reasoning_extra_body("xai/grok-4", 4096) is None
+        assert reasoning_extra_body("xai/grok-4.3", 4096) is None
 
     def test_zero_max_tokens_kill_switch(self):
         # Operator kill switch: ``max_thinking_tokens <= 0`` disables the

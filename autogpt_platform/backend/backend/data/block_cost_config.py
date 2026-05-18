@@ -188,13 +188,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
-    LlmModel.GROK_3: 3,
-    LlmModel.GROK_4: 9,
-    LlmModel.GROK_4_FAST: 1,
-    LlmModel.GROK_4_1_FAST: 1,
+    LlmModel.GROK_4_3: 3,
     LlmModel.GROK_4_20: 5,
     LlmModel.GROK_4_20_MULTI_AGENT: 5,
-    LlmModel.GROK_CODE_FAST_1: 1,
     LlmModel.KIMI_K2: 1,
     LlmModel.KIMI_K2_0905: 1,
     LlmModel.KIMI_K2_5: 1,
@@ -306,18 +302,10 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.GEMINI_3_1_PRO_PREVIEW: TokenRate(input=300, output=1800),
     LlmModel.GEMINI_3_FLASH_PREVIEW: TokenRate(input=75, output=450),
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: TokenRate(input=38, output=225),
-    # xAI Grok. docs.x.ai currently lists only Grok 4.20 and grok-4-1-fast;
-    # the rest (grok-3, grok-4-0709, grok-4-fast, grok-code-fast-1) were
-    # removed from the public pricing page but remain callable via the
-    # API. Rates below match their launch pricing (verified historically):
-    # grok-3 / grok-4 $3/$15, grok-4-fast / grok-4-1-fast $0.20/$0.50,
-    # grok-code-fast-1 $0.20/$1.50.
-    LlmModel.GROK_3: TokenRate(input=450, output=2250),
-    LlmModel.GROK_4: TokenRate(input=450, output=2250),
-    LlmModel.GROK_4_FAST: TokenRate(input=30, output=75),
-    LlmModel.GROK_4_1_FAST: TokenRate(input=30, output=75),
+    # xAI Grok. grok-4.3: $1.25/$2.50 per 1M tokens (direct + OpenRouter).
+    # grok-4.20: $2.00/$6.00 per 1M tokens (OpenRouter pass-through).
+    LlmModel.GROK_4_3: TokenRate(input=188, output=375),
     LlmModel.GROK_4_20: TokenRate(input=300, output=900),
-    LlmModel.GROK_CODE_FAST_1: TokenRate(input=30, output=225),
     # DeepSeek: both `deepseek-chat` and `deepseek-reasoner` now alias to
     # `deepseek-v4-flash` (non-thinking + thinking modes) at unified
     # $0.14/$0.28 per 1M (Sept 2025 price unification).
