@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
@@ -21,14 +22,9 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
-  // Get redirect destination from 'next' query parameter.
-  // Only allow relative paths to prevent open redirect attacks
-  // (e.g., /login?next=https://phishing.site).
-  const rawNext = searchParams.get("next");
-  const nextUrl =
-    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
-      ? rawNext
-      : null;
+  // Same-origin redirect target; off-site values are dropped so a crafted
+  // `/login?next=https://phishing.site` cannot redirect users elsewhere.
+  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /login, get me out" is handled by OnboardingProvider so the user lands
