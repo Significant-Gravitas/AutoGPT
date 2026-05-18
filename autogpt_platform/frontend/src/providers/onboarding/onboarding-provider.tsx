@@ -16,7 +16,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createContext,
   ReactNode,
@@ -90,6 +90,7 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { isLoggedIn } = useSupabase();
 
@@ -117,6 +118,10 @@ export default function OnboardingProvider({
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
   // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
   const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
+  // When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its
+  // own redirect to the requested target. Skip our redirect in that window
+  // so the deep link isn't clobbered by the awaited completion check.
+  const hasPendingAuthDeepLink = isOnAuthRoute && !!searchParams.get("next");
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
@@ -141,6 +146,13 @@ export default function OnboardingProvider({
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current || !isLoggedIn) {
+      return;
+    }
+
+    // Defer to the auth-page's own deep-link redirect (`?next=…`) instead of
+    // racing it. Don't mark hasInitialized so the next pathname change
+    // (after the auth page redirects) gets us properly initialized.
+    if (hasPendingAuthDeepLink) {
       return;
     }
 
@@ -187,7 +199,15 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, isOnAuthRoute, router, isLoggedIn, pathname]);
+  }, [
+    api,
+    isOnOnboardingRoute,
+    isOnAuthRoute,
+    hasPendingAuthDeepLink,
+    router,
+    isLoggedIn,
+    pathname,
+  ]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
