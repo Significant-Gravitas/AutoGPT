@@ -30,9 +30,14 @@ export function useLoginPage() {
       ? rawNext
       : null;
 
+  // Only honour explicit `?next=` deep links here. Generic "already logged in
+  // on /login, get me out" is handled by OnboardingProvider so the user lands
+  // straight on /onboarding or /copilot. Otherwise we'd bounce
+  // /login → / → /copilot → /onboarding, and each hop renders before the next
+  // redirect — that intermediate /copilot render is the flash users see.
   useEffect(() => {
-    if (isLoggedIn && !isLoggingIn) {
-      router.push(nextUrl || "/");
+    if (isLoggedIn && !isLoggingIn && nextUrl) {
+      router.replace(nextUrl);
     }
   }, [isLoggedIn, isLoggingIn, nextUrl, router]);
 

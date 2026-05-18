@@ -112,6 +112,11 @@ export default function OnboardingProvider({
   }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+  // Logged-in users sitting on the auth pages need to be routed onward by us;
+  // otherwise the signup/login pages show their `isLoggedIn` loader forever.
+  // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
+  // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
+  const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
@@ -139,7 +144,7 @@ export default function OnboardingProvider({
         if (!is_completed && !isOnOnboardingRoute) {
           router.replace("/onboarding");
           return;
-        } else if (is_completed && isOnOnboardingRoute) {
+        } else if (is_completed && (isOnOnboardingRoute || isOnAuthRoute)) {
           router.replace("/copilot");
           return;
         }
@@ -171,7 +176,7 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
+  }, [api, isOnOnboardingRoute, isOnAuthRoute, router, isLoggedIn, pathname]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
