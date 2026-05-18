@@ -1,4 +1,4 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { describe, expect, test } from "vitest";
 import { InitialAvatar } from "../InitialAvatar";
 
@@ -25,10 +25,23 @@ describe("InitialAvatar", () => {
 
   test("merges className prop into the avatar root", () => {
     const { container } = render(
-      <InitialAvatar name="ada" className="h-12 w-12" />,
+      <InitialAvatar name="ada" className="size-12" />,
     );
     const root = container.firstChild as HTMLElement;
-    expect(root.className).toContain("h-12");
-    expect(root.className).toContain("w-12");
+    expect(root.className).toContain("size-12");
+  });
+
+  test("places image above the initial fallback when src is provided", async () => {
+    const { container } = render(
+      <InitialAvatar name="ada" src="https://example.com/avatar.png" />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img")).not.toBeNull();
+    });
+
+    const image = container.querySelector("img");
+    expect(image?.className).toContain("z-10");
+    expect(screen.getByText("A").className).toContain("z-0");
   });
 });
