@@ -9,6 +9,7 @@ import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import {
   ApiError,
   UserOnboarding,
@@ -27,6 +28,7 @@ import {
   useState,
 } from "react";
 import {
+  decideOnboardingRedirect,
   fromBackendUserOnboarding,
   LocalOnboardingStateUpdate,
   shouldRedirectFromOnboarding,
@@ -119,9 +121,13 @@ export default function OnboardingProvider({
   // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
   const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
   // When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its
-  // own redirect to the requested target. Skip our redirect in that window
-  // so the deep link isn't clobbered by the awaited completion check.
-  const hasPendingAuthDeepLink = isOnAuthRoute && !!searchParams.get("next");
+  // own redirect to the requested target. Skip our redirect in that window so
+  // the deep link isn't clobbered by the awaited completion check. Sanitize
+  // with the same helper the auth pages use — otherwise an unsafe value (e.g.
+  // `?next=https://evil.site`) would defer us here while the auth page drops
+  // it as `null`, deadlocking the user on the auth loader.
+  const hasPendingAuthDeepLink =
+    isOnAuthRoute && sanitizeAuthNext(searchParams.get("next")) !== null;
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
@@ -164,11 +170,14 @@ export default function OnboardingProvider({
           getV1CheckIfOnboardingIsCompleted(),
         );
 
-        if (!is_completed && !isOnOnboardingRoute) {
-          router.replace("/onboarding");
-          return;
-        } else if (is_completed && (isOnOnboardingRoute || isOnAuthRoute)) {
-          router.replace("/copilot");
+        const redirectTarget = decideOnboardingRedirect({
+          isCompleted: is_completed,
+          isOnOnboardingRoute,
+          isOnAuthRoute,
+          hasPendingAuthDeepLink,
+        });
+        if (redirectTarget) {
+          router.replace(redirectTarget);
           return;
         }
 
