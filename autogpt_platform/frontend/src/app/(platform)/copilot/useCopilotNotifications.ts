@@ -1,4 +1,3 @@
-import { getGetV2ListSessionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
@@ -10,6 +9,7 @@ import {
   parseSessionIDs,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
+import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 
@@ -172,7 +172,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Refetch the session list so the sidebar reflects the latest
       // is_processing state (avoids stale spinner after cross-tab clear).
       queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
+        queryKey: SESSION_LIST_QUERY_KEY,
       });
     }
     window.addEventListener("storage", handleStorage);
