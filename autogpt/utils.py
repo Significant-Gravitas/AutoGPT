@@ -50,7 +50,7 @@ def get_bulletin_from_web() -> str:
         )
         if response.status_code == 200:
             return response.text
-    except:
+    except Exception:
         return ""
 
 
@@ -59,7 +59,7 @@ def get_current_git_branch() -> str:
         repo = Repo(search_parent_directories=True)
         branch = repo.active_branch
         return branch.name
-    except:
+    except Exception:
         return ""
 
 

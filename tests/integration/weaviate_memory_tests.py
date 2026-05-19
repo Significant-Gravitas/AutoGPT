@@ -52,7 +52,7 @@ class TestWeaviateMemory(unittest.TestCase):
     def setUp(self):
         try:
             self.client.schema.delete_class(self.index)
-        except:
+        except Exception:
             pass
 
         self.memory = WeaviateMemory(self.cfg)

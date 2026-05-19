@@ -68,5 +68,5 @@ try:
             stats = self.memory.get_stats()
             self.assertEqual(15, len(stats))
 
-except:
+except Exception:
     print("Milvus not installed, skipping tests")

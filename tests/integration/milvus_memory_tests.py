@@ -51,7 +51,7 @@ try:
             self.assertEqual(len(relevant_texts), k)
             self.assertIn(self.example_texts[1], relevant_texts)
 
-except:
+except Exception:
     print(
         "Skipping tests/integration/milvus_memory_tests.py as Milvus is not installed."
     )
