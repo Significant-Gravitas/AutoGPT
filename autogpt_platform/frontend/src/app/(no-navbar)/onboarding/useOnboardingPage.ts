@@ -87,41 +87,25 @@ export function useOnboardingPage() {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
 
-  // Skip the paywall step entirely when the user already has an active
-  // subscription tier. Without this, paid users whose tier was set outside
-  // the wizard (admin grants, or accounts that pre-date VISIT_COPILOT)
-  // get force-redirected through onboarding and asked to pay again to
-  // escape — see https://discord.com/channels/1126875755960336515/1505948249406832640.
-  // Snapshot the tier on first resolve so completing the SubscriptionStep
-  // mid-session (NO_TIER → PRO) can't retroactively shrink the wizard.
-  const subscription = useGetSubscriptionStatus({
+  // Skip the paywall for users already on a paid tier (admin grants or
+  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
     query: {
       enabled: isLoggedIn,
       select: (res) =>
         res.status === 200
-          ? ((res.data as SubscriptionStatusResponse).tier as string)
+          ? (res.data as SubscriptionStatusResponse).tier
           : null,
     },
   });
-  // Flips true on success OR error so a transient 5xx doesn't hang the
-  // wizard forever; on error we fall back to the default (paywall shown).
-  const subscriptionReady = !isLoggedIn || !subscription.isLoading;
-  const tierSnapshot = useRef<string | null>(null);
-  if (tierSnapshot.current === null && subscription.data) {
-    tierSnapshot.current = subscription.data;
-  }
-  const userHasActivePlan =
-    tierSnapshot.current !== null && tierSnapshot.current !== "NO_TIER";
+  const userHasActivePlan = !!tier && tier !== "NO_TIER";
 
   const isPaymentEnabled =
     (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
   const preparingStep: Step = isPaymentEnabled ? 5 : 4;
   const totalSteps = isPaymentEnabled ? 4 : 3;
 
-  // Both the LD flag and the subscription tier are inputs to totalSteps /
-  // preparingStep — gate URL-init and URL-sync effects on both so the
-  // ceiling used to clamp ?step= is the right one.
-  const isReady = areFlagsReady && subscriptionReady;
+  const isReady = areFlagsReady && (!isLoggedIn || !isTierLoading);
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
