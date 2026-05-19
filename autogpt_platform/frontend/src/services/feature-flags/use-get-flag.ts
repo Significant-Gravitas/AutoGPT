@@ -37,11 +37,6 @@ const defaultFlags = {
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  // Dream-system flags default true in test-mock / no-LD environments
-  // so the full memory + dream stack lights up end-to-end without
-  // having to configure LaunchDarkly. Production reads the real LD
-  // values; ``defaultFlags`` is the fallback only when
-  // ``isPwMockEnabled`` or ``areFeatureFlagsEnabled() === false``.
   [Flag.GRAPHITI_MEMORY]: true,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: true,
   [Flag.DREAM_PASS_ENABLED]: true,
