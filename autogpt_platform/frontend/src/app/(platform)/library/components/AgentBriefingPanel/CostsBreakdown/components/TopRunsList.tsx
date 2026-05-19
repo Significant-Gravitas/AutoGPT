@@ -23,8 +23,8 @@ export function TopRunsList({ runs, agentLookup }: Props) {
   const hasMore = runs.length > INITIAL_VISIBLE;
 
   return (
-    <section className="flex flex-col gap-2">
-      <Text variant="body-medium" className="text-neutral-800">
+    <section className="flex flex-col gap-2 lg:mt-[1rem]">
+      <Text variant="body-medium" className="text-neutral-800 lg:mb-[.5rem]">
         Most expensive runs
       </Text>
       <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">

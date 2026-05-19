@@ -1,65 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import type { UserDailyCost } from "@/app/api/__generated__/models/userDailyCost";
 
-import {
-  buildAgentLookup,
-  fillDailyGaps,
-  formatRelativeDate,
-  formatShortDate,
-} from "../helpers";
-
-function daily(date: string, cost = 100, runs = 1): UserDailyCost {
-  return {
-    date: date as unknown as Date,
-    cost_cents: cost,
-    run_count: runs,
-  };
-}
-
-describe("fillDailyGaps", () => {
-  test("returns input unchanged when empty", () => {
-    expect(fillDailyGaps([])).toEqual([]);
-  });
-
-  test("fills missing UTC days with zero buckets between min and max", () => {
-    const result = fillDailyGaps([
-      daily("2026-05-10", 500),
-      daily("2026-05-13", 200),
-    ]);
-
-    expect(result.map((d) => d.date)).toEqual([
-      "2026-05-10",
-      "2026-05-11",
-      "2026-05-12",
-      "2026-05-13",
-    ]);
-    expect(result[1]).toEqual({
-      date: "2026-05-11" as unknown as Date,
-      cost_cents: 0,
-      run_count: 0,
-    });
-    expect(result[3].cost_cents).toBe(200);
-  });
-
-  test("normalises Date instances to ISO strings", () => {
-    const result = fillDailyGaps([
-      {
-        date: new Date(Date.UTC(2026, 4, 10)),
-        cost_cents: 100,
-        run_count: 1,
-      },
-    ]);
-
-    expect(result[0].date).toBe("2026-05-10");
-  });
-
-  test("returns input unchanged when first date is unparseable", () => {
-    const bad = [daily("not-a-date")];
-    expect(fillDailyGaps(bad)).toBe(bad);
-  });
-});
+import { buildAgentLookup, formatRelativeDate } from "../helpers";
 
 describe("buildAgentLookup", () => {
   test("maps each library agent by graph_id", () => {
@@ -137,22 +80,5 @@ describe("formatRelativeDate", () => {
 
   test("accepts ISO string input", () => {
     expect(formatRelativeDate("2026-05-15T11:50:00.000Z")).toBe("10m ago");
-  });
-});
-
-describe("formatShortDate", () => {
-  test("formats ISO date string as month+day", () => {
-    const out = formatShortDate("2026-05-10");
-    expect(out).toMatch(/May/);
-    expect(out).toMatch(/10/);
-  });
-
-  test("formats a Date instance", () => {
-    const out = formatShortDate(new Date(Date.UTC(2026, 4, 10)));
-    expect(out).toMatch(/May/);
-  });
-
-  test("returns the raw input when unparseable", () => {
-    expect(formatShortDate("not-a-date")).toBe("not-a-date");
   });
 });

@@ -1,5 +1,5 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
@@ -242,7 +242,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     expect(screen.getByText("No spend this month yet.")).toBeDefined();
   });
 
-  it("renders headline stats, top runs, by-agent and daily sections when spend > 0", () => {
+  it("renders headline stats, top runs, and by-agent sections when spend > 0", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: undefined,
       isSuccess: false,
@@ -296,12 +296,16 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       />,
     );
 
+    // Sections are hidden behind the toggle by default
+    expect(screen.queryByText("$42.50")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
+
     // Headline stats
-    expect(screen.getByText("Cost breakdown")).toBeDefined();
     expect(screen.getByText("$42.50")).toBeDefined();
     expect(screen.getByText("Most expensive runs")).toBeDefined();
     expect(screen.getByText("Spend by agent")).toBeDefined();
-    expect(screen.getByText("Daily spend")).toBeDefined();
 
     // Agent names resolved via graph_id lookup
     expect(screen.getAllByText("Alpha").length).toBeGreaterThanOrEqual(1);
@@ -349,6 +353,9 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     mockUseGetFlag.mockReturnValue(false);
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
     expect(screen.getByText(/Agent deadbeef/)).toBeDefined();
   });
 });

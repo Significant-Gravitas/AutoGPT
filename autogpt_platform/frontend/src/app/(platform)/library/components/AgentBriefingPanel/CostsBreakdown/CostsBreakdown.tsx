@@ -1,10 +1,12 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
-import { DailySpendBars } from "./components/DailySpendBars";
+import { CaretDownIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import { SpendByAgentList } from "./components/SpendByAgentList";
 import { TopRunsList } from "./components/TopRunsList";
 import { useCostsBreakdown } from "./useCostsBreakdown";
@@ -16,6 +18,7 @@ interface Props {
 export function CostsBreakdown({ agents }: Props) {
   const { summary, agentLookup, isLoading, isError, hasAnySpend } =
     useCostsBreakdown(agents);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (isError) {
     return (
@@ -58,29 +61,50 @@ export function CostsBreakdown({ agents }: Props) {
 
   return (
     <section className="mt-6 flex flex-col gap-4">
-      <Text variant="body-medium" className="text-neutral-800">
-        Cost breakdown
-      </Text>
+      <Button
+        variant="ghost"
+        size="small"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        aria-expanded={isExpanded}
+        className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
+      >
+        {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
+        <CaretDownIcon
+          size={14}
+          className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+        />
+      </Button>
 
-      <StatRow
-        items={[
-          {
-            label: "Total this month",
-            value: formatCents(summary.total_cents),
-          },
-          { label: "Runs", value: String(summary.run_count) },
-          { label: "Avg / run", value: formatCents(Math.round(avgCostCents)) },
-          {
-            label: "Wasted on failed",
-            value: formatCents(summary.failed_cost_cents),
-            tone: summary.failed_cost_cents > 0 ? "warn" : undefined,
-          },
-        ]}
-      />
+      {isExpanded && (
+        <>
+          <StatRow
+            items={[
+              {
+                label: "Total this month",
+                value: formatCents(summary.total_cents),
+              },
+              { label: "Runs", value: String(summary.run_count) },
+              {
+                label: "Avg / run",
+                value: formatCents(Math.round(avgCostCents)),
+              },
+              {
+                label: "Wasted on failed",
+                value: formatCents(summary.failed_cost_cents),
+                tone: summary.failed_cost_cents > 0 ? "warn" : undefined,
+              },
+            ]}
+          />
 
-      <TopRunsList runs={summary.top_runs} agentLookup={agentLookup} />
-      <SpendByAgentList rollups={summary.by_agent} agentLookup={agentLookup} />
-      <DailySpendBars daily={summary.daily} />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <TopRunsList runs={summary.top_runs} agentLookup={agentLookup} />
+            <SpendByAgentList
+              rollups={summary.by_agent}
+              agentLookup={agentLookup}
+            />
+          </div>
+        </>
+      )}
     </section>
   );
 }

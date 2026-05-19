@@ -24,11 +24,11 @@ export function SpendByAgentList({ rollups, agentLookup }: Props) {
   const hasMore = rollups.length > INITIAL_VISIBLE;
 
   return (
-    <section className="flex flex-col gap-2">
-      <Text variant="body-medium" className="text-neutral-800">
+    <section className="flex flex-col gap-2 lg:mt-[1rem]">
+      <Text variant="body-medium" className="text-neutral-800 lg:mb-[.5rem]">
         Spend by agent
       </Text>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-4">
         {visible.map((rollup) => {
           const agent = agentLookup.get(rollup.graph_id);
           const label = agent?.name ?? `Agent ${rollup.graph_id.slice(0, 8)}`;

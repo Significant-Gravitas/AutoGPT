@@ -2,11 +2,11 @@ import { useGetV1UserCostSummary } from "@/app/api/__generated__/endpoints/graph
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/userExecutionCostSummary";
 import { useMemo } from "react";
-import { buildAgentLookup, fillDailyGaps } from "./helpers";
+import { buildAgentLookup } from "./helpers";
 
 export function useCostsBreakdown(agents: LibraryAgent[]) {
   const {
-    data: rawSummary,
+    data: summary,
     isLoading,
     isError,
   } = useGetV1UserCostSummary(undefined, {
@@ -17,11 +17,6 @@ export function useCostsBreakdown(agents: LibraryAgent[]) {
   });
 
   const agentLookup = useMemo(() => buildAgentLookup(agents), [agents]);
-
-  const summary = useMemo(() => {
-    if (!rawSummary) return rawSummary;
-    return { ...rawSummary, daily: fillDailyGaps(rawSummary.daily) };
-  }, [rawSummary]);
 
   const hasAnySpend = (summary?.total_cents ?? 0) > 0;
 
