@@ -13,6 +13,7 @@ export enum Flag {
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
+  CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
 }
 
@@ -27,6 +28,7 @@ const defaultFlags = {
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
+  [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
 };
 
