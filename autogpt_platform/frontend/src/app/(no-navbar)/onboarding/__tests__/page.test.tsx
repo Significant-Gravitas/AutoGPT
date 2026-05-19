@@ -47,6 +47,23 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
 
+let mockSubscriptionTier: string = "NO_TIER";
+vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
+  useGetSubscriptionStatus: ({
+    query,
+  }: {
+    query: { select: (res: { status: number; data: unknown }) => unknown };
+  }) => ({
+    data: query.select({
+      status: 200,
+      data: { tier: mockSubscriptionTier },
+    }),
+    isLoading: false,
+    isSuccess: true,
+    isError: false,
+  }),
+}));
+
 vi.mock("@/app/api/helpers", () => ({
   resolveResponse: (p: Promise<{ data: unknown }>) => p.then((r) => r.data),
 }));
@@ -68,6 +85,7 @@ const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
+  mockSubscriptionTier = "NO_TIER";
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -174,6 +192,43 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
+  });
+
+  it("skips SubscriptionStep when the user is already on a paid tier", async () => {
+    // Regression for paying users (admin-granted Pro, or accounts that
+    // pre-date VISIT_COPILOT) being kicked through onboarding and asked to
+    // pay again to escape. With ENABLE_PLATFORM_PAYMENT on and tier=PRO,
+    // step 4 must render Preparing — not SubscriptionStep.
+    mockFlagValue = true;
+    mockSubscriptionTier = "PRO";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("clamps ?step=5 to preparingStep=4 for paid users", async () => {
+    // For paid users the wizard is 3-step (preparingStep=4). A URL pointing
+    // at the old 5-step preparingStep must clamp down to 4, not strand the
+    // user above the ceiling.
+    mockFlagValue = true;
+    mockSubscriptionTier = "MAX";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
+    currentSearchParams = new URLSearchParams("step=5");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("still shows SubscriptionStep for NO_TIER users with payments enabled", async () => {
+    mockFlagValue = true;
+    mockSubscriptionTier = "NO_TIER";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
