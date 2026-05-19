@@ -49,7 +49,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -105,7 +105,11 @@ export function useOnboardingPage() {
   const preparingStep: Step = isPaymentEnabled ? 5 : 4;
   const totalSteps = isPaymentEnabled ? 4 : 3;
 
-  const isReady = areFlagsReady && (!isLoggedIn || !isTierLoading);
+  // Wait for auth too — without !isUserLoading, LD can resolve while
+  // isLoggedIn is transiently false, the tier query stays disabled
+  // (isTierLoading=false), and init fires with the wrong preparingStep.
+  const isReady =
+    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
