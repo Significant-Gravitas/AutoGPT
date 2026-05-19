@@ -49,8 +49,13 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
 
 let mockSubscriptionTier: string = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  useGetSubscriptionStatus: () => ({
-    data: mockSubscriptionTier,
+  useGetSubscriptionStatus: (opts: {
+    query: { select: (res: { status: number; data: unknown }) => unknown };
+  }) => ({
+    data: opts.query.select({
+      status: 200,
+      data: { tier: mockSubscriptionTier },
+    }),
     isLoading: false,
   }),
 }));
