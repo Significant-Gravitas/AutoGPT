@@ -1194,9 +1194,13 @@ async def get_my_agents(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
+    sort_by: store_model.MyAgentsSortBy = store_model.MyAgentsSortBy.MOST_RECENT,
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
-    logger.debug(f"Getting my agents for user {user_id}, page={page}")
+    logger.debug(
+        f"Getting my agents for user {user_id}, page={page}, "
+        f"sort_by={sort_by.value}"
+    )
 
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
@@ -1216,9 +1220,17 @@ async def get_my_agents(
             "isDeleted": False,
         }
 
+        if sort_by == store_model.MyAgentsSortBy.NAME:
+            order: list = [
+                {"AgentGraph": {"name": "asc"}},
+                {"updatedAt": "desc"},
+            ]
+        else:
+            order = [{"updatedAt": "desc"}]
+
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
-            order=[{"updatedAt": "desc"}],
+            order=order,
             skip=(page - 1) * page_size,
             take=page_size,
             include={"AgentGraph": True},

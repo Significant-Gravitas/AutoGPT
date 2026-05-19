@@ -1,5 +1,6 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
+import asyncio
 import logging
 import math
 import re
@@ -7,7 +8,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
 import ollama
@@ -15,6 +16,8 @@ import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -53,6 +56,14 @@ fmt = TextFormatter(autoescape=False)
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
+
+# Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
+# Messages calls finish in seconds; anything past this is almost certainly a
+# stalled socket (server keeping connection alive but starving response bytes,
+# which the SDK's read-timeout doesn't reliably detect on its own). Lower than
+# the SDK defaults (typically 600s) so retries-on-timeout don't compound into
+# multi-hour worst cases when a block makes many sequential calls.
+LLM_REQUEST_TIMEOUT_SECONDS = 120
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
@@ -120,8 +131,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
-    O1 = "o1"
-    O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5_2 = "gpt-5.2-2025-12-11"
     GPT5_1 = "gpt-5.1-2025-11-13"
@@ -134,37 +143,28 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
+    # Regolo models
     REGOLO_APERTUS_70B = "regolo/apertus-70b"
     REGOLO_BRICK_ROUTER = "regolo/brick-v1-beta"
     REGOLO_GEMMA4_31B = "regolo/gemma4-31b"
     REGOLO_GPT_OSS_120B = "regolo/gpt-oss-120b"
     REGOLO_GPT_OSS_20B = "regolo/gpt-oss-20b"
-    REGOLO_LLAMA3_1_8B = "regolo/Llama-3.1-8B-Instruct"
     REGOLO_LLAMA3_3_70B = "regolo/Llama-3.3-70B-Instruct"
     REGOLO_MINIMAX_M2_5 = "regolo/minimax-m2.5"
     REGOLO_MISTRAL_SMALL_4 = "regolo/mistral-small-4-119b"
-    REGOLO_MISTRAL_SMALL3_2 = "regolo/mistral-small3.2"
     REGOLO_QWEN3_CODER = "regolo/qwen3-coder-next"
     REGOLO_QWEN3_5_122B = "regolo/qwen3.5-122b"
     REGOLO_QWEN3_5_9B = "regolo/qwen3.5-9b"
     REGOLO_QWEN3_6_27B = "regolo/qwen3.6-27b"
     # Anthropic models
-    CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
-    CLAUDE_4_OPUS = "claude-opus-4-20250514"
-    CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
     CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
-    CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
-    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
-    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
@@ -177,22 +177,17 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro"
     GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
     GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
-    GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
-    MISTRAL_NEMO = "mistralai/mistral-nemo"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
     CODESTRAL = "mistralai/codestral-2508"
-    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
-    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
     COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
     COHERE_COMMAND_A_REASONING_08_2025 = "cohere/command-a-reasoning-08-2025"
@@ -208,7 +203,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
-    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
@@ -220,19 +214,12 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4_20 = "x-ai/grok-4.20"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
-    KIMI_K2 = "moonshotai/kimi-k2"
-    KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
-    ZAI_GLM_4_32B = "z-ai/glm-4-32b"
-    ZAI_GLM_4_5 = "z-ai/glm-4.5"
-    ZAI_GLM_4_5_AIR = "z-ai/glm-4.5-air"
-    ZAI_GLM_4_5_AIR_FREE = "z-ai/glm-4.5-air:free"
-    ZAI_GLM_4_5V = "z-ai/glm-4.5v"
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
     ZAI_GLM_4_7 = "z-ai/glm-4.7"
@@ -293,12 +280,6 @@ MODEL_METADATA = {
     LlmModel.O3_MINI: ModelMetadata(
         "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
     ),  # o3-mini-2025-01-31
-    LlmModel.O1: ModelMetadata(
-        "openai", 200000, 100000, "O1", "OpenAI", "OpenAI", 3
-    ),  # o1-2024-12-17
-    LlmModel.O1_MINI: ModelMetadata(
-        "openai", 128000, 65536, "O1 Mini", "OpenAI", "OpenAI", 2
-    ),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5_2: ModelMetadata(
         "openai", 400000, 128000, "GPT-5.2", "OpenAI", "OpenAI", 3
@@ -348,9 +329,6 @@ MODEL_METADATA = {
     LlmModel.REGOLO_GPT_OSS_20B: ModelMetadata(
         "regolo", 120000, 90000, "GPT-OSS-20B", "Regolo.ai", "OpenAI", 1
     ),
-    LlmModel.REGOLO_LLAMA3_1_8B: ModelMetadata(
-        "regolo", 120000, 60000, "Llama-3.1-8B-Instruct", "Regolo.ai", "Meta", 1
-    ),
     LlmModel.REGOLO_LLAMA3_3_70B: ModelMetadata(
         "regolo", 60000, 60000, "Llama-3.3-70B-Instruct", "Regolo.ai", "Meta", 2
     ),
@@ -359,9 +337,6 @@ MODEL_METADATA = {
     ),
     LlmModel.REGOLO_MISTRAL_SMALL_4: ModelMetadata(
         "regolo", 120000, 60000, "Mistral-Small-4", "Regolo.ai", "Mistral AI", 2
-    ),
-    LlmModel.REGOLO_MISTRAL_SMALL3_2: ModelMetadata(
-        "regolo", 120000, 60000, "Mistral-Small3.2", "Regolo.ai", "Mistral AI", 1
     ),
     LlmModel.REGOLO_QWEN3_CODER: ModelMetadata(
         "regolo", 240000, 120000, "Qwen3-Coder-Next", "Regolo.ai", "Qwen", 2
@@ -376,15 +351,6 @@ MODEL_METADATA = {
         "regolo", 240000, 120000, "Qwen3.6-27B", "Regolo.ai", "Qwen", 2
     ),
     # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000, "Claude Opus 4.1", "Anthropic", "Anthropic", 3
-    ),  # claude-opus-4-1-20250805
-    LlmModel.CLAUDE_4_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000, "Claude Opus 4", "Anthropic", "Anthropic", 3
-    ),  # claude-4-opus-20250514
-    LlmModel.CLAUDE_4_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Sonnet 4", "Anthropic", "Anthropic", 2
-    ),  # claude-4-sonnet-20250514
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
@@ -403,30 +369,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_5_HAIKU: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Haiku 4.5", "Anthropic", "Anthropic", 2
     ),  # claude-haiku-4-5-20251001
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
-        "anthropic", 200000, 4096, "Claude 3 Haiku", "Anthropic", "Anthropic", 1
-    ),  # claude-3-haiku-20240307
     # https://docs.aimlapi.com/api-overview/model-database/text-models
-    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata(
-        "aiml_api", 32000, 8000, "Qwen 2.5 72B Instruct Turbo", "AI/ML", "Qwen", 1
-    ),
-    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata(
-        "aiml_api",
-        128000,
-        40000,
-        "Llama 3.1 Nemotron 70B Instruct",
-        "AI/ML",
-        "Nvidia",
-        1,
-    ),
     LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata(
         "aiml_api", 128000, None, "Llama 3.3 70B Instruct Turbo", "AI/ML", "Meta", 1
-    ),
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata(
-        "aiml_api", 131000, 2000, "Llama 3.1 70B Instruct Turbo", "AI/ML", "Meta", 1
-    ),
-    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata(
-        "aiml_api", 128000, None, "Llama 3.2 3B Instruct Turbo", "AI/ML", "Meta", 1
     ),
     # https://console.groq.com/docs/models
     LlmModel.LLAMA3_3_70B: ModelMetadata(
@@ -452,15 +397,6 @@ MODEL_METADATA = {
         "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
     ),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 2.5 Pro Preview 03.25",
-        "OpenRouter",
-        "Google",
-        2,
-    ),
     LlmModel.GEMINI_2_5_PRO: ModelMetadata(
         "open_router",
         1048576,
@@ -503,15 +439,6 @@ MODEL_METADATA = {
         "Google",
         1,
     ),
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65535,
-        "Gemini 2.5 Flash Lite Preview 06.17",
-        "OpenRouter",
-        "Google",
-        1,
-    ),
     LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata(
         "open_router",
         1048576,
@@ -520,9 +447,6 @@ MODEL_METADATA = {
         "OpenRouter",
         "Google",
         1,
-    ),
-    LlmModel.MISTRAL_NEMO: ModelMetadata(
-        "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
     ),
     LlmModel.MISTRAL_LARGE_3: ModelMetadata(
         "open_router",
@@ -559,12 +483,6 @@ MODEL_METADATA = {
         "OpenRouter",
         "Mistral AI",
         1,
-    ),
-    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
-        "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
-    ),
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata(
-        "open_router", 128000, 4096, "Command R Plus 08.2024", "OpenRouter", "Cohere", 2
     ),
     LlmModel.COHERE_COMMAND_A_03_2025: ModelMetadata(
         "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
@@ -659,9 +577,6 @@ MODEL_METADATA = {
     LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata(
         "open_router", 300000, 5120, "Nova Pro V1", "OpenRouter", "Amazon", 1
     ),
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
-        "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
-    ),
     LlmModel.MICROSOFT_PHI_4: ModelMetadata(
         "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
     ),
@@ -707,12 +622,6 @@ MODEL_METADATA = {
     LlmModel.GROK_CODE_FAST_1: ModelMetadata(
         "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
     ),
-    LlmModel.KIMI_K2: ModelMetadata(
-        "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
-    ),
-    LlmModel.KIMI_K2_0905: ModelMetadata(
-        "open_router", 262144, 262144, "Kimi K2 0905", "OpenRouter", "Moonshot AI", 1
-    ),
     LlmModel.KIMI_K2_5: ModelMetadata(
         "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
     ),
@@ -741,21 +650,6 @@ MODEL_METADATA = {
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
     ),
     # https://openrouter.ai/models?q=z-ai
-    LlmModel.ZAI_GLM_4_32B: ModelMetadata(
-        "open_router", 128000, 128000, "GLM 4 32B", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5: ModelMetadata(
-        "open_router", 131072, 98304, "GLM 4.5", "OpenRouter", "Z.ai", 2
-    ),
-    LlmModel.ZAI_GLM_4_5_AIR: ModelMetadata(
-        "open_router", 131072, 98304, "GLM 4.5 Air", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5_AIR_FREE: ModelMetadata(
-        "open_router", 131072, 96000, "GLM 4.5 Air (Free)", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5V: ModelMetadata(
-        "open_router", 65536, 16384, "GLM 4.5V", "OpenRouter", "Z.ai", 2
-    ),
     LlmModel.ZAI_GLM_4_6: ModelMetadata(
         "open_router", 204800, 204800, "GLM 4.6", "OpenRouter", "Z.ai", 1
     ),
@@ -809,6 +703,42 @@ MODEL_METADATA = {
 }
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
+
+# Family-aware mapping for legacy model values that have been retired from the
+# `LlmModel` enum. Used by both the Prisma migration that rewrites stored graph
+# definitions and by the boot-time safety net (`migrate_llm_models` in
+# backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
+# the global GPT default. Keep this in sync with
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+LEGACY_MODEL_MAPPINGS: dict[str, LlmModel] = {
+    "claude-3-haiku-20240307": LlmModel.CLAUDE_4_5_HAIKU,
+    "claude-opus-4-20250514": LlmModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-20250514": LlmModel.CLAUDE_4_6_SONNET,
+    "claude-opus-4-1-20250805": LlmModel.CLAUDE_4_7_OPUS,
+    "gpt-4-turbo": LlmModel.GPT41,
+    "o1": LlmModel.O3,
+    "o1-mini": LlmModel.O3_MINI,
+    "google/gemini-2.5-pro-preview-03-25": LlmModel.GEMINI_2_5_PRO,
+    "google/gemini-2.5-flash-lite-preview-06-17": LlmModel.GEMINI_2_5_FLASH,
+    "cohere/command-r-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
+    "cohere/command-r-plus-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
+    "mistralai/mistral-nemo": LlmModel.MISTRAL_SMALL_3_2,
+    "microsoft/wizardlm-2-8x22b": LlmModel.MICROSOFT_PHI_4,
+    "moonshotai/kimi-k2": LlmModel.KIMI_K2_6,
+    "moonshotai/kimi-k2-0905": LlmModel.KIMI_K2_6,
+    "z-ai/glm-4-32b": LlmModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5": LlmModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5-air": LlmModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5-air:free": LlmModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5v": LlmModel.ZAI_GLM_4_6V,
+    # AI/ML API stragglers — no direct same-family successor on AI/ML's current
+    # catalogue, so they all map to the closest open-weight Meta/Llama option
+    # that AI/ML still serves.
+    "Qwen/Qwen2.5-72B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+    "nvidia/llama-3.1-nemotron-70b-instruct": LlmModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Llama-3.2-3B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+}
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
@@ -872,32 +802,29 @@ def convert_openai_tool_fmt_to_anthropic(
 
 
 def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
-    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+    """Extract OpenRouter's per-request USD cost from a chat-completion response.
 
-    OpenRouter returns the per-request USD cost in a response header. The
-    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
-    attribute. We use try/except AttributeError so that if the SDK ever drops
-    or renames that attribute, the warning is visible in logs rather than
-    silently degrading to no cost tracking.
+    OpenRouter populates a ``cost`` field on the standard ``usage`` object (a
+    USD float) when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we read
+    it off ``model_extra`` (pydantic v2's typed extras container) — no
+    ``getattr``. Mirrors backend/executor/simulator.py::_extract_cost_usd —
+    keep the two aligned.
     """
-    try:
-        raw_resp = response._response  # type: ignore[attr-defined]
-    except AttributeError:
-        logger.warning(
-            "OpenAI SDK response missing _response attribute"
-            " — OpenRouter cost tracking unavailable"
-        )
+    usage = response.usage
+    if usage is None:
+        return None
+    extras = usage.model_extra or {}
+    cost = extras.get("cost")
+    if cost is None:
         return None
     try:
-        cost_header = raw_resp.headers.get("x-total-cost")
-        if not cost_header:
-            return None
-        cost = float(cost_header)
-        if not math.isfinite(cost) or cost < 0:
-            return None
-        return cost
-    except (ValueError, TypeError, AttributeError):
+        cost_f = float(cost)
+    except (TypeError, ValueError):
         return None
+    if not math.isfinite(cost_f) or cost_f < 0:
+        return None
+    return cost_f
 
 
 def extract_openai_reasoning(response) -> str | None:
@@ -959,6 +886,41 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
+    """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
+    so that no single request can park an executor thread indefinitely."""
+    try:
+        return await asyncio.wait_for(
+            _llm_call(
+                credentials=credentials,
+                llm_model=llm_model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                force_json_output=force_json_output,
+                tools=tools,
+                ollama_host=ollama_host,
+                parallel_tool_calls=parallel_tool_calls,
+                compress_prompt_to_fit=compress_prompt_to_fit,
+            ),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as e:
+        raise TimeoutError(
+            f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
+            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled."
+        ) from e
+
+
+async def _llm_call(
+    credentials: APIKeyCredentials,
+    llm_model: LlmModel,
+    prompt: list[dict],
+    max_tokens: int | None,
+    force_json_output: bool = False,
+    tools: list[dict] | None = None,
+    ollama_host: str = "localhost:11434",
+    parallel_tool_calls=None,
+    compress_prompt_to_fit: bool = True,
+) -> LLMResponse:
     """
     Make a call to a language model.
 
@@ -981,21 +943,6 @@ async def llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
-
-    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter API key
-    # is configured, route direct-Anthropic models through OpenRouter instead. This
-    # gives us the x-total-cost header for free, so provider_cost is always populated
-    # without manual token-rate arithmetic.
-    or_key = settings.secrets.open_router_api_key
-    or_model_id: str | None = None
-    if provider == "anthropic" and or_key:
-        provider = "open_router"
-        credentials = APIKeyCredentials(
-            provider=ProviderName.OPEN_ROUTER,
-            title="OpenRouter (auto)",
-            api_key=SecretStr(or_key),
-        )
-        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
@@ -1050,6 +997,7 @@ async def llm_call(
             ),
             text=text_config,  # type: ignore[arg-type]
             store=False,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         raw_tool_calls = extract_responses_tool_calls(response)
@@ -1124,7 +1072,7 @@ async def llm_call(
             # equivalent to not including the key at all — no `tools` field is
             # sent to the API in that case.
             tools=an_tools,
-            timeout=600,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if sysprompt.strip():
             # Wrap the system prompt in a single cacheable text block.
@@ -1200,6 +1148,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if not response.choices:
             raise ValueError("Groq returned empty choices in response")
@@ -1221,7 +1170,9 @@ async def llm_call(
             ollama_host, trusted_hostnames=[settings.config.ollama_host]
         )
 
-        client = ollama.AsyncClient(host=ollama_host)
+        client = ollama.AsyncClient(
+            host=ollama_host, timeout=LLM_REQUEST_TIMEOUT_SECONDS
+        )
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
         response = await client.generate(
@@ -1240,7 +1191,6 @@ async def llm_call(
             reasoning=None,
         )
     elif provider == "open_router":
-        tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
@@ -1255,11 +1205,22 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=or_model_id or llm_model.value,
-            messages=prompt,  # type: ignore
+            # Ask OpenRouter to include the per-request USD cost on the usage
+            # object. Same shape used by simulator.py — keep aligned.
+            extra_body={"usage": {"include": True}},
+            model=llm_model.value,
+            messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
+            tools=(
+                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
+            ),
             parallel_tool_calls=parallel_tool_calls_param,
+            response_format=(
+                ResponseFormatJSONObject(type="json_object")
+                if force_json_output
+                else openai.omit
+            ),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1299,6 +1260,7 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1356,7 +1318,7 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "aiml_api":
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
             default_headers={
@@ -1366,10 +1328,11 @@ async def llm_call(
             },
         )
 
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
         if not completion.choices:
             raise ValueError("AI/ML API returned empty choices in response")
@@ -1407,6 +1370,7 @@ async def llm_call(
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
 
         if not response.choices:
@@ -1766,8 +1730,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     logger.warning(f"Error calling LLM: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
                     break
-                else:
-                    logger.exception(f"Error calling LLM: {e}")
+                if isinstance(e, TimeoutError):
+                    # A request that hung once will most likely hang again on
+                    # retry — the underlying issue (server-side starvation,
+                    # network partition, etc.) doesn't clear on a fresh socket.
+                    # Skip retries to avoid the N×timeout wait cascade.
+                    logger.warning(f"LLM call timed out, not retrying: {e}")
+                    error_feedback_message = f"Error calling LLM: {e}"
+                    break
+                logger.exception(f"Error calling LLM: {e}")
                 if (
                     "maximum context length" in str(e).lower()
                     or "token limit" in str(e).lower()
