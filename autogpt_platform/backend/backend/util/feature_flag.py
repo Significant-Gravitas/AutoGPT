@@ -74,20 +74,25 @@ class Flag(str, Enum):
     DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check"
 
     # Per-feature gate for the cascading-expiry helper
-    # ``invalidate_entity_direct_neighbors`` (P0.3b). Off for the
-    # first two weeks after the dream pass ships — direct-neighbor
-    # demotion is the highest-blast-radius dream action and needs
-    # canary validation before broad rollout, even with the
-    # single-hop guard in place.
+    # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
+    # dream pass may demote every ``:RELATES_TO`` edge directly
+    # attached to a flagged-as-dead entity (e.g. "this client is
+    # gone — expire their associated facts"). Single-hop only —
+    # tangentially-related edges are NOT touched. Off by default for
+    # the first two weeks after launch because this is the highest
+    # blast-radius dream action; a buggy phase-3 sanitizer could
+    # demote too many edges before we catch it. Ratification (P0.4)
+    # is how good edges caught in the cascade get re-promoted.
     DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity"
 
-    # Opt-in to running the dream pass on the local-LLM transport
-    # (Ollama / vLLM / LocalAI / LM Studio / LiteLLM-proxy — see
-    # PR #12993). Off by default until validated end-to-end on at
-    # least one local-LLM contributor's stack. When on, the dream
-    # pass runs sync via the baseline path with phase-collapse and
-    # a longer Redis lock TTL (see ``dream/p0-spec.md`` §13).
-    DREAM_PASS_LOCAL_TRANSPORT = "dream-pass-local-transport"
+    # Note: there is intentionally no DREAM_PASS_LOCAL_TRANSPORT
+    # flag. Whether to run on local-LLM transport is a CODE decision
+    # — ``resolve_dream_execution_path()`` in
+    # ``copilot/dream/routing.py`` inspects ``config.transport`` and
+    # picks sync-baseline + phase-collapse + extended lock TTL for
+    # local users. If a user has ``DREAM_PASS_ENABLED`` true, they
+    # get dreams, period — degraded on local, full on cloud. See
+    # ``dream/p0-spec.md`` §13.
 
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
