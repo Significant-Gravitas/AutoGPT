@@ -1,4 +1,5 @@
 import datetime
+import enum
 from typing import TYPE_CHECKING, List, Self
 
 import prisma.enums
@@ -14,6 +15,11 @@ class ChangelogEntry(pydantic.BaseModel):
     version: str
     changes_summary: str
     date: datetime.datetime
+
+
+class MyAgentsSortBy(str, enum.Enum):
+    MOST_RECENT = "most_recent"
+    NAME = "name"
 
 
 class MyUnpublishedAgent(pydantic.BaseModel):

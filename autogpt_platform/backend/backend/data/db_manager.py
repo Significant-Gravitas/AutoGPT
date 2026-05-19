@@ -377,10 +377,17 @@ class DatabaseManager(AppService):
     list_user_links = _(platform_linking_db.list_user_links)
     delete_server_link = _(platform_linking_db.delete_server_link)
     delete_user_link = _(platform_linking_db.delete_user_link)
+    cleanup_expired_platform_link_tokens = _(
+        platform_linking_db.cleanup_expired_platform_link_tokens
+    )
 
     # ============ CoPilot Chat Sessions ============ #
-    get_chat_session = _(chat_db.get_chat_session)
+    # NOTE: no eager-load `get_chat_session` here — callers go through
+    # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
+    # tool-pair boundary expansion + visibility guarantees apply uniformly
+    # across the LLM-context and UI scroll paths.
     get_chat_session_metadata = _(chat_db.get_chat_session_metadata)
+    get_chat_messages_paginated = _(chat_db.get_chat_messages_paginated)
     create_chat_session = _(chat_db.create_chat_session)
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
@@ -393,6 +400,14 @@ class DatabaseManager(AppService):
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     set_turn_duration = _(chat_db.set_turn_duration)
+    # ChatSession lifecycle primitives.  Three functions cover the
+    # cap-count + cross-session queue (count/list/transition).
+    count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
+    list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
+    update_chat_session_status = _(chat_db.update_chat_session_status)
+    get_chat_session_status = _(chat_db.get_chat_session_status)
+    get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+    add_chat_message = _(chat_db.add_chat_message)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -603,10 +618,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_user_links = d.list_user_links
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
+    cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
 
     # ============ CoPilot Chat Sessions ============ #
-    get_chat_session = d.get_chat_session
     get_chat_session_metadata = d.get_chat_session_metadata
+    get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
@@ -619,3 +635,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_message_content_by_sequence = d.update_message_content_by_sequence
     update_chat_session_title = d.update_chat_session_title
     set_turn_duration = d.set_turn_duration
+    count_chat_sessions_by_status = d.count_chat_sessions_by_status
+    list_chat_sessions_by_status = d.list_chat_sessions_by_status
+    update_chat_session_status = d.update_chat_session_status
+    get_chat_session_status = d.get_chat_session_status
+    get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    add_chat_message = d.add_chat_message

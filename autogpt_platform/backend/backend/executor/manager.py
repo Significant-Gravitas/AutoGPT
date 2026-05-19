@@ -615,7 +615,15 @@ class ExecutionProcessor:
         # blocks produce a zero delta; dynamic types (SECOND/ITEMS/COST_USD/
         # TOKENS) settle their post-flight charge or refund here. Dry runs
         # skip reconciliation so simulation never touches the user's wallet.
-        if status == ExecutionStatus.COMPLETED:
+        # Reconcile on FAILED / TERMINATED too — partial work consumed real
+        # provider tokens, and the pre-flight charge should be refunded down
+        # to the actually-tracked usage rather than being absorbed wholesale
+        # by the user.
+        if status in (
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.TERMINATED,
+        ):
             await log_system_credential_cost(
                 node_exec=node_exec,
                 block=node.block,
@@ -706,14 +714,7 @@ class ExecutionProcessor:
                 )
             )
 
-        try:
-            log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec.node_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
-
+        async def _drive_execution() -> None:
             async for output_name, output_data in execute_node(
                 node=node,
                 data=node_exec,
@@ -724,8 +725,38 @@ class ExecutionProcessor:
             ):
                 await persist_output(output_name, output_data)
 
+        try:
+            log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=node_exec.node_exec_id,
+                status=ExecutionStatus.RUNNING,
+            )
+
+            # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
+            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # opt out by overriding `execution_timeout_seconds = None`. Their
+            # sub-graphs and inner LLM calls have their own bounds, so the
+            # outer cap would false-positive on legitimately long runs.
+            block_timeout = node.block.execution_timeout_seconds
+            if block_timeout is None:
+                await _drive_execution()
+            else:
+                await asyncio.wait_for(_drive_execution(), timeout=block_timeout)
+
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
             status = ExecutionStatus.COMPLETED
+
+        except asyncio.TimeoutError:
+            block_timeout = node.block.execution_timeout_seconds
+            stats.error = TimeoutError(
+                f"Node execution exceeded {block_timeout}s wall-clock cap"
+            )
+            log_metadata.warning(
+                f"Node execution {node_exec.node_exec_id} timed out after "
+                f"{block_timeout}s — marking FAILED"
+            )
+            status = ExecutionStatus.FAILED
 
         except BaseException as e:
             stats.error = e

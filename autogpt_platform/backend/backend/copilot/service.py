@@ -27,6 +27,7 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
+from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLlmModel
 from .model import (
     ChatMessage,
@@ -35,7 +36,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
-from .token_tracking import persist_and_record_usage
+from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +59,53 @@ def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
     return config.thinking_standard_model
 
 
-_client: LangfuseAsyncOpenAI | None = None
+_main_client: LangfuseAsyncOpenAI | None = None
+_aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
 
 
-def _get_openai_client() -> LangfuseAsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = LangfuseAsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
-    return _client
+def _get_main_client() -> LangfuseAsyncOpenAI:
+    """Main OpenAI-compat client used by the baseline path.
+
+    Driven by ``config.main_client_credentials`` so a deployment can flip
+    ``CHAT_USE_OPENROUTER=false`` (+ ``ANTHROPIC_API_KEY``) to route the
+    main path straight to api.anthropic.com without disturbing aux
+    callers (title generation, builder helpers) that still need
+    OpenRouter for non-Anthropic models.
+    """
+    global _main_client
+    if _main_client is None:
+        api_key, base_url = config.main_client_credentials
+        _main_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+    return _main_client
+
+
+def _get_aux_client() -> LangfuseAsyncOpenAI:
+    """Auxiliary OpenAI-compat client.
+
+    Used for non-Anthropic helpers (title generation, builder helpers)
+    that need to keep talking to OpenRouter even when the main client is
+    pointed at Anthropic directly.  Defaults to OpenRouter; falls back
+    to the main client's creds when ``CHAT_AUX_API_KEY`` /
+    ``CHAT_AUX_BASE_URL`` are unset (preserves single-key deployments).
+    """
+    global _aux_client
+    if _aux_client is None:
+        api_key, base_url = config.aux_client_credentials
+        _aux_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+    return _aux_client
+
+
+# Back-compat alias.  Existing callers and tests import this name; new
+# code should pick the explicit ``_get_main_client`` / ``_get_aux_client``.
+_get_openai_client = _get_main_client
+
+
+def reset_clients() -> None:
+    """Test-only: drop the cached OpenAI clients so the next call re-reads config."""
+    global _main_client, _aux_client
+    _main_client = None
+    _aux_client = None
 
 
 def _get_langfuse():
@@ -533,6 +572,25 @@ async def inject_user_context(
     return None
 
 
+def _normalize_title_model_for_aux() -> str:
+    """Return the title model in the form the aux client's transport expects.
+
+    OpenRouter routes by the full ``vendor/model`` slug, but Anthropic's
+    OpenAI-compat endpoint rejects the ``anthropic/`` prefix and dot-separated
+    versions. Shared by the API call (``_generate_session_title``) and the
+    cost recorder (``_record_title_generation_cost``) so both surfaces log /
+    transmit the same string — otherwise PlatformCostLog rows for direct-
+    Anthropic deployments fragment between normalized and unnormalized model
+    names, breaking the admin dashboard's per-model rollups.
+    """
+    title_model = config.title_model
+    if config.aux_provider_label == "anthropic":
+        if "/" in title_model:
+            title_model = title_model.split("/", 1)[1]
+        title_model = title_model.replace(".", "-")
+    return title_model
+
+
 async def _generate_session_title(
     message: str,
     user_id: str | None = None,
@@ -561,18 +619,32 @@ async def _generate_session_title(
         # ``usage: {"include": True}`` asks OR to embed the real billed
         # cost into the final usage chunk — matches the baseline path's
         # ``_OPENROUTER_INCLUDE_USAGE_COST`` pattern, same read path.
-        extra_body: dict[str, Any] = {"usage": {"include": True}}
-        if user_id:
-            extra_body["user"] = user_id[:128]  # OpenRouter limit
-            extra_body["posthogDistinctId"] = user_id
-        if session_id:
-            extra_body["session_id"] = session_id[:128]  # OpenRouter limit
-        extra_body["posthogProperties"] = {
-            "environment": settings.config.app_env.value,
-        }
+        # Gated on the aux transport because Anthropic's OpenAI-compat
+        # endpoint (and any non-OR endpoint) rejects unknown extra_body
+        # fields with a 400 — the same gate the baseline path applies.
+        extra_body: dict[str, Any] = {}
+        if config.aux_uses_openrouter:
+            extra_body["usage"] = {"include": True}
+            if user_id:
+                extra_body["user"] = user_id[:128]  # OpenRouter limit
+                extra_body["posthogDistinctId"] = user_id
+            if session_id:
+                extra_body["session_id"] = session_id[:128]  # OpenRouter limit
+            extra_body["posthogProperties"] = {
+                "environment": settings.config.app_env.value,
+            }
 
-        response = await _get_openai_client().chat.completions.create(
-            model=config.title_model,
+        # Normalize the title model for the aux client's transport: OR
+        # routes by full ``vendor/model`` slug, but Anthropic's
+        # OpenAI-compat endpoint rejects the ``anthropic/`` prefix and
+        # dot-separated versions.  Single-key direct-Anthropic
+        # deployments inherit the Anthropic-pointed aux client (see
+        # ``aux_client_credentials`` fallback) so the title model
+        # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
+        title_model = _normalize_title_model_for_aux()
+
+        response = await _get_aux_client().chat.completions.create(
+            model=title_model,
             messages=[
                 {
                     "role": "system",
@@ -609,27 +681,41 @@ async def _generate_session_title(
 
 def _title_usage_from_response(
     response: ChatCompletion,
-) -> tuple[int, int, float | None]:
-    """Extract ``(prompt_tokens, completion_tokens, cost_usd)`` from a
-    title-generation chat-completion response.
+) -> tuple[int, int, int, int, float | None]:
+    """Extract usage counts + OR-style ``cost`` from a title response.
 
-    Returns zeros / ``None`` for missing fields — the OpenAI SDK's
-    ``CompletionUsage`` doesn't declare OpenRouter's ``cost`` extension,
-    so we read it off ``model_extra`` (pydantic v2 extras container).
-    Absent for non-OR routes; returned as ``None`` in that case.
+    Returns ``(prompt_tokens, completion_tokens, cache_read_tokens,
+    cache_creation_tokens, cost_usd)``.  The cache buckets land in the
+    rate-card lookup so cached title turns are billed at Anthropic's
+    cache-read rate (10% of input) instead of the full input rate.
+
+    The OpenAI SDK's ``CompletionUsage`` doesn't declare OpenRouter's
+    ``cost`` extension, so we read it off ``model_extra`` (pydantic v2
+    extras container) — absent for non-OR routes.
     """
     usage = response.usage
     if usage is None:
-        return 0, 0, None
+        return 0, 0, 0, 0, None
     prompt_tokens = usage.prompt_tokens or 0
     completion_tokens = usage.completion_tokens or 0
+    ptd = usage.prompt_tokens_details
+    cache_read_tokens = (ptd.cached_tokens or 0) if ptd else 0
+    cache_creation_tokens = (
+        _extract_cache_creation_tokens(ptd) if ptd is not None else 0
+    )
     extras = usage.model_extra or {}
     cost_raw = extras.get("cost") if isinstance(extras, dict) else None
     if isinstance(cost_raw, (int, float)):
         cost_usd: float | None = float(cost_raw)
     else:
         cost_usd = None
-    return prompt_tokens, completion_tokens, cost_usd
+    return (
+        prompt_tokens,
+        completion_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        cost_usd,
+    )
 
 
 async def _record_title_generation_cost(
@@ -655,24 +741,57 @@ async def _record_title_generation_cost(
         title, and a real DB / Prisma outage surfaces in the caller's
         single background-task warning handler.
     """
-    prompt_tokens, completion_tokens, cost_usd = _title_usage_from_response(response)
+    (
+        prompt_tokens,
+        completion_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        cost_usd,
+    ) = _title_usage_from_response(response)
+
+    # Provider label tracks the aux client's actual transport — title
+    # generation runs on the aux client (kept on OpenRouter when split
+    # from the main client so the non-Anthropic title model keeps
+    # working).  ``aux_provider_label`` resolves to ``open_router`` /
+    # ``anthropic`` / ``openai`` so a single-key direct-Anthropic
+    # deployment lands the cost row under ``anthropic`` instead of the
+    # misleading ``openai`` fallback.
+    provider = config.aux_provider_label
+
+    # Use the same normalized name for the cost log that we sent on the
+    # API call.  Without this the admin dashboard fragments between
+    # ``anthropic/claude-haiku-4.5`` (raw config) and ``claude-haiku-4-5``
+    # (the form the Anthropic OpenAI-compat endpoint actually saw).
+    model = _normalize_title_model_for_aux()
+
+    # Direct-Anthropic responses don't carry an OpenRouter-style ``cost``
+    # field on usage.model_extra, so ``_title_usage_from_response`` returns
+    # ``cost_usd=None``.  Compute it from the rate card instead — otherwise
+    # PlatformCostLog records a NULL cost row and the admin dashboard +
+    # rate-limit counter under-report direct-Anthropic title spend by 100%.
+    # Pass cache buckets so cached title turns bill at the cache-read rate
+    # (~10% of input) instead of the full input rate.
+    if cost_usd is None and provider == "anthropic":
+        # Unknown *Anthropic* slugs fall back to opus-4-1 rates and log
+        # ERROR inside the rate-card module so the title row never lands
+        # with cost=NULL on a litellm-version drift.  Non-Anthropic
+        # slugs return None — caller (provider check above) excludes
+        # them from this branch already.
+        cost_usd = compute_anthropic_cost_usd(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            cache_ttl=config.baseline_prompt_cache_ttl,
+        )
 
     # Nothing meaningful to record — skip the DB roundtrip entirely
-    # rather than writing a zero-valued row.  Covers the non-OR route
-    # (no ``usage.cost`` field) and the degenerate zero-tokens case.
+    # rather than writing a zero-valued row.  Covers the non-OR / non-
+    # Anthropic route (no ``usage.cost`` field, unknown rate card) and
+    # the degenerate zero-tokens case.
     if cost_usd is None and prompt_tokens == 0 and completion_tokens == 0:
         return
-
-    # Provider label is derived from the configured ``base_url`` (title
-    # LLM uses the shared copilot OpenAI client whose base URL mirrors
-    # ``ChatConfig.base_url``).  This lets a deployment that points
-    # title generation at a non-OR endpoint still get the correct
-    # ``provider`` on the cost-log row.
-    provider = (
-        "open_router"
-        if (config.base_url and "openrouter.ai" in config.base_url)
-        else "openai"
-    )
 
     # Intentionally pass ``session=None``.  ``persist_and_record_usage``
     # would otherwise append a ``Usage`` entry to the live session
@@ -684,14 +803,21 @@ async def _record_title_generation_cost(
     # recorded into ``PlatformCostLog`` (admin dashboard) and the
     # microdollar rate-limit counter — those are the two places that
     # actually matter for this call.
+    # Subtract BOTH cache_read and cache_creation from prompt_tokens so
+    # the persisted ``Usage.prompt_tokens`` reflects fresh-input only and
+    # the three buckets stay disjoint — moonshot.py:125 sums them to
+    # recover total, and an overlap there double-counts cache writes.
+    uncached_prompt = max(0, prompt_tokens - cache_read_tokens - cache_creation_tokens)
     await persist_and_record_usage(
         session=None,
         user_id=user_id,
-        prompt_tokens=prompt_tokens,
+        prompt_tokens=uncached_prompt,
         completion_tokens=completion_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
         log_prefix="[title]",
         cost_usd=cost_usd,
-        model=config.title_model,
+        model=model,
         provider=provider,
     )
 
