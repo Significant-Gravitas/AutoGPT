@@ -81,8 +81,7 @@ class TestMixedInput:
             "image": [f"workspace://{UUID_A}#image/png"],
             "notes": f"[Attached files]\nfile_id={UUID_B} note.txt",
             "tool_response": (
-                '{"type":"workspace_file_written",'
-                f'"file_id":"{UUID_C}"}}'
+                '{"type":"workspace_file_written",' f'"file_id":"{UUID_C}"}}'
             ),
             # Same UUID via a second shape — must dedupe.
             "duplicate": f"file_id={UUID_A}",
