@@ -4,7 +4,10 @@ import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/us
 import { useMemo } from "react";
 import { buildAgentLookup } from "./helpers";
 
-export function useCostsBreakdown(agents: LibraryAgent[]) {
+export function useCostsBreakdown(
+  agents: LibraryAgent[],
+  { enabled }: { enabled: boolean },
+) {
   const {
     data: summary,
     isLoading,
@@ -13,6 +16,7 @@ export function useCostsBreakdown(agents: LibraryAgent[]) {
     query: {
       select: (res) => res.data as UserExecutionCostSummary,
       staleTime: 60_000,
+      enabled,
     },
   });
 

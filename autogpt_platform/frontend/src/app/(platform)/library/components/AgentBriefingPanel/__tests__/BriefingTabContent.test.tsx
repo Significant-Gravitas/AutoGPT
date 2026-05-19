@@ -239,6 +239,9 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
     mockUseGetFlag.mockReturnValue(false);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
     expect(screen.getByText("No spend this month yet.")).toBeDefined();
   });
 
@@ -328,6 +331,9 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     mockUseGetFlag.mockReturnValue(false);
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
     expect(screen.getByText(/Couldn't load cost breakdown/i)).toBeDefined();
   });
 

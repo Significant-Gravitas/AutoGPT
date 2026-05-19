@@ -16,48 +16,9 @@ interface Props {
 }
 
 export function CostsBreakdown({ agents }: Props) {
-  const { summary, agentLookup, isLoading, isError, hasAnySpend } =
-    useCostsBreakdown(agents);
   const [isExpanded, setIsExpanded] = useState(false);
-
-  if (isError) {
-    return (
-      <section className="mt-6">
-        <Text variant="body-medium" className="text-neutral-700">
-          Cost breakdown
-        </Text>
-        <Text variant="body" className="mt-1 text-neutral-500">
-          Couldn&apos;t load cost breakdown.
-        </Text>
-      </section>
-    );
-  }
-
-  if (isLoading || !summary) {
-    return (
-      <section className="mt-6 flex flex-col gap-3">
-        <Skeleton className="h-5 w-32" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-      </section>
-    );
-  }
-
-  if (!hasAnySpend) {
-    return (
-      <section className="mt-6">
-        <Text variant="body-medium" className="text-neutral-700">
-          Cost breakdown
-        </Text>
-        <Text variant="body" className="mt-1 text-neutral-500">
-          No spend this month yet.
-        </Text>
-      </section>
-    );
-  }
-
-  const avgCostCents =
-    summary.run_count > 0 ? summary.total_cents / summary.run_count : 0;
+  const { summary, agentLookup, isLoading, isError, hasAnySpend } =
+    useCostsBreakdown(agents, { enabled: isExpanded });
 
   return (
     <section className="mt-6 flex flex-col gap-4">
@@ -76,36 +37,93 @@ export function CostsBreakdown({ agents }: Props) {
       </Button>
 
       {isExpanded && (
-        <>
-          <StatRow
-            items={[
-              {
-                label: "Total this month",
-                value: formatCents(summary.total_cents),
-              },
-              { label: "Runs", value: String(summary.run_count) },
-              {
-                label: "Avg / run",
-                value: formatCents(Math.round(avgCostCents)),
-              },
-              {
-                label: "Wasted on failed",
-                value: formatCents(summary.failed_cost_cents),
-                tone: summary.failed_cost_cents > 0 ? "warn" : undefined,
-              },
-            ]}
-          />
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <TopRunsList runs={summary.top_runs} agentLookup={agentLookup} />
-            <SpendByAgentList
-              rollups={summary.by_agent}
-              agentLookup={agentLookup}
-            />
-          </div>
-        </>
+        <ExpandedBody
+          summary={summary}
+          agentLookup={agentLookup}
+          isLoading={isLoading}
+          isError={isError}
+          hasAnySpend={hasAnySpend}
+        />
       )}
     </section>
+  );
+}
+
+interface ExpandedBodyProps {
+  summary: ReturnType<typeof useCostsBreakdown>["summary"];
+  agentLookup: ReturnType<typeof useCostsBreakdown>["agentLookup"];
+  isLoading: boolean;
+  isError: boolean;
+  hasAnySpend: boolean;
+}
+
+function ExpandedBody({
+  summary,
+  agentLookup,
+  isLoading,
+  isError,
+  hasAnySpend,
+}: ExpandedBodyProps) {
+  if (isError) {
+    return (
+      <Text variant="body" className="text-neutral-500">
+        Couldn&apos;t load cost breakdown.
+      </Text>
+    );
+  }
+
+  if (isLoading || !summary) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-16 w-full" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAnySpend) {
+    return (
+      <Text variant="body" className="text-neutral-500">
+        No spend this month yet.
+      </Text>
+    );
+  }
+
+  const avgCostCents =
+    summary.run_count > 0 ? summary.total_cents / summary.run_count : 0;
+
+  return (
+    <>
+      <StatRow
+        items={[
+          {
+            label: "Total this month",
+            value: formatCents(summary.total_cents),
+          },
+          { label: "Runs", value: String(summary.run_count) },
+          {
+            label: "Avg / run",
+            value: formatCents(Math.round(avgCostCents)),
+          },
+          {
+            label: "Wasted on failed",
+            value: formatCents(summary.failed_cost_cents),
+            tone: summary.failed_cost_cents > 0 ? "warn" : undefined,
+          },
+        ]}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <TopRunsList runs={summary.top_runs} agentLookup={agentLookup} />
+        <SpendByAgentList
+          rollups={summary.by_agent}
+          agentLookup={agentLookup}
+        />
+      </div>
+    </>
   );
 }
 
