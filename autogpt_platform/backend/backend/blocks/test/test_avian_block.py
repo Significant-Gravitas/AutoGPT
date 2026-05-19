@@ -53,9 +53,7 @@ class TestAvianLlmCall:
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
             result = await llm.llm_call(
                 credentials=AVIAN_CREDENTIALS,
@@ -77,9 +75,7 @@ class TestAvianLlmCall:
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
             await llm.llm_call(
                 credentials=AVIAN_CREDENTIALS,
@@ -143,9 +139,7 @@ class TestAvianLlmCall:
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
             with pytest.raises(ValueError, match="Avian API error"):
                 await llm.llm_call(
@@ -311,9 +305,7 @@ class TestAvianBlockIntegration:
         )
 
         outputs = {}
-        async for name, data in block.run(
-            input_data, credentials=AVIAN_CREDENTIALS
-        ):
+        async for name, data in block.run(input_data, credentials=AVIAN_CREDENTIALS):
             outputs[name] = data
 
         assert outputs["response"] == "Generated text from Avian"
