@@ -18,25 +18,35 @@ export function MemoryVisualizer() {
     facts,
     communities,
     rebuild,
+    triggerRebuild,
     statusFilter,
     setStatusFilter,
     force,
     setForce,
+    overviewData,
+    entitiesData,
+    factsData,
+    communitiesData,
+    rebuildData,
   } = useMemoryVisualizer();
+
+  const entityItems = entitiesData?.items ?? [];
+  const factItems = factsData?.items ?? [];
+  const communityItems = communitiesData?.items ?? [];
 
   return (
     <div className="space-y-6">
       <OverviewStrip
         loading={overview.isLoading}
         error={overview.error}
-        data={overview.data}
+        data={overviewData}
       />
 
       <div className="rounded-md border bg-white p-4">
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => rebuild.mutate()}
+            onClick={triggerRebuild}
             disabled={rebuild.isPending}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
@@ -50,23 +60,23 @@ export function MemoryVisualizer() {
             />
             Force (bypass activity gate)
           </label>
-          {rebuild.data && (
+          {rebuildData && (
             <span className="text-xs text-gray-500">
               Last:{" "}
-              {rebuild.data.skipped
-                ? `skipped (${rebuild.data.skip_reason})`
-                : `${rebuild.data.elapsed_seconds?.toFixed(1)}s`}
+              {rebuildData.skipped
+                ? `skipped (${rebuildData.skip_reason})`
+                : `${rebuildData.elapsed_seconds?.toFixed(1)}s`}
             </span>
           )}
         </div>
       </div>
 
-      <Section title={`Entities (${entities.data?.items.length ?? "…"})`}>
+      <Section title={`Entities (${entityItems.length || "…"})`}>
         <Table
           loading={entities.isLoading}
           error={entities.error}
           empty="No entities yet — start a chat session to populate memory."
-          rows={entities.data?.items ?? []}
+          rows={entityItems}
           columns={[
             { label: "Name", get: (e) => e.name },
             { label: "Summary", get: (e) => e.summary ?? "—" },
@@ -76,7 +86,7 @@ export function MemoryVisualizer() {
       </Section>
 
       <Section
-        title={`Facts (${facts.data?.items.length ?? "…"})`}
+        title={`Facts (${factItems.length || "…"})`}
         controls={
           <select
             value={statusFilter}
@@ -95,7 +105,7 @@ export function MemoryVisualizer() {
           loading={facts.isLoading}
           error={facts.error}
           empty="No facts at this filter."
-          rows={facts.data?.items ?? []}
+          rows={factItems}
           columns={[
             { label: "Source", get: (f) => f.source },
             { label: "Relation", get: (f) => f.name ?? "—" },
@@ -110,14 +120,12 @@ export function MemoryVisualizer() {
         />
       </Section>
 
-      <Section
-        title={`Communities (${communities.data?.items.length ?? "…"})`}
-      >
+      <Section title={`Communities (${communityItems.length || "…"})`}>
         <Table
           loading={communities.isLoading}
           error={communities.error}
           empty="No communities yet — click 'Rebuild communities now' above."
-          rows={communities.data?.items ?? []}
+          rows={communityItems}
           columns={[
             { label: "Name", get: (c) => c.name ?? "—" },
             { label: "Members", get: (c) => String(c.member_count) },

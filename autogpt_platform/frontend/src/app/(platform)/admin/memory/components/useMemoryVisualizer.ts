@@ -1,152 +1,110 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { customMutator } from "@/app/api/mutators/custom-mutator";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetV2GetMemoryOverviewQueryKey,
+  getGetV2ListCommunitiesQueryKey,
+  getGetV2ListEntitiesQueryKey,
+  getGetV2ListFactsQueryKey,
+  useGetV2GetMemoryOverview,
+  useGetV2ListCommunities,
+  useGetV2ListEntities,
+  useGetV2ListFacts,
+  usePostV2RebuildCommunities,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+import type { CommunityListResponse } from "@/app/api/__generated__/models/communityListResponse";
+import type { EntityListResponse } from "@/app/api/__generated__/models/entityListResponse";
+import type { FactListResponse } from "@/app/api/__generated__/models/factListResponse";
+import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
+import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
-// Hand-rolled types matching backend/api/features/admin/memory_admin_routes.py.
-// Once #6 merges and `pnpm generate:api` runs, these become generated; for now
-// hand-rolled keeps the page testable without regenerating client code.
-export interface MemoryOverview {
-  user_id: string;
-  group_id: string;
-  entities: number;
-  episodes: number;
-  relates_to_edges: number;
-  mentions_edges: number;
-  communities: number;
-}
+const USER_ID = "me";
 
-export interface EntitySummary {
-  uuid: string;
-  name: string;
-  summary: string | null;
-}
-
-export interface FactSummary {
-  uuid: string;
-  source: string;
-  target: string;
-  name: string | null;
-  fact: string | null;
-  status: string | null;
-  scope: string | null;
-  confidence: number | null;
-  created_at: string | null;
-  expired_at: string | null;
-}
-
-export interface CommunitySummary {
-  uuid: string;
-  name: string | null;
-  summary: string | null;
-  member_count: number;
-}
-
-export interface RebuildResult {
-  user_id: string;
-  started_at: string | null;
-  communities_built: unknown;
-  elapsed_seconds: number | null;
-  error: string | null;
-  skipped: boolean;
-  skip_reason: string | null;
-  activity: Record<string, unknown> | null;
-  forced: boolean;
-}
-
-// Backend mounts the router with prefix="/api"; the router itself adds
-// prefix="/admin/memory"; final path is /api/admin/memory/...
-// Matches the convention seen in src/app/api/__generated__/endpoints/admin/admin.ts.
-const BASE = "/api/admin/memory/me";
-
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await customMutator<{ data: T; status: number; headers: Headers }>(
-    path,
-    { method: "GET" },
-  );
-  return res.data;
-}
+type StatusFilter = "any" | "active" | "superseded" | "contradicted";
 
 export function useMemoryVisualizer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<
-    "any" | "active" | "superseded" | "contradicted"
-  >("any");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
   const [force, setForce] = useState(false);
 
-  const overview = useQuery({
-    queryKey: ["admin-memory", "overview"],
-    queryFn: () => fetchJson<MemoryOverview>(`${BASE}/overview`),
+  const overview = useGetV2GetMemoryOverview(USER_ID);
+  const entities = useGetV2ListEntities(USER_ID, { limit: 100 });
+  const facts = useGetV2ListFacts(USER_ID, {
+    limit: 100,
+    status: statusFilter,
   });
+  const communities = useGetV2ListCommunities(USER_ID, { limit: 50 });
 
-  const entities = useQuery({
-    queryKey: ["admin-memory", "entities"],
-    queryFn: () =>
-      fetchJson<{ user_id: string; items: EntitySummary[] }>(
-        `${BASE}/entities?limit=100`,
-      ),
-  });
-
-  const facts = useQuery({
-    queryKey: ["admin-memory", "facts", statusFilter],
-    queryFn: () =>
-      fetchJson<{ user_id: string; items: FactSummary[] }>(
-        `${BASE}/facts?limit=100&status=${statusFilter}`,
-      ),
-  });
-
-  const communities = useQuery({
-    queryKey: ["admin-memory", "communities"],
-    queryFn: () =>
-      fetchJson<{ user_id: string; items: CommunitySummary[] }>(
-        `${BASE}/communities?limit=50`,
-      ),
-  });
-
-  const rebuild = useMutation({
-    mutationFn: async () => {
-      const res = await customMutator<{
-        data: RebuildResult;
-        status: number;
-        headers: Headers;
-      }>(`${BASE}/communities/rebuild?force=${force}`, { method: "POST" });
-      return res.data;
-    },
-    onSuccess: (result) => {
-      if (result.skipped) {
-        toast({
-          title: "Rebuild skipped",
-          description: `${result.skip_reason ?? "no_reason"} — ${
-            result.elapsed_seconds?.toFixed(2) ?? "?"
-          }s`,
+  const rebuild = usePostV2RebuildCommunities({
+    mutation: {
+      onSuccess: (res) => {
+        // Generated success-or-error union — admin gating means errors
+        // surface via react-query's `error`, so on a 200 the data is
+        // guaranteed to be the success payload.
+        const result = res.data as RebuildResponse;
+        if (result.skipped) {
+          toast({
+            title: "Rebuild skipped",
+            description: `${result.skip_reason ?? "no_reason"} — ${
+              result.elapsed_seconds?.toFixed(2) ?? "?"
+            }s`,
+          });
+        } else if (result.error) {
+          toast({
+            title: "Rebuild failed",
+            description: result.error,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Rebuild complete",
+            description: `${
+              result.elapsed_seconds?.toFixed(1) ?? "?"
+            }s — ${JSON.stringify(result.communities_built)}`,
+          });
+        }
+        // Refresh all memory views after a real rebuild — a skip
+        // doesn't change graph state so we could skip these, but
+        // invalidating is cheap and keeps the UI in lockstep.
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
         });
-      } else if (result.error) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListCommunitiesQueryKey(USER_ID),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListEntitiesQueryKey(USER_ID),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListFactsQueryKey(USER_ID),
+        });
+      },
+      onError: (error: Error) => {
         toast({
           title: "Rebuild failed",
-          description: result.error,
+          description: error.message,
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "Rebuild complete",
-          description: `${
-            result.elapsed_seconds?.toFixed(1) ?? "?"
-          }s — ${JSON.stringify(result.communities_built)}`,
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["admin-memory"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Rebuild failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      },
     },
   });
+
+  function triggerRebuild() {
+    rebuild.mutate({ userId: USER_ID, params: { force } });
+  }
+
+  // Narrow the Orval-union response shapes to their success types once
+  // here so the consuming component doesn't keep re-asserting.
+  const overviewData = overview.data?.data as MemoryOverview | undefined;
+  const entitiesData = entities.data?.data as EntityListResponse | undefined;
+  const factsData = facts.data?.data as FactListResponse | undefined;
+  const communitiesData = communities.data?.data as
+    | CommunityListResponse
+    | undefined;
+  const rebuildData = rebuild.data?.data as RebuildResponse | undefined;
 
   return {
     overview,
@@ -154,9 +112,15 @@ export function useMemoryVisualizer() {
     facts,
     communities,
     rebuild,
+    triggerRebuild,
     statusFilter,
     setStatusFilter,
     force,
     setForce,
+    overviewData,
+    entitiesData,
+    factsData,
+    communitiesData,
+    rebuildData,
   };
 }
