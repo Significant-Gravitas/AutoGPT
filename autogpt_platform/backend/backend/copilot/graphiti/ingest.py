@@ -256,8 +256,15 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
     Returns the queue directly so callers don't need to look it up from
     the state dict (which avoids a TOCTOU race if the worker times out
     and cleans up between this call and the put_nowait).
+
+    Also fires the auto-registration of the user's community rebuild
+    schedule the first time we see them in this process (lazy on first
+    memory write — see ``scheduling.ensure_community_rebuild_scheduled``).
+    Fire-and-forget; failures are swallowed inside the helper so
+    ingestion is never affected.
     """
     state = _get_loop_state()
+    is_new_user_for_this_process = False
     async with state.workers_lock:
         if user_id not in state.user_queues:
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -266,7 +273,21 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
                 _ingestion_worker(user_id, q),
                 name=f"graphiti-ingest-{user_id[:12]}",
             )
-        return state.user_queues[user_id]
+            is_new_user_for_this_process = True
+        queue = state.user_queues[user_id]
+
+    if is_new_user_for_this_process:
+        # Fire-and-forget; Redis SETNX inside the helper provides
+        # cross-process / cross-restart idempotency. Done outside the
+        # workers_lock so the scheduler RPC can't deadlock ingestion.
+        from .scheduling import ensure_community_rebuild_scheduled
+
+        asyncio.create_task(
+            ensure_community_rebuild_scheduled(user_id),
+            name=f"graphiti-comm-register-{user_id[:12]}",
+        )
+
+    return queue
 
 
 async def _resolve_user_name(user_id: str) -> str:
