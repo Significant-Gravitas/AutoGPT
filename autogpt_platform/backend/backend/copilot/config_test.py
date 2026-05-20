@@ -339,11 +339,11 @@ class TestSdkModelVendorCompatibility:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
-            thinking_standard_model="claude-sonnet-4-20250514",
+            thinking_standard_model="claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
             aux_api_key="or-aux-key",
         )
-        assert cfg.thinking_standard_model == "claude-sonnet-4-20250514"
+        assert cfg.thinking_standard_model == "claude-sonnet-4-6"
 
     def test_fast_advanced_model_also_validated(self):
         with pytest.raises(Exception, match="fast_advanced_model"):

@@ -18,6 +18,29 @@ vi.mock("react", async (importActual) => {
   };
 });
 
+// NumberFlow renders into a shadow-DOM custom element and schedules animation
+// work outside React. happy-dom can mount it, but the resulting rAF + custom
+// element lifecycle collides with React 18's concurrent renderer during
+// cleanup ("Should not already be working"). Render a plain span with the
+// formatted value — tests query the wrapping aria-label, not NumberFlow's
+// internals.
+vi.mock("@number-flow/react", () => ({
+  default: ({
+    value,
+    format,
+    locales,
+  }: {
+    value: number;
+    format?: Intl.NumberFormatOptions;
+    locales?: Intl.LocalesArgument;
+  }) => {
+    const text = format
+      ? new Intl.NumberFormat(locales ?? "en-US", format).format(value)
+      : String(value);
+    return <span>{text}</span>;
+  },
+}));
+
 beforeAll(() => {
   mockNextjsModules();
   mockSupabaseRequest(); // If you need user's data - please mock supabase actions in your specific test - it sends null user [It's only to avoid cookies() call]

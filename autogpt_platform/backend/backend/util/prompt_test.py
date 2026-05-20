@@ -981,10 +981,10 @@ class TestCompressResultDataclass:
 
 class TestGetContextWindow:
     def test_claude_opus(self) -> None:
-        assert get_context_window("claude-opus-4-20250514") == 200_000
+        assert get_context_window("claude-opus-4-7") == 200_000
 
     def test_claude_sonnet(self) -> None:
-        assert get_context_window("claude-sonnet-4-20250514") == 200_000
+        assert get_context_window("claude-sonnet-4-6") == 200_000
 
     def test_openrouter_prefix(self) -> None:
         assert get_context_window("anthropic/claude-opus-4-6") == 200_000
