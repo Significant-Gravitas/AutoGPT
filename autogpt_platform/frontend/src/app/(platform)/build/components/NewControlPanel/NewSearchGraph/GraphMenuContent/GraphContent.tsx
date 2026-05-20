@@ -1,3 +1,4 @@
+import { formatNodeDisplayTitle } from "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/helpers";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { beautifyString, cn } from "@/lib/utils";
@@ -58,9 +59,7 @@ export function GraphSearchContent({
               filteredNodes.map((node, index) => {
                 if (!node?.data) return null;
 
-                const nodeTitle =
-                  (node.data.metadata?.customized_name as string) ||
-                  beautifyString(node.data.title || "").replace(/ Block$/, "");
+                const nodeTitle = formatNodeDisplayTitle(node.data);
                 const nodeType = beautifyString(node.data.title || "").replace(
                   / Block$/,
                   "",
@@ -70,7 +69,10 @@ export function GraphSearchContent({
                   node.data.description ||
                   "";
 
-                const hasCustomName = !!node.data.metadata?.customized_name;
+                const hasCustomName = !!(
+                  node.data.metadata?.customized_name ||
+                  node.data.hardcodedValues?.agent_name
+                );
 
                 return (
                   <div
