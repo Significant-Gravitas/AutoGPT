@@ -58,9 +58,7 @@ async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
         group_id = derive_group_id(user_id)
     except ValueError as exc:
         result["error"] = f"invalid_user_id: {exc}"
-        logger.warning(
-            "Skipping community rebuild — invalid user_id %s", user_id[:12]
-        )
+        logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])
         return result
 
     try:

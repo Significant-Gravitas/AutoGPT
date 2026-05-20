@@ -627,7 +627,6 @@ async def test_get_my_agents_default_sort_most_recent(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_my_agents_sort_by_name(mocker):
     """sort_by=NAME orders by AgentGraph.name asc then updatedAt desc."""
-    now = datetime.now()
     mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library.return_value.find_many = AsyncMock(return_value=[])
     mock_library.return_value.count = AsyncMock(return_value=0)
@@ -651,7 +650,6 @@ async def test_get_my_agents_sort_by_name(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_my_agents_pagination_window(mocker):
     """skip/take honour the requested page so we hit the right offset."""
-    now = datetime.now()
     mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library.return_value.find_many = AsyncMock(return_value=[])
     mock_library.return_value.count = AsyncMock(return_value=47)
