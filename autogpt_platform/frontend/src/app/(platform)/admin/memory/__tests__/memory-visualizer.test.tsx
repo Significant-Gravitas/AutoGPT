@@ -79,8 +79,8 @@ describe("MemoryVisualizer — admin graph canvas + rebuild", () => {
     // After the response lands the last-rebuild chip shows the elapsed time
     await waitFor(() => {
       expect(
-        screen.queryByText((c) =>
-          c.includes("last rebuild") && c.includes("1.2s"),
+        screen.queryByText(
+          (c) => c.includes("last rebuild") && c.includes("1.2s"),
         ),
       ).toBeDefined();
     });
@@ -107,8 +107,9 @@ describe("MemoryVisualizer — admin graph canvas + rebuild", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText((c) =>
-          c.includes("last rebuild") && c.includes("skipped (no_activity)"),
+        screen.queryByText(
+          (c) =>
+            c.includes("last rebuild") && c.includes("skipped (no_activity)"),
         ),
       ).toBeDefined();
     });
