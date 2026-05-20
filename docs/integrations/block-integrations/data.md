@@ -125,7 +125,9 @@ Decodes a JSON string into a Python object (dictionary, list, etc.).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`. 
+
+If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and yields an explicit `error` output containing the validation failure details, preventing the workflow from crashing. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -143,7 +145,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Response Processing**: Parse JSON responses from external APIs into structured data for further processing in your workflow.
+
+**Configuration Loading**: Decode JSON-formatted configuration strings into accessible dictionary settings for your agents.
+
+**Webhook Payload Parsing**: Extract nested fields from incoming JSON webhook payloads for dynamic decision-making.
 <!-- END MANUAL -->
 
 ---
@@ -155,7 +161,9 @@ Encodes a Python object (dictionary, list, etc.) into a JSON string.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block serializes standard Python structures (like `dict`, `list`, `str`, `int`, `float`, `bool`, and `None`) into a valid JSON string using the project's optimized `orjson`-based encoder. It safely handles nested structures, automatically converting Python equivalents to their JSON counterparts (e.g., `{"a": 1}` remains an object, and `None` is translated to `null`).
+
+Before outputting, the block validates JSON-serializability. If an unsupported type is provided—such as custom objects, `datetime`, or `set`s without custom serialization—it captures the failure and returns an encoding error rather than crashing the workflow. For edge cases like large numeric precision or non-serializable types, it is recommended to pre-convert these values into strings or dictionaries before passing them to the encoder.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -173,7 +181,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Request Formatting**: Convert Python dictionaries into JSON strings for POST/PUT request bodies.
+
+**Data Export**: Serialize structured workflow data into JSON format for saving to files or persistent storage.
+
+**Log Structured Data**: Encode complex data structures into JSON strings for structured logging and debugging output.
 <!-- END MANUAL -->
 
 ---
