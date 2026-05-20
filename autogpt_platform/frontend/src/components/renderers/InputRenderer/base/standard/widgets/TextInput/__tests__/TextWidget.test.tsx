@@ -159,6 +159,18 @@ describe("TextWidget", () => {
       const input = screen.getByRole("spinbutton") as HTMLInputElement;
       expect(input.value).toBe("");
     });
+
+    it("displays empty string when value is Infinity", () => {
+      const props = makeProps({
+        schema: { type: "integer" },
+        value: Infinity,
+      });
+
+      render(<TextWidget {...props} />);
+
+      const input = screen.getByRole("spinbutton") as HTMLInputElement;
+      expect(input.value).toBe("");
+    });
   });
 
   describe("number input", () => {
