@@ -218,6 +218,58 @@ def reasoning_extra_body(model: str, max_thinking_tokens: int) -> dict[str, Any]
     return {"reasoning": {"max_tokens": max_thinking_tokens}}
 
 
+# Claude model families that accept the Anthropic-native ``thinking``
+# field on the OpenAI-compat endpoint.  Older Claude 3 variants
+# (claude-3-haiku, claude-3-opus, claude-3-sonnet, claude-3-5-*) 400 if
+# ``thinking`` is sent, AND inflating ``max_tokens`` past their per-model
+# output cap (4096 on Haiku) also 400s — so we narrow to the families
+# that actually support extended thinking instead of broad-matching
+# ``"claude" in model``.
+_THINKING_CAPABLE_PREFIXES: tuple[str, ...] = (
+    "claude-opus-4",  # 4.0 / 4.1 / 4.5 / 4.7
+    "claude-sonnet-4",  # 4.0 / 4.5 / 4.6
+    "claude-haiku-4",  # 4.5
+    "claude-3-7",  # 3.7 sonnet — only 3.x with thinking
+)
+
+
+def _is_thinking_capable_claude(model: str) -> bool:
+    lowered = model.lower()
+    for prefix in ("anthropic/", "anthropic."):
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix) :]
+            break
+    return lowered.startswith(_THINKING_CAPABLE_PREFIXES)
+
+
+def anthropic_thinking_extra_body(
+    model: str, max_thinking_tokens: int
+) -> dict[str, Any] | None:
+    """Build the Anthropic-native ``extra_body["thinking"]`` fragment.
+
+    Used in direct-Anthropic mode (``CHAT_USE_OPENROUTER=false``) where
+    the OpenRouter ``reasoning`` wrapper isn't recognized — Anthropic's
+    OpenAI-compat endpoint takes the parameter under its native key.
+    Without this fragment, models like Claude 3.7 Sonnet silently lose
+    extended-thinking and degrade to non-reasoning responses.
+
+    Returns ``None`` for non-reasoning routes, for
+    ``max_thinking_tokens <= 0`` (kill switch), or for any Claude slug
+    that isn't in the thinking-capable allowlist (older Claude 3 / 3.5
+    variants 400 on the ``thinking`` field).
+    """
+    if not _is_reasoning_route(model) or max_thinking_tokens <= 0:
+        return None
+    if not _is_thinking_capable_claude(model):
+        return None
+    return {
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": max_thinking_tokens,
+        }
+    }
+
+
 class BaselineReasoningEmitter:
     """Owns the reasoning block lifecycle for one streaming round.
 

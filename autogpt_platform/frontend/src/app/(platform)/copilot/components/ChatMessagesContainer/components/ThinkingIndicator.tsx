@@ -79,7 +79,7 @@ interface Props {
   elapsedSeconds: number;
   /**
    * Backend-emitted status message for the current silent gap (e.g.
-   * "Contacting the model…", "Analyzing result…", "Optimizing conversation
+   * "Reading your message…", "Analyzing result…", "Optimizing conversation
    * context…"). When provided, it replaces the rotating generic phrase so
    * the user sees what's actually happening instead of a placeholder.
    */

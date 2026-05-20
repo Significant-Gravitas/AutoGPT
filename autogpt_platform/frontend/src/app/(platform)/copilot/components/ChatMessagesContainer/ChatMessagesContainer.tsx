@@ -34,6 +34,7 @@ import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { QueueBadge } from "./components/QueueBadge";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
@@ -49,6 +50,10 @@ interface Props {
    *  zero on every fresh mount. */
   activeStreamStartedAt?: string | null;
   sessionID?: string | null;
+  /** Session-level lifecycle: ``"idle" | "queued" | "running"``.
+   *  The Queued badge anchors on the latest user message iff this is
+   *  ``"queued"``. */
+  sessionChatStatus?: string;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -267,6 +272,7 @@ export function ChatMessagesContainer({
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
+  sessionChatStatus,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -561,6 +567,22 @@ export function ChatMessagesContainer({
                 )}
                 {isLastAssistant && showIndicator && indicator}
               </MessageContent>
+              {message.role === "user" &&
+                sessionChatStatus === "queued" &&
+                (() => {
+                  const stats = turnStats?.get(message.id);
+                  if (!stats?.isLatestUserMessage) {
+                    return null;
+                  }
+                  return (
+                    <MessageActions
+                      className="mt-1 items-center justify-end gap-1.5"
+                      data-testid="queue-status-row"
+                    >
+                      <QueueBadge sessionID={sessionID ?? null} />
+                    </MessageActions>
+                  );
+                })()}
               {message.role === "user" && textParts.length > 0 && (
                 <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   {(() => {

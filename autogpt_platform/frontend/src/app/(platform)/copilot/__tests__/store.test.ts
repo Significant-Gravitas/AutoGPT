@@ -122,7 +122,7 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
-  it("openArtifact ignores non-previewable artifacts", () => {
+  it("openArtifact opens even non-previewable artifacts", () => {
     const binary = {
       ...makeArtifact("bin", "artifact.bin"),
       mimeType: "application/octet-stream",
@@ -131,9 +131,8 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().openArtifact(binary);
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
-    expect(s.activeArtifact).toBeNull();
-    expect(s.history).toEqual([]);
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe("bin");
   });
 
   it("resetArtifactPanel clears active artifact and history", () => {
@@ -232,6 +231,7 @@ describe("useCopilotUIStore", () => {
       initialPrompt: null,
       sessionToDelete: null,
       isDrawerOpen: false,
+      isSearchOpen: false,
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
@@ -285,6 +285,20 @@ describe("useCopilotUIStore", () => {
 
       useCopilotUIStore.getState().setDrawerOpen(false);
       expect(useCopilotUIStore.getState().isDrawerOpen).toBe(false);
+    });
+  });
+
+  describe("search", () => {
+    it("starts closed", () => {
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
+    });
+
+    it("opens and closes", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(true);
+
+      useCopilotUIStore.getState().setSearchOpen(false);
+      expect(useCopilotUIStore.getState().isSearchOpen).toBe(false);
     });
   });
 
@@ -413,6 +427,7 @@ describe("useCopilotUIStore", () => {
 
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
+      useCopilotUIStore.getState().setSearchOpen(true);
       useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setNotificationsEnabled(true);
@@ -422,6 +437,7 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().clearCopilotLocalData();
 
       const state = useCopilotUIStore.getState();
+      expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
       expect(state.isNotificationsEnabled).toBe(false);

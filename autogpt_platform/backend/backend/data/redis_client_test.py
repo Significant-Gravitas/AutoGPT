@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.cluster import RedisCluster
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 import backend.data.redis_client as redis_client
 
@@ -42,6 +47,23 @@ def test_connect_builds_redis_cluster() -> None:
     client.ping.assert_called_once()
 
 
+def test_connect_configures_retry_on_transient_errors() -> None:
+    """Sync RedisCluster must carry a Retry that fires on transient errors,
+    so a shard rotation blip retries internally instead of surfacing as 500."""
+    with patch.object(redis_client, "RedisCluster", autospec=True) as mock_cluster:
+        mock_cluster.return_value = MagicMock(spec=RedisCluster)
+        redis_client.connect()
+
+    kwargs = mock_cluster.call_args.kwargs
+    retry = kwargs["retry"]
+    assert isinstance(retry, Retry)
+    assert retry.get_retries() == redis_client.REDIS_RETRY_ATTEMPTS
+    supported = set(retry._supported_errors)
+    assert RedisConnectionError in supported
+    assert RedisTimeoutError in supported
+    assert ClusterDownError in supported
+
+
 def test_address_remap_pins_host_and_preserves_port() -> None:
     """Default remap rewrites announced shard host to the configured seed."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False):
@@ -55,6 +77,32 @@ def test_address_remap_passthrough_when_use_announced_address() -> None:
     """When announced addresses resolve directly, remap leaves them alone."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True):
         assert redis_client._address_remap(("redis-1", 17001)) == ("redis-1", 17001)
+
+
+@pytest.mark.asyncio
+async def test_connect_async_configures_retry() -> None:
+    """Async RedisCluster must carry an ``AsyncRetry`` keyed on the same
+    transient errors as the sync path. ``retry_on_error`` is intentionally
+    omitted — redis-py 6.x ignores it for cluster operations (the cluster
+    retry path uses a hardcoded {Timeout, Connection, ClusterDown} set)."""
+    with patch.object(redis_client, "AsyncRedisCluster", autospec=True) as mock_cluster:
+        fake = MagicMock(spec=AsyncRedisCluster)
+        fake.ping = AsyncMock()
+        mock_cluster.return_value = fake
+        await redis_client.connect_async()
+
+    kwargs = mock_cluster.call_args.kwargs
+    retry = kwargs["retry"]
+    # redis-py's async cluster uses a separate AsyncRetry class — passing the
+    # sync `Retry` would type-fail at construction time.
+    assert isinstance(retry, AsyncRetry)
+    assert retry.get_retries() == redis_client.REDIS_RETRY_ATTEMPTS
+    supported = set(retry._supported_errors)
+    assert RedisConnectionError in supported
+    assert RedisTimeoutError in supported
+    assert ClusterDownError in supported
+    # No `retry_on_error` kwarg — it's ineffective on AsyncRedisCluster.
+    assert "retry_on_error" not in kwargs
 
 
 @pytest.mark.asyncio

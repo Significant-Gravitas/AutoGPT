@@ -78,8 +78,8 @@ describe("createRequestHeaders — basics", () => {
     expect(headers["Authorization"]).toBe("Bearer token-abc");
   });
 
-  it("omits Authorization when token is the 'no-token-found' sentinel", () => {
-    const headers = createRequestHeaders("no-token-found", false);
+  it("omits Authorization when token is null", () => {
+    const headers = createRequestHeaders(null, false);
     expect(headers["Authorization"]).toBeUndefined();
   });
 

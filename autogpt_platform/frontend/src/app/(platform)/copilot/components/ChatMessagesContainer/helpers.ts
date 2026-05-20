@@ -276,6 +276,9 @@ export function filePartToArtifactRef(
   };
 }
 
+const FULL_UUID =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+
 export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
   const seen = new Set<string>();
   const artifacts: ArtifactRef[] = [];
@@ -285,6 +288,11 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
     const parsed = parseWorkspaceURI(fullUri);
 
     if (!parsed || seen.has(parsed.fileID)) continue;
+
+    // During streaming, workspace:// URIs arrive character-by-character.
+    // The regex matches progressively longer partial IDs — reject them so
+    // ArtifactCards don't mount/unmount with garbage IDs.
+    if (!FULL_UUID.test(parsed.fileID)) continue;
 
     // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
     // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
@@ -314,28 +322,32 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
 export function getMessageArtifacts(
   message: UIMessage<unknown, UIDataTypes, UITools>,
 ): ArtifactRef[] {
-  const seen = new Set<string>();
-  const artifacts: ArtifactRef[] = [];
+  const byId = new Map<string, ArtifactRef>();
+
+  // Process file parts first — they carry richer metadata (mediaType from the
+  // server, real filename) compared to workspace:// URIs extracted from text,
+  // which often lack a MIME fragment and fall back to "File {id}".
+  for (const part of message.parts) {
+    if (part.type === "file") {
+      const origin = message.role === "user" ? "user-upload" : "agent";
+      const artifact = filePartToArtifactRef(part, origin);
+      if (artifact) {
+        byId.set(artifact.id, artifact);
+      }
+    }
+  }
 
   for (const part of message.parts) {
     if (part.type === "text") {
       for (const artifact of extractWorkspaceArtifacts(part.text)) {
-        if (seen.has(artifact.id)) continue;
-        seen.add(artifact.id);
-        artifacts.push(artifact);
+        if (!byId.has(artifact.id)) {
+          byId.set(artifact.id, artifact);
+        }
       }
-    }
-
-    if (part.type === "file") {
-      const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin);
-      if (!artifact || seen.has(artifact.id)) continue;
-      seen.add(artifact.id);
-      artifacts.push(artifact);
     }
   }
 
-  return artifacts;
+  return Array.from(byId.values());
 }
 
 /**

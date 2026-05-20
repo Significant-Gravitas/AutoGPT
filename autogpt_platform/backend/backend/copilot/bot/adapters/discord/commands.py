@@ -24,6 +24,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         name="setup",
         description="Link this server to an AutoGPT account for AutoPilot",
     )
+    @app_commands.default_permissions(manage_guild=True)
     async def setup_command(interaction: discord.Interaction) -> None:
         await _handle_setup(interaction, api)
 
@@ -44,6 +45,14 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         await interaction.response.send_message(
             "This command can only be used in a server. "
             "To link your DMs, just send me a direct message.",
+            ephemeral=True,
+        )
+        return
+
+    if not interaction.permissions.manage_guild:
+        await interaction.response.send_message(
+            "Only members with the Manage Server permission can link this "
+            "server to an AutoGPT account.",
             ephemeral=True,
         )
         return
