@@ -70,7 +70,9 @@ class MemoryFact(BaseModel):
 # Entity types — kept narrow at v1. Expand only when extraction quality
 # issues prove that a missing type is the cause (per audit §6.3).
 class Person(BaseModel):
-    role: str | None = Field(default=None, description="Role or title at an organization.")
+    role: str | None = Field(
+        default=None, description="Role or title at an organization."
+    )
     email: str | None = Field(default=None, description="Contact email if mentioned.")
 
 
@@ -80,7 +82,8 @@ class Organization(BaseModel):
 
 class Project(BaseModel):
     status: str | None = Field(
-        default=None, description="Project status — active, completed, paused, cancelled."
+        default=None,
+        description="Project status — active, completed, paused, cancelled.",
     )
 
 
