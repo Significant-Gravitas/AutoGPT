@@ -96,7 +96,7 @@ async def _fetch_recent_episodes(
     limit: int,
 ) -> list[EpisodeRow]:
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             """
             MATCH (n:Episodic {group_id: $g})
             WHERE n.valid_at >= datetime($since)
@@ -120,6 +120,7 @@ async def _fetch_recent_episodes(
             exc_info=True,
         )
         return []
+    rows = result[0] if result else []
     return [
         EpisodeRow(
             uuid=str(r.get("uuid", "")),
@@ -139,7 +140,7 @@ async def _fetch_active_facts(
     limit: int,
 ) -> list[FactRow]:
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             """
             MATCH (src:Entity)-[e:RELATES_TO {group_id: $g}]->(tgt:Entity)
             WHERE (e.status IS NULL OR e.status = 'active')
@@ -166,6 +167,7 @@ async def _fetch_active_facts(
             exc_info=True,
         )
         return []
+    rows = result[0] if result else []
     return [
         FactRow(
             uuid=str(r.get("uuid", "")),

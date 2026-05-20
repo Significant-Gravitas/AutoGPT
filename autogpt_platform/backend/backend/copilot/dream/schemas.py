@@ -10,12 +10,15 @@ Per ``dream/p0-spec.md`` §2 "Schemas (sketch)".
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.copilot.graphiti.memory_model import MemoryKind
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Phase 1 — Consolidation
@@ -86,6 +89,33 @@ class ProposedFinding(BaseModel):
 
 class RecombinationOutput(BaseModel):
     proposals: list[ProposedFinding] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_proposals_with_invalid_memory_kind(cls, data: Any) -> Any:
+        """LLMs occasionally invent kinds outside the MemoryKind enum
+        (observed: "inference", "meta"). Drop those proposals rather
+        than failing the whole phase — the surviving valid proposals
+        still get written as tentative findings."""
+        if not isinstance(data, dict):
+            return data
+        raw_proposals = data.get("proposals")
+        if not isinstance(raw_proposals, list):
+            return data
+        valid_kinds = {k.value for k in MemoryKind}
+        kept: list[Any] = []
+        for p in raw_proposals:
+            if isinstance(p, dict):
+                kind = p.get("memory_kind")
+                if kind is not None and kind not in valid_kinds:
+                    logger.info(
+                        "dream phase_2: dropping proposal with unknown memory_kind=%r",
+                        kind,
+                    )
+                    continue
+            kept.append(p)
+        data["proposals"] = kept
+        return data
 
 
 # ---------------------------------------------------------------------------

@@ -240,7 +240,7 @@ async def list_entities(
 
     driver = _open_driver(group_id)
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             """
             MATCH (n:Entity {group_id: $g})
             RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary
@@ -250,6 +250,7 @@ async def list_entities(
             g=group_id,
             limit=limit,
         )
+        rows = result[0] if result else []
     except Exception:
         rows = []
     finally:
@@ -295,7 +296,7 @@ async def list_facts(
 
     driver = _open_driver(group_id)
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             f"""
             MATCH (src:Entity)-[e:RELATES_TO]->(tgt:Entity)
             WHERE {where}
@@ -314,6 +315,7 @@ async def list_facts(
             """,
             **params,
         )
+        rows = result[0] if result else []
     except Exception:
         rows = []
     finally:
@@ -351,7 +353,7 @@ async def list_communities(
 
     driver = _open_driver(group_id)
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             """
             MATCH (c:Community {group_id: $g})
             OPTIONAL MATCH (c)<-[:HAS_MEMBER]-(m:Entity)
@@ -366,6 +368,7 @@ async def list_communities(
             g=group_id,
             limit=limit,
         )
+        rows = result[0] if result else []
     except Exception:
         rows = []
     finally:
@@ -426,7 +429,7 @@ async def get_graph(
         # Nodes — one query per label so we can carry the label through
         # without an expensive labels() function call per row.
         for label in labels:
-            rows, _, _ = await driver.execute_query(
+            result = await driver.execute_query(
                 f"""
                 MATCH (n:{label} {{group_id: $g}})
                 RETURN n.uuid AS uuid,
@@ -438,6 +441,7 @@ async def get_graph(
                 g=group_id,
                 limit=node_limit,
             )
+            rows = result[0] if result else []
             for r in rows:
                 # Custom entity types (Person, Organization, etc.) appear
                 # alongside the base "Entity" label. Pick the first
@@ -478,7 +482,7 @@ async def get_graph(
             edge_types.append("MENTIONS")
         edge_label_filter = "|".join(edge_types)
 
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             f"""
             MATCH (src)-[e:{edge_label_filter} {{group_id: $g}}]->(tgt)
             RETURN e.uuid AS uuid,
@@ -494,6 +498,7 @@ async def get_graph(
             g=group_id,
             limit=edge_limit,
         )
+        rows = result[0] if result else []
         for r in rows:
             src = str(r.get("source", ""))
             tgt = str(r.get("target", ""))

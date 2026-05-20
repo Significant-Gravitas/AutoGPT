@@ -102,9 +102,7 @@ def test_phase_3_prompt_includes_known_fact_uuids_for_demotion_guard():
     invented uuids in demotions. Regression guard: if this drops out of the
     prompt, the runaway-demotion bug per p0-spec §3 comes back."""
     bundle = _build_bundle()
-    msgs = build_phase_3_prompt(
-        bundle, '{"facts": []}', '{"proposals": []}'
-    )
+    msgs = build_phase_3_prompt(bundle, '{"facts": []}', '{"proposals": []}')
     assert msgs[0]["role"] == "system"
     user_body = msgs[1]["content"]
     # Both known fact uuids surfaced as the demotion allowlist

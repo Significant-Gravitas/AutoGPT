@@ -159,3 +159,83 @@ async def test_no_op_dream_still_writes_summary_session(mocker):
     msg_kwargs = copilot_db.add_chat_message.await_args.kwargs
     assert msg_kwargs["role"] == "assistant"
     assert msg_kwargs["content"] == "Nothing new today."
+
+
+# ---------------------------------------------------------------------------
+# Prisma auto-connect regression (scheduler service starts without an open
+# Prisma connection; apply_operations must open one before any DB writes).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_operations_connects_prisma_if_disconnected(mocker):
+    """If Prisma isn't connected when apply_operations runs (typical in
+    the scheduler service), the helper must call connect() before any
+    Graphiti / chat-session writes. Otherwise we crash with
+    'Client is not connected to the query engine'."""
+    from backend.copilot.dream import apply as apply_mod
+    from backend.copilot.dream.schemas import DreamOperations
+
+    mock_db = mocker.patch.object(
+        apply_mod, "_write_dream_session", new_callable=AsyncMock
+    )
+    mock_db.return_value = "session-123"
+    mocker.patch.object(
+        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0)
+    )
+    mocker.patch.object(
+        apply_mod, "_apply_entity_invalidations", new_callable=AsyncMock, return_value=0
+    )
+
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    platform_db_connect = mocker.patch(
+        "backend.data.db.connect", new_callable=AsyncMock
+    )
+
+    await apply_mod.apply_operations(
+        user_id="u-1",
+        pass_id="p-1",
+        ops=DreamOperations(
+            writes=[],
+            proposals=[],
+            demotions=[],
+            entity_invalidations=[],
+            summary_for_user="empty",
+        ),
+    )
+    platform_db_connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_apply_operations_skips_connect_when_already_connected(mocker):
+    """No-op when Prisma is already connected — avoids racing connect()
+    in services (like rest_api) that opened it during their own
+    lifespan startup."""
+    from backend.copilot.dream import apply as apply_mod
+    from backend.copilot.dream.schemas import DreamOperations
+
+    mocker.patch.object(
+        apply_mod, "_write_dream_session", new_callable=AsyncMock, return_value="s"
+    )
+    mocker.patch.object(
+        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0)
+    )
+    mocker.patch.object(
+        apply_mod, "_apply_entity_invalidations", new_callable=AsyncMock, return_value=0
+    )
+
+    mocker.patch("backend.data.db.is_connected", return_value=True)
+    connect_spy = mocker.patch("backend.data.db.connect", new_callable=AsyncMock)
+
+    await apply_mod.apply_operations(
+        user_id="u-1",
+        pass_id="p-1",
+        ops=DreamOperations(
+            writes=[],
+            proposals=[],
+            demotions=[],
+            entity_invalidations=[],
+            summary_for_user="empty",
+        ),
+    )
+    connect_spy.assert_not_called()

@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from . import orchestrator as orchestrator_mod
 from .fetch import DreamInput, EpisodeRow, FactRow
 from .llm import DreamLLMError
-from . import orchestrator as orchestrator_mod
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -35,16 +35,26 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
         window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         episodes=[
             EpisodeRow(
-                uuid=f"e{i}", name=None, content="hello",
-                source_description=None, valid_at=None, created_at=None,
+                uuid=f"e{i}",
+                name=None,
+                content="hello",
+                source_description=None,
+                valid_at=None,
+                created_at=None,
             )
             for i in range(episodes)
         ],
         facts=[
             FactRow(
-                uuid=f"f{i}", source="A", target="B", name="likes",
-                fact="A likes B", scope="real:global", confidence=0.7,
-                status="active", created_at=None,
+                uuid=f"f{i}",
+                source="A",
+                target="B",
+                name="likes",
+                fact="A likes B",
+                scope="real:global",
+                confidence=0.7,
+                status="active",
+                created_at=None,
             )
             for i in range(facts)
         ],
@@ -79,9 +89,7 @@ async def test_empty_input_returns_skipped(mocker):
         "structured_completion",
         AsyncMock(),
     )
-    apply_mock = mocker.patch.object(
-        orchestrator_mod, "apply_operations", AsyncMock()
-    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
@@ -161,9 +169,7 @@ async def test_phase_1_llm_failure_surfaces_error_and_skips_apply(mocker):
         "structured_completion",
         AsyncMock(side_effect=DreamLLMError("boom")),
     )
-    apply_mock = mocker.patch.object(
-        orchestrator_mod, "apply_operations", AsyncMock()
-    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
@@ -185,18 +191,16 @@ async def test_clamps_oversized_phase_3_output(mocker):
 
     # Build a phase-3 output that blows past every cap.
     huge_phase_3 = DreamOperations(
-        writes=[
-            ConsolidatedFact(content=f"w{i}", confidence=0.5) for i in range(100)
-        ],
+        writes=[ConsolidatedFact(content=f"w{i}", confidence=0.5) for i in range(100)],
         proposals=[
             ProposedFinding(
-                content=f"p{i}", confidence=0.5, rationale="r",
+                content=f"p{i}",
+                confidence=0.5,
+                rationale="r",
             )
             for i in range(100)
         ],
-        demotions=[
-            DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(100)
-        ],
+        demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(100)],
         summary_for_user="ok",
     )
 

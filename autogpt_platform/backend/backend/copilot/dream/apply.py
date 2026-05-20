@@ -236,6 +236,15 @@ async def apply_operations(
     Returns a small stats dict the orchestrator can fold into
     ``DreamPassResult``.
     """
+    # Ensure Prisma is connected — the dream pass runs in the scheduler
+    # service, which doesn't unconditionally open a Postgres connection
+    # at startup. Without this guard apply.py blows up with
+    # "Client is not connected to the query engine".
+    from backend.data import db as platform_db
+
+    if not platform_db.is_connected():
+        await platform_db.connect()
+
     group_id = derive_group_id(user_id)
 
     # Phase A — write a placeholder session up front so the
