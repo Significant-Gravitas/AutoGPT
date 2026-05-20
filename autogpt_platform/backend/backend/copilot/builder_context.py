@@ -78,14 +78,20 @@ _BUILDER_RUN_AGENT_GUIDANCE = (
 # the user for permission — without explicit guidance it would otherwise
 # narrate a phantom Claude-Code-style approval prompt.
 _BUILDER_TOOL_GUIDANCE = (
-    "This builder panel is already bound to the graph shown in "
-    "<builder_context>. Use `edit_agent` against that graph id to add, "
-    "modify, or remove nodes and links — even when the graph is empty "
-    "(version=1, no nodes). Never ask the user to approve a tool: there "
-    "is no permission prompt UI in the builder chat, and the tools "
-    "`create_agent`, `customize_agent`, and `get_agent_building_guide` "
-    "are intentionally unavailable here (the building guide is already "
-    "included in <building_guide> below)."
+    "This builder panel is bound to the graph shown in <builder_context>. "
+    "Use `edit_agent` against that graph id for every modification, "
+    "including populating an empty graph (version=1, no nodes) — "
+    "`edit_agent` accepts the same node/link payload that `create_agent` "
+    "would, so there is no reason to reach for `create_agent` here. "
+    "Typical sequence for a new request: call `find_block` to discover "
+    "the block ids and input schemas you need, then call `edit_agent` "
+    "once with the full set of nodes and links. "
+    "Never ask the user to approve or allow a tool — there is no "
+    "permission prompt UI in the builder chat, so any 'click Allow' "
+    "narration will leave the user stuck. The tools `create_agent`, "
+    "`customize_agent`, and `get_agent_building_guide` are intentionally "
+    "unavailable in builder sessions (the building guide is already "
+    "embedded in <building_guide> below)."
 )
 
 

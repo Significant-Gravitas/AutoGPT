@@ -115,6 +115,9 @@ async def test_system_prompt_suffix_steers_to_edit_agent():
     # The "no permission prompt UI" framing is what stops the model from
     # asking the user to "click Allow" when a tool is unavailable.
     assert "no permission prompt UI" in suffix
+    # Concrete sequence (find_block → edit_agent) gives the model a
+    # template to follow instead of reaching for the blocked tools.
+    assert "find_block" in suffix
 
 
 @pytest.mark.asyncio
