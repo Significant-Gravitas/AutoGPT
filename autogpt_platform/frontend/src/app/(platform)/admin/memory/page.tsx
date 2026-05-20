@@ -8,8 +8,8 @@ function MemoryDashboard() {
         <div>
           <h1 className="text-3xl font-bold">Memory Inspector</h1>
           <p className="text-gray-500">
-            View entities, facts, and communities stored in your Graphiti
-            memory graph. Trigger a community rebuild on demand.
+            View entities, facts, and communities stored in your Graphiti memory
+            graph. Trigger a community rebuild on demand.
           </p>
         </div>
         <MemoryVisualizer />

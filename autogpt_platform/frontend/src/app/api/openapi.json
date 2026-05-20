@@ -868,9 +868,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 200,
+              "maximum": 2000,
               "minimum": 1,
-              "default": 50,
+              "default": 500,
               "title": "Limit"
             }
           }
@@ -979,9 +979,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 500,
+              "maximum": 10000,
               "minimum": 1,
-              "default": 100,
+              "default": 1000,
               "title": "Limit"
             }
           }
@@ -1033,9 +1033,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 500,
+              "maximum": 10000,
               "minimum": 1,
-              "default": 100,
+              "default": 1000,
               "title": "Limit"
             }
           },
@@ -1066,6 +1066,93 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/FactListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/graph": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Graph",
+        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
+        "operationId": "getV2GetGraph",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "node_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Node Limit"
+            }
+          },
+          {
+            "name": "edge_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Edge Limit"
+            }
+          },
+          {
+            "name": "include_episodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Episodes"
+            }
+          },
+          {
+            "name": "include_communities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Communities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphResponse" }
               }
             }
           },
@@ -12531,6 +12618,34 @@
         "title": "Graph",
         "description": "Creatable graph model used in API create/update endpoints."
       },
+      "GraphEdge": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "label": { "type": "string", "title": "Label" },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "label", "source", "target"],
+        "title": "GraphEdge",
+        "description": "An edge in the visualizer graph payload."
+      },
       "GraphExecution": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -13135,6 +13250,53 @@
         ],
         "title": "GraphModelWithoutNodes",
         "description": "GraphModel variant that excludes nodes, links, and sub-graphs from serialization.\n\nUsed in contexts like the store where exposing internal graph structure\nis not desired. Inherits all computed fields from GraphModel but marks\nnodes and links as excluded from JSON output."
+      },
+      "GraphNode": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "label": { "type": "string", "title": "Label" },
+          "type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Type"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "label"],
+        "title": "GraphNode",
+        "description": "A node in the visualizer graph payload.\n\n``label`` is the primary FalkorDB label (Entity / Episodic /\nCommunity); ``type`` (if present) is the more-specific custom\nentity type from ``MemoryFact``-typed extraction (Person /\nOrganization / Project / Concept / Preference / Rule). The frontend\nuses ``type`` for color-coding when present, falls back to ``label``."
+      },
+      "GraphResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "group_id": { "type": "string", "title": "Group Id" },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/GraphNode" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": { "$ref": "#/components/schemas/GraphEdge" },
+            "type": "array",
+            "title": "Edges"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "True when the result was capped by ``node_limit`` / ``edge_limit``. Frontend should surface this so the user knows they're not seeing the full graph.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "group_id", "nodes", "edges"],
+        "title": "GraphResponse"
       },
       "GraphSettings": {
         "properties": {

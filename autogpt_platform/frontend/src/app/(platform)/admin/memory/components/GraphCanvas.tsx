@@ -92,9 +92,7 @@ export function GraphCanvas({
     function classify(n: GraphNode): string {
       return n.type ?? n.label;
     }
-    const visibleNodes = nodes.filter(
-      (n) => !hiddenNodeTypes.has(classify(n)),
-    );
+    const visibleNodes = nodes.filter((n) => !hiddenNodeTypes.has(classify(n)));
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.uuid));
     const visibleEdges = edges
       .filter((e) => !hiddenEdgeTypes.has(e.label))
@@ -116,52 +114,64 @@ export function GraphCanvas({
 
   return (
     <div ref={wrapperRef} className="h-[70vh] w-full">
+      {/* react-force-graph-2d's generic types collapse to a loose
+          `{ [k: string]: any }` shape when reached through Next's dynamic
+          import, so the accessor callbacks are cast to `never` and narrowed
+          inside. Same pattern as `graphData={data as never}`. */}
       <ForceGraph2D
         ref={fgRef as never}
         width={size.width}
         height={size.height}
         graphData={data as never}
         nodeId="uuid"
-        nodeLabel={(n: CanvasNode) =>
-          `${n.type ?? n.label}: ${n.name ?? n.uuid.slice(0, 8)}`
+        nodeLabel={
+          ((n: CanvasNode) =>
+            `${n.type ?? n.label}: ${n.name ?? n.uuid.slice(0, 8)}`) as never
         }
         nodeRelSize={4}
-        nodeVal={(n: CanvasNode) => (n.uuid === selectedUuid ? 6 : 3)}
-        nodeColor={(n: CanvasNode) =>
-          TYPE_COLORS[n.type ?? n.label] ?? TYPE_COLORS.Entity
+        nodeVal={
+          ((n: CanvasNode) => (n.uuid === selectedUuid ? 6 : 3)) as never
         }
-        nodeCanvasObject={(n: CanvasNode, ctx, scale) => {
-          const r = (n.uuid === selectedUuid ? 6 : 3) * 0.8;
-          const color =
-            TYPE_COLORS[n.type ?? n.label] ?? TYPE_COLORS.Entity;
-          ctx.beginPath();
-          ctx.arc(n.x ?? 0, n.y ?? 0, r, 0, 2 * Math.PI);
-          ctx.fillStyle = color;
-          ctx.fill();
-          if (n.uuid === selectedUuid) {
-            ctx.lineWidth = 1.5 / scale;
-            ctx.strokeStyle = "#111827";
-            ctx.stroke();
-          }
-          // Render node name only when zoomed in enough for readability.
-          if (scale > 1.6 && n.name) {
-            const label = n.name.length > 28 ? `${n.name.slice(0, 27)}…` : n.name;
-            ctx.font = `${10 / scale}px sans-serif`;
-            ctx.fillStyle = "#111827";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
-            ctx.fillText(label, n.x ?? 0, (n.y ?? 0) + r + 1.5 / scale);
-          }
-        }}
-        linkColor={(l: CanvasLink) => EDGE_COLORS[l.label] ?? "#94a3b8"}
-        linkWidth={(l: CanvasLink) =>
-          l.source === selectedUuid || l.target === selectedUuid
-            ? 2
-            : 0.6
+        nodeColor={
+          ((n: CanvasNode) =>
+            TYPE_COLORS[n.type ?? n.label] ?? TYPE_COLORS.Entity) as never
+        }
+        nodeCanvasObject={
+          ((n: CanvasNode, ctx: CanvasRenderingContext2D, scale: number) => {
+            const r = (n.uuid === selectedUuid ? 6 : 3) * 0.8;
+            const color = TYPE_COLORS[n.type ?? n.label] ?? TYPE_COLORS.Entity;
+            ctx.beginPath();
+            ctx.arc(n.x ?? 0, n.y ?? 0, r, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            if (n.uuid === selectedUuid) {
+              ctx.lineWidth = 1.5 / scale;
+              ctx.strokeStyle = "#111827";
+              ctx.stroke();
+            }
+            if (scale > 1.6 && n.name) {
+              const label =
+                n.name.length > 28 ? `${n.name.slice(0, 27)}…` : n.name;
+              ctx.font = `${10 / scale}px sans-serif`;
+              ctx.fillStyle = "#111827";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              ctx.fillText(label, n.x ?? 0, (n.y ?? 0) + r + 1.5 / scale);
+            }
+          }) as never
+        }
+        linkColor={
+          ((l: CanvasLink) => EDGE_COLORS[l.label] ?? "#94a3b8") as never
+        }
+        linkWidth={
+          ((l: CanvasLink) =>
+            l.source === selectedUuid || l.target === selectedUuid
+              ? 2
+              : 0.6) as never
         }
         linkDirectionalArrowLength={3}
         linkDirectionalArrowRelPos={0.95}
-        onNodeClick={(n: CanvasNode) => onSelect(n.uuid)}
+        onNodeClick={((n: CanvasNode) => onSelect(n.uuid)) as never}
         onBackgroundClick={() => onSelect(null)}
         cooldownTicks={120}
         d3VelocityDecay={0.3}

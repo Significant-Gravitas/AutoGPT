@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 
@@ -54,7 +55,8 @@ export function MemoryVisualizer() {
     [selectedUuid, nodes],
   );
   const selectedNeighbors = useMemo(() => {
-    if (!selectedUuid) return [] as { edge: (typeof edges)[number]; otherUuid: string }[];
+    if (!selectedUuid)
+      return [] as { edge: (typeof edges)[number]; otherUuid: string }[];
     const result: { edge: (typeof edges)[number]; otherUuid: string }[] = [];
     for (const e of edges) {
       if (e.source === selectedUuid)
@@ -191,7 +193,7 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
 interface ControlBarProps {
   onRebuild: () => void;
   rebuildPending: boolean;
-  rebuildResult: { skipped: boolean; skip_reason?: string | null; elapsed_seconds?: number | null } | undefined;
+  rebuildResult: RebuildResponse | undefined;
   force: boolean;
   setForce: (v: boolean) => void;
   includeEpisodes: boolean;
@@ -367,6 +369,7 @@ interface DetailPanelProps {
   } | null;
   neighbors: {
     edge: {
+      uuid: string;
       label: string;
       source: string;
       target: string;
@@ -417,7 +420,7 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
             </h4>
             <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-xs">
               {neighbors.map(({ edge, otherUuid }) => (
-                <li key={edge.label + otherUuid} className="border-l-2 border-gray-200 pl-2">
+                <li key={edge.uuid} className="border-l-2 border-gray-200 pl-2">
                   <div className="text-gray-700">
                     <span className="font-medium">{edge.label}</span>
                     {edge.name && (
