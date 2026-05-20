@@ -264,5 +264,118 @@ CREATE TABLE local_executor_scheduled_tasks (
 | `api/routes/local_executor_ws.py` | New file | MVP |
 | `copilot/context.py` | Dynamic allowed dirs | MVP |
 | `copilot/tools/e2b_file_tools.py` | Computer use handlers | Computer Use milestone |
+| `copilot/tools/e2b_file_tools.py` | Cross-OS adapter glue (see below) | MVP |
 | Redis key namespace | New keys | MVP |
 | Postgres schema | New tables | Background Tasks milestone |
+
+---
+
+## 10. Cross-OS Adapter Notes
+
+The platform code today is implicitly POSIX-flavored. To make `LocalPCShim`
+work on macOS/Linux/Windows/WSL2 the platform side needs the following
+adjustments. Each item is a discrete work-list entry — none of them require
+rewriting the executor abstraction.
+
+### 10.1 Drop hard-coded `E2B_WORKDIR`
+
+**Current**: `copilot/context.py` declares `E2B_WORKDIR = "/home/user"` and
+several call sites assume that's the sandbox's working directory.
+
+**Change**: when the active executor is a `LocalPCShim`, read the workdir
+from `shim.allowed_root` (advertised in HELLO). The platform must NOT bake
+in any POSIX path. The `get_allowed_dirs(sandbox)` helper from section 6
+is the entry point — extend it to also return the workdir, or add
+`get_workdir(sandbox)` next to it.
+
+Callsites to audit: anywhere `E2B_WORKDIR` appears today, anywhere a tool
+description string mentions `/home/user`, and anywhere a default `cwd` is
+passed to `sandbox.commands.run(...)`.
+
+### 10.2 Replace `readlink -f` with portable canonicalize
+
+**Current**: at least one site (file resolution for symlink targets) calls
+`sandbox.commands.run("readlink -f <path>")`. `readlink -f` does not exist
+on macOS (BSD `readlink` has no `-f`) and does not exist on Windows.
+
+**Change**: instead of running a shell command, call `FILE_STAT` with
+`follow_symlinks: true` and read the resolved `path` field from the
+response. The shim handles per-OS canonicalize correctly. Same applies to
+any other shelled-out POSIX command name: `stat`, `ls`, `find`, `rm`, `mv`,
+`mkdir -p`, `test -e` — all become FILE_STAT/FILE_LIST/FILE_DELETE/
+FILE_MOVE protocol calls.
+
+### 10.3 Allow shell selector pass-through
+
+**Current**: at least one site builds the command with
+`bash -c {shlex.quote(...)}`. This will fail on Windows (no bash by default)
+and silently use POSIX `/bin/sh` on some non-bash macOS configurations.
+
+**Change**: in the `LocalPCShim.commands.run` adapter, accept an optional
+`shell=` kwarg (default `"auto"`) and forward it to the wire as the `shell`
+field of EXECUTE_COMMAND. Even better: where the platform doesn't need a
+shell (no pipes, no globs, no env-var expansion), pass `argv=[...]` to the
+adapter and skip shell selection entirely. The adapter forwards `argv` as
+the wire `argv` field.
+
+Callsites to audit: anywhere the platform constructs a command string with
+`bash -c`, `sh -c`, or `&&`/`||`/`|` operators. Convert to `argv` form
+when possible.
+
+### 10.4 Accept E2B-style kwargs on `LocalPCShim`
+
+The `LocalPCShim` class duck-types `e2b.AsyncSandbox`. E2B's kwargs differ
+from the shim's wire field names; the adapter must translate transparently
+so platform code is identical whether the executor is E2B or LocalPC.
+
+| Adapter method | E2B kwarg | Wire field | Translation in adapter |
+|---|---|---|---|
+| `commands.run(...)` | `envs=` | `env` | `payload["env"] = kwargs.pop("envs", None) or kwargs.get("env")` |
+| `commands.run(...)` | `timeout=` (seconds) | `timeout_seconds` | rename in adapter |
+| `commands.run(...)` | `cwd=` | `cwd` | passthrough |
+| `files.read(path, format=...)` | `format="text"` / `"bytes"` | `encoding` + `format` | see PROTOCOL.md mapping table |
+| `files.write(path, data, ...)` | `data` (bytes or str) | `content` + `encoding` | base64-encode bytes; pass strings as utf-8 |
+
+**Do not** change platform code to use the wire names. The whole point of
+duck-typing E2B is that platform code remains unchanged. The translation
+happens inside `LocalPCShim.commands` and `LocalPCShim.files`.
+
+### 10.5 Advertise platform / arch to the UI
+
+The HELLO message contains `platform` and `arch`. Surface these in any UI
+or log line that mentions "connected to local PC" — users will need to know
+"shim running on Windows" so they can interpret error messages. Suggested
+display strings:
+
+| Wire value | Display |
+|---|---|
+| `darwin` | "macOS" |
+| `linux` | "Linux" |
+| `windows` | "Windows" |
+| `wsl2` | "Windows (WSL2)" |
+
+### 10.6 Don't assume case-sensitive paths
+
+Platform code that compares paths (e.g., "is this file inside the workdir")
+must NOT use `==` or `.startswith` directly. On macOS and Windows the same
+file has multiple valid string forms (`/Users/Alice/Foo` vs
+`/users/alice/foo`). Either:
+
+1. Send the comparison to the shim via `FILE_STAT` and use the resolved
+   path the shim returns, OR
+2. If comparing in platform code, lowercase both sides BUT acknowledge this
+   is best-effort and is no substitute for a shim-side check.
+
+### 10.7 Strip CRLF assumptions
+
+Platform code that processes file content read from the shim must tolerate
+both `\n` and `\r\n` line endings. The shim returns bytes as-is from disk
+(see PROTOCOL.md). If the platform needs canonical `\n`-only content, it
+must normalize at the platform side, not assume the shim has done it.
+
+### 10.8 OAuth callback port robustness
+
+The fixed port `41899` may be in use by another app. The OAuth flow doc
+(OAUTH_FLOW.md) specifies a scan range of `41899–41910`. The platform's
+OAuth client registration must accept ALL ports in that range as valid
+`redirect_uri`s for `client_id=autogpt-local-executor`, not just `41899`.

@@ -25,12 +25,19 @@ The shim is a first-party OAuth application registered in the AutoGPT platform:
 ```
 Client ID:     autogpt-local-executor (well-known, public)
 Client Secret: none (PKCE replaces it for public clients)
-Redirect URI:  http://localhost:41899/callback
+Redirect URI:  http://localhost:{port}/callback   where {port} ∈ 41899..41910
 Scopes:        local_executor:connect local_executor:shell local_executor:files
                (optional) local_executor:computer_use local_executor:hardware
 ```
 
-Port 41899 is reserved for the shim's local callback server.
+Ports 41899–41910 (12 ports) are reserved for the shim's local callback
+server. The shim binds the first free port in that range, so a busy 41899
+(held by another app, a stale shim process, or a developer's local dev
+server) doesn't break first-time auth. The platform's OAuth client
+registration MUST accept all ports in this range as valid `redirect_uri`
+values for `client_id=autogpt-local-executor` — registering only 41899
+would defeat the fallback. Listener is always bound to `127.0.0.1`; never
+to `0.0.0.0`. See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#oauth-callback-port).
 
 ---
 

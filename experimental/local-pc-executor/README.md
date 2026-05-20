@@ -1,62 +1,56 @@
 # ⚠️ EXPERIMENTAL — AutoGPT Local PC Executor
 
-> **DANGER: This is untested, experimental, pre-alpha software.**  
-> Do not run on any machine you care about. Do not use in production.  
-> Running this gives the AutoGPT platform the ability to execute arbitrary commands on your computer.  
-> You have been warned.
+> **DANGER: Untested, pre-alpha, experimental software.**
+> Do not run on any machine you care about. Do not run as root.
+> This *maybe* gives the AutoGPT hosted platform the ability to execute commands on your computer.
 
 ---
 
 ## What Is This?
 
-A local shim daemon that lets the **AutoGPT hosted platform** use your actual machine as
-its code execution backend — instead of an E2B cloud sandbox.
+A daemon you install on your local machine that connects it to the [AutoGPT hosted platform](https://platform.autogpt.net) as an execution backend — instead of an E2B cloud sandbox.
 
-When the shim is running and connected, AutoGPT can:
-- Read and write files on your filesystem
+Once connected, AutoGPT can:
+- Read and write files on your filesystem (jailed to a configurable root)
 - Execute shell commands
-- (Optionally) take screenshots and control your mouse/keyboard via Claude's computer use API
-- (Optionally) access local hardware (serial ports, USB devices, GPIO)
-- (Optionally) route inference to a local LLM (Ollama, llama.cpp)
+- *(Optional)* Take screenshots and control mouse/keyboard via Claude's computer use API
+- *(Optional)* Access local hardware (serial, USB, GPIO)
+- *(Optional)* Route LLM inference to a local Ollama instance
 
-## Why Would You Want This?
+## Platform Binding Layer
 
-- Access files that can't be uploaded to the cloud
-- Use licensed software installed on your machine
-- Control physical hardware (3D printers, Arduinos, lab instruments)
-- Run tasks that need your local environment (VPN, internal network, specific OS setup)
-- Privacy: keep sensitive data on-device while still using AutoGPT's orchestration
+The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, config hooks) lives in the AutoGPT monorepo:
+👉 https://github.com/Significant-Gravitas/AutoGPT/pull/13050
 
 ## Current Status
 
 | Component | Status |
 |-----------|--------|
-| Spec / Protocol | 🟡 Draft |
-| Shim daemon (Python) | 🔴 Skeleton only |
-| Platform hooks | 🔴 Not implemented |
-| OAuth integration | 🔴 Spec only |
+| Protocol spec | 🟡 Draft |
+| Shim daemon | 🔴 Skeleton / stubs only |
+| OAuth flow | 🔴 Spec only |
 | Computer use | 🔴 Spec only |
 | Hardware access | 🔴 Spec only |
 
-## Quick Start (Future — Not Working Yet)
+## Future Install (not working yet)
 
 ```bash
 pip install autogpt-local-executor
-autogpt-shim auth          # Opens browser → AutoGPT OAuth flow
-autogpt-shim start         # Starts daemon, connects to platform
+autogpt-shim auth    # OAuth flow → AutoGPT platform
+autogpt-shim start   # Connect and run
 ```
 
-## Architecture
+## Docs
 
-See [`docs/VISION.md`](docs/VISION.md) for the full dream.  
-See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the WebSocket message protocol.  
-See [`docs/PLATFORM_HOOKS.md`](docs/PLATFORM_HOOKS.md) for where this plugs into AutoGPT.  
-See [`docs/OAUTH_FLOW.md`](docs/OAUTH_FLOW.md) for the auth design.  
-See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model and mitigations.
+| Doc | Description |
+|-----|-------------|
+| [VISION.md](docs/VISION.md) | Full dream + platform changes needed per capability |
+| [PROTOCOL.md](docs/PROTOCOL.md) | WebSocket message protocol spec |
+| [OAUTH_FLOW.md](docs/OAUTH_FLOW.md) | Auth design (uses AutoGPT's existing OAuth provider) |
+| [SECURITY.md](docs/SECURITY.md) | Threat model and defense layers |
+| [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | Platform-side insertion points |
+| [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) | Per-OS support matrix and path-jail strategy |
 
 ## Contributing
 
-This lives in `experimental/local-pc-executor/`. PRs welcome, but understand this is
-exploratory — the interface will break repeatedly.
-
-Open issues with `[local-executor]` prefix.
+Issues with `[local-executor]` prefix. PRs welcome — understand this interface will break repeatedly.

@@ -36,8 +36,10 @@ issue shell commands to a shim that only has `local_executor:files` scope.
 
 ### Layer 2: Allowed Root Path Jail
 All file operations are jailed to `allowed_root` (configured by user at shim startup).
-The shim resolves symlinks and checks `path.resolve().startswith(allowed_root)` before
-every read/write. Violation → `PATH_OUTSIDE_ALLOWED_ROOT` error, no execution.
+The full algorithm is in [CROSS_PLATFORM.md → Path Jail Strategy](CROSS_PLATFORM.md#path-jail-strategy);
+a naive `path.startswith(allowed_root)` check is **not enough** and the shim
+must use the prescribed algorithm. Violation → `PATH_OUTSIDE_ALLOWED_ROOT`
+error, no execution.
 
 Recommended: create a dedicated workspace directory, not your home dir.
 ```
@@ -45,6 +47,21 @@ Recommended: create a dedicated workspace directory, not your home dir.
 ~/                      ← bad, don't do this
 /                       ← extremely bad
 ```
+
+#### Per-OS path attacks the shim must catch
+
+| OS | Attack vector | Defense |
+|---|---|---|
+| Windows | NTFS Alternate Data Streams: `workspace\file.txt:hidden` writes to a hidden stream that doesn't show in Explorer | Reject any path containing `:` after the drive component (`C:`). |
+| Windows | Reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) — case-insensitive, with or without extension. `workspace\CON.txt` opens the console device. | Reject by case-folded basename match against the reserved list, BEFORE checking extension. |
+| Windows | `\\?\` path-length prefix bypass — `\\?\C:\workspace\..\..\etc` lets a long path skip normalization in some APIs | Always pass through `os.path.realpath` which resolves these. |
+| Windows | NTFS junctions and reparse points pointing outside the jail | `os.path.realpath` (Python 3.8+) follows them; compare resolved paths. |
+| macOS | APFS firmlinks (`/Users`, `/Applications`, `/Library`) — invisible to most APIs but `realpath` reveals them | Always `realpath` both the requested path and `allowed_root`. |
+| macOS | Case-insensitive default FS: `/Workspace/foo` references the same inode as `/workspace/foo` — naive string `startswith` lets `/workspaceother/foo` through if `allowed_root = /workspace` | Always compare with `os.path.normcase` after `realpath`, AND with a `os.sep` boundary appended. |
+| Linux | Bind mounts pointing outside the jail | `realpath` does NOT resolve bind mounts. Document that the user is responsible for not bind-mounting external dirs into `allowed_root`. |
+| Linux | Case-folded ext4 dirs (kernel 5.2+) inside a case-sensitive FS | The jail probe must check case-sensitivity *per directory*, not globally. |
+| All | Path-jail TOCTOU: attacker swaps a file for a symlink between check and open | Use `O_NOFOLLOW` on Linux, `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, and on macOS open by file descriptor after the realpath check. |
+| All | Long-path attacks (`a/../a/../a/...` repeated) to exhaust normalization | Cap path length at OS-appropriate max (4096 Linux, 1024 macOS, 32767 Windows with `\\?\`) before normalization. |
 
 ### Layer 3: Command Auditing
 Every `EXECUTE_COMMAND` is logged to `~/.autogpt/shim-audit.log` with timestamp,
@@ -97,6 +114,28 @@ Requires Linux + root for namespace setup, or a bubblewrap wrapper.
 - `autogpt-shim revoke` — revokes all tokens and disconnects immediately
 - On platform side: `POST /auth/revoke` invalidates all shim tokens for a user
 - Tokens scoped to `local_executor:*` only — cannot be used to call other AutoGPT APIs
+
+### Per-OS Keychain Availability
+
+| OS | Backend | Reliability | Fallback when unavailable |
+|---|---|---|---|
+| macOS | Keychain Services (via `keyring`) | Always available | n/a |
+| Windows | Credential Manager (via `keyring`) | Always available | n/a |
+| Linux (GUI session, GNOME / KDE) | Secret Service (`gnome-keyring`, `kwallet`) via D-Bus | Usually available | Encrypted-file fallback (below) |
+| Linux (headless server, no D-Bus, no `pass`) | none | **`keyring` fails** | Encrypted-file fallback (below) |
+| WSL2 (most distros) | none by default | **`keyring` fails** | Encrypted-file fallback (below) |
+
+**Encrypted-file fallback**: when the OS keychain is unavailable, the shim
+stores tokens in `$XDG_STATE_HOME/autogpt-local-executor/tokens.enc`
+(Linux/WSL2) using AES-256-GCM. The key is derived (Argon2id) from a
+passphrase that must be supplied via the `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
+env var on every shim start. **No passphrase = no shim start.** This is
+deliberately friction-heavy so users on capable systems install a real
+keyring instead.
+
+Security note: an attacker with read access to the file AND the env var
+can decrypt the tokens. This is no worse than dotfile-based storage but no
+better either — the keychain backends remain the recommended path.
 
 ---
 
