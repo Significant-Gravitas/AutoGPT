@@ -8,7 +8,9 @@ import {
   useGetV2GetGraph,
   useGetV2GetMemoryOverview,
   usePostV2RebuildCommunities,
+  usePostV2TriggerDreamPass,
 } from "@/app/api/__generated__/endpoints/admin/admin";
+import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPassResponse";
 import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
@@ -74,8 +76,59 @@ export function useMemoryVisualizer() {
     },
   });
 
+  const dream = usePostV2TriggerDreamPass({
+    mutation: {
+      onSuccess: (res) => {
+        const result = res.data as DreamPassResponse;
+        if (result.skipped) {
+          toast({
+            title: "Dream pass skipped",
+            description: `${result.skip_reason ?? "no_reason"} — ${
+              result.elapsed_seconds?.toFixed(2) ?? "?"
+            }s`,
+          });
+        } else if (result.error) {
+          toast({
+            title: "Dream pass failed",
+            description: result.error,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Dream pass complete",
+            description:
+              `${result.elapsed_seconds?.toFixed(1) ?? "?"}s — ` +
+              `writes=${result.consolidated_count}, ` +
+              `proposals=${result.proposal_count}, ` +
+              `demotions=${result.demotion_count}` +
+              (result.summary_for_user ? `\n\n${result.summary_for_user}` : ""),
+          });
+        }
+        // A dream writes new memories + may demote edges — both views
+        // change. Force a refresh of the overview and the graph.
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        });
+      },
+      onError: (error: Error) => {
+        toast({
+          title: "Dream pass failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   function triggerRebuild() {
     rebuild.mutate({ userId: USER_ID, params: { force } });
+  }
+
+  function triggerDream() {
+    dream.mutate({ userId: USER_ID });
   }
 
   // Narrow the Orval-union response shapes to their success types once
@@ -84,12 +137,15 @@ export function useMemoryVisualizer() {
   const overviewData = overview.data?.data as MemoryOverview | undefined;
   const graphData = graph.data?.data as GraphResponse | undefined;
   const rebuildData = rebuild.data?.data as RebuildResponse | undefined;
+  const dreamData = dream.data?.data as DreamPassResponse | undefined;
 
   return {
     overview,
     graph,
     rebuild,
+    dream,
     triggerRebuild,
+    triggerDream,
     force,
     setForce,
     includeEpisodes,
@@ -99,5 +155,6 @@ export function useMemoryVisualizer() {
     overviewData,
     graphData,
     rebuildData,
+    dreamData,
   };
 }

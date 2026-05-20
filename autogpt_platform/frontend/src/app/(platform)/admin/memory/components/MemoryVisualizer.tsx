@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPassResponse";
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
@@ -14,6 +15,9 @@ export function MemoryVisualizer() {
     rebuild,
     triggerRebuild,
     rebuildData,
+    dream,
+    triggerDream,
+    dreamData,
     force,
     setForce,
     includeEpisodes,
@@ -79,6 +83,9 @@ export function MemoryVisualizer() {
         onRebuild={triggerRebuild}
         rebuildPending={rebuild.isPending}
         rebuildResult={rebuildData}
+        onDream={triggerDream}
+        dreamPending={dream.isPending}
+        dreamResult={dreamData}
         force={force}
         setForce={setForce}
         includeEpisodes={includeEpisodes}
@@ -194,6 +201,9 @@ interface ControlBarProps {
   onRebuild: () => void;
   rebuildPending: boolean;
   rebuildResult: RebuildResponse | undefined;
+  onDream: () => void;
+  dreamPending: boolean;
+  dreamResult: DreamPassResponse | undefined;
   force: boolean;
   setForce: (v: boolean) => void;
   includeEpisodes: boolean;
@@ -209,6 +219,9 @@ function ControlBar({
   onRebuild,
   rebuildPending,
   rebuildResult,
+  onDream,
+  dreamPending,
+  dreamResult,
   force,
   setForce,
   includeEpisodes,
@@ -237,6 +250,16 @@ function ControlBar({
         />
         Force
       </label>
+      <span className="mx-2 h-5 border-l border-gray-200" />
+      <button
+        type="button"
+        onClick={onDream}
+        disabled={dreamPending}
+        className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+        title="Run a three-phase dream pass synchronously (consolidate → recombine → sanitize)."
+      >
+        {dreamPending ? "Dreaming…" : "Run dream pass"}
+      </button>
       <span className="mx-2 h-5 border-l border-gray-200" />
       <label className="flex items-center gap-2 text-gray-700">
         <input
@@ -267,6 +290,19 @@ function ControlBar({
             {rebuildResult.skipped
               ? `skipped (${rebuildResult.skip_reason})`
               : `${rebuildResult.elapsed_seconds?.toFixed(1)}s`}
+          </span>
+        )}
+        {dreamResult && (
+          <span className="ml-2">
+            last dream:{" "}
+            {dreamResult.skipped
+              ? `skipped (${dreamResult.skip_reason})`
+              : dreamResult.error
+                ? "errored"
+                : `${dreamResult.elapsed_seconds?.toFixed(1)}s` +
+                  ` (w=${dreamResult.consolidated_count}` +
+                  ` p=${dreamResult.proposal_count}` +
+                  ` d=${dreamResult.demotion_count})`}
           </span>
         )}
       </span>

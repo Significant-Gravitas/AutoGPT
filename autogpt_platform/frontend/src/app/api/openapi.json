@@ -955,6 +955,49 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/dream": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Trigger Dream Pass",
+        "description": "Trigger an on-demand dream pass for the user.\n\nForwards to ``Scheduler.execute_dream_pass_now``. Runs the full\nthree-phase pipeline (consolidate → recombine → sanitize) synchronously\nagainst the OpenRouter-fronted baseline path, applies operations\nto Graphiti + Postgres, and writes a dream-kind ChatSession.",
+        "operationId": "postV2TriggerDreamPass",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DreamPassResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/entities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -11247,6 +11290,11 @@
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "normal" },
+          "dream_pass_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Pass Id"
           }
         },
         "type": "object",
@@ -11628,7 +11676,7 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false }
+            "default": { "dry_run": false, "kind": "normal" }
           }
         },
         "type": "object",
@@ -11954,6 +12002,75 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "DreamPassResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "pass_id": { "type": "string", "title": "Pass Id" },
+          "started_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "execution_path": {
+            "type": "string",
+            "title": "Execution Path",
+            "default": "sync_baseline"
+          },
+          "consolidated_count": {
+            "type": "integer",
+            "title": "Consolidated Count",
+            "default": 0
+          },
+          "proposal_count": {
+            "type": "integer",
+            "title": "Proposal Count",
+            "default": 0
+          },
+          "demotion_count": {
+            "type": "integer",
+            "title": "Demotion Count",
+            "default": 0
+          },
+          "entity_invalidation_count": {
+            "type": "integer",
+            "title": "Entity Invalidation Count",
+            "default": 0
+          },
+          "summary_for_user": {
+            "type": "string",
+            "title": "Summary For User",
+            "default": ""
+          },
+          "dream_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Session Id"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "pass_id"],
+        "title": "DreamPassResponse",
+        "description": "Mirror of ``DreamPassResult`` from the dream orchestrator.\n\nKept duplicated rather than importing the source model so the\nadmin route stays loosely-coupled to the dream module's internals."
       },
       "EntityListResponse": {
         "properties": {
@@ -16612,7 +16729,7 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false }
+            "default": { "dry_run": false, "kind": "normal" }
           }
         },
         "type": "object",
