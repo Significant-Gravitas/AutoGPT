@@ -871,7 +871,29 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a weekly community rebuild for one user."""
+        """Register a weekly community rebuild for one user.
+
+        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` per-user. When the
+        flag is off the call is a no-op — returns a structured "skipped"
+        dict so callers see the same shape as a successful registration.
+        """
+        from backend.copilot.graphiti.config import is_communities_enabled_for_user
+
+        if not run_async(is_communities_enabled_for_user(user_id)):
+            logger.info(
+                "Community rebuild registration skipped for user %s — "
+                "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "graphiti_communities_disabled",
+            }
+
         if not user_timezone:
             user_timezone = "UTC"
 

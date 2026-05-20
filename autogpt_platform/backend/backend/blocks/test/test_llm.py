@@ -84,7 +84,7 @@ class TestLLMStatsTracking:
 
             response = await llm.llm_call(
                 credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
+                llm_model=llm.LlmModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
             )
