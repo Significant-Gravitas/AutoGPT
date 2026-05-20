@@ -1,14 +1,126 @@
 """Tests for the per-user community rebuild helper."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from .communities import (
+    MAX_LABEL_PROP_ITERATIONS,
     _activity_since_last_rebuild,
+    _bounded_label_propagation,
+    _patch_upstream_label_propagation,
     _summarize_communities,
     rebuild_communities_for_user,
 )
+
+
+def _neighbor(uuid: str, edge_count: int = 1):
+    """Mimic graphiti's Neighbor namedtuple — only attributes touched by LP."""
+    return SimpleNamespace(node_uuid=uuid, edge_count=edge_count)
+
+
+class TestBoundedLabelPropagation:
+    """Regression coverage for the synchronous-LP infinite-loop fix.
+
+    Upstream graphiti_core.label_propagation has an unbounded ``while True:``
+    that can oscillate forever on bipartite-ish subgraphs (synchronous LP
+    flips labels in lock-step). Our bounded variant caps iterations and
+    returns the current state if the cap is hit. These tests pin the
+    contract.
+    """
+
+    def test_empty_projection_returns_empty(self) -> None:
+        assert _bounded_label_propagation({}) == []
+
+    def test_single_node_no_neighbors(self) -> None:
+        # One node, no neighbors → one cluster of size 1
+        result = _bounded_label_propagation({"a": []})
+        assert result == [["a"]]
+
+    def test_connected_pair_converges(self) -> None:
+        # Two nodes pointing at each other — should converge fast
+        projection = {
+            "a": [_neighbor("b")],
+            "b": [_neighbor("a")],
+        }
+        result = _bounded_label_propagation(projection)
+        # Expect single cluster — both nodes ended up in the same community
+        assert len(result) == 1
+        assert sorted(result[0]) == ["a", "b"]
+
+    def test_two_disjoint_pairs_form_two_clusters(self) -> None:
+        # No edges between {a,b} and {c,d} — should form 2 clusters
+        projection = {
+            "a": [_neighbor("b")],
+            "b": [_neighbor("a")],
+            "c": [_neighbor("d")],
+            "d": [_neighbor("c")],
+        }
+        clusters = sorted([sorted(c) for c in _bounded_label_propagation(projection)])
+        assert clusters == [["a", "b"], ["c", "d"]]
+
+    def test_oscillating_projection_returns_at_cap_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Construct a fixture that genuinely oscillates under synchronous
+        LP, and assert we exit at the cap with a warning rather than
+        spinning forever.
+
+        Two-node swap with edge_count >= 2: each iteration each node's
+        plurality neighbor-community wins (count > 1 → bypasses the
+        tie-break), so they swap labels every step. After step 1
+        a=label(b_orig), b=label(a_orig). After step 2 they swap back.
+        Forever — without the bound.
+        """
+        import logging
+
+        projection = {
+            "a": [_neighbor("b", edge_count=2)],
+            "b": [_neighbor("a", edge_count=2)],
+        }
+
+        caplog.set_level(logging.WARNING, logger="backend.copilot.graphiti.communities")
+        result = _bounded_label_propagation(projection)
+
+        # Must return — not hang — and must produce a valid clustering
+        # (every node assigned somewhere, no node lost).
+        assigned = sorted(node for cluster in result for node in cluster)
+        assert assigned == ["a", "b"]
+
+        # The warning text must mention the cap. Check caplog.text (the
+        # full captured log) because record collection can vary with
+        # pytest-logging configuration; the formatted text is reliable.
+        assert f"{MAX_LABEL_PROP_ITERATIONS}-iteration cap" in caplog.text, (
+            f"expected cap-warning in caplog.text; got: {caplog.text!r}"
+        )
+
+
+class TestUpstreamMonkeyPatch:
+    """The monkey-patch hooks into graphiti_core's module-level
+    ``label_propagation`` symbol so ``get_community_clusters`` picks it
+    up automatically. Pin the contract so a future refactor can't break
+    it silently.
+    """
+
+    def test_upstream_reference_replaced(self) -> None:
+        from graphiti_core.utils.maintenance import community_operations
+
+        # After importing our communities module, upstream's symbol
+        # must point at our bounded variant.
+        assert community_operations.label_propagation is _bounded_label_propagation
+
+    def test_patch_is_idempotent(self) -> None:
+        from graphiti_core.utils.maintenance import community_operations
+
+        # Idempotency sentinel on the function itself
+        assert getattr(community_operations.label_propagation, "_autogpt_bounded", False) is True
+
+        # Calling the patch again must be a no-op (must not raise, must
+        # not replace with a fresh function lacking the sentinel)
+        _patch_upstream_label_propagation()
+        _patch_upstream_label_propagation()
+        assert community_operations.label_propagation is _bounded_label_propagation
 
 
 class TestSummarizeCommunities:
@@ -44,9 +156,18 @@ class TestRebuildCommunitiesForUser:
         client.graph_driver = driver
         client.build_communities = AsyncMock(return_value=[{"name": "c1"}])
 
-        with patch(
-            "backend.copilot.graphiti.communities.get_graphiti_client",
-            new=AsyncMock(return_value=client),
+        # Bypass the activity gate (covered separately in
+        # TestActivitySinceLastRebuild) so this test stays focused on the
+        # DETACH DELETE → build_communities → summarize flow.
+        with (
+            patch(
+                "backend.copilot.graphiti.communities.get_graphiti_client",
+                new=AsyncMock(return_value=client),
+            ),
+            patch(
+                "backend.copilot.graphiti.communities._activity_since_last_rebuild",
+                new=AsyncMock(return_value=(True, "first_rebuild", {})),
+            ),
         ):
             result = await rebuild_communities_for_user(
                 "883cc9da-fe37-4863-839b-acba022bf3ef"
