@@ -139,11 +139,6 @@ class AgentOutputBlock(Block):
             default=False,
             advanced=True,
         )
-        secret: bool = SchemaField(
-            description="Whether the output should be treated as a secret.",
-            default=False,
-            advanced=True,
-        )
 
         def generate_schema(self):
             return self.get_field_schema("value")

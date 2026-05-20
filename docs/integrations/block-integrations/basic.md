@@ -414,7 +414,6 @@ It accepts an input value along with a name, description, and optional format st
 | format | The format string to be used to format the recorded_value. Use Jinja2 syntax. | str | No |
 | escape_html | Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text. | bool | No |
 | advanced | Whether to treat the output as advanced. | bool | No |
-| secret | Whether the output should be treated as a secret. | bool | No |
 
 ### Outputs
 

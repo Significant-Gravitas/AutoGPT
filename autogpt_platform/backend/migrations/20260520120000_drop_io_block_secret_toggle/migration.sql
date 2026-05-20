@@ -1,10 +1,11 @@
 -- One-off data cleanup: drop the obsolete `secret` and `value` keys from
--- AgentInput* nodes that had the (now removed) secret toggle enabled.
--- Affected users were emailed in advance with a heads-up to migrate
--- any sensitive defaults out of node configs.
+-- AgentInput* / AgentOutput nodes that had the (now removed) secret
+-- toggle enabled. Affected users were notified in advance with a
+-- heads-up to migrate any sensitive defaults out of node configs.
 --
--- The AgentInput block IDs below cover the base block plus every
--- subclass declared in `backend/blocks/io.py`.
+-- The block IDs below cover the AgentInput base block plus every
+-- subclass declared in `backend/blocks/io.py`, and the AgentOutput
+-- block.
 
 UPDATE "AgentNode"
 SET "constantInput" = "constantInput" - 'secret' - 'value'
@@ -19,6 +20,7 @@ WHERE "agentBlockId" IN (
   '655d6fdf-a334-421c-b733-520549c07cd1', -- AgentDropdownInputBlock
   'cbf36ab5-df4a-43b6-8a7f-f7ed8652116e', -- AgentToggleInputBlock
   '5603b273-f41e-4020-af7d-fbc9c6a8d928', -- AgentTableInputBlock
-  'd3b32f15-6fd7-40e3-be52-e083f51b19a2'  -- AgentGoogleDriveFileInputBlock
+  'd3b32f15-6fd7-40e3-be52-e083f51b19a2', -- AgentGoogleDriveFileInputBlock
+  '363ae599-353e-4804-937e-b2ee3cef3da4'  -- AgentOutputBlock
 )
 AND "constantInput"->'secret' = 'true'::jsonb;
