@@ -38,18 +38,22 @@ def main(**kwargs):
 
     from backend.api.rest_api import AgentServer
     from backend.api.ws_api import WebsocketServer
+    from backend.copilot.bot.app import CoPilotChatBridge
     from backend.copilot.executor.manager import CoPilotExecutor
     from backend.data.db_manager import DatabaseManager
     from backend.executor import ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
+    from backend.platform_linking.manager import PlatformLinkingManager
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
         Scheduler(),
         NotificationManager(),
+        PlatformLinkingManager(),
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
+        CoPilotChatBridge(),
         CoPilotExecutor(),
         **kwargs,
     )

@@ -9,8 +9,8 @@ persistence, and the ``CompactionTracker`` state machine.
 """
 
 import asyncio
-import logging
 import uuid
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,8 +24,6 @@ from ..response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -71,6 +69,14 @@ def _end_events(tool_call_id: str, message: str) -> list[StreamBaseResponse]:
 
 def _new_tool_call_id() -> str:
     return f"compaction-{uuid.uuid4().hex[:12]}"
+
+
+def _summarize_sources(sources: list[str]) -> str:
+    counts = Counter(sources)
+    parts: list[str] = []
+    for source, count in counts.items():
+        parts.append(f"{source}:{count}" if count > 1 else source)
+    return ",".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -185,26 +191,54 @@ class CompactionTracker:
     """
 
     def __init__(self) -> None:
-        self._compact_start = asyncio.Event()
         self._start_emitted = False
-        self._done = False
         self._tool_call_id = ""
-        self._transcript_path: str = ""
+        self._active_transcript_path: str = ""
+        self._pending_transcript_paths: deque[str] = deque()
+        self._attempted_sources: list[str] = []
+        self._completed_sources: list[str] = []
+
+    @property
+    def attempt_count(self) -> int:
+        return len(self._attempted_sources)
+
+    @property
+    def attempt_sources(self) -> tuple[str, ...]:
+        return tuple(self._attempted_sources)
+
+    @property
+    def completed_count(self) -> int:
+        return len(self._completed_sources)
+
+    @property
+    def completed_sources(self) -> tuple[str, ...]:
+        return tuple(self._completed_sources)
+
+    def get_observability_metadata(self) -> dict[str, Any]:
+        if not self._attempted_sources and not self._completed_sources:
+            return {}
+
+        metadata: dict[str, Any] = {
+            "compaction_attempt_count": self.attempt_count,
+            "compaction_attempt_sources": _summarize_sources(self._attempted_sources),
+        }
+        if self._completed_sources:
+            metadata["compaction_count"] = self.completed_count
+            metadata["compaction_sources"] = _summarize_sources(self._completed_sources)
+        return metadata
+
+    def get_log_summary(self) -> dict[str, Any]:
+        return {
+            "attempt_count": self.attempt_count,
+            "attempt_sources": _summarize_sources(self._attempted_sources),
+            "completed_count": self.completed_count,
+            "completed_sources": _summarize_sources(self._completed_sources),
+        }
 
     def on_compact(self, transcript_path: str = "") -> None:
-        """Callback for the PreCompact hook. Stores transcript_path."""
-        if (
-            self._transcript_path
-            and transcript_path
-            and self._transcript_path != transcript_path
-        ):
-            logger.warning(
-                "[Compaction] Overwriting transcript_path %s -> %s",
-                self._transcript_path,
-                transcript_path,
-            )
-        self._transcript_path = transcript_path
-        self._compact_start.set()
+        """Callback for the PreCompact hook. Queues an SDK compaction attempt."""
+        self._attempted_sources.append("sdk_internal")
+        self._pending_transcript_paths.append(transcript_path)
 
     # ------------------------------------------------------------------
     # Pre-query compaction
@@ -212,7 +246,8 @@ class CompactionTracker:
 
     def emit_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
         """Emit + persist a self-contained compaction tool call."""
-        self._done = True
+        self._attempted_sources.append("pre_query")
+        self._completed_sources.append("pre_query")
         return emit_compaction(session)
 
     # ------------------------------------------------------------------
@@ -221,18 +256,17 @@ class CompactionTracker:
 
     def reset_for_query(self) -> None:
         """Reset per-query state before a new SDK query."""
-        self._compact_start.clear()
-        self._done = False
         self._start_emitted = False
         self._tool_call_id = ""
-        self._transcript_path = ""
+        self._active_transcript_path = ""
+        self._pending_transcript_paths.clear()
 
     def emit_start_if_ready(self) -> list[StreamBaseResponse]:
         """If the PreCompact hook fired, emit start events (spinning tool)."""
-        if self._compact_start.is_set() and not self._start_emitted and not self._done:
-            self._compact_start.clear()
+        if self._pending_transcript_paths and not self._start_emitted:
             self._start_emitted = True
             self._tool_call_id = _new_tool_call_id()
+            self._active_transcript_path = self._pending_transcript_paths.popleft()
             return _start_events(self._tool_call_id)
         return []
 
@@ -246,27 +280,30 @@ class CompactionTracker:
         # Yield so pending hook tasks can set compact_start
         await asyncio.sleep(0)
 
-        if self._done:
-            return CompactionResult()
-        if not self._start_emitted and not self._compact_start.is_set():
+        if not self._start_emitted and not self._pending_transcript_paths:
             return CompactionResult()
 
         if self._start_emitted:
             # Close the open spinner
             done_events = _end_events(self._tool_call_id, COMPACTION_DONE_MSG)
             persist_id = self._tool_call_id
+            transcript_path = self._active_transcript_path
         else:
             # PreCompact fired but start never emitted — self-contained
             persist_id = _new_tool_call_id()
             done_events = compaction_events(
                 COMPACTION_DONE_MSG, tool_call_id=persist_id
             )
+            transcript_path = (
+                self._pending_transcript_paths.popleft()
+                if self._pending_transcript_paths
+                else ""
+            )
 
-        transcript_path = self._transcript_path
-        self._compact_start.clear()
         self._start_emitted = False
-        self._done = True
-        self._transcript_path = ""
+        self._tool_call_id = ""
+        self._active_transcript_path = ""
+        self._completed_sources.append("sdk_internal")
         _persist(session, persist_id, COMPACTION_DONE_MSG)
         return CompactionResult(
             events=done_events, just_ended=True, transcript_path=transcript_path

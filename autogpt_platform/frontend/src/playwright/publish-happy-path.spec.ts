@@ -33,26 +33,27 @@ test("publish happy path: user can submit, track, and delete an agent submission
     await marketplacePage.submitAgentForReview(publishableAgentName);
 
   await page.getByTestId("view-progress-button").click();
-  await expect(page).toHaveURL(/\/profile\/dashboard/);
-  await expect(page.getByText("Agent dashboard")).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/creator-dashboard/);
+  await expect(
+    page.getByRole("heading", { name: "Creator dashboard", level: 1 }),
+  ).toBeVisible();
 
   const submissionRow =
     await marketplacePage.waitForDashboardSubmission(agentTitle);
   await expect(
-    submissionRow.getByTestId("agent-status"),
+    submissionRow,
     `submission "${agentTitle}" should appear in the dashboard review-pending state`,
-  ).toContainText(/awaiting review/i);
-  await submissionRow.getByTestId("agent-table-row-actions").click();
-  await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+  ).toContainText(/in review/i);
+  await submissionRow.getByTestId("submission-actions").click();
+  await expect(
+    page.getByRole("menuitem", { name: "Edit details" }),
+  ).toBeVisible();
 
-  // Delete the submission via the actions menu. The dashboard does not show
-  // a confirmation dialog — clicking Delete fires the API directly. We then
-  // assert the row is gone, proving the backend actually removed it (not
-  // just the menu item disappeared).
   await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete submission" }).click();
 
   await expect(
-    page.getByTestId("agent-table-row").filter({ hasText: agentTitle }),
+    page.getByTestId("submission-row").filter({ hasText: agentTitle }),
     `submission row "${agentTitle}" must be removed from the dashboard after delete`,
   ).toHaveCount(0, { timeout: 15000 });
 

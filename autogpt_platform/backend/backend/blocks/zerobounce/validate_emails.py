@@ -21,7 +21,7 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
 )
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class Response(BaseModel):
@@ -140,20 +140,22 @@ class ValidateEmailsBlock(Block):
                 )
             ],
             test_mock={
-                "validate_email": lambda email, ip_address, credentials: ZBValidateResponse(
-                    data={
-                        "address": email,
-                        "status": ZBValidateStatus.valid,
-                        "sub_status": ZBValidateSubStatus.allowed,
-                        "account": "test",
-                        "domain": "test.com",
-                        "did_you_mean": None,
-                        "domain_age_days": None,
-                        "free_email": False,
-                        "mx_found": False,
-                        "mx_record": None,
-                        "smtp_provider": None,
-                    }
+                "validate_email": lambda email, ip_address, credentials: (
+                    ZBValidateResponse(
+                        data={
+                            "address": email,
+                            "status": ZBValidateStatus.valid,
+                            "sub_status": ZBValidateSubStatus.allowed,
+                            "account": "test",
+                            "domain": "test.com",
+                            "did_you_mean": None,
+                            "domain_age_days": None,
+                            "free_email": False,
+                            "mx_found": False,
+                            "mx_record": None,
+                            "smtp_provider": None,
+                        }
+                    )
                 )
             },
         )
@@ -174,6 +176,13 @@ class ValidateEmailsBlock(Block):
     ) -> BlockOutput:
         response: ZBValidateResponse = self.validate_email(
             input_data.email, input_data.ip_address, credentials
+        )
+
+        # ZeroBounce bills $0.008 per validated email on the paid tier.
+        # Routed through COST_USD so platform cost telemetry captures real
+        # USD spend; the resolver still bills 2 credits per call.
+        self.merge_stats(
+            NodeExecutionStats(provider_cost=0.008, provider_cost_type="cost_usd")
         )
 
         response_model = Response(**response.__dict__)

@@ -1,11 +1,34 @@
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function isWorkspaceDownloadRequest(path: string[]): boolean {
-  return (
-    path.length == 5 &&
+  // api/workspace/files/{id}/download
+  if (
+    path.length === 5 &&
     path[0] === "api" &&
     path[1] === "workspace" &&
     path[2] === "files" &&
-    path[path.length - 1] === "download"
-  );
+    UUID_RE.test(path[3]) &&
+    path[4] === "download"
+  ) {
+    return true;
+  }
+
+  // api/public/shared/{token}/files/{id}/download
+  if (
+    path.length === 7 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    UUID_RE.test(path[3]) &&
+    path[4] === "files" &&
+    UUID_RE.test(path[5]) &&
+    path[6] === "download"
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function isRedirectStatus(status: number): boolean {

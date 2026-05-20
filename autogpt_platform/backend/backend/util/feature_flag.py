@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import os
+import uuid
 from enum import Enum
 from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
@@ -41,11 +42,29 @@ class Flag(str, Enum):
     CHAT = "chat"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
-    COPILOT_DAILY_TOKEN_LIMIT = "copilot-daily-token-limit"
-    COPILOT_WEEKLY_TOKEN_LIMIT = "copilot-weekly-token-limit"
-    STRIPE_PRICE_PRO = "stripe-price-id-pro"
-    STRIPE_PRICE_BUSINESS = "stripe-price-id-business"
+    COPILOT_COST_LIMITS = "copilot-cost-limits"
+    COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
+    COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
+    COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
+    # Stripe Product ID for top-up Checkout sessions. When unset (default),
+    # top_up_intent uses inline product_data (creates ephemeral Stripe products
+    # per Checkout). When set to a real Stripe Product ID, line items reference
+    # that Product so dashboard reporting groups all top-ups under one entity;
+    # the per-Checkout amount stays dynamic via price_data.unit_amount.
+    STRIPE_PRODUCT_ID_TOPUP = "stripe-product-id-topup"
+
+    # Copilot model routing — JSON-valued, returns the per-(mode, tier)
+    # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
+    # ``"moonshotai/kimi-k2.6"``).  Shape:
+    # ``{"fast": {"standard": "...", "advanced": "..."},
+    #   "thinking": {"standard": "...", "advanced": "..."}}``.
+    # Missing mode, missing tier-within-mode, non-string value, non-dict
+    # payload, or LD failure all fall back to the corresponding
+    # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
+    # targeted.
+    COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
 
 def is_configured() -> bool:
@@ -102,6 +121,12 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     builder = Context.builder(user_id).kind("user").anonymous(True)
 
     try:
+        uuid.UUID(user_id)
+    except ValueError:
+        # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
+        return builder.build()
+
+    try:
         from backend.util.clients import get_supabase
 
         # If we have user data, update context
@@ -116,6 +141,10 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
+            if user.created_at:
+                # ISO-8601 string — LD supports RFC3339 date targeting on
+                # this attribute (e.g. cohort users by signup window).
+                builder.set("created_at", user.created_at.isoformat())
 
     except Exception as e:
         logger.warning(f"Failed to fetch user context for {user_id}: {e}")

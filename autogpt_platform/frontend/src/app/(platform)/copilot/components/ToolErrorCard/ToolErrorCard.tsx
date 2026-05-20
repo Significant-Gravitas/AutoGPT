@@ -35,20 +35,22 @@ export function ToolErrorCard({
           <Text variant="body-medium" className="text-red-900">
             {message || fallbackMessage}
           </Text>
-          {error && (
+          {(error || details) && (
             <details className="text-xs text-red-700">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
-                {error}
-              </pre>
+              {error && (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                  {error}
+                </pre>
+              )}
+              {details && (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                  {details}
+                </pre>
+              )}
             </details>
-          )}
-          {details && (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
-              {details}
-            </pre>
           )}
         </div>
       </div>

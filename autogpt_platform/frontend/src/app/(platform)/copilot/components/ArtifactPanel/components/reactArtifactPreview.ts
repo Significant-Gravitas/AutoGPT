@@ -19,7 +19,10 @@
  * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
 
-import { TAILWIND_CDN_URL } from "@/lib/iframe-sandbox-csp";
+import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+  TAILWIND_CDN_URL,
+} from "@/lib/iframe-sandbox-csp";
 
 export { transpileReactArtifactSource } from "./transpileReactArtifact";
 
@@ -95,6 +98,7 @@ export function buildReactArtifactSrcDoc(
       }
     </style>
     <script src="${TAILWIND_CDN_URL}"></script>
+    ${FRAGMENT_LINK_INTERCEPTOR_SCRIPT}
     <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script><!-- pragma: allowlist secret -->
     <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script><!-- pragma: allowlist secret -->
   </head>
