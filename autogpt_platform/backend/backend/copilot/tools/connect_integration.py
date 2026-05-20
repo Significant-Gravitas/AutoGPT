@@ -6,7 +6,7 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
-from typing import Any, TypedDict
+from typing import Any, cast
 
 from backend.copilot.model import ChatSession
 from backend.copilot.providers import SUPPORTED_PROVIDERS, get_provider_auth_types
@@ -18,32 +18,11 @@ from backend.copilot.tools.models import (
     ToolResponseBase,
     UserReadiness,
 )
+from backend.copilot.tools.utils import build_missing_credentials_from_field_info
+from backend.data.model import CredentialsFieldInfo, CredentialsType
+from backend.integrations.providers import ProviderName
 
 from .base import BaseTool
-
-
-class _CredentialEntry(TypedDict):
-    """Shape of each entry inside SetupRequirementsResponse.user_readiness.missing_credentials.
-
-    Partially overlaps with :class:`~backend.data.model.CredentialsMetaInput`
-    (``id``, ``title``, ``provider``) but carries extra UI-facing fields
-    (``types``, ``scopes``) that the frontend ``SetupRequirementsCard`` needs
-    to render the inline credential setup card.
-
-    Display name is derived from :data:`SUPPORTED_PROVIDERS` at build time
-    rather than stored here — eliminates the old ``provider_name`` field.
-    ``types`` replaces the old singular ``type`` field; the frontend already
-    prefers ``types`` and only fell back to ``type`` for compatibility.
-    """
-
-    id: str
-    title: str
-    # Slug used as the credential key (e.g. "github").
-    provider: str
-    # All supported credential types the user can choose from (e.g. ["api_key", "oauth2"]).
-    # The first element is the default/primary type.
-    types: list[str]
-    scopes: list[str]
 
 
 class ConnectIntegrationTool(BaseTool):
@@ -166,14 +145,30 @@ class ConnectIntegrationTool(BaseTool):
         if reason:
             message_parts.append(reason)
 
-        credential_entry: _CredentialEntry = {
-            "id": field_key,
-            "title": f"{display_name} Credentials",
-            "provider": provider,
-            "types": supported_types,
-            "scopes": merged_scopes,
-        }
-        missing_credentials: dict[str, _CredentialEntry] = {field_key: credential_entry}
+        # Route the single-provider entry through the shared serializer
+        # used by run_block / run_agent so the payload shape (sorted scopes,
+        # type+types fields, optional discriminator) stays in lockstep across
+        # all three credential-surfacing tools. The casts narrow the runtime
+        # strings — already validated upstream — to the typed enum/literal
+        # the generic constructor expects.
+        provider_enum = ProviderName(provider)
+        typed_types: frozenset[CredentialsType] = cast(
+            frozenset[CredentialsType], frozenset(supported_types)
+        )
+        field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset([provider_enum]),
+            credentials_types=typed_types,
+            credentials_scopes=(frozenset(merged_scopes) if merged_scopes else None),
+        )
+        missing_credentials: dict[str, Any] = build_missing_credentials_from_field_info(
+            credential_fields={field_key: field_info},
+            matched_keys=set(),
+        )
+        # Preserve the registry's display name (e.g. "GitHub Credentials")
+        # rather than the title-cased slug ("Github Credentials") that the
+        # generic serializer produces from `field_key`.
+        missing_credentials[field_key]["title"] = f"{display_name} Credentials"
+        missing_credentials[field_key]["provider_name"] = display_name
 
         return SetupRequirementsResponse(
             type=ResponseType.SETUP_REQUIREMENTS,

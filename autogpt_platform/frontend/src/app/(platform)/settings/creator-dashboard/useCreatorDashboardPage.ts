@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { keepPreviousData } from "@tanstack/react-query";
 
 import {
   getGetV2ListMySubmissionsQueryKey,
   useDeleteV2DeleteStoreSubmission,
+  useGetV2GetUserProfile,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
+import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
@@ -60,6 +62,14 @@ export function useCreatorDashboardPage() {
 
   const [page, setPage] = useState(1);
 
+  const { data: profile } = useGetV2GetUserProfile({
+    query: {
+      select: (x) => x.data as ProfileDetails,
+      enabled: !!user,
+    },
+  });
+  const creatorUsername = profile?.username;
+
   const {
     data: response,
     isSuccess,
@@ -77,9 +87,23 @@ export function useCreatorDashboardPage() {
     },
   );
 
+  const [isSortingTransition, setIsSortingTransition] = useState(false);
+  const sortingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (sortingTimerRef.current) clearTimeout(sortingTimerRef.current);
+    };
+  }, []);
+
   function setFilterState(next: FilterState) {
     setFilterStateRaw(next);
     setPage(1);
+    setIsSortingTransition(true);
+    if (sortingTimerRef.current) clearTimeout(sortingTimerRef.current);
+    sortingTimerRef.current = setTimeout(() => {
+      setIsSortingTransition(false);
+    }, 400);
   }
 
   function onPageChange(nextPage: number) {
@@ -163,7 +187,7 @@ export function useCreatorDashboardPage() {
     visibleSubmissions,
     pagination: response?.pagination,
     onPageChange,
-    isFetching,
+    isFetching: isFetching || isSortingTransition,
     stats,
     filterState,
     setFilterState,
@@ -181,5 +205,6 @@ export function useCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   };
 }

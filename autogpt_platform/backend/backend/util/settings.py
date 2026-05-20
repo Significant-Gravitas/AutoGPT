@@ -124,6 +124,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    enable_subscription_credit_grant: bool = Field(
+        default=False,
+        description=(
+            "If True, every paid Stripe subscription invoice grants AutoGPT"
+            " credits equal to invoice.amount_paid. OFF by default — there is"
+            " no product mandate for '$ paid == $ in credits', and prorated"
+            " upgrade invoices each produce a separate grant (distinct"
+            " invoice ids slip past the per-invoice idempotency key). Flip on"
+            " per environment intentionally if/when product wants that UX."
+        ),
+    )
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
