@@ -12,7 +12,7 @@ from backend.api.features.store import db as store_db
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.data import db as db_module
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
@@ -42,11 +42,28 @@ async def _ensure_db_connected() -> None:
         await db_module.connect()
 
 
-def make_session(user_id: str):
+def make_session(user_id: str, *, guide_read: bool = True):
+    """Build a fake ChatSession for tool tests.
+
+    ``guide_read=True`` (default) pre-populates the session with a
+    ``get_agent_building_guide`` tool-call history entry so the agent-
+    generation gate (see ``helpers.require_guide_read``) lets through any
+    subsequent ``create_agent`` / ``edit_agent`` / ``validate_agent_graph``
+    / ``fix_agent_graph`` call.
+    """
+    messages: list[ChatMessage] = []
+    if guide_read:
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
+            )
+        )
     return ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
-        messages=[],
+        messages=messages,
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),

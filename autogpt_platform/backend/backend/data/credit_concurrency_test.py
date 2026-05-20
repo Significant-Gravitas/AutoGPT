@@ -20,7 +20,6 @@ from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
-# Test with both UserCredit and BetaUserCredit if needed
 credit_system = UserCredit()
 
 

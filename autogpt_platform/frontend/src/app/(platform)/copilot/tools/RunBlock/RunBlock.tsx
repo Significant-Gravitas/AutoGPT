@@ -7,7 +7,7 @@ import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard
 import { BlockInputCard } from "./components/BlockInputCard/BlockInputCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
-import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
+import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import {
   getAccordionMeta,
   getAnimationText,

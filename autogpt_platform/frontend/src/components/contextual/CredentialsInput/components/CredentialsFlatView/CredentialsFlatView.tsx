@@ -15,6 +15,7 @@ type Credential = {
   username?: string;
   type: string;
   provider: string;
+  is_managed?: boolean;
 };
 
 type Props = {
@@ -51,6 +52,13 @@ export function CredentialsFlatView({
   onDeleteCredential,
 }: Props) {
   const hasCredentials = credentials.length > 0;
+  // Ayrshare has no user-settable credential — provisioning runs on the
+  // server after the user clicks the explicit Connect Social Media
+  // Accounts button rendered alongside the block.  Exposing "Add API
+  // key" / "Use a new API key" here just confuses users into entering a
+  // random key.
+  const isManagedOnlyProvider = provider === "ayrshare";
+  const showAddAction = !readOnly && !isManagedOnlyProvider;
 
   return (
     <>
@@ -102,7 +110,7 @@ export function CredentialsFlatView({
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
                   onDelete={
-                    onDeleteCredential
+                    onDeleteCredential && !credential.is_managed
                       ? () =>
                           onDeleteCredential({
                             id: credential.id,
@@ -115,7 +123,7 @@ export function CredentialsFlatView({
               ))}
             </div>
           )}
-          {!readOnly && (
+          {showAddAction && (
             <Button
               variant="secondary"
               size="small"
@@ -127,17 +135,23 @@ export function CredentialsFlatView({
             </Button>
           )}
         </>
+      ) : showAddAction ? (
+        <Button
+          variant="primary"
+          size="small"
+          onClick={onAddCredential}
+          className="w-fit"
+          type="button"
+        >
+          {actionButtonText}
+        </Button>
       ) : (
+        isManagedOnlyProvider &&
         !readOnly && (
-          <Button
-            variant="primary"
-            size="small"
-            onClick={onAddCredential}
-            className="w-fit"
-            type="button"
-          >
-            {actionButtonText}
-          </Button>
+          <Text variant="body" className="text-zinc-500">
+            Click <strong>Connect Social Media Accounts</strong> above to set up
+            your managed {displayName} profile.
+          </Text>
         )
       )}
     </>

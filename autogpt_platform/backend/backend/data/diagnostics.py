@@ -1,0 +1,1215 @@
+"""
+Diagnostics data layer for admin operations.
+Provides functions to query and manage system diagnostics including executions and agents.
+"""
+
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+from croniter import croniter
+from prisma.enums import AgentExecutionStatus
+from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
+from pydantic import BaseModel
+
+from backend.data.db import query_raw_with_schema
+from backend.data.execution import get_graph_executions, get_graph_executions_count
+from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.utils import (
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_QUEUE_NAME,
+    CancelExecutionEvent,
+    create_execution_queue_config,
+)
+from backend.util.clients import get_async_execution_queue, get_scheduler_client
+
+logger = logging.getLogger(__name__)
+
+
+# System job IDs (exclude from user schedule counts)
+SYSTEM_JOB_IDS = {
+    "cleanup_expired_files",
+    "report_late_executions",
+    "report_block_error_rates",
+    "process_existing_batches",
+    "process_weekly_summary",
+}
+
+
+class RunningExecutionDetail(BaseModel):
+    """Details about a running execution for admin view"""
+
+    execution_id: str
+    graph_id: str
+    graph_name: str  # Will default to "Unknown" if not available
+    graph_version: int
+    user_id: str
+    user_email: Optional[str]
+    status: str
+    created_at: datetime  # When execution was created
+    started_at: Optional[datetime]  # When execution started running
+    queue_status: Optional[str] = None
+
+
+class FailedExecutionDetail(BaseModel):
+    """Details about a failed execution for admin view"""
+
+    execution_id: str
+    graph_id: str
+    graph_name: str
+    graph_version: int
+    user_id: str
+    user_email: Optional[str]
+    status: str
+    created_at: datetime
+    started_at: Optional[datetime]
+    failed_at: Optional[datetime]
+    error_message: Optional[str]
+
+
+class ExecutionDiagnosticsSummary(BaseModel):
+    """Summary of execution diagnostics"""
+
+    # Current execution state
+    running_count: int
+    queued_db_count: int
+    rabbitmq_queue_depth: int
+    cancel_queue_depth: int
+
+    # Orphaned execution detection (old DB records not in executor)
+    orphaned_running: int  # Running but created >24h ago (likely orphaned)
+    orphaned_queued: int  # Queued but created >24h ago (likely orphaned)
+
+    # Failure metrics
+    failed_count_1h: int
+    failed_count_24h: int
+    failure_rate_24h: float  # failures per hour over last 24h
+
+    # Long-running detection (active executions)
+    stuck_running_24h: int  # Running for more than 24 hours
+    stuck_running_1h: int  # Running for more than 1 hour
+    oldest_running_hours: Optional[float]  # Age of oldest running execution
+
+    # Stuck queued detection
+    stuck_queued_1h: int  # Queued for more than 1 hour
+    queued_never_started: int  # Queued but started_at is null
+
+    # Invalid state detection (data corruption - no auto-actions)
+    invalid_queued_with_start: int  # QUEUED but has startedAt (impossible state)
+    invalid_running_without_start: int  # RUNNING but no startedAt (impossible state)
+
+    # Throughput metrics
+    completed_1h: int
+    completed_24h: int
+    throughput_per_hour: float  # completions per hour over last 24h
+
+    timestamp: str
+
+
+class AgentDiagnosticsSummary(BaseModel):
+    """Summary of agent diagnostics"""
+
+    agents_with_active_executions: int
+    timestamp: str
+
+
+class ScheduleDetail(BaseModel):
+    """Details about a schedule for admin view"""
+
+    schedule_id: str
+    schedule_name: str
+    graph_id: str
+    graph_name: str
+    graph_version: int
+    user_id: str
+    user_email: Optional[str]
+    cron: str
+    timezone: str
+    next_run_time: str
+    created_at: Optional[datetime] = None  # Not available from APScheduler
+
+
+class ScheduleHealthMetrics(BaseModel):
+    """Summary of schedule health diagnostics"""
+
+    total_schedules: int
+    user_schedules: int  # Excludes system monitoring jobs
+    system_schedules: int
+
+    # Orphan detection
+    orphaned_deleted_graph: int
+    orphaned_no_library_access: int
+    orphaned_invalid_credentials: int
+    orphaned_validation_failed: int
+    total_orphaned: int
+
+    # Upcoming schedules (unique count)
+    schedules_next_hour: int
+    schedules_next_24h: int
+
+    # Upcoming execution runs (total count)
+    total_runs_next_hour: int
+    total_runs_next_24h: int
+
+    timestamp: str
+
+
+class OrphanedScheduleDetail(BaseModel):
+    """Details about an orphaned schedule"""
+
+    schedule_id: str
+    schedule_name: str
+    graph_id: str
+    graph_version: int
+    user_id: str
+    orphan_reason: (
+        str  # deleted_graph, no_library_access, invalid_credentials, validation_failed
+    )
+    error_detail: Optional[str]
+    next_run_time: str
+
+
+def _to_running_execution_detail(
+    exec: AgentGraphExecution,
+) -> RunningExecutionDetail:
+    """Convert a Prisma AgentGraphExecution (with includes) to RunningExecutionDetail."""
+    return RunningExecutionDetail(
+        execution_id=exec.id,
+        graph_id=exec.agentGraphId,
+        graph_name=(
+            exec.AgentGraph.name
+            if exec.AgentGraph and exec.AgentGraph.name
+            else "Unknown"
+        ),
+        graph_version=exec.agentGraphVersion,
+        user_id=exec.userId,
+        user_email=exec.User.email if exec.User else None,
+        status=exec.executionStatus,
+        created_at=exec.createdAt,
+        started_at=exec.startedAt,
+    )
+
+
+_EXECUTION_ADMIN_INCLUDE = {
+    "AgentGraph": True,
+    "User": True,
+}
+
+
+async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
+    """
+    Get comprehensive execution diagnostics including database and queue metrics.
+    Uses a single batched SQL query for all count metrics to minimize DB round-trips.
+
+    Returns:
+        ExecutionDiagnosticsSummary with current execution state
+    """
+    now = datetime.now(timezone.utc)
+    one_hour_ago = now - timedelta(hours=1)
+    twenty_four_hours_ago = now - timedelta(hours=24)
+
+    # Single SQL query to get all count metrics at once
+    counts = await query_raw_with_schema(
+        """
+        SELECT
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+            ) AS running_count,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+            ) AS queued_db_count,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "createdAt" < $1::timestamp
+            ) AS orphaned_running,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "createdAt" < $1::timestamp
+            ) AS orphaned_queued,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'FAILED'
+                AND "updatedAt" >= $2::timestamp
+            ) AS failed_count_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'FAILED'
+                AND "updatedAt" >= $1::timestamp
+            ) AS failed_count_24h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NOT NULL
+                AND "startedAt" < $1::timestamp
+            ) AS stuck_running_24h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NOT NULL
+                AND "startedAt" < $2::timestamp
+            ) AS stuck_running_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "createdAt" < $2::timestamp
+            ) AS stuck_queued_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "startedAt" IS NULL
+            ) AS queued_never_started,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "startedAt" IS NOT NULL
+            ) AS invalid_queued_with_start,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NULL
+            ) AS invalid_running_without_start,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'COMPLETED'
+                AND "updatedAt" >= $2::timestamp
+            ) AS completed_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'COMPLETED'
+                AND "updatedAt" >= $1::timestamp
+            ) AS completed_24h
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "isDeleted" = false
+        """,
+        twenty_four_hours_ago,
+        one_hour_ago,
+    )
+
+    row = counts[0] if counts else {}
+
+    running_count = row.get("running_count", 0)
+    queued_db_count = row.get("queued_db_count", 0)
+    orphaned_running = row.get("orphaned_running", 0)
+    orphaned_queued = row.get("orphaned_queued", 0)
+    failed_count_1h = row.get("failed_count_1h", 0)
+    failed_count_24h = row.get("failed_count_24h", 0)
+    stuck_running_24h = row.get("stuck_running_24h", 0)
+    stuck_running_1h = row.get("stuck_running_1h", 0)
+    stuck_queued_1h = row.get("stuck_queued_1h", 0)
+    queued_never_started = row.get("queued_never_started", 0)
+    invalid_queued_with_start = row.get("invalid_queued_with_start", 0)
+    invalid_running_without_start = row.get("invalid_running_without_start", 0)
+    completed_1h = row.get("completed_1h", 0)
+    completed_24h = row.get("completed_24h", 0)
+
+    failure_rate_24h = failed_count_24h / 24.0 if failed_count_24h > 0 else 0.0
+    throughput_per_hour = completed_24h / 24.0 if completed_24h > 0 else 0.0
+
+    # RabbitMQ queue depths (blocking sync calls, run in thread pool)
+    rabbitmq_queue_depth, cancel_queue_depth = await asyncio.gather(
+        asyncio.to_thread(get_rabbitmq_queue_depth),
+        asyncio.to_thread(get_rabbitmq_cancel_queue_depth),
+    )
+
+    # Find oldest running execution (single query)
+    oldest_running_list = await get_graph_executions(
+        statuses=[AgentExecutionStatus.RUNNING],
+        order_by="startedAt",
+        order_direction="asc",
+        limit=1,
+    )
+
+    oldest_running_hours = None
+    if oldest_running_list and oldest_running_list[0].started_at:
+        age_seconds = (now - oldest_running_list[0].started_at).total_seconds()
+        oldest_running_hours = age_seconds / 3600.0
+
+    return ExecutionDiagnosticsSummary(
+        running_count=running_count,
+        queued_db_count=queued_db_count,
+        rabbitmq_queue_depth=rabbitmq_queue_depth,
+        cancel_queue_depth=cancel_queue_depth,
+        orphaned_running=orphaned_running,
+        orphaned_queued=orphaned_queued,
+        failed_count_1h=failed_count_1h,
+        failed_count_24h=failed_count_24h,
+        failure_rate_24h=failure_rate_24h,
+        stuck_running_24h=stuck_running_24h,
+        stuck_running_1h=stuck_running_1h,
+        oldest_running_hours=oldest_running_hours,
+        stuck_queued_1h=stuck_queued_1h,
+        queued_never_started=queued_never_started,
+        invalid_queued_with_start=invalid_queued_with_start,
+        invalid_running_without_start=invalid_running_without_start,
+        completed_1h=completed_1h,
+        completed_24h=completed_24h,
+        throughput_per_hour=throughput_per_hour,
+        timestamp=now.isoformat(),
+    )
+
+
+async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
+    """
+    Get comprehensive agent diagnostics.
+
+    Returns:
+        AgentDiagnosticsSummary with agent metrics
+    """
+    # Single query to count distinct agents with active executions
+    result = await query_raw_with_schema(
+        """
+        SELECT COUNT(DISTINCT "agentGraphId") AS active_agents
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "executionStatus" IN ('RUNNING', 'QUEUED')
+        AND "isDeleted" = false
+        """
+    )
+
+    active_agents = result[0].get("active_agents", 0) if result else 0
+
+    return AgentDiagnosticsSummary(
+        agents_with_active_executions=active_agents,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
+    """
+    Get comprehensive schedule diagnostics via Scheduler service.
+
+    Returns:
+        ScheduleHealthMetrics with schedule health info
+    """
+    scheduler = get_scheduler_client()
+
+    # Get all schedules from scheduler service
+    all_schedules = await scheduler.get_execution_schedules()
+
+    # Filter user vs system schedules
+    user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+    system_schedules_count = len(all_schedules) - len(user_schedules)
+
+    # Detect orphaned schedules
+    orphans = await _detect_orphaned_schedules(user_schedules)
+
+    # Count schedules by next run time (exclude orphaned schedules)
+    now = datetime.now(timezone.utc)
+    one_hour_from_now = now + timedelta(hours=1)
+    twenty_four_hours_from_now = now + timedelta(hours=24)
+
+    orphaned_ids = set()
+    for category_ids in orphans.values():
+        orphaned_ids.update(category_ids)
+
+    healthy_schedules = [s for s in user_schedules if s.id not in orphaned_ids]
+
+    schedules_next_hour = sum(
+        1
+        for s in healthy_schedules
+        if s.next_run_time
+        and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
+        <= one_hour_from_now
+    )
+
+    schedules_next_24h = sum(
+        1
+        for s in healthy_schedules
+        if s.next_run_time
+        and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
+        <= twenty_four_hours_from_now
+    )
+
+    # Calculate total execution runs (not just unique schedules, exclude orphaned)
+    total_runs_next_hour = _calculate_total_runs(
+        healthy_schedules, now, one_hour_from_now
+    )
+    total_runs_next_24h = _calculate_total_runs(
+        healthy_schedules, now, twenty_four_hours_from_now
+    )
+
+    return ScheduleHealthMetrics(
+        total_schedules=len(all_schedules),
+        user_schedules=len(user_schedules),
+        system_schedules=system_schedules_count,
+        orphaned_deleted_graph=len(orphans["deleted_graph"]),
+        orphaned_no_library_access=len(orphans["no_library_access"]),
+        orphaned_invalid_credentials=len(orphans["invalid_credentials"]),
+        orphaned_validation_failed=len(orphans["validation_failed"]),
+        total_orphaned=sum(len(v) for v in orphans.values()),
+        schedules_next_hour=schedules_next_hour,
+        schedules_next_24h=schedules_next_24h,
+        total_runs_next_hour=total_runs_next_hour,
+        total_runs_next_24h=total_runs_next_24h,
+        timestamp=now.isoformat(),
+    )
+
+
+def _calculate_total_runs(
+    schedules: list, start_time: datetime, end_time: datetime
+) -> int:
+    """
+    Calculate total number of scheduled executions in time window.
+
+    Args:
+        schedules: List of GraphExecutionJobInfo with cron expressions
+        start_time: Start of time window
+        end_time: End of time window
+
+    Returns:
+        Total number of execution runs across all schedules
+    """
+    total_runs = 0
+
+    for schedule in schedules:
+        try:
+            # Create cron iterator
+            iter = croniter(schedule.cron, start_time)
+
+            # Count occurrences in window (with safety limit)
+            count = 0
+            max_iterations = 2000  # Safety limit (e.g., every-minute for 24h = 1440)
+
+            while count < max_iterations:
+                try:
+                    next_run = iter.get_next(datetime)
+                    if next_run > end_time:
+                        break
+                    count += 1
+                except Exception:
+                    # Handle edge cases like invalid cron progression
+                    break
+
+            total_runs += count
+
+        except Exception as e:
+            logger.warning(f"Failed to parse cron expression '{schedule.cron}': {e}")
+            # Skip this schedule if cron is invalid
+            continue
+
+    return total_runs
+
+
+async def _detect_orphaned_schedules(schedules: list) -> dict:
+    """
+    Detect orphaned schedules by validating graph, library access, and credentials.
+
+    Args:
+        schedules: List of GraphExecutionJobInfo from scheduler service
+
+    Returns:
+        Dict categorizing orphans by type
+    """
+    orphans = {
+        "deleted_graph": [],
+        "no_library_access": [],
+        "invalid_credentials": [],
+        "validation_failed": [],
+    }
+
+    for schedule in schedules:
+        try:
+            # Check 1: Graph exists
+            graph = await AgentGraph.prisma().find_unique(
+                where={
+                    "graphVersionId": {
+                        "id": schedule.graph_id,
+                        "version": schedule.graph_version,
+                    }
+                }
+            )
+
+            if not graph:
+                orphans["deleted_graph"].append(schedule.id)
+                continue
+
+            # Check 2: User has library access (not deleted/archived)
+            library_agent = await LibraryAgent.prisma().find_first(
+                where={
+                    "userId": schedule.user_id,
+                    "agentGraphId": schedule.graph_id,
+                    "isDeleted": False,
+                    "isArchived": False,
+                }
+            )
+
+            if not library_agent:
+                orphans["no_library_access"].append(schedule.id)
+                continue
+
+            # Check 3: Credentials exist (if any)
+            # Note: Full credential validation would require integration_creds_manager
+            # For now, skip credential validation to avoid complexity
+            # Orphaned credentials will be caught during execution attempt
+
+        except Exception as e:
+            logger.error(f"Error validating schedule {schedule.id}: {e}")
+            orphans["validation_failed"].append(schedule.id)
+
+    return orphans
+
+
+def get_rabbitmq_queue_depth() -> int:
+    """
+    Get the number of messages in the RabbitMQ execution queue.
+
+    Returns:
+        Number of messages in queue, or -1 if error
+    """
+    try:
+        # Create a temporary connection to query the queue
+        config = create_execution_queue_config()
+        rabbitmq = SyncRabbitMQ(config)
+        rabbitmq.connect()
+
+        try:
+            # Use passive queue_declare to get queue info without modifying it
+            if rabbitmq._channel:
+                method_frame = rabbitmq._channel.queue_declare(
+                    queue=GRAPH_EXECUTION_QUEUE_NAME, passive=True
+                )
+            else:
+                raise RuntimeError("RabbitMQ channel not initialized")
+
+            return method_frame.method.message_count
+        finally:
+            # Always clean up connection, even on error
+            try:
+                rabbitmq.disconnect()
+            except Exception as disconnect_err:
+                logger.warning(
+                    f"Failed to close RabbitMQ connection after queue depth check: {disconnect_err}"
+                )
+    except Exception as e:
+        logger.error(f"Error getting RabbitMQ queue depth: {e}")
+        # Return -1 to indicate an error state rather than failing the entire request
+        return -1
+
+
+def get_rabbitmq_cancel_queue_depth() -> int:
+    """
+    Get the number of messages in the RabbitMQ cancel queue.
+
+    Returns:
+        Number of messages in cancel queue, or -1 if error
+    """
+    try:
+        # Create a temporary connection to query the queue
+        config = create_execution_queue_config()
+        rabbitmq = SyncRabbitMQ(config)
+        rabbitmq.connect()
+
+        try:
+            # Use passive queue_declare to get queue info without modifying it
+            if rabbitmq._channel:
+                method_frame = rabbitmq._channel.queue_declare(
+                    queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME, passive=True
+                )
+            else:
+                raise RuntimeError("RabbitMQ channel not initialized")
+
+            return method_frame.method.message_count
+        finally:
+            # Always clean up connection, even on error
+            try:
+                rabbitmq.disconnect()
+            except Exception as disconnect_err:
+                logger.warning(
+                    f"Failed to close RabbitMQ connection after cancel queue check: {disconnect_err}"
+                )
+    except Exception as e:
+        logger.error(f"Error getting RabbitMQ cancel queue depth: {e}")
+        # Return -1 to indicate an error state rather than failing the entire request
+        return -1
+
+
+async def get_all_schedules_details(
+    limit: int = 100, offset: int = 0
+) -> List[ScheduleDetail]:
+    """
+    Get detailed information about all user schedules via Scheduler service.
+
+    Args:
+        limit: Maximum number of schedules to return
+        offset: Number of schedules to skip
+
+    Returns:
+        List of ScheduleDetail objects
+    """
+    scheduler = get_scheduler_client()
+
+    # Get all schedules from scheduler
+    all_schedules = await scheduler.get_execution_schedules()
+
+    # Filter to user schedules only
+    user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+
+    # Apply pagination
+    paginated_schedules = user_schedules[offset : offset + limit]
+
+    # Enrich with graph and user details
+    results = []
+    for schedule in paginated_schedules:
+        # Get graph name
+        graph = await AgentGraph.prisma().find_unique(
+            where={
+                "graphVersionId": {
+                    "id": schedule.graph_id,
+                    "version": schedule.graph_version,
+                }
+            },
+        )
+
+        graph_name = graph.name if graph and graph.name else "Unknown"
+
+        # Fetch user by schedule creator's user_id (not graph owner)
+        schedule_user = await User.prisma().find_unique(where={"id": schedule.user_id})
+        user_email = schedule_user.email if schedule_user else None
+
+        results.append(
+            ScheduleDetail(
+                schedule_id=schedule.id,
+                schedule_name=schedule.name,
+                graph_id=schedule.graph_id,
+                graph_name=graph_name,
+                graph_version=schedule.graph_version,
+                user_id=schedule.user_id,
+                user_email=user_email,
+                cron=schedule.cron,
+                timezone=schedule.timezone,
+                next_run_time=schedule.next_run_time,
+            )
+        )
+
+    return results
+
+
+async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
+    """
+    Get detailed list of orphaned schedules with orphan reasons.
+
+    Returns:
+        List of OrphanedScheduleDetail objects
+    """
+    scheduler = get_scheduler_client()
+
+    # Get all schedules
+    all_schedules = await scheduler.get_execution_schedules()
+    user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+
+    # Detect orphans with categorization
+    orphan_categories = await _detect_orphaned_schedules(user_schedules)
+
+    # Build detailed orphan list
+    results = []
+    for orphan_type, schedule_ids in orphan_categories.items():
+        for schedule_id in schedule_ids:
+            # Find the schedule
+            schedule = next((s for s in user_schedules if s.id == schedule_id), None)
+            if not schedule:
+                continue
+
+            results.append(
+                OrphanedScheduleDetail(
+                    schedule_id=schedule.id,
+                    schedule_name=schedule.name,
+                    graph_id=schedule.graph_id,
+                    graph_version=schedule.graph_version,
+                    user_id=schedule.user_id,
+                    orphan_reason=orphan_type,
+                    error_detail=None,  # Could add more detail in future
+                    next_run_time=schedule.next_run_time,
+                )
+            )
+
+    return results
+
+
+async def cleanup_orphaned_schedules_bulk(
+    schedule_ids: List[str], admin_user_id: str
+) -> int:
+    """
+    Cleanup multiple orphaned schedules by deleting from scheduler.
+
+    Args:
+        schedule_ids: List of schedule IDs to delete
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of schedules successfully deleted
+    """
+    logger.info(
+        f"Admin user {admin_user_id} cleaning up {len(schedule_ids)} orphaned schedules"
+    )
+
+    scheduler = get_scheduler_client()
+
+    # Fetch all schedules once to avoid N+1 queries
+    all_schedules = await scheduler.get_execution_schedules()
+    schedule_map = {s.id: s for s in all_schedules}
+
+    # Delete schedules in parallel
+    async def delete_schedule(schedule_id: str) -> bool:
+        schedule = schedule_map.get(schedule_id)
+        if not schedule:
+            logger.warning(f"Schedule {schedule_id} not found")
+            return False
+
+        try:
+            await scheduler.delete_schedule(
+                schedule_id=schedule_id, user_id=schedule.user_id
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete schedule {schedule_id}: {e}")
+            return False
+
+    results = await asyncio.gather(
+        *[delete_schedule(schedule_id) for schedule_id in schedule_ids],
+        return_exceptions=False,
+    )
+
+    deleted_count = sum(1 for success in results if success)
+
+    logger.info(
+        f"Admin {admin_user_id} deleted {deleted_count}/{len(schedule_ids)} orphaned schedules"
+    )
+
+    return deleted_count
+
+
+async def get_running_executions_details(
+    limit: int = 100, offset: int = 0
+) -> List[RunningExecutionDetail]:
+    """
+    Get detailed information about running and queued executions.
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+
+    Returns:
+        List of RunningExecutionDetail objects
+    """
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "executionStatus": {
+                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
+            },
+            "isDeleted": False,
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"createdAt": "desc"},
+    )
+
+    return [_to_running_execution_detail(e) for e in executions]
+
+
+async def get_orphaned_executions_details(
+    limit: int = 100, offset: int = 0
+) -> List[RunningExecutionDetail]:
+    """
+    Get detailed information about orphaned executions (>24h old, likely not in executor).
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+
+    Returns:
+        List of orphaned RunningExecutionDetail objects
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "executionStatus": {
+                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
+            },
+            "createdAt": {"lt": cutoff},
+            "isDeleted": False,
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"createdAt": "asc"},
+    )
+
+    return [_to_running_execution_detail(e) for e in executions]
+
+
+async def get_long_running_executions_details(
+    limit: int = 100, offset: int = 0
+) -> List[RunningExecutionDetail]:
+    """
+    Get detailed information about long-running executions (RUNNING status >24h).
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+
+    Returns:
+        List of long-running RunningExecutionDetail objects
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "executionStatus": AgentExecutionStatus.RUNNING,
+            "startedAt": {"lt": cutoff},
+            "isDeleted": False,
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"startedAt": "asc"},
+    )
+
+    return [_to_running_execution_detail(e) for e in executions]
+
+
+async def get_stuck_queued_executions_details(
+    limit: int = 100, offset: int = 0
+) -> List[RunningExecutionDetail]:
+    """
+    Get detailed information about stuck queued executions (QUEUED >1h, never started).
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+
+    Returns:
+        List of stuck queued RunningExecutionDetail objects
+    """
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "executionStatus": AgentExecutionStatus.QUEUED,
+            "createdAt": {"lt": one_hour_ago},
+            "isDeleted": False,
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"createdAt": "asc"},
+    )
+
+    return [_to_running_execution_detail(e) for e in executions]
+
+
+async def get_invalid_executions_details(
+    limit: int = 100, offset: int = 0
+) -> List[RunningExecutionDetail]:
+    """
+    Get detailed information about executions in invalid states.
+
+    Invalid states are data corruption issues that require manual investigation:
+    - QUEUED but has startedAt (impossible - can't start while queued)
+    - RUNNING but no startedAt (impossible - can't run without starting)
+
+    NO bulk actions provided - these need case-by-case investigation.
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+
+    Returns:
+        List of invalid RunningExecutionDetail objects
+    """
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "isDeleted": False,
+            "OR": [  # type: ignore
+                {
+                    "executionStatus": AgentExecutionStatus.QUEUED,
+                    "startedAt": {"not": None},  # type: ignore
+                },
+                {
+                    "executionStatus": AgentExecutionStatus.RUNNING,
+                    "startedAt": None,
+                },
+            ],
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"createdAt": "desc"},
+    )
+
+    return [_to_running_execution_detail(e) for e in executions]
+
+
+async def get_failed_executions_count(hours: int = 24) -> int:
+    """
+    Get count of failed executions within the specified time window.
+
+    Args:
+        hours: Number of hours to look back (default 24)
+
+    Returns:
+        Count of failed executions
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    count = await get_graph_executions_count(
+        statuses=[AgentExecutionStatus.FAILED],
+        updated_time_gte=cutoff,
+    )
+    return count
+
+
+async def get_failed_executions_details(
+    limit: int = 100, offset: int = 0, hours: int = 24
+) -> List[FailedExecutionDetail]:
+    """
+    Get detailed information about failed executions.
+
+    Args:
+        limit: Maximum number of executions to return
+        offset: Number of executions to skip
+        hours: Number of hours to look back (default 24)
+
+    Returns:
+        List of FailedExecutionDetail objects
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    executions = await AgentGraphExecution.prisma().find_many(
+        where={
+            "executionStatus": AgentExecutionStatus.FAILED,
+            "updatedAt": {"gte": cutoff},
+            "isDeleted": False,
+        },
+        include=_EXECUTION_ADMIN_INCLUDE,
+        take=limit,
+        skip=offset,
+        order={"updatedAt": "desc"},  # Most recent failures first
+    )
+
+    results = []
+    for exec in executions:
+        # Extract error from stats JSON field
+        error_message = None
+        if exec.stats and isinstance(exec.stats, dict):
+            error_message = exec.stats.get("error")
+
+        results.append(
+            FailedExecutionDetail(
+                execution_id=exec.id,
+                graph_id=exec.agentGraphId,
+                graph_name=(
+                    exec.AgentGraph.name
+                    if exec.AgentGraph and exec.AgentGraph.name
+                    else "Unknown"
+                ),
+                graph_version=exec.agentGraphVersion,
+                user_id=exec.userId,
+                user_email=exec.User.email if exec.User else None,
+                status=exec.executionStatus,
+                created_at=exec.createdAt,
+                started_at=exec.startedAt,
+                failed_at=exec.updatedAt,
+                error_message=error_message,
+            )
+        )
+
+    return results
+
+
+async def cleanup_orphaned_execution(execution_id: str, admin_user_id: str) -> bool:
+    """
+    Cleanup orphaned execution by directly updating DB status.
+    For executions that are in DB but not actually running in executor.
+
+    Args:
+        execution_id: ID of the execution to cleanup
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        True if execution was cleaned up, False otherwise
+    """
+    logger.info(
+        f"Admin user {admin_user_id} cleaning up orphaned execution {execution_id}"
+    )
+
+    # Update DB status directly without sending cancel signal
+    result = await AgentGraphExecution.prisma().update(
+        where={"id": execution_id},
+        data={
+            "executionStatus": AgentExecutionStatus.FAILED,
+            "updatedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    logger.info(
+        f"Admin {admin_user_id} marked orphaned execution {execution_id} as FAILED"
+    )
+    return result is not None
+
+
+async def stop_all_long_running_executions(admin_user_id: str) -> int:
+    """
+    Stop ALL long-running executions (RUNNING >24h) by sending cancel signals.
+
+    Args:
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of executions for which cancel signals were sent
+    """
+    logger.info(f"Admin user {admin_user_id} stopping ALL long-running executions")
+
+    # Find all long-running executions (started running >24h ago)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    executions = await get_graph_executions(
+        statuses=[AgentExecutionStatus.RUNNING],
+        started_time_lte=cutoff,
+    )
+
+    if not executions:
+        logger.info("No long-running executions to stop")
+        return 0
+
+    queue_client = await get_async_execution_queue()
+
+    # Send cancel signals in parallel
+    async def send_cancel_signal(exec_id: str) -> bool:
+        try:
+            await queue_client.publish_message(
+                routing_key="",
+                message=CancelExecutionEvent(graph_exec_id=exec_id).model_dump_json(),
+                exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send cancel for {exec_id}: {e}")
+            return False
+
+    # Send cancel signals in parallel
+    await asyncio.gather(
+        *[send_cancel_signal(exec.id) for exec in executions],
+        return_exceptions=True,  # Don't fail if some signals fail
+    )
+
+    # ALSO update DB status directly (don't rely on executor)
+    # This ensures executions are marked FAILED even if executor restarted
+    result = await AgentGraphExecution.prisma().update_many(
+        where={
+            "executionStatus": AgentExecutionStatus.RUNNING,
+            "startedAt": {"lt": cutoff},
+            "isDeleted": False,
+        },
+        data={
+            "executionStatus": AgentExecutionStatus.FAILED,
+            "updatedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    logger.info(
+        f"Admin {admin_user_id} stopped {result} long-running executions (sent cancel signals + updated DB)"
+    )
+
+    return result
+
+
+async def get_all_orphaned_execution_ids() -> List[str]:
+    """
+    Get all orphaned execution IDs (>24h old, RUNNING or QUEUED).
+
+    Returns:
+        List of execution IDs that are orphaned
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    executions = await get_graph_executions(
+        statuses=[AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED],
+        created_time_lte=cutoff,
+    )
+
+    return [e.id for e in executions]
+
+
+async def cleanup_orphaned_executions_bulk(
+    execution_ids: List[str], admin_user_id: str
+) -> int:
+    """
+    Cleanup multiple orphaned executions by directly updating DB status.
+    For executions in DB but not actually running in executor (old/orphaned).
+
+    Args:
+        execution_ids: List of execution IDs to cleanup
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of executions successfully cleaned up
+    """
+    logger.info(
+        f"Admin user {admin_user_id} cleaning up {len(execution_ids)} orphaned executions"
+    )
+
+    # Update all executions in DB directly (no cancel signals)
+    # Only update executions still in RUNNING/QUEUED status to avoid
+    # overwriting a legitimately COMPLETED execution (TOCTOU guard)
+    result = await AgentGraphExecution.prisma().update_many(
+        where={
+            "id": {"in": execution_ids},
+            "isDeleted": False,
+            "executionStatus": {
+                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]
+            },
+        },
+        data={
+            "executionStatus": AgentExecutionStatus.FAILED,
+            "updatedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    logger.info(
+        f"Admin {admin_user_id} marked {result} orphaned executions as FAILED in DB"
+    )
+
+    return result
+
+
+async def get_all_stuck_queued_execution_ids() -> List[str]:
+    """
+    Get all stuck queued execution IDs (QUEUED >1h).
+
+    Returns:
+        List of execution IDs that are stuck in QUEUED status
+    """
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    executions = await get_graph_executions(
+        statuses=[AgentExecutionStatus.QUEUED],
+        created_time_lte=one_hour_ago,
+    )
+
+    return [e.id for e in executions]
+
+
+async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
+    """
+    Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status.
+    Operates on all stuck queued executions, not just paginated results.
+
+    Args:
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of executions successfully cleaned up
+    """
+    logger.info(f"Admin user {admin_user_id} cleaning up ALL stuck queued executions")
+
+    # Find all stuck queued executions (>1h old)
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    result = await AgentGraphExecution.prisma().update_many(
+        where={
+            "executionStatus": AgentExecutionStatus.QUEUED,
+            "createdAt": {"lt": one_hour_ago},
+            "isDeleted": False,
+        },
+        data={
+            "executionStatus": AgentExecutionStatus.FAILED,
+            "updatedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    logger.info(
+        f"Admin {admin_user_id} marked {result} stuck queued executions as FAILED in DB"
+    )
+
+    return result

@@ -73,7 +73,10 @@ def _make_session(messages: list[ChatMessage]) -> ChatSession:
 
 
 def _msgs(*pairs: tuple[str, str]) -> list[ChatMessage]:
-    return [ChatMessage(role=r, content=c) for r, c in pairs]
+    """Build messages with sequences 0..N-1 mirroring the production schema."""
+    return [
+        ChatMessage(role=r, content=c, sequence=i) for i, (r, c) in enumerate(pairs)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -281,9 +284,9 @@ class TestSdkToFastModeSwitch:
                 user_id="user-1",
                 session_id="session-1",
                 session_messages=[
-                    ChatMessage(role="user", content="sdk-question"),
-                    ChatMessage(role="assistant", content="sdk-answer"),
-                    ChatMessage(role="user", content="baseline-question"),
+                    ChatMessage(role="user", content="sdk-question", sequence=0),
+                    ChatMessage(role="assistant", content="sdk-answer", sequence=1),
+                    ChatMessage(role="user", content="baseline-question", sequence=2),
                 ],
                 transcript_builder=baseline_builder,
             )
@@ -324,7 +327,11 @@ class TestSdkToFastModeSwitch:
 
         # Build a session with 10 alternating user/assistant messages + current user
         session_messages = [
-            ChatMessage(role="user" if i % 2 == 0 else "assistant", content=f"msg-{i}")
+            ChatMessage(
+                role="user" if i % 2 == 0 else "assistant",
+                content=f"msg-{i}",
+                sequence=i,
+            )
             for i in range(10)
         ]
 

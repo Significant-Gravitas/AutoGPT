@@ -12,6 +12,7 @@ import logging
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, Credentials
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.managed_credentials import ManagedCredentialProvider
 from backend.util.settings import Settings
 
@@ -25,7 +26,10 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
     async def is_available(self) -> bool:
         return bool(settings.secrets.agentmail_api_key)
 
-    async def provision(self, user_id: str) -> Credentials:
+    async def provision(
+        self, user_id: str, store: IntegrationCredentialsStore
+    ) -> Credentials:
+        _ = store  # AgentMail provisions via its own API client, not the store.
         from agentmail import AsyncAgentMail
 
         client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
