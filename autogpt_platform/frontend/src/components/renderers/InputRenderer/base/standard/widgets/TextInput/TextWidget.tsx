@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { WidgetProps } from "@rjsf/utils";
 import {
   InputType,
@@ -88,9 +88,32 @@ export default function TextWidget(props: WidgetProps) {
     config.htmlType === "password" ||
     config.htmlType === "textarea";
 
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const cursorPosRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (
+      uiType === BlockUIType.NOTE &&
+      noteRef.current &&
+      cursorPosRef.current !== null
+    ) {
+      noteRef.current.selectionStart = cursorPosRef.current;
+      noteRef.current.selectionEnd = cursorPosRef.current;
+      cursorPosRef.current = null;
+    }
+  });
+
   if (uiType === BlockUIType.NOTE) {
+    const handleNoteChange = (
+      e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) => {
+      cursorPosRef.current = e.target.selectionStart;
+      handleChange(e);
+    };
+
     return (
       <Input
+        ref={noteRef}
         id={props.id}
         hideLabel={true}
         type={"textarea"}
@@ -99,7 +122,7 @@ export default function TextWidget(props: WidgetProps) {
         wrapperClassName="mb-0"
         value={props.value ?? ""}
         className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
-        onChange={handleChange}
+        onChange={handleNoteChange}
         placeholder={"Write your note here..."}
         required={props.required}
         disabled={props.disabled}
