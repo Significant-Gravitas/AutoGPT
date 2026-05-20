@@ -29,9 +29,7 @@ def _stub_driver(mocker):
 @pytest.mark.asyncio
 async def test_backfill_one_user_counts_updated(_stub_driver):
     """Happy path — Cypher returns one row with the updated count."""
-    _stub_driver.execute_query = AsyncMock(
-        return_value=([{"updated": 7}], None, None)
-    )
+    _stub_driver.execute_query = AsyncMock(return_value=([{"updated": 7}], None, None))
     updated = await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264")
     assert updated == 7
     _stub_driver.execute_query.assert_awaited_once_with(mig.BACKFILL_QUERY)
@@ -42,9 +40,7 @@ async def test_backfill_one_user_counts_updated(_stub_driver):
 async def test_backfill_one_user_no_records_returns_zero(_stub_driver):
     """Empty result set (no edges needed backfilling)."""
     _stub_driver.execute_query = AsyncMock(return_value=([], None, None))
-    assert await mig.backfill_one_user(
-        "9aa20a1c-805e-4128-8bb2-c27515140264"
-    ) == 0
+    assert await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264") == 0
 
 
 @pytest.mark.asyncio
@@ -55,18 +51,14 @@ async def test_backfill_one_user_none_result_returns_zero(_stub_driver):
     doesn't crash on freshly-signed-up users with no Graphiti graph.
     """
     _stub_driver.execute_query = AsyncMock(return_value=None)
-    assert await mig.backfill_one_user(
-        "9aa20a1c-805e-4128-8bb2-c27515140264"
-    ) == 0
+    assert await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264") == 0
 
 
 @pytest.mark.asyncio
 async def test_backfill_one_user_swallows_driver_exception(_stub_driver, caplog):
     """Missing-graph errors are logged at debug and treated as no-op."""
     _stub_driver.execute_query = AsyncMock(side_effect=Exception("no such db"))
-    assert await mig.backfill_one_user(
-        "9aa20a1c-805e-4128-8bb2-c27515140264"
-    ) == 0
+    assert await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264") == 0
 
 
 @pytest.mark.asyncio
