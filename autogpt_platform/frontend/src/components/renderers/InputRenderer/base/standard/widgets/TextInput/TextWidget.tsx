@@ -48,7 +48,7 @@ export default function TextWidget(props: WidgetProps) {
       handleChange: (v: string) => {
         if (v === "") return undefined;
         const n = Number(v);
-        return Number.isNaN(n) ? undefined : n;
+        return Number.isFinite(n) ? n : undefined;
       },
     },
     [InputType.INTEGER]: {
@@ -57,7 +57,7 @@ export default function TextWidget(props: WidgetProps) {
       handleChange: (v: string) => {
         if (v === "") return undefined;
         const n = Number(v);
-        return Number.isNaN(n) ? undefined : Math.trunc(n);
+        return Number.isFinite(n) ? Math.trunc(n) : undefined;
       },
     },
   };
@@ -71,7 +71,7 @@ export default function TextWidget(props: WidgetProps) {
   const config = (mapped && inputConfig[mapped]) || defaultConfig;
 
   const displayValue =
-    typeof props.value === "number" && Number.isNaN(props.value)
+    typeof props.value === "number" && !Number.isFinite(props.value)
       ? ""
       : (props.value ?? "");
 

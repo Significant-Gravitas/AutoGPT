@@ -123,6 +123,23 @@ describe("TextWidget", () => {
       expect(onChange).toHaveBeenLastCalledWith(100000);
     });
 
+    it("rejects non-finite values like 1e309", () => {
+      const onChange = vi.fn();
+      const props = makeProps({
+        schema: { type: "integer" },
+        value: 1,
+        onChange,
+      });
+
+      render(<TextWidget {...props} />);
+
+      fireEvent.change(screen.getByRole("spinbutton"), {
+        target: { value: "1e309" },
+      });
+
+      expect(onChange).toHaveBeenLastCalledWith(undefined);
+    });
+
     it("uses HTML number input type", () => {
       const props = makeProps({ schema: { type: "integer" } });
       render(<TextWidget {...props} />);
