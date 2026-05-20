@@ -56,8 +56,8 @@ export default function TextWidget(props: WidgetProps) {
       placeholder: "Enter integer value...",
       handleChange: (v: string) => {
         if (v === "") return undefined;
-        const n = parseInt(v, 10);
-        return Number.isNaN(n) ? undefined : n;
+        const n = Number(v);
+        return Number.isNaN(n) ? undefined : Math.trunc(n);
       },
     },
   };
