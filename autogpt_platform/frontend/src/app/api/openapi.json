@@ -844,6 +844,287 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/memory/{user_id}/communities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Communities",
+        "operationId": "getV2ListCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/communities/rebuild": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Rebuild Communities",
+        "description": "Trigger an immediate community rebuild for the user.\n\nForwards to ``Scheduler.execute_community_rebuild_pass``. The\nactivity gate inside ``rebuild_communities_for_user`` is honoured\nby default — pass ``?force=true`` to bypass it.",
+        "operationId": "postV2RebuildCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Bypass the activity gate — rebuilds even on unchanged graph.",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Bypass the activity gate — rebuilds even on unchanged graph."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RebuildResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/entities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Entities",
+        "operationId": "getV2ListEntities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntityListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/facts": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Facts",
+        "operationId": "getV2ListFacts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["active", "superseded", "contradicted", "any"],
+              "type": "string",
+              "default": "any",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FactListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/overview": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Memory Overview",
+        "operationId": "getV2GetMemoryOverview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
@@ -10952,6 +11233,40 @@
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
       },
+      "CommunityListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/CommunitySummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "CommunityListResponse"
+      },
+      "CommunitySummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["uuid"],
+        "title": "CommunitySummary"
+      },
       "ConfirmLinkResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -11553,6 +11868,32 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "EntityListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/EntitySummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "EntityListResponse"
+      },
+      "EntitySummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "name": { "type": "string", "title": "Name" },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "name"],
+        "title": "EntitySummary"
+      },
       "ErrorResponse": {
         "properties": {
           "type": {
@@ -11933,6 +12274,57 @@
         "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
+      },
+      "FactListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/FactSummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "FactListResponse"
+      },
+      "FactSummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "expired_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expired At"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "source", "target"],
+        "title": "FactSummary"
       },
       "FailedExecutionDetail": {
         "properties": {
@@ -13738,6 +14130,32 @@
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
       },
+      "MemoryOverview": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "group_id": { "type": "string", "title": "Group Id" },
+          "entities": { "type": "integer", "title": "Entities" },
+          "episodes": { "type": "integer", "title": "Episodes" },
+          "relates_to_edges": {
+            "type": "integer",
+            "title": "Relates To Edges"
+          },
+          "mentions_edges": { "type": "integer", "title": "Mentions Edges" },
+          "communities": { "type": "integer", "title": "Communities" }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "group_id",
+          "entities",
+          "episodes",
+          "relates_to_edges",
+          "mentions_edges",
+          "communities"
+        ],
+        "title": "MemoryOverview",
+        "description": "Counts surfaced in the visualizer's header strip."
+      },
       "MemorySearchResponse": {
         "properties": {
           "type": {
@@ -15334,6 +15752,45 @@
         ],
         "title": "RateLimitResetResponse",
         "description": "Response from resetting the daily rate limit."
+      },
+      "RebuildResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "started_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Started At"
+          },
+          "communities_built": { "title": "Communities Built" },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "activity": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Activity"
+          },
+          "forced": { "type": "boolean", "title": "Forced", "default": false }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "RebuildResponse",
+        "description": "Mirror of ``rebuild_communities_for_user``'s return dict."
       },
       "RecentExecution": {
         "properties": {
