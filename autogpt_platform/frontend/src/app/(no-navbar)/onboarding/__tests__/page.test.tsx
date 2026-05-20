@@ -33,8 +33,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/onboarding",
 }));
 
+let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isLoggedIn: true, isUserLoading: false, user: null }),
+  useSupabase: () => ({ ...mockSupabaseState, user: null }),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
@@ -45,6 +46,19 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
+}));
+
+let mockSubscriptionTier: string = "NO_TIER";
+vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
+  useGetSubscriptionStatus: (opts: {
+    query: { select: (res: { status: number; data: unknown }) => unknown };
+  }) => ({
+    data: opts.query.select({
+      status: 200,
+      data: { tier: mockSubscriptionTier },
+    }),
+    isLoading: false,
+  }),
 }));
 
 vi.mock("@/app/api/helpers", () => ({
@@ -68,6 +82,8 @@ const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
+  mockSubscriptionTier = "NO_TIER";
+  mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -174,6 +190,65 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
+  });
+
+  it("skips SubscriptionStep when the user is already on a paid tier", async () => {
+    // Regression for paying users (admin-granted Pro, or accounts that
+    // pre-date VISIT_COPILOT) being kicked through onboarding and asked to
+    // pay again to escape. With ENABLE_PLATFORM_PAYMENT on and tier=PRO,
+    // step 4 must render Preparing — not SubscriptionStep.
+    mockFlagValue = true;
+    mockSubscriptionTier = "PRO";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("clamps ?step=5 to preparingStep=4 for paid users", async () => {
+    // For paid users the wizard is 3-step (preparingStep=4). A URL pointing
+    // at the old 5-step preparingStep must clamp down to 4, not strand the
+    // user above the ceiling.
+    mockFlagValue = true;
+    mockSubscriptionTier = "MAX";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
+    currentSearchParams = new URLSearchParams("step=5");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("still shows SubscriptionStep for NO_TIER users with payments enabled", async () => {
+    mockFlagValue = true;
+    mockSubscriptionTier = "NO_TIER";
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+  });
+
+  it("waits for Supabase auth before initialising (no premature step lock)", async () => {
+    // Regression: LD can resolve while auth is still loading. Without
+    // gating on isUserLoading, isReady flips true (the !isLoggedIn branch
+    // short-circuits), init runs against the pre-tier preparingStep (5)
+    // and a returning user with highestStep=5 lands on currentStep=5.
+    // When tier resolves to PRO, preparingStep becomes 4 — but the
+    // hasInitialized guard blocks re-init, leaving currentStep=5 with
+    // no matching step guard (blank page).
+    mockFlagValue = true;
+    mockSubscriptionTier = "PRO";
+    mockSupabaseState = { isLoggedIn: false, isUserLoading: true };
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
+    render(<OnboardingPage />);
+    // Nothing should render while auth is still loading.
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+    // After init defers (auth not ready), currentStep stays at the
+    // store default of 1 — no premature jump to 5.
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
