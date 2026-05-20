@@ -118,6 +118,66 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 
 ---
 
+## JSON Decoder
+
+### What it is
+Decodes a JSON string into a Python object (dictionary, list, etc.).
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| json_str | The JSON string to parse and convert to a Python object. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if decoding fails. | str |
+| data | The decoded Python dictionary or list. | Data |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## JSON Encoder
+
+### What it is
+Encodes a Python object (dictionary, list, etc.) into a JSON string.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| data | The data structure (dictionary, list, string, etc.) to encode into a JSON string. | Data | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if encoding fails. | str |
+| json_str | The resulting JSON string representation. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Persist Information
 
 ### What it is

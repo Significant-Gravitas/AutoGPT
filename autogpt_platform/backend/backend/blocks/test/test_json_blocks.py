@@ -1,3 +1,6 @@
+import json
+from unittest.mock import patch
+
 import pytest
 
 from backend.blocks.json_blocks import JSONDecoderBlock, JSONEncoderBlock
@@ -15,15 +18,18 @@ async def test_json_encoder_success():
     assert len(outputs) == 1
     name, value = outputs[0]
     assert name == "json_str"
-    assert "hello" in value
-    assert "world" in value
-    assert "numbers" in value
+    parsed = json.loads(value)
+    assert parsed["hello"] == "world"
+    assert parsed["numbers"] == [1, 2, 3]
+    assert parsed["nested"]["key"] is True
 
 
 @pytest.mark.asyncio
-async def test_json_encoder_error():
+@patch("backend.blocks.json_blocks.dumps")
+async def test_json_encoder_error(mock_dumps):
+    mock_dumps.side_effect = Exception("Mocked error")
     block = JSONEncoderBlock()
-    data = {"set_value": {1, 2, 3}}
+    data = {"test": "data"}
 
     outputs = []
     async for output in block.run(JSONEncoderBlock.Input(data=data)):
