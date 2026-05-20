@@ -272,6 +272,44 @@ def execute_community_rebuild(user_id: str):
         )
 
 
+def execute_dream_pass_sync(user_id: str):
+    """Per-user dream pass (P-0.2 sync_baseline).
+
+    Sync wrapper around the async orchestrator so APScheduler's
+    threaded jobstore can call it directly. Failures inside the
+    coroutine are already trapped and surface as ``DreamPassResult.error``
+    — this wrapper just logs the outcome.
+    """
+    from backend.copilot.dream.orchestrator import execute_dream_pass
+
+    result = run_async(execute_dream_pass(user_id))
+    if result.error:
+        logger.warning(
+            "Dream pass errored for user %s (pass %s): %s",
+            user_id[:12],
+            result.pass_id,
+            result.error,
+        )
+    elif result.skipped:
+        logger.info(
+            "Dream pass skipped for user %s (pass %s): %s",
+            user_id[:12],
+            result.pass_id,
+            result.skip_reason,
+        )
+    else:
+        logger.info(
+            "Dream pass completed for user %s in %.1fs (pass %s): "
+            "writes=%d proposals=%d demotions=%d",
+            user_id[:12],
+            result.elapsed_seconds or 0.0,
+            result.pass_id,
+            result.consolidated_count,
+            result.proposal_count,
+            result.demotion_count,
+        )
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -913,9 +951,7 @@ class Scheduler(AppService):
         return True
 
     @expose
-    def execute_community_rebuild_pass(
-        self, user_id: str, force: bool = False
-    ) -> dict:
+    def execute_community_rebuild_pass(self, user_id: str, force: bool = False) -> dict:
         """Manually trigger a community rebuild for one user (bypasses cron).
 
         Set ``force=True`` to bypass the activity gate inside
@@ -923,6 +959,76 @@ class Scheduler(AppService):
         when you want to rebuild even on an unchanged graph.
         """
         return run_async(rebuild_communities_for_user(user_id, force=force))
+
+    # --- Dream pass (P-0.2) ---
+    #
+    # Per-user nightly memory-consolidation pass. Cron is user-local
+    # 03:00 daily, staggered before the 04:00 Sunday community rebuild
+    # so the two never overlap on weekends. Gated behind LD flag
+    # ``DREAM_PASS_ENABLED`` at the call site — this scheduler accepts
+    # registration unconditionally; callers gate.
+
+    @expose
+    def add_dream_pass_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a nightly dream pass for one user."""
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"dream_pass_{user_id}"
+        job = self.scheduler.add_job(
+            execute_dream_pass_sync,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
+            id=job_id,
+            name=f"Dream pass for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered dream pass job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_dream_pass_schedule(self, user_id: str) -> bool:
+        """Remove the nightly dream pass for one user."""
+        job_id = f"dream_pass_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        logger.info("Removed dream pass job for user %s", user_id[:12])
+        return True
+
+    @expose
+    def execute_dream_pass_now(self, user_id: str) -> dict:
+        """Manually trigger a dream pass for one user (bypasses cron).
+
+        Used by the admin trigger endpoint so you can run a dream
+        on-demand from the memory visualizer rather than waiting for
+        the 03:00 cron. Returns a ``DreamPassResult`` as a dict so
+        the admin route can deserialize it without taking a hard
+        dependency on the dream module shape.
+        """
+        from backend.copilot.dream.orchestrator import execute_dream_pass
+
+        result = run_async(execute_dream_pass(user_id))
+        return result.model_dump(mode="json")
 
 
 class SchedulerClient(AppServiceClient):
@@ -943,3 +1049,7 @@ class SchedulerClient(AppServiceClient):
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
     )
+
+    add_dream_pass_schedule = endpoint_to_async(Scheduler.add_dream_pass_schedule)
+    delete_dream_pass_schedule = endpoint_to_async(Scheduler.delete_dream_pass_schedule)
+    execute_dream_pass_now = endpoint_to_async(Scheduler.execute_dream_pass_now)

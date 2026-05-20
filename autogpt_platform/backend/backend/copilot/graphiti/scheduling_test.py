@@ -10,7 +10,6 @@ from .scheduling import (
     ensure_community_rebuild_scheduled,
 )
 
-
 # Patch at source modules because scheduling.py does lazy imports
 # inside the helper (defensive — avoids import-time side effects in
 # test envs). The helper's flag check and timezone resolver ARE local
@@ -34,12 +33,16 @@ def _patches(*, flag=True, setnx_ok=True, tz="UTC"):
     scheduler.add_community_rebuild_schedule = AsyncMock(
         return_value={"id": "community_rebuild_abc"}
     )
-    return {
-        _PATH_FLAG: AsyncMock(return_value=flag),
-        _PATH_TZ: AsyncMock(return_value=tz),
-        _PATH_REDIS: AsyncMock(return_value=redis),
-        _PATH_SCHEDULER: MagicMock(return_value=scheduler),
-    }, redis, scheduler
+    return (
+        {
+            _PATH_FLAG: AsyncMock(return_value=flag),
+            _PATH_TZ: AsyncMock(return_value=tz),
+            _PATH_REDIS: AsyncMock(return_value=redis),
+            _PATH_SCHEDULER: MagicMock(return_value=scheduler),
+        },
+        redis,
+        scheduler,
+    )
 
 
 def _apply(patches: dict):

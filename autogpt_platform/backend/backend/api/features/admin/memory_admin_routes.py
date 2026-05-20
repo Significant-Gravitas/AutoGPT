@@ -211,9 +211,7 @@ async def get_memory_overview(
         mentions = await _count(
             driver, "MATCH ()-[e:MENTIONS]->() RETURN count(e) AS c"
         )
-        communities = await _count(
-            driver, "MATCH (n:Community) RETURN count(n) AS c"
-        )
+        communities = await _count(driver, "MATCH (n:Community) RETURN count(n) AS c")
     finally:
         await driver.close()
 
@@ -410,13 +408,14 @@ async def get_graph(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    # Build the labels-of-interest filter for the node query
+    # Build the labels-of-interest list for the node queries — one
+    # Cypher per label so the label can travel through the result row
+    # without an extra ``labels(n)`` call per row.
     labels: list[str] = ["Entity"]
     if include_episodes:
         labels.append("Episodic")
     if include_communities:
         labels.append("Community")
-    labels_filter = "|".join(labels)
 
     driver = _open_driver(group_id)
     nodes: list[GraphNode] = []
@@ -533,13 +532,73 @@ async def get_graph(
     )
 
 
+class DreamPassResponse(BaseModel):
+    """Mirror of ``DreamPassResult`` from the dream orchestrator.
+
+    Kept duplicated rather than importing the source model so the
+    admin route stays loosely-coupled to the dream module's internals.
+    """
+
+    user_id: str
+    pass_id: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    elapsed_seconds: float | None = None
+    execution_path: str = "sync_baseline"
+    consolidated_count: int = 0
+    proposal_count: int = 0
+    demotion_count: int = 0
+    entity_invalidation_count: int = 0
+    summary_for_user: str = ""
+    dream_session_id: str | None = None
+    error: str | None = None
+    skipped: bool = False
+    skip_reason: str | None = None
+
+
+@router.post("/{user_id}/dream", response_model=DreamPassResponse)
+async def trigger_dream_pass(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> DreamPassResponse:
+    """Trigger an on-demand dream pass for the user.
+
+    Forwards to ``Scheduler.execute_dream_pass_now``. Runs the full
+    three-phase pipeline (consolidate → recombine → sanitize) synchronously
+    against the OpenRouter-fronted baseline path, applies operations
+    to Graphiti + Postgres, and writes a dream-kind ChatSession.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    try:
+        derive_group_id(target)  # validate before the RPC
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        result = await get_scheduler_client().execute_dream_pass_now(user_id=target)
+    except Exception as exc:
+        logger.warning(
+            "Admin-triggered dream pass failed for user %s: %s",
+            target[:12],
+            exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dream pass failed: {type(exc).__name__}: {exc}",
+        )
+
+    return DreamPassResponse(**result)
+
+
 @router.post("/{user_id}/communities/rebuild", response_model=RebuildResponse)
 async def rebuild_communities(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     force: Annotated[
         bool,
-        Query(description="Bypass the activity gate — rebuilds even on unchanged graph."),
+        Query(
+            description="Bypass the activity gate — rebuilds even on unchanged graph."
+        ),
     ] = False,
 ) -> RebuildResponse:
     """Trigger an immediate community rebuild for the user.

@@ -25,7 +25,6 @@ The fixtures connect using ``GraphitiConfig`` defaults
 ``GRAPHITI_FALKORDB_*`` env vars to point at a different host.
 """
 
-import asyncio
 import socket
 import uuid
 from typing import AsyncIterator

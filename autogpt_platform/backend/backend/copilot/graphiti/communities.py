@@ -80,12 +80,11 @@ def _bounded_label_propagation(projection):
 
             community_candidates: dict[int, int] = defaultdict(int)
             for neighbor in neighbors:
-                community_candidates[community_map[neighbor.node_uuid]] += (
-                    neighbor.edge_count
-                )
+                community_candidates[
+                    community_map[neighbor.node_uuid]
+                ] += neighbor.edge_count
             community_lst = [
-                (count, community)
-                for community, count in community_candidates.items()
+                (count, community) for community, count in community_candidates.items()
             ]
 
             community_lst.sort(reverse=True)
@@ -251,9 +250,7 @@ async def rebuild_communities_for_user(
         group_id = derive_group_id(user_id)
     except ValueError as exc:
         result["error"] = f"invalid_user_id: {exc}"
-        logger.warning(
-            "Skipping community rebuild — invalid user_id %s", user_id[:12]
-        )
+        logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])
         return result
 
     try:

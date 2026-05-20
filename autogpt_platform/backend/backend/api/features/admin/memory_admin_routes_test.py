@@ -1,6 +1,5 @@
 """Tests for the admin memory inspector routes."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -60,9 +59,7 @@ class TestOverview:
         # Driver must be closed even on success
         driver.close.assert_awaited_once()
 
-    def test_me_resolves_to_caller_id(
-        self, mock_jwt_admin
-    ) -> None:
+    def test_me_resolves_to_caller_id(self, mock_jwt_admin) -> None:
         driver = _driver_returning(
             [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
         )
@@ -247,6 +244,6 @@ class TestAdminGating:
             resp = client.post("/admin/memory/abc/communities/rebuild")
             assert resp.status_code == 403
         finally:
-            app.dependency_overrides[get_jwt_payload] = (
-                pytest.importorskip("conftest", reason="reset to admin").mock_jwt_admin
-            )
+            app.dependency_overrides[get_jwt_payload] = pytest.importorskip(
+                "conftest", reason="reset to admin"
+            ).mock_jwt_admin

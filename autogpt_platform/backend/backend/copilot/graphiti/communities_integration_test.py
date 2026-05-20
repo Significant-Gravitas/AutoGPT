@@ -25,7 +25,6 @@ from unittest.mock import patch
 
 import pytest
 
-from .client import derive_group_id
 from .communities import rebuild_communities_for_user
 
 
@@ -185,6 +184,6 @@ async def test_rebuild_does_not_touch_other_users_communities(
     records, _, _ = await driver.execute_query(
         "MATCH (c:Community {uuid: 'other-1'}) RETURN c.group_id AS gid",
     )
-    assert records == [{"gid": other_group}], (
-        "Other user's :Community node was deleted — group_id scoping regressed"
-    )
+    assert records == [
+        {"gid": other_group}
+    ], "Other user's :Community node was deleted — group_id scoping regressed"

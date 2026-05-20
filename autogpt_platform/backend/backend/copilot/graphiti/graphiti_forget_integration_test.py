@@ -158,9 +158,10 @@ async def test_invalidate_entity_direct_neighbors_is_single_hop(
         driver, group_id=group_id, entity_uuid="B", reason="dead_client"
     )
 
-    assert set(demoted) == {"AB", "BC"}, (
-        f"Expected edges directly attached to B (AB, BC) to be demoted; got {demoted}"
-    )
+    assert set(demoted) == {
+        "AB",
+        "BC",
+    }, f"Expected edges directly attached to B (AB, BC) to be demoted; got {demoted}"
 
     # CD must be untouched — that's the boundary contract.
     cd = await _select_edge(driver, "CD")

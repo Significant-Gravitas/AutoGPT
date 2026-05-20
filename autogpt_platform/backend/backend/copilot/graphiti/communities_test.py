@@ -91,9 +91,9 @@ class TestBoundedLabelPropagation:
         # The warning text must mention the cap. Check caplog.text (the
         # full captured log) because record collection can vary with
         # pytest-logging configuration; the formatted text is reliable.
-        assert f"{MAX_LABEL_PROP_ITERATIONS}-iteration cap" in caplog.text, (
-            f"expected cap-warning in caplog.text; got: {caplog.text!r}"
-        )
+        assert (
+            f"{MAX_LABEL_PROP_ITERATIONS}-iteration cap" in caplog.text
+        ), f"expected cap-warning in caplog.text; got: {caplog.text!r}"
 
 
 class TestUpstreamMonkeyPatch:
@@ -114,7 +114,10 @@ class TestUpstreamMonkeyPatch:
         from graphiti_core.utils.maintenance import community_operations
 
         # Idempotency sentinel on the function itself
-        assert getattr(community_operations.label_propagation, "_autogpt_bounded", False) is True
+        assert (
+            getattr(community_operations.label_propagation, "_autogpt_bounded", False)
+            is True
+        )
 
         # Calling the patch again must be a no-op (must not raise, must
         # not replace with a fresh function lacking the sentinel)

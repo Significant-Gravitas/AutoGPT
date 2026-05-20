@@ -1,0 +1,281 @@
+"""Gather bounded inputs for a dream pass.
+
+All input lists are clamped per ``dream/p0-spec.md`` §2 — phase 1's
+prompt is the hot path for cost, so we never let it grow unbounded
+even on a power-user with thousands of episodes.
+
+Caps (copied here so they live next to the code that enforces them):
+  * Recent sessions: 10
+  * Recent episodes: 50
+  * Active facts (per scope): 500
+  * Touch window: 14 days
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+
+from prisma.models import ChatSession as PrismaChatSession
+
+from backend.copilot.graphiti.client import derive_group_id
+from backend.copilot.graphiti.config import graphiti_config
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_WINDOW_DAYS = 14
+MAX_EPISODES = 50
+MAX_ACTIVE_FACTS = 500
+MAX_RECENT_SESSIONS = 10
+MAX_SESSION_BODY_BYTES = 8 * 1024  # 8 KB per p0-spec.md §2
+
+
+@dataclass
+class EpisodeRow:
+    uuid: str
+    name: str | None
+    content: str | None
+    source_description: str | None
+    valid_at: str | None  # ISO timestamp
+    created_at: str | None
+
+
+@dataclass
+class FactRow:
+    uuid: str
+    source: str | None
+    target: str | None
+    name: str | None
+    fact: str | None
+    scope: str | None
+    confidence: float | None
+    status: str | None
+    created_at: str | None
+
+
+@dataclass
+class SessionRow:
+    session_id: str
+    title: str | None
+    created_at: datetime | None
+    body: str  # truncated to MAX_SESSION_BODY_BYTES
+
+
+@dataclass
+class DreamInput:
+    """The whole gather-step bundle handed to the phase 1 prompt."""
+
+    user_id: str
+    group_id: str
+    window_start: datetime
+    window_end: datetime
+    episodes: list[EpisodeRow] = field(default_factory=list)
+    facts: list[FactRow] = field(default_factory=list)
+    recent_sessions: list[SessionRow] = field(default_factory=list)
+    # Convenience — phase 3 sanitizer needs to know which uuids the dream
+    # is "aware of" so it can reject demotions for unknown edges.
+    known_fact_uuids: set[str] = field(default_factory=set)
+    known_episode_uuids: set[str] = field(default_factory=set)
+
+
+def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
+    return AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+    )
+
+
+async def _fetch_recent_episodes(
+    driver: AutoGPTFalkorDriver,
+    group_id: str,
+    window_start: datetime,
+    limit: int,
+) -> list[EpisodeRow]:
+    try:
+        rows, _, _ = await driver.execute_query(
+            """
+            MATCH (n:Episodic {group_id: $g})
+            WHERE n.valid_at >= datetime($since)
+            RETURN n.uuid AS uuid,
+                   n.name AS name,
+                   n.content AS content,
+                   n.source_description AS source_description,
+                   toString(n.valid_at) AS valid_at,
+                   toString(n.created_at) AS created_at
+            ORDER BY n.valid_at DESC
+            LIMIT $limit
+            """,
+            g=group_id,
+            since=window_start.isoformat(),
+            limit=limit,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch recent episodes for group %s — treating as empty",
+            group_id[:12],
+            exc_info=True,
+        )
+        return []
+    return [
+        EpisodeRow(
+            uuid=str(r.get("uuid", "")),
+            name=r.get("name"),
+            content=r.get("content"),
+            source_description=r.get("source_description"),
+            valid_at=r.get("valid_at"),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
+    ]
+
+
+async def _fetch_active_facts(
+    driver: AutoGPTFalkorDriver,
+    group_id: str,
+    limit: int,
+) -> list[FactRow]:
+    try:
+        rows, _, _ = await driver.execute_query(
+            """
+            MATCH (src:Entity)-[e:RELATES_TO {group_id: $g}]->(tgt:Entity)
+            WHERE (e.status IS NULL OR e.status = 'active')
+              AND (e.expired_at IS NULL)
+            RETURN e.uuid AS uuid,
+                   src.name AS source,
+                   tgt.name AS target,
+                   e.name AS name,
+                   e.fact AS fact,
+                   e.scope AS scope,
+                   e.confidence AS confidence,
+                   e.status AS status,
+                   toString(e.created_at) AS created_at
+            ORDER BY e.created_at DESC
+            LIMIT $limit
+            """,
+            g=group_id,
+            limit=limit,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch active facts for group %s — treating as empty",
+            group_id[:12],
+            exc_info=True,
+        )
+        return []
+    return [
+        FactRow(
+            uuid=str(r.get("uuid", "")),
+            source=r.get("source"),
+            target=r.get("target"),
+            name=r.get("name"),
+            fact=r.get("fact"),
+            scope=r.get("scope"),
+            confidence=r.get("confidence"),
+            status=r.get("status"),
+            created_at=r.get("created_at"),
+        )
+        for r in rows
+    ]
+
+
+async def _fetch_recent_sessions(
+    user_id: str,
+    window_start: datetime,
+    limit: int,
+) -> list[SessionRow]:
+    """Pull the most recent N chat sessions and their first chunk of content.
+
+    We only need a flavour-snapshot of each session, not the full
+    message list — phase 1's prompt cares about *what was discussed
+    recently* as context for consolidation, not about replaying it.
+    """
+    try:
+        sessions = await PrismaChatSession.prisma().find_many(
+            where={
+                "userId": user_id,
+                "createdAt": {"gte": window_start},
+            },
+            order={"createdAt": "desc"},
+            take=limit,
+            include={
+                "Messages": {
+                    "order_by": [{"sequence": "asc"}],
+                    "take": 20,
+                },
+            },
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch recent sessions for user %s",
+            user_id[:12],
+            exc_info=True,
+        )
+        return []
+
+    out: list[SessionRow] = []
+    for s in sessions:
+        messages = getattr(s, "Messages", None) or []
+        body_parts: list[str] = []
+        running_len = 0
+        for m in messages:
+            line = f"{m.role}: {m.content or ''}"
+            running_len += len(line) + 1
+            body_parts.append(line)
+            if running_len >= MAX_SESSION_BODY_BYTES:
+                break
+        body = "\n".join(body_parts)[:MAX_SESSION_BODY_BYTES]
+        out.append(
+            SessionRow(
+                session_id=s.id,
+                title=s.title,
+                created_at=s.createdAt,
+                body=body,
+            )
+        )
+    return out
+
+
+async def gather_dream_input(
+    user_id: str,
+    *,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+    max_episodes: int = MAX_EPISODES,
+    max_facts: int = MAX_ACTIVE_FACTS,
+    max_sessions: int = MAX_RECENT_SESSIONS,
+) -> DreamInput:
+    """Build the full bounded input bundle for one dream pass.
+
+    All clamps are enforced here, not in the caller. If any one of
+    the three sources fails (Cypher error, Prisma timeout) the others
+    still proceed — a partial dream is better than no dream.
+    """
+    group_id = derive_group_id(user_id)
+    window_end = datetime.now(timezone.utc)
+    window_start = window_end - timedelta(days=window_days)
+
+    driver = _open_driver(group_id)
+    try:
+        episodes = await _fetch_recent_episodes(
+            driver, group_id, window_start, max_episodes
+        )
+        facts = await _fetch_active_facts(driver, group_id, max_facts)
+    finally:
+        await driver.close()
+
+    sessions = await _fetch_recent_sessions(user_id, window_start, max_sessions)
+
+    return DreamInput(
+        user_id=user_id,
+        group_id=group_id,
+        window_start=window_start,
+        window_end=window_end,
+        episodes=episodes,
+        facts=facts,
+        recent_sessions=sessions,
+        known_fact_uuids={f.uuid for f in facts},
+        known_episode_uuids={e.uuid for e in episodes},
+    )
