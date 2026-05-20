@@ -65,42 +65,100 @@ function setupHandlers() {
   );
 }
 
-describe("MemoryVisualizer — admin dream button", () => {
-  test("renders both rebuild and dream buttons in the ControlBar", async () => {
+describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
+  test("renders rebuild and dream buttons + the overview chip", async () => {
     setupHandlers();
     render(<MemoryVisualizer />);
-    expect(await screen.findByRole("button", { name: /rebuild communities/i }))
-      .toBeDefined();
-    expect(await screen.findByRole("button", { name: /run dream pass/i }))
-      .toBeDefined();
+
+    expect(
+      await screen.findByRole("button", { name: /rebuild communities/i }),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: /run dream pass/i }),
+    ).toBeDefined();
+    await waitFor(() => {
+      expect(
+        screen.queryByText((c) => /12/.test(c) && /entit/i.test(c)),
+      ).toBeDefined();
+    });
   });
 
-  test("clicking 'Run dream pass' calls the dream endpoint and surfaces the result chip", async () => {
+  test("clicking 'Rebuild communities' surfaces the last-rebuild chip", async () => {
     setupHandlers();
     render(<MemoryVisualizer />);
 
-    const dreamBtn = await screen.findByRole("button", {
-      name: /run dream pass/i,
+    const btn = await screen.findByRole("button", {
+      name: /rebuild communities/i,
     });
-    await userEvent.click(dreamBtn);
+    await userEvent.click(btn);
 
-    // While the mutation is pending the button label flips to "Dreaming…"
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /rebuilding…/i }),
+      ).toBeDefined();
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByText((c) =>
+          c.includes("last rebuild") && c.includes("1.2s"),
+        ),
+      ).toBeDefined();
+    });
+  });
+
+  test("rebuild skip result surfaces a skip-reason chip", async () => {
+    server.use(
+      getGetV2GetMemoryOverviewMockHandler200(
+        getGetV2GetMemoryOverviewResponseMock200(),
+      ),
+      getGetV2GetGraphMockHandler200(getGetV2GetGraphResponseMock200()),
+      getPostV2RebuildCommunitiesMockHandler200({
+        ...getPostV2RebuildCommunitiesResponseMock200(),
+        skipped: true,
+        skip_reason: "no_activity",
+        elapsed_seconds: 0.05,
+      }),
+    );
+    render(<MemoryVisualizer />);
+    const btn = await screen.findByRole("button", {
+      name: /rebuild communities/i,
+    });
+    await userEvent.click(btn);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText((c) =>
+          c.includes("last rebuild") &&
+          c.includes("skipped (no_activity)"),
+        ),
+      ).toBeDefined();
+    });
+  });
+
+  test("clicking 'Run dream pass' surfaces the last-dream chip with per-phase counts", async () => {
+    setupHandlers();
+    render(<MemoryVisualizer />);
+
+    const btn = await screen.findByRole("button", { name: /run dream pass/i });
+    await userEvent.click(btn);
+
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /dreaming…/i })).toBeDefined();
     });
-
-    // After the response lands the last-dream chip shows the elapsed time
-    // and per-phase counts.
     await waitFor(() => {
-      const node = screen.queryByText((content) =>
-        content.includes("last dream") && content.includes("w=3") &&
-          content.includes("p=2") && content.includes("d=1"),
-      );
-      expect(node).toBeDefined();
+      expect(
+        screen.queryByText(
+          (c) =>
+            c.includes("last dream") &&
+            c.includes("w=3") &&
+            c.includes("p=2") &&
+            c.includes("d=1"),
+        ),
+      ).toBeDefined();
     });
   });
 
-  test("dream skip result surfaces a skip reason chip", async () => {
+  test("dream skip result surfaces a skip-reason chip", async () => {
     server.use(
       getGetV2GetMemoryOverviewMockHandler200(
         getGetV2GetMemoryOverviewResponseMock200(),
