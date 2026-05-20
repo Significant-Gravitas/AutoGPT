@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .client import derive_group_id, get_graphiti_client
+from .config import graphiti_config
 
 logger = logging.getLogger(__name__)
 
@@ -146,12 +147,92 @@ def _patch_upstream_label_propagation() -> None:
 _patch_upstream_label_propagation()
 
 
-async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
+async def _activity_since_last_rebuild(
+    driver,
+    group_id: str,
+    min_new_episodes: int,
+) -> tuple[bool, str, dict[str, Any]]:
+    """Decide whether the user's graph has changed enough to justify a rebuild.
+
+    Returns ``(should_rebuild, reason, stats)``. The graph itself is the
+    source of truth — we compare the newest ``:Episodic.created_at`` to
+    the newest ``:Community.created_at`` and additionally require at least
+    ``min_new_episodes`` net-new episodes since the last build.
+
+    No external state to maintain (no Redis key, no Postgres column).
+    Two indexed Cypher queries; sub-millisecond on FalkorDB.
+    """
+    ep_q = """
+    MATCH (n:Episodic {group_id: $g})
+    RETURN max(n.created_at) AS latest, count(n) AS total
+    """
+    co_q = """
+    MATCH (n:Community {group_id: $g})
+    RETURN max(n.created_at) AS latest, count(n) AS total
+    """
+    ep_rows, _, _ = await driver.execute_query(ep_q, g=group_id)
+    co_rows, _, _ = await driver.execute_query(co_q, g=group_id)
+
+    latest_ep = ep_rows[0]["latest"] if ep_rows else None
+    total_ep = ep_rows[0]["total"] if ep_rows else 0
+    latest_co = co_rows[0]["latest"] if co_rows else None
+    total_co = co_rows[0]["total"] if co_rows else 0
+
+    stats: dict[str, Any] = {
+        "episodes_total": total_ep,
+        "communities_total": total_co,
+        "latest_episode_at": str(latest_ep) if latest_ep is not None else None,
+        "latest_community_at": str(latest_co) if latest_co is not None else None,
+        "min_new_episodes_threshold": min_new_episodes,
+    }
+
+    if total_ep == 0:
+        return False, "no_episodes", stats
+
+    if total_co == 0:
+        # First-ever rebuild — go.
+        stats["new_episodes_since_last_rebuild"] = total_ep
+        return True, "first_rebuild", stats
+
+    if latest_ep is None or latest_co is None or latest_ep <= latest_co:
+        stats["new_episodes_since_last_rebuild"] = 0
+        return False, "no_new_episodes_since_last_rebuild", stats
+
+    # Count exactly how many episodes are newer than the latest community
+    # to enforce the activity threshold.
+    count_q = """
+    MATCH (n:Episodic {group_id: $g})
+    WHERE n.created_at > $since
+    RETURN count(n) AS c
+    """
+    rows, _, _ = await driver.execute_query(count_q, g=group_id, since=latest_co)
+    new_count = rows[0]["c"] if rows else 0
+    stats["new_episodes_since_last_rebuild"] = new_count
+
+    if new_count < min_new_episodes:
+        return False, "below_activity_threshold", stats
+
+    return True, "activity_above_threshold", stats
+
+
+async def rebuild_communities_for_user(
+    user_id: str, *, force: bool = False
+) -> dict[str, Any]:
     """Destroy and rebuild ``:Community`` nodes for one user's graph.
 
+    Gated by an activity check (``_activity_since_last_rebuild``) so we
+    only pay LLM-summarization cost when the graph has actually changed
+    by at least ``GraphitiConfig.community_rebuild_min_new_episodes``
+    since the last successful rebuild. Skipping also avoids non-
+    deterministic clustering drift (LP tie-breaks, summary text)
+    on essentially-unchanged graphs.
+
+    Set ``force=True`` to bypass the gate (admin override / debugging).
+
     Returns a result dict with ``user_id``, ``communities_built``,
-    ``elapsed_seconds``, and ``error`` (if any). Always returns a dict
-    even on failure so the scheduler can record the outcome.
+    ``elapsed_seconds``, ``error`` (if any), ``skipped`` (bool), and
+    ``activity`` (the gate's stats). Always returns a dict even on
+    failure so the scheduler can record the outcome.
     """
     started_at = datetime.now(timezone.utc)
     result: dict[str, Any] = {
@@ -160,6 +241,10 @@ async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
         "communities_built": None,
         "elapsed_seconds": None,
         "error": None,
+        "skipped": False,
+        "skip_reason": None,
+        "activity": None,
+        "forced": force,
     }
 
     try:
@@ -174,16 +259,38 @@ async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
     try:
         client = await get_graphiti_client(group_id)
 
-        # Defensive: clean up any orphan :Community nodes regardless of
-        # upstream version. Per multi-episode research, modern Graphiti
-        # already does this inside build_communities(), but older
-        # versions did not. Idempotent either way.
         driver = getattr(client, "graph_driver", None) or getattr(
             client, "driver", None
         )
         if driver is None:
             raise RuntimeError("Graphiti client has no graph_driver")
 
+        # Activity gate — skip when nothing has changed since the last
+        # rebuild. Cheap two-query check; the LLM cost we save is the
+        # whole point of community detection being a scheduled job
+        # rather than an always-run pass.
+        if not force:
+            should_rebuild, reason, stats = await _activity_since_last_rebuild(
+                driver,
+                group_id,
+                min_new_episodes=graphiti_config.community_rebuild_min_new_episodes,
+            )
+            result["activity"] = stats
+            if not should_rebuild:
+                result["skipped"] = True
+                result["skip_reason"] = reason
+                logger.info(
+                    "Community rebuild skipped for user %s — %s (stats=%s)",
+                    user_id[:12],
+                    reason,
+                    stats,
+                )
+                return result
+
+        # Defensive: clean up any orphan :Community nodes regardless of
+        # upstream version. Per multi-episode research, modern Graphiti
+        # already does this inside build_communities(), but older
+        # versions did not. Idempotent either way.
         await driver.execute_query(
             """
             MATCH (c:Community {group_id: $group_id})

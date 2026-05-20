@@ -71,6 +71,19 @@ class GraphitiConfig(BaseSettings):
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
     )
 
+    # Activity-gate threshold for community rebuilds (P-1.7).
+    # ``rebuild_communities_for_user`` skips when there have been fewer
+    # than this many new episodes since the last successful rebuild —
+    # avoids paying the per-community LLM-summarization cost AND avoids
+    # clustering drift on essentially-unchanged graphs (LP tie-breaks
+    # are non-deterministic; summary text varies). Defaults to 5 — a
+    # full week of low-activity (~1 episode/day) is fine to skip; a
+    # power user blasting 20+ memories triggers rebuild within hours.
+    community_rebuild_min_new_episodes: int = Field(
+        default=5,
+        description="Skip community rebuild when fewer than this many new episodes since last rebuild.",
+    )
+
     # Concurrency
     semaphore_limit: int = Field(
         default=5,

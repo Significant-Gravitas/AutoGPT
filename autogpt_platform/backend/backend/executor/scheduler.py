@@ -913,9 +913,16 @@ class Scheduler(AppService):
         return True
 
     @expose
-    def execute_community_rebuild_pass(self, user_id: str) -> dict:
-        """Manually trigger a community rebuild for one user (bypasses cron)."""
-        return run_async(rebuild_communities_for_user(user_id))
+    def execute_community_rebuild_pass(
+        self, user_id: str, force: bool = False
+    ) -> dict:
+        """Manually trigger a community rebuild for one user (bypasses cron).
+
+        Set ``force=True`` to bypass the activity gate inside
+        ``rebuild_communities_for_user`` — useful for admin debugging
+        when you want to rebuild even on an unchanged graph.
+        """
+        return run_async(rebuild_communities_for_user(user_id, force=force))
 
 
 class SchedulerClient(AppServiceClient):
