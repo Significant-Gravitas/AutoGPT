@@ -99,8 +99,8 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
     });
     await waitFor(() => {
       expect(
-        screen.queryByText((c) =>
-          c.includes("last rebuild") && c.includes("1.2s"),
+        screen.queryByText(
+          (c) => c.includes("last rebuild") && c.includes("1.2s"),
         ),
       ).toBeDefined();
     });
@@ -127,9 +127,9 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText((c) =>
-          c.includes("last rebuild") &&
-          c.includes("skipped (no_activity)"),
+        screen.queryByText(
+          (c) =>
+            c.includes("last rebuild") && c.includes("skipped (no_activity)"),
         ),
       ).toBeDefined();
     });
@@ -143,7 +143,9 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
     await userEvent.click(btn);
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /dreaming…/i })).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: /dreaming…/i }),
+      ).toBeDefined();
     });
     await waitFor(() => {
       expect(
@@ -177,8 +179,8 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText((c) =>
-          c.includes("last dream") && c.includes("skipped (no_input)"),
+        screen.queryByText(
+          (c) => c.includes("last dream") && c.includes("skipped (no_input)"),
         ),
       ).toBeDefined();
     });
