@@ -2,7 +2,11 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CheckCircle, CircleNotch, HourglassIcon } from "@phosphor-icons/react";
+import {
+  CheckCircleIcon,
+  CircleNotchIcon,
+  HourglassIcon,
+} from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
 
@@ -98,13 +102,13 @@ export function ChatSessionBlock({
         </span>
       ) : null}
       {chatStatus !== "running" && showProcessing ? (
-        <CircleNotch
+        <CircleNotchIcon
           className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
           weight="bold"
         />
       ) : null}
       {showCompleted ? (
-        <CheckCircle
+        <CheckCircleIcon
           className="h-4 w-4 shrink-0 text-green-500"
           weight="fill"
         />

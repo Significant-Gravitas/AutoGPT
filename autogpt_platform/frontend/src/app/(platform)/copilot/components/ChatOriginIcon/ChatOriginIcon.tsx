@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function ChatOriginIcon({ sourcePlatform }: Props) {
-  const platform = sourcePlatform?.trim().toLocaleLowerCase();
+  const platform = sourcePlatform?.trim().toLowerCase();
   const logo = platform ? PLATFORM_LOGOS[platform] : undefined;
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 
