@@ -55,6 +55,7 @@ const sessions = [
     id: "s1",
     title: "Active chat",
     is_processing: false,
+    source_platform: "discord",
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
   },
@@ -114,6 +115,12 @@ describe("ChatSidebar — delete flow", () => {
       id: "s2",
       title: "Other chat",
     });
+  });
+
+  it("shows a platform logo for chats from an external platform", async () => {
+    renderSidebar();
+
+    expect(await screen.findByAltText("Discord")).toBeDefined();
   });
 
   it("clears the staged session when Cancel is clicked", async () => {

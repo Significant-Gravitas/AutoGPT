@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { MutableRefObject } from "react";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
+import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
 import { getSessionTitle, highlightMatch, type SearchSession } from "./helpers";
 
 const indicatorTransition = {
@@ -91,6 +92,7 @@ export function ChatSearchResults({
                   isHighlighted ? "text-zinc-900" : "text-zinc-500",
                 )}
               />
+              <ChatOriginIcon sourcePlatform={session.source_platform} />
               <div className="min-w-0 flex-1">
                 <div
                   className={cn(
