@@ -57,7 +57,11 @@ async def backfill_one_user(user_id: str) -> int:
         database=group_id,
     )
     try:
-        records, _, _ = await driver.execute_query(BACKFILL_QUERY)
+        # ``execute_query`` is typed as ``tuple | None`` upstream; coerce
+        # to an empty tuple so pyright stops complaining about iterating
+        # over a None and the runtime stays single-pass.
+        result = await driver.execute_query(BACKFILL_QUERY)
+        records = result[0] if result else []
         updated = records[0]["updated"] if records else 0
         if updated:
             logger.info("Backfilled %d edges for user %s", updated, user_id[:12])

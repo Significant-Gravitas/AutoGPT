@@ -38,35 +38,38 @@ function makePlan(overrides: Partial<PlanDef> = {}): PlanDef {
 }
 
 describe("computePlanPricing", () => {
-  test("monthly USD passes through the country rate", () => {
-    const { displayPrice, monthlyEquiv, perLabel } = computePlanPricing({
+  test("monthly USD: primary is the monthly price, no discount, charged today equals monthly", () => {
+    const result = computePlanPricing({
       plan: makePlan(),
       country: usdCountry,
       isYearly: false,
     });
-    expect(displayPrice).toBe(50);
-    expect(monthlyEquiv).toBeNull();
-    expect(perLabel).toBe("/ month");
+    expect(result.primaryPrice).toBe(50);
+    expect(result.chargedToday).toBe(50);
+    expect(result.monthlyOriginal).toBeNull();
+    expect(result.discountPercent).toBeNull();
   });
 
-  test("yearly applies the price factor and multiplies by 12", () => {
-    const { displayPrice, monthlyEquiv, perLabel } = computePlanPricing({
+  test("yearly USD: primary is the monthly-equivalent, charged today is the annual total", () => {
+    const result = computePlanPricing({
       plan: makePlan(),
       country: usdCountry,
       isYearly: true,
     });
-    expect(displayPrice).toBe(50 * YEARLY_PRICE_FACTOR * 12);
-    expect(monthlyEquiv).toBe(50 * YEARLY_PRICE_FACTOR);
-    expect(perLabel).toBe("/ year");
+    expect(result.primaryPrice).toBe(50 * YEARLY_PRICE_FACTOR);
+    expect(result.chargedToday).toBe(50 * YEARLY_PRICE_FACTOR * 12);
+    expect(result.monthlyOriginal).toBe(50);
+    expect(result.discountPercent).toBe(15);
   });
 
   test("non-USD currency multiplies by the country rate", () => {
-    const { displayPrice } = computePlanPricing({
+    const result = computePlanPricing({
       plan: makePlan({ usdMonthly: 50 }),
       country: brlCountry,
       isYearly: false,
     });
-    expect(displayPrice).toBe(250);
+    expect(result.primaryPrice).toBe(250);
+    expect(result.chargedToday).toBe(250);
   });
 
   test("usdMonthly === null returns null prices for both branches", () => {
@@ -80,19 +83,36 @@ describe("computePlanPricing", () => {
       country: usdCountry,
       isYearly: true,
     });
-    expect(monthly.displayPrice).toBeNull();
-    expect(monthly.monthlyEquiv).toBeNull();
-    expect(yearly.displayPrice).toBeNull();
-    expect(yearly.monthlyEquiv).toBeNull();
+    expect(monthly.primaryPrice).toBeNull();
+    expect(monthly.chargedToday).toBeNull();
+    expect(monthly.monthlyOriginal).toBeNull();
+    expect(monthly.discountPercent).toBeNull();
+    expect(yearly.primaryPrice).toBeNull();
+    expect(yearly.chargedToday).toBeNull();
+    expect(yearly.monthlyOriginal).toBeNull();
+    expect(yearly.discountPercent).toBeNull();
   });
 
   test("usdMonthly === 0 renders 0, not 'Contact us'", () => {
-    const { displayPrice, monthlyEquiv } = computePlanPricing({
+    const result = computePlanPricing({
       plan: makePlan({ usdMonthly: 0 }),
       country: usdCountry,
       isYearly: true,
     });
-    expect(displayPrice).toBe(0);
-    expect(monthlyEquiv).toBe(0);
+    expect(result.primaryPrice).toBe(0);
+    expect(result.chargedToday).toBe(0);
+    expect(result.discountPercent).toBeNull();
+  });
+
+  test("explicit usdYearly overrides the YEARLY_PRICE_FACTOR estimate", () => {
+    const result = computePlanPricing({
+      plan: makePlan({ usdMonthly: 50, usdYearly: 480 }),
+      country: usdCountry,
+      isYearly: true,
+    });
+    expect(result.chargedToday).toBe(480);
+    expect(result.primaryPrice).toBe(40);
+    expect(result.monthlyOriginal).toBe(50);
+    expect(result.discountPercent).toBe(20);
   });
 });
