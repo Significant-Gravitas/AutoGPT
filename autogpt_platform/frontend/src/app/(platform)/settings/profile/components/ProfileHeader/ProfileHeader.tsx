@@ -161,7 +161,7 @@ export function ProfileHeader({
               Handle
             </Text>
             <Text variant="small" as="span" className="!text-zinc-400">
-              autogpt.com/@your-handle
+              agpt.co/@your-handle
             </Text>
           </div>
           <Input
