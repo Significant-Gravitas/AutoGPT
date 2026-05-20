@@ -70,6 +70,7 @@ class ChatSessionMetadata(BaseModel):
     # this graph and reject calls targeting a different agent.  Also used
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
+    source_platform: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -257,6 +258,7 @@ class ChatSession(ChatSessionInfo):
         *,
         dry_run: bool,
         builder_graph_id: str | None = None,
+        source_platform: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -270,6 +272,7 @@ class ChatSession(ChatSessionInfo):
             metadata=ChatSessionMetadata(
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
+                source_platform=source_platform,
             ),
         )
 
@@ -926,6 +929,7 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    source_platform: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -936,6 +940,7 @@ async def create_chat_session(
         builder_graph_id: When set, locks the session to the given graph.
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
+        source_platform: External chat platform that originated the session.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -946,6 +951,7 @@ async def create_chat_session(
         user_id,
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
+        source_platform=source_platform,
     )
 
     # Create in database first - fail fast if this fails
