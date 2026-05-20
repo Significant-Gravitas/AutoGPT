@@ -167,6 +167,11 @@ class TestPrepareDryRun:
         assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
+        # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+        # Pydantic input validation accepts it.
+        from backend.blocks.llm import LlmModel
+
+        assert LlmModel(result["model"]) is not None
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
