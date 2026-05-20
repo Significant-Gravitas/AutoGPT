@@ -72,6 +72,22 @@ _BUILDER_RUN_AGENT_GUIDANCE = (
     "in the same turn."
 )
 
+# Steers the model toward edit_agent on the bound graph. Empty builder
+# graphs (version=1, no nodes) tempt the model to reach for create_agent;
+# that tool is hidden in builder sessions and the model has no UI to ask
+# the user for permission — without explicit guidance it would otherwise
+# narrate a phantom Claude-Code-style approval prompt.
+_BUILDER_TOOL_GUIDANCE = (
+    "This builder panel is already bound to the graph shown in "
+    "<builder_context>. Use `edit_agent` against that graph id to add, "
+    "modify, or remove nodes and links — even when the graph is empty "
+    "(version=1, no nodes). Never ask the user to approve a tool: there "
+    "is no permission prompt UI in the builder chat, and the tools "
+    "`create_agent`, `customize_agent`, and `get_agent_building_guide` "
+    "are intentionally unavailable here (the building guide is already "
+    "included in <building_guide> below)."
+)
+
 
 def _sanitize_for_xml(value: Any) -> str:
     """Escape XML special chars — mirrors ``sanitizeForXml`` in
@@ -164,6 +180,9 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
     # code fences, and example JSON.
     return (
         f"\n\n<{BUILDER_SESSION_TAG}>\n"
+        f"<tool_usage>\n"
+        f"{_BUILDER_TOOL_GUIDANCE}\n"
+        f"</tool_usage>\n"
         f"<run_agent_dispatch_mode>\n"
         f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
         f"</run_agent_dispatch_mode>\n"

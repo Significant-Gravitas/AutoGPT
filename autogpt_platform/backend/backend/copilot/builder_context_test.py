@@ -95,6 +95,28 @@ async def test_system_prompt_suffix_contains_only_static_content():
 
 
 @pytest.mark.asyncio
+async def test_system_prompt_suffix_steers_to_edit_agent():
+    """The suffix must tell the model to use edit_agent on the bound
+    graph and forbid calling the blocked tools — production traces
+    showed the model hallucinating a Claude-Code permission prompt when
+    it reached for create_agent / get_agent_building_guide instead."""
+    session = _session("graph-1")
+    with patch(
+        "backend.copilot.builder_context._load_guide",
+        return_value="# Guide body",
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert "<tool_usage>" in suffix
+    assert "edit_agent" in suffix
+    assert "create_agent" in suffix
+    assert "get_agent_building_guide" in suffix
+    # The "no permission prompt UI" framing is what stops the model from
+    # asking the user to "click Allow" when a tool is unavailable.
+    assert "no permission prompt UI" in suffix
+
+
+@pytest.mark.asyncio
 async def test_system_prompt_suffix_identical_across_graphs():
     """The suffix must be byte-identical regardless of which graph the
     session is bound to — that's what keeps the cacheable prefix warm

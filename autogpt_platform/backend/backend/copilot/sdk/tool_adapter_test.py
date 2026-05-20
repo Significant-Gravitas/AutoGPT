@@ -9,6 +9,7 @@ from mcp.types import ToolAnnotations
 
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -18,6 +19,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    create_copilot_mcp_server,
     create_tool_handler,
     pop_pending_tool_output,
     reset_stash_event,
@@ -458,9 +460,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert (
-            len(call_log) == 1
-        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        )
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -980,7 +982,9 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         session = MagicMock()
         session.dry_run = False
         session.session_id = "sess-no-inject"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         async def fake_tool_fn(_args: dict) -> dict:
             return {
@@ -1002,7 +1006,9 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         session = MagicMock()
         session.dry_run = False
         session.session_id = "sess-stash"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
 
@@ -1018,3 +1024,48 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         stashed = pop_pending_tool_output("fake_tool_stash_pure")
         assert stashed == clean_json
         assert "<user_follow_up>" not in (stashed or "")
+
+
+class TestCreateCopilotMcpServerHidden:
+    """``hidden_tool_names`` removes tools from MCP registration entirely
+    so the model never sees them — guards against the production bug
+    where builder-blocked tools were still advertised, the model called
+    them anyway, and the CLI returned its canned "Permission to use ...
+    has been denied" string that the model then narrated as a fake
+    Allow/Deny UI."""
+
+    @pytest.mark.asyncio
+    async def test_hidden_tools_not_registered(self):
+        sample = next(iter(TOOL_REGISTRY.keys()))
+        server = create_copilot_mcp_server(hidden_tool_names=[sample])
+        registered = await self._registered_tool_names(server)
+        assert sample not in registered
+        # Other tools still register.
+        assert len(registered) >= len(TOOL_REGISTRY) - 1
+
+    @pytest.mark.asyncio
+    async def test_no_hidden_tools_registers_all(self):
+        server = create_copilot_mcp_server()
+        registered = await self._registered_tool_names(server)
+        for short in TOOL_REGISTRY:
+            assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_builder_blocked_tools_hidden(self):
+        from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+
+        server = create_copilot_mcp_server(hidden_tool_names=BUILDER_BLOCKED_TOOLS)
+        registered = await self._registered_tool_names(server)
+        for blocked in BUILDER_BLOCKED_TOOLS:
+            assert blocked not in registered
+        # edit_agent must remain so the model can populate the bound graph.
+        assert "edit_agent" in registered
+
+    @staticmethod
+    async def _registered_tool_names(server) -> set[str]:
+        from mcp.types import ListToolsRequest
+
+        instance = server["instance"]
+        handler = instance.request_handlers[ListToolsRequest]
+        result = await handler(ListToolsRequest(method="tools/list"))
+        return {t.name for t in result.root.tools}

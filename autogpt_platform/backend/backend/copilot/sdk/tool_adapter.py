@@ -658,7 +658,11 @@ def _make_truncating_wrapper(
     return wrapper
 
 
-def create_copilot_mcp_server(*, use_e2b: bool = False):
+def create_copilot_mcp_server(
+    *,
+    use_e2b: bool = False,
+    hidden_tool_names: Iterable[str] = (),
+):
     """Create an in-process MCP server configuration for CoPilot tools.
 
     All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
@@ -672,11 +676,21 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     that route directly to the E2B sandbox filesystem, and the caller should
     disable the corresponding SDK built-in tools via
     :func:`get_sdk_disallowed_tools`.
+
+    Short tool names in *hidden_tool_names* are not registered at all — the
+    model never sees them.  ``allowed_tools``/``disallowed_tools`` alone are
+    insufficient because the CLI auto-rejects calls to denied tools with a
+    canned "Permission to use ... has been denied" string that the model
+    then narrates as a Claude-Code-style approval prompt (no such UI exists
+    in copilot).  Hiding the tool removes the temptation entirely.
     """
 
+    hidden = frozenset(hidden_tool_names)
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
+        if tool_name in hidden:
+            continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         # All tools annotated readOnlyHint=True to enable parallel dispatch.

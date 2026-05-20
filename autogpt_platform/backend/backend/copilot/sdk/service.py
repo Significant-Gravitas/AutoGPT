@@ -84,7 +84,11 @@ from ..pending_messages import (
     drain_pending_for_persist,
     push_pending_message,
 )
-from ..permissions import apply_tool_permissions
+from ..permissions import (
+    CopilotPermissions,
+    all_known_tool_names,
+    apply_tool_permissions,
+)
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import (
     get_global_rate_limits,
@@ -831,6 +835,24 @@ _THINKING_ONLY_REPROMPT = (
 # session-message flush so page reloads show progress on long turns.
 _FLUSH_INTERVAL_SECONDS = 30.0
 _FLUSH_MESSAGE_THRESHOLD = 10
+
+
+def _hidden_short_names_for_permissions(
+    permissions: CopilotPermissions | None,
+) -> frozenset[str]:
+    """Short tool names that should not be registered on the MCP server.
+
+    ``allowed_tools``/``disallowed_tools`` only gate execution — denied
+    calls still come back to the model with the CLI's canned "Permission
+    to use ... has been denied" string, which the model then narrates as a
+    Claude-Code-style approval prompt that doesn't exist in copilot.
+    Hiding the tool from the MCP server removes it from the model's tool
+    list entirely so it never reaches for the blocked name.
+    """
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -3989,7 +4011,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
+        hidden_tools = _hidden_short_names_for_permissions(permissions)
+        mcp_server = create_copilot_mcp_server(
+            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+        )
 
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
