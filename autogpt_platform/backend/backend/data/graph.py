@@ -331,9 +331,8 @@ class BaseGraph(GraphBaseMeta):
                         **{
                             k: v
                             for k, v in p.generate_schema().items()
-                            if k not in ["description", "default"]
+                            if k not in ["description", "default", "secret"]
                         },
-                        "secret": False,
                         # Default value has to be set for advanced fields.
                         "advanced": p.advanced and p.value is not None,
                         "title": p.title or p.name,

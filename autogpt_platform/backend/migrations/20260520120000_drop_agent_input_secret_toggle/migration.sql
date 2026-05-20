@@ -1,9 +1,7 @@
--- One-off cleanup: drop the obsolete `secret` and `value` keys from
+-- One-off data cleanup: drop the obsolete `secret` and `value` keys from
 -- AgentInput* nodes that had the (now removed) secret toggle enabled.
---
--- Run this once, after the release that removes the toggle has shipped.
--- Affected users were emailed a week in advance with a heads-up to
--- migrate any sensitive defaults out of node configs.
+-- Affected users were emailed in advance with a heads-up to migrate
+-- any sensitive defaults out of node configs.
 --
 -- The AgentInput block IDs below cover the base block plus every
 -- subclass declared in `backend/blocks/io.py`.
