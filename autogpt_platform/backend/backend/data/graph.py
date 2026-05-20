@@ -27,7 +27,7 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -1817,48 +1817,126 @@ async def fix_llm_provider_credentials():
         )
 
 
-async def migrate_llm_models(migrate_to: LlmModel):
+def _legacy_value_aliases(legacy_value: str, replacement: LlmModel) -> set[str]:
+    """Stored-value forms that should map to ``replacement`` for one legacy slug.
+
+    ``LlmModel._missing_`` accepts provider-prefixed inputs at write time, so
+    historical rows may carry either the bare slug or ``<provider>/<slug>``
+    even when the canonical enum value is unprefixed. Vendor-prefixed legacy
+    values (e.g. ``google/...``) need no alias.
     """
-    Update all LLM models in all AI blocks that don't exist in the enum.
+    if "/" in legacy_value:
+        return {legacy_value}
+    return {legacy_value, f"{replacement.metadata.provider}/{legacy_value}"}
+
+
+async def migrate_llm_models(fallback: LlmModel):
+    """
+    Rewrite legacy LLM model values to in-enum equivalents.
+
+    Runs in two passes per LlmModel field:
+      1. Family-aware: for each (legacy_value, replacement) in
+         LEGACY_MODEL_MAPPINGS, rewrite that exact legacy value to its mapped
+         replacement so e.g. Claude Opus lands on a newer Opus, not the global
+         GPT default.
+      2. Catch-all: any value still out-of-enum gets ``fallback``.
+
+    Both passes run against two tables:
+      * ``AgentNode.constantInput`` — saved graph definitions (scoped by
+        ``agentBlockId`` because we know the LlmModel field name per block).
+      * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
+        preset input overrides; scoped only by the field-value match since
+        preset rows don't carry the block id.
+
     Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
-    # Scan all blocks and search for LlmModel fields
-    llm_model_fields: dict[str, str] = {}  # {block_id: field_name}
+    llm_model_fields = _find_llm_model_fields()
+    if not llm_model_fields:
+        return
 
-    # Search for all LlmModel fields
-    for block_type in get_blocks().values():
-        block = block_type()
-        from pydantic.fields import FieldInfo
-
-        fields: dict[str, FieldInfo] = block.input_schema.model_fields
-
-        # Collect top-level LlmModel fields
-        for field_name, field in fields.items():
-            if field.annotation == LlmModel:
-                llm_model_fields[block.id] = field_name
-
-    # Convert enum values to a list of strings for the SQL query
     enum_values = [v.value for v in LlmModel]
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
-    # Update each block
-    for id, path in llm_model_fields.items():
-        query = f"""
-            UPDATE {{schema_prefix}}"AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
-            WHERE "agentBlockId" = $3
-            AND "constantInput" ? ($4)::text
-            AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-            """
+    node_targeted_query = """
+        UPDATE {schema_prefix}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text = $5
+        """
+    node_fallback_query = f"""
+        UPDATE {{schema_prefix}}"AgentNode"
+        SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
+        WHERE "agentBlockId" = $3
+        AND "constantInput" ? ($4)::text
+        AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
+        """
+    preset_targeted_query = """
+        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
+        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
+        WHERE "agentPresetId" IS NOT NULL
+        AND "data"::jsonb ? ($3)::text
+        AND "data"::jsonb->>($3)::text = $4
+        """
+    preset_fallback_query = f"""
+        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput"
+        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
+        WHERE "agentPresetId" IS NOT NULL
+        AND "data"::jsonb ? ($3)::text
+        AND "data"::jsonb->>($3)::text NOT IN {escaped_enum_values}
+        """
 
+    # AgentNode pass — per (block_id, field_name).
+    for block_id, path in llm_model_fields.items():
+        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+            for stored_value in _legacy_value_aliases(legacy_value, replacement):
+                await execute_raw_with_schema(
+                    node_targeted_query,
+                    [path],
+                    replacement.value,
+                    block_id,
+                    path,
+                    stored_value,
+                )
         await execute_raw_with_schema(
-            query,
+            node_fallback_query,
             [path],
-            migrate_to.value,
-            id,
+            fallback.value,
+            block_id,
             path,
         )
+
+    # AgentPreset pass — per unique field name. Preset rows don't carry
+    # ``agentBlockId``, but the field-value match is tight enough on its own
+    # because no non-LLM block stores one of our retired slugs.
+    for path in set(llm_model_fields.values()):
+        for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
+            for stored_value in _legacy_value_aliases(legacy_value, replacement):
+                await execute_raw_with_schema(
+                    preset_targeted_query,
+                    [path],
+                    replacement.value,
+                    path,
+                    stored_value,
+                )
+        await execute_raw_with_schema(
+            preset_fallback_query,
+            [path],
+            fallback.value,
+            path,
+        )
+
+
+def _find_llm_model_fields() -> dict[str, str]:
+    """Return ``{block_id: field_name}`` for every top-level LlmModel field."""
+    llm_model_fields: dict[str, str] = {}
+    for block_type in get_blocks().values():
+        block = block_type()
+        for field_name, field in block.input_schema.model_fields.items():
+            if field.annotation == LlmModel:
+                llm_model_fields[block.id] = field_name
+    return llm_model_fields
 
 
 # Simple placeholder class for deleted/missing blocks
