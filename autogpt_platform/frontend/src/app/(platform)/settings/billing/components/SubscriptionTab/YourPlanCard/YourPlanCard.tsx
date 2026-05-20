@@ -39,6 +39,7 @@ export function YourPlanCard({ index = 0 }: Props) {
     pendingTierDowngrade,
     pendingTierDowngradeLabel,
     isCycleToggleVisible,
+    cycleDialogTitle,
     cycleDialogBody,
     tierUpgradeDialogBody,
     tierDowngradeDialogBody,
@@ -205,6 +206,7 @@ export function YourPlanCard({ index = 0 }: Props) {
             if (!open) onCancelCycleSwitch();
           }}
           targetCycle={pendingCycle}
+          title={cycleDialogTitle || undefined}
           body={cycleDialogBody}
           isSaving={isUpdatingTier}
           onConfirm={onConfirmCycleSwitch}
