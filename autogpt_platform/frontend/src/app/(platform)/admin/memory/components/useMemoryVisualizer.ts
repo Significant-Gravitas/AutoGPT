@@ -56,7 +56,10 @@ export interface RebuildResult {
   forced: boolean;
 }
 
-const BASE = "/admin/memory/me";
+// Backend mounts the router with prefix="/api"; the router itself adds
+// prefix="/admin/memory"; final path is /api/admin/memory/...
+// Matches the convention seen in src/app/api/__generated__/endpoints/admin/admin.ts.
+const BASE = "/api/admin/memory/me";
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await customMutator<{ data: T; status: number; headers: Headers }>(
