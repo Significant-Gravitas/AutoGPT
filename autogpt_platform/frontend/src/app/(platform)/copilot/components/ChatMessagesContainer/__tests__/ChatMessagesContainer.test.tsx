@@ -58,6 +58,14 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 
+vi.mock("../components/QueueBadge", () => ({
+  QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
+    <span data-testid="queue-badge" data-session-id={sessionID ?? ""}>
+      QueueBadge
+    </span>
+  ),
+}));
+
 vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
 vi.mock("../components/CollapsedToolGroup", () => ({
   CollapsedToolGroup: () => null,
@@ -514,5 +522,103 @@ describe("ChatMessagesContainer — turnStats", () => {
       /2026/.test(el?.textContent ?? ""),
     );
     expect(labels.length).toBe(0);
+  });
+});
+
+// ── per-message queue badge ───────────────────────────────────────────────
+
+describe("ChatMessagesContainer — queue badges on user messages", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a QueueBadge when the row is the latest user in a queued session", () => {
+    const userId = "user-q1";
+    const turnStats = new Map([
+      [
+        userId,
+        {
+          isLatestUserMessage: true,
+          rawMessageId: "uuid-q1",
+        },
+      ],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "queue me", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="queued"
+      />,
+    );
+    const badge = screen.getByTestId("queue-badge");
+    expect(badge.getAttribute("data-session-id")).toBe("sess-123");
+  });
+
+  it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
+    const userId = "user-n1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+
+  it("does NOT render the badge when isLatestUserMessage but session is idle", () => {
+    // Guards against regressing the AND-gate: even if a row is the
+    // latest user message, the badge should stay hidden unless the
+    // OWNING session is in the queued state.
+    const userId = "user-q2";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "live", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="idle"
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
   });
 });

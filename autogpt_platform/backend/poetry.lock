@@ -3514,18 +3514,18 @@ files = [
 
 [[package]]
 name = "mem0ai"
-version = "0.1.118"
+version = "0.1.116"
 description = "Long-term memory for AI Agents"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "mem0ai-0.1.118-py3-none-any.whl", hash = "sha256:c2b371224a340fd5529d608dfbd2e77c610c7ffe421005ff7e862fd6f322cca8"},
-    {file = "mem0ai-0.1.118.tar.gz", hash = "sha256:d62497286616357f8726b849afc20031cd0ab56d1cf312fa289b006be33c3ce7"},
+    {file = "mem0ai-0.1.116-py3-none-any.whl", hash = "sha256:245b08f1e615e057ebacc52462ab729a7282abe05e8d4957236d893b3d32a990"},
+    {file = "mem0ai-0.1.116.tar.gz", hash = "sha256:c33e08c5464f96b1cf109893dba5d394d8cc5788a8400d85cb1ceed696ee3204"},
 ]
 
 [package.dependencies]
-openai = ">=1.90.0,<1.110.0"
+openai = ">=1.33.0"
 posthog = ">=3.5.0"
 protobuf = ">=5.29.0,<6.0.0"
 pydantic = ">=2.7.3"
@@ -3535,11 +3535,11 @@ sqlalchemy = ">=2.0.31"
 
 [package.extras]
 dev = ["isort (>=5.13.2)", "pytest (>=8.2.2)", "ruff (>=0.6.5)"]
-extras = ["boto3 (>=1.34.0)", "elasticsearch (>=8.0.0,<9.0.0)", "langchain-community (>=0.0.0)", "langchain-memgraph (>=0.1.0)", "opensearch-py (>=2.0.0)", "sentence-transformers (>=5.0.0)"]
-graph = ["kuzu (>=0.11.0)", "langchain-aws (>=0.2.23)", "langchain-neo4j (>=0.4.0)", "neo4j (>=5.23.1)", "rank-bm25 (>=0.2.2)"]
-llms = ["google-genai (>=1.0.0)", "google-generativeai (>=0.3.0)", "groq (>=0.3.0)", "litellm (>=1.74.0)", "ollama (>=0.1.0)", "openai (>=1.90.0,<1.110.0)", "together (>=0.2.10)", "vertexai (>=0.1.0)"]
+extras = ["boto3 (>=1.34.0)", "elasticsearch (>=8.0.0)", "langchain-community (>=0.0.0)", "langchain-memgraph (>=0.1.0)", "opensearch-py (>=2.0.0)", "sentence-transformers (>=5.0.0)"]
+graph = ["langchain-aws (>=0.2.23)", "langchain-neo4j (>=0.4.0)", "neo4j (>=5.23.1)", "rank-bm25 (>=0.2.2)"]
+llms = ["google-genai (>=1.0.0)", "google-generativeai (>=0.3.0)", "groq (>=0.3.0)", "litellm (>=0.1.0)", "ollama (>=0.1.0)", "together (>=0.2.10)", "vertexai (>=0.1.0)"]
 test = ["pytest (>=8.2.2)", "pytest-asyncio (>=0.23.7)", "pytest-mock (>=3.14.0)"]
-vector-stores = ["azure-identity (>=1.24.0)", "azure-search-documents (>=11.4.0b8)", "chromadb (>=0.4.24)", "databricks-sdk (>=0.63.0)", "elasticsearch (>=8.0.0,<9.0.0)", "faiss-cpu (>=1.7.4)", "langchain-aws (>=0.2.23)", "pinecone (<=7.3.0)", "pinecone-text (>=0.10.0)", "psycopg (>=3.2.8)", "psycopg-pool (>=3.2.6,<4.0.0)", "pymilvus (>=2.4.0,<2.6.0)", "pymochow (>=2.2.9)", "pymongo (>=4.13.2)", "redis (>=5.0.0,<6.0.0)", "redisvl (>=0.1.0,<1.0.0)", "upstash-vector (>=0.1.0)", "valkey (>=6.0.0)", "vecs (>=0.4.0)", "weaviate-client (>=4.4.0,<4.15.0)"]
+vector-stores = ["azure-search-documents (>=11.4.0b8)", "chromadb (>=0.4.24)", "faiss-cpu (>=1.7.4)", "pinecone (<=7.3.0)", "pinecone-text (>=0.10.0)", "psycopg (>=3.2.8)", "pymochow (>=2.2.9)", "pymongo (>=4.13.2)", "upstash-vector (>=0.1.0)", "vecs (>=0.4.0)", "weaviate-client (>=4.4.0,<4.15.0)"]
 
 [[package]]
 name = "mmh3"

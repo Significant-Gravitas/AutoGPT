@@ -1,7 +1,7 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ExclamationMarkIcon } from "@phosphor-icons/react";
+import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
@@ -109,8 +109,14 @@ export function MessagePartRenderer({
       const reasoningText =
         "text" in part && typeof part.text === "string" ? part.text : "";
       if (!reasoningText.trim()) return null;
+      // AI SDK reasoning parts carry an optional `state: "streaming" | "done"`.
+      // We pulse the indicator only while streaming so a finalized reasoning
+      // block doesn't keep looking like the model is still thinking.
+      const reasoningState =
+        "state" in part && typeof part.state === "string" ? part.state : null;
+      const isActive = reasoningState === "streaming";
       return (
-        <ReasoningCollapse key={key}>
+        <ReasoningCollapse key={key} isActive={isActive}>
           <pre className="whitespace-pre-wrap text-sm text-zinc-700">
             {reasoningText}
           </pre>
@@ -128,14 +134,7 @@ export function MessagePartRenderer({
           lowerMarker === "operation cancelled" ||
           lowerMarker === "execution stopped by user";
         if (isCancellation) {
-          return (
-            <div
-              key={key}
-              className="my-2 flex items-center gap-1 rounded-lg bg-neutral-200/50 px-3 py-2 text-sm text-neutral-600"
-            >
-              <ExclamationMarkIcon size={16} /> You manually stopped this chat
-            </div>
-          );
+          return <StoppedTaskCard key={key} />;
         }
         return (
           <ErrorCard

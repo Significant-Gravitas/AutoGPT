@@ -40,17 +40,24 @@ describe("SubscriptionStep", () => {
     expect(screen.getByRole("heading", { name: /^Team$/ })).toBeDefined();
   });
 
-  test("monthly USD prices render with two decimals", () => {
+  test("defaults to yearly billing with the monthly-equivalent price and the annual charge", () => {
     render(<SubscriptionStep />);
-    expect(screen.getByText(/\$50\.00/)).toBeDefined();
-    expect(screen.getByText(/\$320\.00/)).toBeDefined();
+    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
+    expect(screen.getByLabelText("$272.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
+    expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
   });
 
-  test("toggling yearly billing updates the store and shows /year", () => {
+  test("switching to monthly shows the full monthly price and matching charged-today", () => {
     render(<SubscriptionStep />);
-    fireEvent.click(screen.getByRole("button", { name: /Yearly billing/i }));
-    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
-    expect(screen.getAllByText(/\/ year/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
+    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
   });
 
   test("selecting Pro persists selectedPlan, submits the profile, and redirects to Stripe Checkout", async () => {
@@ -104,6 +111,55 @@ describe("SubscriptionStep", () => {
     expect(capturedProfileBody!.pain_points).toEqual(["Repetitive work"]);
   });
 
+  test("default yearly + selecting Pro forwards billing_cycle=yearly", async () => {
+    let capturedTierBody: {
+      tier?: string;
+      billing_cycle?: string;
+    } | null = null;
+
+    server.use(
+      http.post("*/api/onboarding/profile", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    expect(capturedTierBody!.tier).toBe("PRO");
+    expect(capturedTierBody!.billing_cycle).toBe("yearly");
+  });
+
+  test("switching to monthly + selecting Pro forwards billing_cycle=monthly", async () => {
+    let capturedTierBody: { billing_cycle?: string } | null = null;
+
+    server.use(
+      http.post("*/api/onboarding/profile", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    expect(capturedTierBody!.billing_cycle).toBe("monthly");
+  });
+
   test("selecting Max uses the MAX tier in the Stripe Checkout request", async () => {
     let capturedTierBody: { tier?: string } | null = null;
 
@@ -143,13 +199,6 @@ describe("SubscriptionStep", () => {
     } finally {
       openSpy.mockRestore();
     }
-  });
-
-  test("changing country persists the country code", () => {
-    render(<SubscriptionStep />);
-    fireEvent.click(screen.getByRole("button", { name: /United States/i }));
-    fireEvent.click(screen.getByRole("button", { name: /European Union/i }));
-    expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EU");
   });
 
   test("local dev: clicking Pro skips Stripe and advances to the next step", async () => {

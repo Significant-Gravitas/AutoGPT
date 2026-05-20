@@ -7,6 +7,81 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/blocks/cost-estimates": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "blocks"],
+        "summary": "Export Block Cost Estimates",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "operationId": "getV2Export block cost estimates",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum executions per block to include",
+              "default": 10,
+              "title": "Min Samples"
+            },
+            "description": "Minimum executions per block to include"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -1662,6 +1737,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2109,6 +2187,8 @@
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
                     { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    { "$ref": "#/components/schemas/ScheduleListResponse" },
+                    { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
                     { "$ref": "#/components/schemas/MemorySearchResponse" },
                     {
@@ -2367,7 +2447,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
-        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "description": "Cancel an in-flight task for a session.\n\nHandles both lifecycle states uniformly:\n\n* **Queued** (``chatStatus='queued'``) — the dispatcher hasn't\n  claimed the row yet.  Flip the session back to ``idle`` and\n  return; no executor cancel event needed.\n* **Running** (``chatStatus='running'``) — publish a cancel event\n  to the executor via RabbitMQ FANOUT, then poll Redis until the\n  task status flips out of ``running`` or a 5 s timeout is hit.",
         "operationId": "postV2CancelSessionTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2493,7 +2573,10 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" }
+          "429": { "description": "Call-frequency cap exceeded" },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
         }
       }
     },
@@ -2589,6 +2672,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
@@ -2599,7 +2685,10 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit or call-frequency cap exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
+          },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -4226,6 +4315,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4233,7 +4325,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -5467,6 +5560,17 @@
               "title": "Include Root Only"
             },
             "description": "Only return agents without a folder (root-level agents)"
+          },
+          {
+            "name": "is_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents.",
+              "title": "Is Hidden"
+            },
+            "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents."
           }
         ],
         "responses": {
@@ -5817,6 +5921,48 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/{library_agent_id}/triggers": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Trigger Agents",
+        "description": "List trigger agents linked to the given parent agent.",
+        "operationId": "getV2List trigger agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2List Trigger Agents"
+                }
               }
             }
           },
@@ -6468,6 +6614,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6475,7 +6624,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -8611,6 +8761,15 @@
               "default": 20,
               "title": "Page Size"
             }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MyAgentsSortBy",
+              "default": "most_recent"
+            }
           }
         ],
         "responses": {
@@ -10123,11 +10282,67 @@
             "type": "integer",
             "title": "Cost Divisor",
             "default": 1
+          },
+          "token_rate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenRateDisplay" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
+      },
+      "BlockCostEstimateRow": {
+        "properties": {
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "cost_type": { "type": "string", "title": "Cost Type" },
+          "samples": { "type": "integer", "title": "Samples" },
+          "mean_credits": { "type": "integer", "title": "Mean Credits" },
+          "p50_credits": { "type": "integer", "title": "P50 Credits" },
+          "p95_credits": { "type": "integer", "title": "P95 Credits" }
+        },
+        "type": "object",
+        "required": [
+          "block_id",
+          "block_name",
+          "cost_type",
+          "samples",
+          "mean_credits",
+          "p50_credits",
+          "p95_credits"
+        ],
+        "title": "BlockCostEstimateRow"
+      },
+      "BlockCostEstimatesResponse": {
+        "properties": {
+          "estimates": {
+            "items": { "$ref": "#/components/schemas/BlockCostEstimateRow" },
+            "type": "array",
+            "title": "Estimates"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" },
+          "min_samples": { "type": "integer", "title": "Min Samples" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimates",
+          "total_rows",
+          "window_days",
+          "max_window_days",
+          "min_samples",
+          "generated_at"
+        ],
+        "title": "BlockCostEstimatesResponse"
       },
       "BlockCostType": {
         "type": "string",
@@ -12826,6 +13041,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "is_hidden": {
+            "type": "boolean",
+            "title": "Is Hidden",
+            "default": false
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -13096,6 +13316,11 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
+          },
+          "is_hidden": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Hidden",
+            "description": "Whether to hide the agent from the library listing"
           },
           "settings": {
             "anyOf": [
@@ -13576,6 +13801,11 @@
         "type": "object",
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
+      },
+      "MyAgentsSortBy": {
+        "type": "string",
+        "enum": ["most_recent", "name"],
+        "title": "MyAgentsSortBy"
       },
       "MyUnpublishedAgent": {
         "properties": {
@@ -15205,6 +15435,9 @@
           "block_details",
           "block_output",
           "review_required",
+          "schedule_list",
+          "schedule_deleted",
+          "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",
@@ -15233,7 +15466,8 @@
           "memory_search",
           "memory_forget_candidates",
           "memory_forget_confirm",
-          "todo_write"
+          "todo_write",
+          "platform_info"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -15463,6 +15697,24 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "ScheduleDeletedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_deleted"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id"],
+        "title": "ScheduleDeletedResponse",
+        "description": "Response confirming a schedule was deleted."
+      },
       "ScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
@@ -15564,6 +15816,51 @@
         "title": "ScheduleHealthMetrics",
         "description": "Summary of schedule health diagnostics"
       },
+      "ScheduleListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/ScheduleSummary" },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": ["message", "schedules"],
+        "title": "ScheduleListResponse",
+        "description": "Response containing a list of schedules."
+      },
+      "ScheduleSummary": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "name": { "type": "string", "title": "Name" },
+          "cron": { "type": "string", "title": "Cron" },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "name",
+          "cron",
+          "timezone",
+          "next_run_time",
+          "graph_id",
+          "graph_version"
+        ],
+        "title": "ScheduleSummary",
+        "description": "Summary of a single schedule."
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -15659,6 +15956,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
           },
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
+          },
           "messages": {
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
@@ -15707,6 +16009,11 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
+          },
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
           },
           "is_processing": { "type": "boolean", "title": "Is Processing" }
         },
@@ -16612,6 +16919,19 @@
             "type": "object",
             "title": "Tier Costs"
           },
+          "tier_costs_yearly": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs Yearly",
+            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "description": "Billing cycle of the user's active Stripe subscription. Defaults to ``monthly`` for users without an active sub. ``monthly_cost`` above reflects this cycle's actual price (so a yearly subscriber sees their yearly amount, not the monthly equivalent).",
+            "default": "monthly"
+          },
           "tier_multipliers": {
             "additionalProperties": { "type": "number" },
             "type": "object",
@@ -16649,6 +16969,14 @@
               { "type": "null" }
             ],
             "title": "Pending Tier Effective At"
+          },
+          "pending_billing_cycle": {
+            "anyOf": [
+              { "type": "string", "enum": ["monthly", "yearly"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Billing Cycle",
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
           },
           "url": {
             "type": "string",
@@ -16688,6 +17016,12 @@
             "type": "string",
             "title": "Cancel Url",
             "default": ""
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
           }
         },
         "type": "object",
@@ -17483,6 +17817,32 @@
         "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Input Usd Per 1M"
+          },
+          "output_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
+          }
+        },
+        "type": "object",
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay",
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {

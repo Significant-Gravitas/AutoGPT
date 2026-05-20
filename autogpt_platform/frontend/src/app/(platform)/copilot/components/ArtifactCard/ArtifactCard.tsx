@@ -3,6 +3,7 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
@@ -20,11 +21,24 @@ function formatSize(bytes?: number): string {
 }
 
 export function ArtifactCard({ artifact }: Props) {
-  const activeID = useCopilotUIStore((s) => s.artifactPanel.activeArtifact?.id);
-  const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  const isActive = useCopilotUIStore(
+    (s) =>
+      s.artifactPanel.isOpen &&
+      s.artifactPanel.activeArtifact?.id === artifact.id,
+  );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const registerArtifactForAutoOpen = useCopilotUIStore(
+    (s) => s.registerArtifactForAutoOpen,
+  );
 
-  const isActive = isOpen && activeID === artifact.id;
+  // Register this artifact on mount — the store decides whether to auto-open.
+  // Fires once per artifact ID; subsequent renders with the same ID are no-ops
+  // in the store (knownIds check).
+  useEffect(() => {
+    registerArtifactForAutoOpen(artifact);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
+  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen]);
+
   const classification = classifyArtifact(
     artifact.mimeType,
     artifact.title,

@@ -15,6 +15,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     File,
     HTTPException,
     Path,
@@ -27,7 +28,11 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_204_NO_CONTENT,
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_404_NOT_FOUND,
+)
 from typing_extensions import Optional, TypedDict
 
 from backend.api.features.workspace.routes import create_file_download_response
@@ -44,7 +49,7 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
-from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -63,6 +68,7 @@ from backend.data.credit import (
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
+    get_user_billing_cycle,
     get_user_credit_model,
     handle_subscription_payment_failure,
     handle_subscription_payment_success,
@@ -72,6 +78,7 @@ from backend.data.credit import (
     set_subscription_tier,
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
+    sync_tier_from_checkout_session,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -87,6 +94,7 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.redis_client import get_redis_async
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -115,7 +123,11 @@ from backend.monitoring.instrumentation import (
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    InsufficientBalanceError,
+    NotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -453,7 +465,10 @@ async def get_graph_blocks() -> Response:
     path="/blocks/{block_id}/execute",
     summary="Execute graph block",
     tags=["blocks"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    responses={
+        402: {"description": "Subscription required (NO_TIER user, paywall on)"},
+    },
 )
 async def execute_graph_block(
     block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
@@ -467,6 +482,13 @@ async def execute_graph_block(
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
+
+    try:
+        await execution_utils.charge_for_direct_block_execution(
+            user_id=user_id, block=obj, input_data=data, source="internal"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
     start_time = time.time()
     try:
@@ -705,12 +727,30 @@ class SubscriptionTierRequest(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
 
 
 class SubscriptionStatusResponse(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
-    tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_costs: dict[str, int]  # tier name -> monthly amount in cents
+    tier_costs_yearly: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → yearly amount in cents. Populated only for tiers with a"
+            " yearly Stripe price configured in LaunchDarkly. Empty for"
+            " monthly-only configurations."
+        ),
+    )
+    billing_cycle: Literal["monthly", "yearly"] = Field(
+        default="monthly",
+        description=(
+            "Billing cycle of the user's active Stripe subscription. Defaults"
+            " to ``monthly`` for users without an active sub. ``monthly_cost``"
+            " above reflects this cycle's actual price (so a yearly subscriber"
+            " sees their yearly amount, not the monthly equivalent)."
+        ),
+    )
     tier_multipliers: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -739,6 +779,17 @@ class SubscriptionStatusResponse(BaseModel):
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
+        default=None,
+        description=(
+            "Billing cycle of the queued change, when resolvable. Set alongside"
+            " ``pending_tier`` for tier downgrades and same-tier cycle"
+            " switches (yearly→monthly). The frontend uses this to differentiate"
+            " a cycle-only schedule (``pending_tier == current tier``) from a"
+            " real tier downgrade so the UI copy can describe the actual"
+            " change. ``None`` for cancellations and unconfigured legacy prices."
+        ),
+    )
     url: str = Field(
         default="",
         description=(
@@ -833,19 +884,39 @@ async def get_subscription_status(
         SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     ]
-    price_ids = await asyncio.gather(
-        *[get_subscription_price_id(t) for t in priceable_tiers]
+    monthly_price_ids, yearly_price_ids = await asyncio.gather(
+        asyncio.gather(
+            *[get_subscription_price_id(t, "monthly") for t in priceable_tiers]
+        ),
+        asyncio.gather(
+            *[get_subscription_price_id(t, "yearly") for t in priceable_tiers]
+        ),
     )
 
     async def _cost(pid: str | None) -> int:
         return (await _get_stripe_price_amount(pid) or 0) if pid else 0
 
-    costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
+    monthly_costs, yearly_costs = await asyncio.gather(
+        asyncio.gather(*[_cost(pid) for pid in monthly_price_ids]),
+        asyncio.gather(*[_cost(pid) for pid in yearly_price_ids]),
+    )
 
+    # Row visibility: include a tier if EITHER cycle is configured. Monthly
+    # cost falls back to 0 when only yearly is configured so the frontend can
+    # still render the card and surface yearly via ``tier_costs_yearly``.
     tier_costs: dict[str, int] = {}
-    for t, pid, cost in zip(priceable_tiers, price_ids, costs):
-        if pid:
-            tier_costs[t.value] = cost
+    tier_costs_yearly: dict[str, int] = {}
+    for t, m_pid, y_pid, m_cost, y_cost in zip(
+        priceable_tiers,
+        monthly_price_ids,
+        yearly_price_ids,
+        monthly_costs,
+        yearly_costs,
+    ):
+        if m_pid or y_pid:
+            tier_costs[t.value] = m_cost if m_pid else 0
+        if y_pid:
+            tier_costs_yearly[t.value] = y_cost
 
     # Expose the effective rate-limit multipliers alongside prices so the
     # frontend can render "Nx rate limits" relative to the lowest visible
@@ -853,13 +924,20 @@ async def get_subscription_status(
     # that land in ``tier_costs`` — rows hidden at the price layer must stay
     # hidden in the multiplier layer too.
     multipliers = await get_tier_multipliers()
+    # get_tier_multipliers() keys by tier string value (see its docstring),
+    # so the lookup must use t.value — passing the enum t silently misses
+    # every tier and falls back to 1.0, ignoring LD-configured multipliers.
     tier_multipliers: dict[str, float] = {
-        t.value: multipliers.get(t, 1.0)
+        t.value: multipliers.get(t.value, 1.0)
         for t in priceable_tiers
         if t.value in tier_costs
     }
 
-    current_monthly_cost = tier_costs.get(tier.value, 0)
+    user_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    if user_cycle == "yearly":
+        current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
+    else:
+        current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit, current_period_end = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
@@ -883,13 +961,15 @@ async def get_subscription_status(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_costs_yearly=tier_costs_yearly,
+        billing_cycle=user_cycle,
         tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
     )
     if pending is not None:
-        pending_tier_enum, pending_effective_at = pending
+        pending_tier_enum, pending_effective_at, pending_cycle = pending
         if pending_tier_enum in (
             SubscriptionTier.NO_TIER,
             SubscriptionTier.BASIC,
@@ -899,6 +979,7 @@ async def get_subscription_status(
         ):
             response.pending_tier = pending_tier_enum.value
             response.pending_tier_effective_at = pending_effective_at
+            response.pending_billing_cycle = pending_cycle
     return response
 
 
@@ -926,12 +1007,29 @@ async def update_subscription_tier(
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
 
-    # Same-tier request = "stay on my current tier" = cancel any pending
-    # scheduled change (paid→paid downgrade or paid→BASIC cancel). This is the
-    # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
-    # route. Safe when no pending change exists: release_pending_subscription_schedule
-    # returns False and we simply return the current status.
-    if (user.subscription_tier or SubscriptionTier.NO_TIER) == tier:
+    # Same-tier + same-cycle request = "stay on my current tier" = cancel any
+    # pending scheduled change (paid→paid downgrade or paid→BASIC cancel). This
+    # replaces the old /credits/subscription/cancel-pending route. Safe when no
+    # pending change exists: release_pending_subscription_schedule returns
+    # False and we simply return the current status.
+    #
+    # Same-tier-DIFFERENT-cycle (monthly Pro → yearly Pro, or vice versa) must
+    # fall through to modify_stripe_subscription_for_tier so Stripe swaps the
+    # price ID for the cycle the user actually requested.
+    #
+    # Gate the short-circuit on an actual active/trialing Stripe subscription:
+    # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
+    # Checkout flow so "start paying for my current tier" is not a no-op.
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    current_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    has_active_stripe_subscription = (
+        await get_active_subscription_period_end(user_id) is not None
+    )
+    if (
+        current_tier == tier
+        and current_cycle == request.billing_cycle
+        and has_active_stripe_subscription
+    ):
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:
@@ -953,7 +1051,7 @@ async def update_subscription_tier(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    target_price_id = await get_subscription_price_id(tier)
+    target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
     # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
     # cancel_at_period_end=True lets the webhook flip the DB tier. No active
@@ -998,20 +1096,87 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await modify_stripe_subscription_for_tier(user_id, tier)
+        modified = await modify_stripe_subscription_for_tier(
+            user_id, tier, request.billing_cycle
+        )
         if modified:
             return await get_subscription_status(user_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.CardError as e:
+        # Auto-charge failed under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card or
+        # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
+        # different message so the user doesn't try a new card. Stripe emits
+        # ``authentication_required`` for raw PaymentIntent confirms but
+        # ``subscription_payment_intent_requires_action`` for Subscription.modify
+        # under ``error_if_incomplete``; both must map to the SCA branch.
+        if e.code in {
+            "authentication_required",
+            "subscription_payment_intent_requires_action",
+        }:
+            logger.warning(
+                "SCA required on subscription upgrade for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Your bank requires extra authentication for this charge."
+                    " The plan was not changed; please retry from the billing"
+                    " portal so you can complete authentication, or contact"
+                    " support."
+                ),
+            )
+        logger.warning(
+            "Card declined on subscription upgrade for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Your card was declined. The plan was not changed; please"
+                " update your payment method and try again."
+            ),
+        )
     except stripe.InvalidRequestError as e:
+        # Stripe's e.param is documented as nullable, so we match by typed
+        # field first and fall back to substring when param is absent.
+        msg_lower = (e.user_message or str(e)).lower()
+        # "No payment method" presents as InvalidRequestError (not CardError)
+        # when error_if_incomplete fires with no default PM. Stripe signals
+        # this with code=resource_missing/missing — sometimes with a typed
+        # param, sometimes without (the raw "no attached payment source"
+        # message has empty param). Map it to 402 either way.
+        if e.code in {"resource_missing", "missing"} and (
+            e.param
+            in {
+                "default_payment_method",
+                "payment_method",
+                "invoice_settings.default_payment_method",
+            }
+            or "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
+            logger.warning(
+                "No payment method on subscription upgrade for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "No payment method on file. The plan was not changed;"
+                    " please add a payment method and try again."
+                ),
+            )
         # Stripe rejects schedule modify when phases mix currencies, e.g. the
         # active sub was checked out in GBP but the target tier's Price is
-        # USD-only. 502 reads as outage; surface a 422 with a specific message
-        # so the user/admin can see what to fix in Stripe.
-        msg = str(e)
-        if "currency" in msg.lower():
+        # USD-only. e.param is "currency" on the schedule API but may be
+        # "phases" or absent on older error shapes — substring fallback keeps
+        # the 422 firing instead of dropping to the generic 502.
+        if e.param == "currency" or "currency" in msg_lower:
             logger.warning(
-                "Currency mismatch on tier change for user %s: %s", user_id, msg
+                "Currency mismatch on tier change for user %s: %s", user_id, e
             )
             raise HTTPException(
                 status_code=422,
@@ -1084,6 +1249,7 @@ async def update_subscription_tier(
             tier=tier,
             success_url=request.success_url,
             cancel_url=request.cancel_url,
+            billing_cycle=request.billing_cycle,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1102,6 +1268,62 @@ async def update_subscription_tier(
     status = await get_subscription_status(user_id)
     status.url = url
     return status
+
+
+def _stripe_event_dedup_key(event_id: str) -> str:
+    return f"stripe_webhook_event:{event_id}"
+
+
+async def _claim_stripe_event(event_id: str) -> bool:
+    """Mark a Stripe webhook event as claimed via Redis SETNX.
+
+    Returns ``True`` when the caller acquired the claim (first time we've seen
+    ``event_id``) and should proceed with handler dispatch. Returns ``False``
+    when the event was already processed in a prior delivery — Stripe retries
+    the same ``event.id`` on non-2xx responses, and we don't want downstream
+    handlers (some of which only carry per-resource idempotency) to fire twice.
+
+    Pair with ``_release_stripe_event`` in a try/except around handler dispatch:
+    on handler failure we DELete the key so Stripe's retry isn't no-op'd, but
+    a retry that arrives *during* in-flight processing still hits the live
+    claim and is deduped.
+
+    TTL of 24h comfortably exceeds Stripe's retry window. On Redis failure we
+    fall open and let processing continue — better to risk a rare duplicate
+    than to drop a real event.
+    """
+    if not event_id:
+        # Malformed event without an id — fall open so the rest of the
+        # handler can decide what to do (it'll log and 200 anyway).
+        return True
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            _stripe_event_dedup_key(event_id), "1", nx=True, ex=86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup claim failed for event %s; processing anyway",
+            event_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _release_stripe_event(event_id: str) -> None:
+    """Release a previously-claimed dedup key so Stripe's retry can rerun."""
+    if not event_id:
+        return
+    try:
+        redis_client = await get_redis_async()
+        await redis_client.delete(_stripe_event_dedup_key(event_id))
+    except Exception:
+        logger.warning(
+            "stripe_webhook: dedup release failed for event %s",
+            event_id,
+            exc_info=True,
+        )
 
 
 @v1_router.post(
@@ -1137,7 +1359,20 @@ async def stripe_webhook(request: Request):
     # AFTER signature verification — which Stripe interprets as a delivery
     # failure and retries forever, while spamming Sentry with no useful info.
     # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    # Event-level dedup: short-circuit identical re-deliveries before any
+    # handler runs. Stripe retries the same event.id on non-2xx responses, and
+    # not every downstream handler is independently idempotent.
+    if not await _claim_stripe_event(event_id):
+        logger.info(
+            "stripe_webhook: event %s (%s) already processed; skipping",
+            event_id,
+            event_type,
+        )
+        return Response(status_code=200)
+
     event_data = event.get("data") or {}
     data_object = event_data.get("object") if isinstance(event_data, dict) else None
     if not isinstance(data_object, dict):
@@ -1147,54 +1382,82 @@ async def stripe_webhook(request: Request):
         )
         return Response(status_code=200)
 
-    if event_type in (
-        "checkout.session.completed",
-        "checkout.session.async_payment_succeeded",
-    ):
-        session_id = data_object.get("id")
-        if not session_id:
-            logger.warning(
-                "stripe_webhook: %s missing data.object.id; ignoring", event_type
+    # Wrap handler dispatch so a downstream failure releases the dedup claim;
+    # otherwise Stripe's retry would hit the live key and silently drop the
+    # event. Concurrent retries that arrive *during* in-flight processing
+    # still hit the live claim and are deduped.
+    try:
+        if event_type in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        ):
+            session_id = data_object.get("id")
+            if not session_id:
+                logger.warning(
+                    "stripe_webhook: %s missing data.object.id; ignoring", event_type
+                )
+                return Response(status_code=200)
+            await UserCredit().fulfill_checkout(session_id=session_id)
+            await sync_tier_from_checkout_session(data_object)
+
+        if event_type in (
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
+            await sync_subscription_from_stripe(data_object)
+
+        # `subscription_schedule.updated` is deliberately omitted: our own
+        # `SubscriptionSchedule.create` + `.modify` calls in
+        # `_schedule_downgrade_at_period_end` would fire that event right back
+        # at us and loop redundant traffic through this handler. We only care
+        # about state transitions (released / completed); phase advance to
+        # the new price is already covered by `customer.subscription.updated`.
+        if event_type in (
+            "subscription_schedule.released",
+            "subscription_schedule.completed",
+        ):
+            await sync_subscription_schedule_from_stripe(data_object)
+
+        if event_type == "invoice.payment_succeeded":
+            await handle_subscription_payment_success(data_object)
+
+        if event_type == "invoice.payment_failed":
+            await handle_subscription_payment_failure(data_object)
+
+        # New Stripe API (≥2025-04-01) split the per-payment events off the
+        # Invoice resource. data.object is an InvoicePayment, not an Invoice,
+        # so we hydrate the underlying Invoice before delegating to the
+        # existing handlers. A transient ``stripe.StripeError`` here propagates
+        # to the outer handler so the dedup claim is released and Stripe sees
+        # a 5xx + retries — swallowing it with a 200 would silently drop the
+        # event and leave the dedup key blocking the next delivery.
+        if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+            invoice_id = data_object.get("invoice")
+            if invoice_id:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice_payload = cast(dict, invoice)
+                if event_type == "invoice_payment.paid":
+                    await handle_subscription_payment_success(invoice_payload)
+                else:
+                    await handle_subscription_payment_failure(invoice_payload)
+
+        # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
+        # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
+        # StripeObject (a dict subclass) carrying that runtime shape, so we
+        # cast to satisfy the type checker without changing runtime behaviour.
+        if event_type == "charge.dispute.created":
+            await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+
+        if event_type == "refund.created" or event_type == "charge.dispute.closed":
+            await UserCredit().deduct_credits(
+                cast("stripe.Refund | stripe.Dispute", data_object)
             )
-            return Response(status_code=200)
-        await UserCredit().fulfill_checkout(session_id=session_id)
-
-    if event_type in (
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
-    ):
-        await sync_subscription_from_stripe(data_object)
-
-    # `subscription_schedule.updated` is deliberately omitted: our own
-    # `SubscriptionSchedule.create` + `.modify` calls in
-    # `_schedule_downgrade_at_period_end` would fire that event right back at us
-    # and loop redundant traffic through this handler. We only care about state
-    # transitions (released / completed); phase advance to the new price is
-    # already covered by `customer.subscription.updated`.
-    if event_type in (
-        "subscription_schedule.released",
-        "subscription_schedule.completed",
-    ):
-        await sync_subscription_schedule_from_stripe(data_object)
-
-    if event_type == "invoice.payment_succeeded":
-        await handle_subscription_payment_success(data_object)
-
-    if event_type == "invoice.payment_failed":
-        await handle_subscription_payment_failure(data_object)
-
-    # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
-    # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
-    # StripeObject (a dict subclass) carrying that runtime shape, so we cast
-    # to satisfy the type checker without changing runtime behaviour.
-    if event_type == "charge.dispute.created":
-        await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
-
-    if event_type == "refund.created" or event_type == "charge.dispute.closed":
-        await UserCredit().deduct_credits(
-            cast("stripe.Refund | stripe.Dispute", data_object)
-        )
+    except Exception:
+        # Release the dedup claim so Stripe's retry isn't no-op'd. Re-raise
+        # so the webhook returns 500 and Stripe retries (the normal contract).
+        await _release_stripe_event(event_id)
+        raise
 
     return Response(status_code=200)
 
@@ -1501,7 +1764,19 @@ async def update_graph_settings(
     path="/graphs/{graph_id}/execute/{graph_version}",
     summary="Execute graph agent",
     tags=["graphs"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
+    # The route dep enforces fail-closed (503-on-blip) so a transient
+    # Supabase outage surfaces as a retryable error, not a free run
+    # for a paywalled user. The deep gate inside ``add_graph_execution``
+    # still covers scheduled / webhook / copilot-internal runs that
+    # don't pass through this route — those callers prefer fail-open
+    # so background work doesn't abandon valid jobs during a blip.
+    responses={
+        402: {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+        },
+        503: {"description": "Subscription state temporarily unavailable"},
+    },
 )
 async def execute_graph(
     graph_id: str,

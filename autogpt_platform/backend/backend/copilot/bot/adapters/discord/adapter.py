@@ -6,6 +6,7 @@ in the core handler. Slash commands live in commands.py.
 """
 
 import logging
+import re
 from typing import Optional
 
 import discord
@@ -13,10 +14,17 @@ from discord import app_commands
 
 from backend.copilot.bot.bot_backend import BotBackend
 
-from ..base import ChannelType, MessageCallback, MessageContext, PlatformAdapter
+from ..base import (
+    ChannelType,
+    MessageCallback,
+    MessageContext,
+    MessageHistoryEntry,
+    PlatformAdapter,
+)
 from . import commands, config
 
 logger = logging.getLogger(__name__)
+THREAD_HISTORY_LIMIT = 20
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -76,12 +84,18 @@ class DiscordAdapter(PlatformAdapter):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None
 
-    async def send_message(self, channel_id: str, text: str) -> None:
+    async def send_message(
+        self,
+        channel_id: str,
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
+            rendered, allowed = _resolve_mentions(text, mentionable_users)
             # tts=False is the default but we pin it explicitly — AutoPilot
             # output is untrusted and should never blast through voice.
-            await channel.send(text, tts=False)
+            await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_link(
         self, channel_id: str, text: str, link_label: str, link_url: str
@@ -100,16 +114,21 @@ class DiscordAdapter(PlatformAdapter):
         await channel.send(text, view=view, tts=False)
 
     async def send_reply(
-        self, channel_id: str, text: str, reply_to_message_id: str
+        self,
+        channel_id: str,
+        text: str,
+        reply_to_message_id: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
+        rendered, allowed = _resolve_mentions(text, mentionable_users)
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(text, tts=False)
+            await msg.reply(rendered, tts=False, allowed_mentions=allowed)
         except discord.NotFound:
-            await channel.send(text, tts=False)
+            await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.
@@ -139,6 +158,18 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to create thread in channel %s", channel_id)
             return None
 
+    async def rename_thread(self, thread_id: str, name: str) -> bool:
+        channel = await self._resolve_channel(thread_id)
+        if channel is None or not isinstance(channel, discord.Thread):
+            logger.warning("Cannot rename non-thread channel %s", thread_id)
+            return False
+        try:
+            await channel.edit(name=name[:100])
+            return True
+        except discord.HTTPException:
+            logger.exception("Failed to rename thread %s", thread_id)
+            return False
+
     # -- Internal --
 
     def _register_events(self) -> None:
@@ -158,17 +189,22 @@ class DiscordAdapter(PlatformAdapter):
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
-            if message.author.bot:
+            if self._should_ignore_message(message):
                 return
             if self._on_message_callback is None:
                 return
 
             channel_type = self._channel_type(message)
+            bot_mentioned = self._is_mentioned(message)
 
             # Channels require an explicit @mention; DMs and threads always forward
             # (handler checks thread subscription).
-            if channel_type == "channel" and not self._is_mentioned(message):
+            if channel_type == "channel" and not bot_mentioned:
                 return
+
+            thread_history = ()
+            if channel_type == "thread" and bot_mentioned:
+                thread_history = await self._thread_history(message)
 
             ctx = MessageContext(
                 platform="discord",
@@ -179,8 +215,16 @@ class DiscordAdapter(PlatformAdapter):
                 user_id=str(message.author.id),
                 username=message.author.display_name,
                 text=self._strip_mentions(message),
+                bot_mentioned=bot_mentioned,
+                thread_history=thread_history,
+                mentionable_users=self._collect_mentionable_users(message),
             )
             await self._on_message_callback(ctx, self)
+
+    def _should_ignore_message(self, message: discord.Message) -> bool:
+        return (
+            self._client.user is not None and message.author.id == self._client.user.id
+        )
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
@@ -207,3 +251,94 @@ class DiscordAdapter(PlatformAdapter):
             for token in raw_tokens:
                 text = text.replace(token, replacement)
         return text.strip()
+
+    def _collect_mentionable_users(
+        self, message: discord.Message
+    ) -> tuple[tuple[str, str], ...]:
+        """Users from the inbound message the bot may ping back this turn."""
+        bot_id = self._client.user.id if self._client.user else None
+        return tuple(
+            (user.display_name, str(user.id))
+            for user in message.mentions
+            if user.id != bot_id
+        )
+
+    async def _thread_history(
+        self, message: discord.Message
+    ) -> tuple[MessageHistoryEntry, ...]:
+        if not isinstance(message.channel, discord.Thread):
+            return ()
+
+        entries: list[MessageHistoryEntry] = []
+        bot_user_id = self._client.user.id if self._client.user else None
+        try:
+            async for prior in message.channel.history(
+                limit=THREAD_HISTORY_LIMIT,
+                before=message,
+                oldest_first=True,
+            ):
+                # Skip our own outputs — copilot has its own transcript for
+                # that side. Other bots' messages are kept as context.
+                if bot_user_id is not None and prior.author.id == bot_user_id:
+                    continue
+                text = self._strip_mentions(prior)
+                if not text:
+                    continue
+                entries.append(
+                    MessageHistoryEntry(
+                        username=prior.author.display_name,
+                        user_id=str(prior.author.id),
+                        text=text,
+                    )
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Could not fetch Discord thread history", exc_info=True)
+            return ()
+
+        return tuple(entries)
+
+
+def _resolve_mentions(
+    text: str,
+    mentionable_users: tuple[tuple[str, str], ...],
+) -> tuple[str, discord.AllowedMentions]:
+    """Substitute `@DisplayName` in `text` with `<@id>` markup for users on
+    the allowlist, and return an AllowedMentions that pings exactly those
+    users (and nobody else).
+
+    Anyone not on the allowlist stays as plain text — even if the LLM produces
+    `@everyone`, `@here`, or `@SomeRandomUser`. This keeps the bot from
+    pinging users it learned about elsewhere or hallucinated entirely.
+    """
+    if not mentionable_users:
+        return text, discord.AllowedMentions.none()
+
+    rendered = text
+    pinged_ids: list[int] = []
+    # Longest names first so e.g. "@John Smith" matches before "@John".
+    for display_name, user_id in sorted(
+        mentionable_users, key=lambda pair: -len(pair[0])
+    ):
+        # Word-bounded so "@Name" inside emails/URLs is left alone.
+        pattern = re.compile(
+            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
+            re.IGNORECASE,
+        )
+        if not pattern.search(rendered):
+            continue
+        # Callable replacement avoids backref interpretation of user_id.
+        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
+        try:
+            pinged_ids.append(int(user_id))
+        except ValueError:
+            continue
+
+    if not pinged_ids:
+        return rendered, discord.AllowedMentions.none()
+
+    return rendered, discord.AllowedMentions(
+        everyone=False,
+        users=[discord.Object(id=uid) for uid in pinged_ids],
+        roles=False,
+        replied_user=False,
+    )
