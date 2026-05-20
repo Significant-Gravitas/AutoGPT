@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
@@ -80,7 +82,7 @@ class TestGetSdkCwd:
     def test_returns_empty_string_by_default(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
         )
         assert get_sdk_cwd() == ""
@@ -88,7 +90,7 @@ class TestGetSdkCwd:
     def test_returns_set_value(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/copilot-test-123",
         )
@@ -106,7 +108,7 @@ class TestToolOutputStash:
         """Initialise the context vars that stash_pending_tool_output needs."""
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/test",
         )
@@ -148,7 +150,7 @@ class TestResetStashEvent:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
         )
 
@@ -211,7 +213,7 @@ class TestTruncationAndStashIntegration:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/test",
         )
@@ -273,15 +275,15 @@ def _make_mock_tool(
     return tool
 
 
-def _make_mock_session() -> MagicMock:
-    """Return a minimal ChatSession mock."""
-    return MagicMock()
+def _make_test_session(*, dry_run: bool = False) -> ChatSession:
+    """Return a minimal real ``ChatSession`` for tool-context tests."""
+    return ChatSession.new(user_id="test-user", dry_run=dry_run)
 
 
-def _init_ctx(session=None):
+def _init_ctx(session: ChatSession | None = None):
     set_execution_context(
         user_id="user-1",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         sandbox=None,
     )
 
@@ -291,7 +293,7 @@ class TestCreateToolHandler:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.asyncio
     async def test_handler_executes_tool_directly(self):
@@ -310,7 +312,7 @@ class TestCreateToolHandler:
     async def test_handler_returns_error_on_no_session(self):
         """When session is None, handler returns MCP error."""
         mock_tool = _make_mock_tool("run_block")
-        set_execution_context(user_id="u", session=None, sandbox=None)  # type: ignore[arg-type]
+        set_execution_context(user_id="u", session=None, sandbox=None)
 
         handler = create_tool_handler(mock_tool)
         result = await handler({"block_id": "b1"})
@@ -347,7 +349,7 @@ class TestToolInlineExecution:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.asyncio
     async def test_tool_runs_to_completion_regardless_of_duration(self):
@@ -410,7 +412,7 @@ async def _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args):
     """
     from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 
-    user_id, session = "user-1", _make_mock_session()
+    user_id, session = "user-1", _make_test_session()
 
     # Step 1: pre-launch fires immediately (speculative)
     task = asyncio.create_task(
@@ -442,7 +444,7 @@ class TestBug1DuplicateExecution:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old pre-launch code causes duplicate execution")
     @pytest.mark.asyncio
@@ -461,9 +463,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert (
-            len(call_log) == 1
-        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        )
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -487,7 +489,7 @@ class TestBug2FIFODesync:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old FIFO queue returns wrong result on denial")
     @pytest.mark.asyncio
@@ -509,7 +511,7 @@ class TestBug2FIFODesync:
 
         mock_tool = _make_mock_tool("run_block")
         mock_tool.execute = AsyncMock(side_effect=tagged_execute)
-        user_id, session = "user-1", _make_mock_session()
+        user_id, session = "user-1", _make_test_session()
 
         # Simulate old FIFO queue
         queue: asyncio.Queue = asyncio.Queue()
@@ -574,7 +576,7 @@ class TestBug3CancelRace:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old code: cancel arrives after task completes")
     @pytest.mark.asyncio
@@ -674,7 +676,7 @@ class TestReadFileHandlerBridge:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/copilot-bridge-test",
         )
@@ -695,8 +697,8 @@ class TestReadFileHandlerBridge:
             lambda path: True,
         )
 
-        fake_sandbox = object()
-        token = _current_sandbox.set(fake_sandbox)  # type: ignore[arg-type]
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
         try:
             bridge_calls: list[tuple] = []
 
@@ -829,7 +831,7 @@ class TestStripLlmFields:
 
     def test_strip_after_stash_ordering(self):
         """Stash receives full payload (with is_dry_run); LLM result does not."""
-        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+        set_execution_context(user_id="test", session=None, sandbox=None)
 
         full_text = '{"message": "ok", "is_dry_run": true}'
         result = {
@@ -909,11 +911,10 @@ class TestStripLlmFields:
         the stash/strip lines in production code causes this test to fail.
         Uses a session with dry_run=True so that stripping is active.
         """
-        dry_run_session = MagicMock()
-        dry_run_session.dry_run = True
+        dry_run_session = _make_test_session(dry_run=True)
         set_execution_context(
             user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -944,11 +945,10 @@ class TestStripLlmFields:
         dry_run mode, the LLM should see is_dry_run=True so it knows that
         specific tool result was simulated.
         """
-        normal_session = MagicMock()
-        normal_session.dry_run = False
+        normal_session = _make_test_session(dry_run=False)
         set_execution_context(
             user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         full_payload = '{"message": "simulated", "is_dry_run": true}'
 
@@ -980,12 +980,10 @@ class TestTruncatingWrapperLeavesOutputUntouched:
 
     @pytest.mark.asyncio
     async def test_wrapper_does_not_inject_followup(self):
-        session = MagicMock()
-        session.dry_run = False
-        session.session_id = "sess-no-inject"
+        session = _make_test_session(dry_run=False)
         set_execution_context(
             user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         async def fake_tool_fn(_args: dict) -> dict:
             return {
@@ -1004,12 +1002,10 @@ class TestTruncatingWrapperLeavesOutputUntouched:
     async def test_stash_stays_clean(self):
         """The frontend-facing stash must be a byte-for-byte copy of the
         raw tool output (needed for JSON.parse in the bash widget)."""
-        session = MagicMock()
-        session.dry_run = False
-        session.session_id = "sess-stash"
+        session = _make_test_session(dry_run=False)
         set_execution_context(
             user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
 
