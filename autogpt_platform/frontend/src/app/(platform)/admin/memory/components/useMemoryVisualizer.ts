@@ -3,47 +3,37 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetV2GetGraphQueryKey,
   getGetV2GetMemoryOverviewQueryKey,
-  getGetV2ListCommunitiesQueryKey,
-  getGetV2ListEntitiesQueryKey,
-  getGetV2ListFactsQueryKey,
+  useGetV2GetGraph,
   useGetV2GetMemoryOverview,
-  useGetV2ListCommunities,
-  useGetV2ListEntities,
-  useGetV2ListFacts,
   usePostV2RebuildCommunities,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import type { CommunityListResponse } from "@/app/api/__generated__/models/communityListResponse";
-import type { EntityListResponse } from "@/app/api/__generated__/models/entityListResponse";
-import type { FactListResponse } from "@/app/api/__generated__/models/factListResponse";
+import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 const USER_ID = "me";
 
-type StatusFilter = "any" | "active" | "superseded" | "contradicted";
-
 export function useMemoryVisualizer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
   const [force, setForce] = useState(false);
+  const [includeEpisodes, setIncludeEpisodes] = useState(false);
+  const [includeCommunities, setIncludeCommunities] = useState(true);
 
   const overview = useGetV2GetMemoryOverview(USER_ID);
-  const entities = useGetV2ListEntities(USER_ID, { limit: 100 });
-  const facts = useGetV2ListFacts(USER_ID, {
-    limit: 100,
-    status: statusFilter,
+  const graph = useGetV2GetGraph(USER_ID, {
+    include_episodes: includeEpisodes,
+    include_communities: includeCommunities,
+    node_limit: 10000,
+    edge_limit: 20000,
   });
-  const communities = useGetV2ListCommunities(USER_ID, { limit: 50 });
 
   const rebuild = usePostV2RebuildCommunities({
     mutation: {
       onSuccess: (res) => {
-        // Generated success-or-error union — admin gating means errors
-        // surface via react-query's `error`, so on a 200 the data is
-        // guaranteed to be the success payload.
         const result = res.data as RebuildResponse;
         if (result.skipped) {
           toast({
@@ -66,20 +56,12 @@ export function useMemoryVisualizer() {
             }s — ${JSON.stringify(result.communities_built)}`,
           });
         }
-        // Refresh all memory views after a real rebuild — a skip
-        // doesn't change graph state so we could skip these, but
-        // invalidating is cheap and keeps the UI in lockstep.
+        // After a real rebuild the graph and counts both change.
         queryClient.invalidateQueries({
           queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
         });
         queryClient.invalidateQueries({
-          queryKey: getGetV2ListCommunitiesQueryKey(USER_ID),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListEntitiesQueryKey(USER_ID),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListFactsQueryKey(USER_ID),
+          queryKey: getGetV2GetGraphQueryKey(USER_ID),
         });
       },
       onError: (error: Error) => {
@@ -97,30 +79,25 @@ export function useMemoryVisualizer() {
   }
 
   // Narrow the Orval-union response shapes to their success types once
-  // here so the consuming component doesn't keep re-asserting.
+  // here so consumers don't keep re-asserting. react-query's `error`
+  // handles the non-200 cases.
   const overviewData = overview.data?.data as MemoryOverview | undefined;
-  const entitiesData = entities.data?.data as EntityListResponse | undefined;
-  const factsData = facts.data?.data as FactListResponse | undefined;
-  const communitiesData = communities.data?.data as
-    | CommunityListResponse
-    | undefined;
+  const graphData = graph.data?.data as GraphResponse | undefined;
   const rebuildData = rebuild.data?.data as RebuildResponse | undefined;
 
   return {
     overview,
-    entities,
-    facts,
-    communities,
+    graph,
     rebuild,
     triggerRebuild,
-    statusFilter,
-    setStatusFilter,
     force,
     setForce,
+    includeEpisodes,
+    setIncludeEpisodes,
+    includeCommunities,
+    setIncludeCommunities,
     overviewData,
-    entitiesData,
-    factsData,
-    communitiesData,
+    graphData,
     rebuildData,
   };
 }

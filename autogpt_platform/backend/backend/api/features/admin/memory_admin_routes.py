@@ -89,6 +89,51 @@ class CommunityListResponse(BaseModel):
     items: list[CommunitySummary]
 
 
+class GraphNode(BaseModel):
+    """A node in the visualizer graph payload.
+
+    ``label`` is the primary FalkorDB label (Entity / Episodic /
+    Community); ``type`` (if present) is the more-specific custom
+    entity type from ``MemoryFact``-typed extraction (Person /
+    Organization / Project / Concept / Preference / Rule). The frontend
+    uses ``type`` for color-coding when present, falls back to ``label``.
+    """
+
+    uuid: str
+    label: str
+    type: str | None = None
+    name: str | None = None
+    summary: str | None = None
+
+
+class GraphEdge(BaseModel):
+    """An edge in the visualizer graph payload."""
+
+    uuid: str
+    label: str  # RELATES_TO | MENTIONS | HAS_MEMBER
+    source: str  # source node uuid
+    target: str  # target node uuid
+    name: str | None = None  # extracted relation name (e.g. "works_on")
+    fact: str | None = None
+    status: str | None = None
+    scope: str | None = None
+
+
+class GraphResponse(BaseModel):
+    user_id: str
+    group_id: str
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "True when the result was capped by ``node_limit`` / ``edge_limit``. "
+            "Frontend should surface this so the user knows they're not "
+            "seeing the full graph."
+        ),
+    )
+
+
 class RebuildResponse(BaseModel):
     """Mirror of ``rebuild_communities_for_user``'s return dict."""
 
@@ -187,7 +232,7 @@ async def get_memory_overview(
 async def list_entities(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     try:
@@ -227,7 +272,7 @@ async def list_entities(
 async def list_facts(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
     status: Annotated[
         Literal["active", "superseded", "contradicted", "any"], Query()
     ] = "any",
@@ -298,7 +343,7 @@ async def list_facts(
 async def list_communities(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
     try:
@@ -338,6 +383,154 @@ async def list_communities(
         for r in rows
     ]
     return CommunityListResponse(user_id=target, items=items)
+
+
+@router.get("/{user_id}/graph", response_model=GraphResponse)
+async def get_graph(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
+    include_episodes: Annotated[bool, Query()] = False,
+    include_communities: Annotated[bool, Query()] = True,
+) -> GraphResponse:
+    """Single-shot graph payload for the visualizer canvas.
+
+    Returns nodes + edges in one round-trip so the frontend can hand
+    the whole thing to a force-directed layout without N+1 fetches.
+
+    Defaults to entities + communities (the "what does my memory know
+    about" view). ``include_episodes=True`` adds the temporal
+    :Episodic nodes — useful for debugging extraction but noisy for the
+    typical inspector view.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    try:
+        group_id = derive_group_id(target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Build the labels-of-interest filter for the node query
+    labels: list[str] = ["Entity"]
+    if include_episodes:
+        labels.append("Episodic")
+    if include_communities:
+        labels.append("Community")
+    labels_filter = "|".join(labels)
+
+    driver = _open_driver(group_id)
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    truncated = False
+
+    try:
+        # Nodes — one query per label so we can carry the label through
+        # without an expensive labels() function call per row.
+        for label in labels:
+            rows, _, _ = await driver.execute_query(
+                f"""
+                MATCH (n:{label} {{group_id: $g}})
+                RETURN n.uuid AS uuid,
+                       n.name AS name,
+                       n.summary AS summary,
+                       labels(n) AS all_labels
+                LIMIT $limit
+                """,
+                g=group_id,
+                limit=node_limit,
+            )
+            for r in rows:
+                # Custom entity types (Person, Organization, etc.) appear
+                # alongside the base "Entity" label. Pick the first
+                # non-base label as the "type".
+                all_labels = r.get("all_labels") or []
+                custom_type: str | None = None
+                for lbl in all_labels:
+                    if lbl not in {"Entity", "Episodic", "Community", "Node"}:
+                        custom_type = lbl
+                        break
+                nodes.append(
+                    GraphNode(
+                        uuid=str(r.get("uuid", "")),
+                        label=label,
+                        type=custom_type,
+                        name=r.get("name"),
+                        summary=r.get("summary"),
+                    )
+                )
+                if len(nodes) >= node_limit:
+                    truncated = True
+                    break
+            if truncated:
+                break
+
+        # Build a set of fetched node uuids so we can filter edges
+        # to nodes the frontend can actually render (avoids edges
+        # dangling into pages of the graph we didn't fetch).
+        node_uuids = {n.uuid for n in nodes}
+
+        # Edges — RELATES_TO is the meaty signal; MENTIONS is provenance;
+        # HAS_MEMBER ties entities to communities (only meaningful when
+        # include_communities=True).
+        edge_types = ["RELATES_TO"]
+        if include_communities:
+            edge_types.append("HAS_MEMBER")
+        if include_episodes:
+            edge_types.append("MENTIONS")
+        edge_label_filter = "|".join(edge_types)
+
+        rows, _, _ = await driver.execute_query(
+            f"""
+            MATCH (src)-[e:{edge_label_filter} {{group_id: $g}}]->(tgt)
+            RETURN e.uuid AS uuid,
+                   type(e) AS label,
+                   src.uuid AS source,
+                   tgt.uuid AS target,
+                   e.name AS name,
+                   e.fact AS fact,
+                   e.status AS status,
+                   e.scope AS scope
+            LIMIT $limit
+            """,
+            g=group_id,
+            limit=edge_limit,
+        )
+        for r in rows:
+            src = str(r.get("source", ""))
+            tgt = str(r.get("target", ""))
+            # Drop edges pointing outside the fetched node set — keeps
+            # the rendered graph well-formed when truncation cuts in.
+            if src not in node_uuids or tgt not in node_uuids:
+                continue
+            edges.append(
+                GraphEdge(
+                    uuid=str(r.get("uuid", "")),
+                    label=str(r.get("label", "RELATES_TO")),
+                    source=src,
+                    target=tgt,
+                    name=r.get("name"),
+                    fact=r.get("fact"),
+                    status=r.get("status"),
+                    scope=r.get("scope"),
+                )
+            )
+            if len(edges) >= edge_limit:
+                truncated = True
+                break
+    except Exception:
+        # Missing graph (new user) — return an empty payload rather
+        # than 500. Frontend renders the empty state.
+        pass
+    finally:
+        await driver.close()
+
+    return GraphResponse(
+        user_id=target,
+        group_id=group_id,
+        nodes=nodes,
+        edges=edges,
+        truncated=truncated,
+    )
 
 
 @router.post("/{user_id}/communities/rebuild", response_model=RebuildResponse)
