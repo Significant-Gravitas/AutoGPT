@@ -48,6 +48,12 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
+    # Gates the per-user weekly community rebuild registered by
+    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
+    # so the Leiden + LLM-summarization cost doesn't ramp before
+    # retrieval-relevance benefit is measured.
+    GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — LD's per-flag targeting natively
