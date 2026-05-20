@@ -21,7 +21,7 @@ The block authenticates through Ayrshare and uploads video content with optional
 |-------|-------------|------|----------|
 | post | The post text (optional for video-only content) | str | No |
 | media_urls | Required video URL for Snapchat posts. Snapchat only supports video content. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video (always True for Snapchat) | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

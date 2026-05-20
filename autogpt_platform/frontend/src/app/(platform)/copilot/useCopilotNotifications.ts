@@ -1,4 +1,3 @@
-import { getGetV2ListSessionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
@@ -10,18 +9,31 @@ import {
   parseSessionIDs,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
+import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
- * Wrapped in try-catch so it degrades gracefully in service-worker or
- * other restricted contexts where the Notification constructor throws.
+ * If a push service worker subscription is active, the SW handles
+ * notifications via the Push API — skip the in-page Notification to
+ * avoid duplicates.
  */
-function showBrowserNotification(
+async function showBrowserNotification(
   title: string,
   opts: { body: string; icon: string; sessionID: string },
 ) {
+  try {
+    // If the push SW is handling notifications, skip the in-page fallback
+    const swReg = await navigator.serviceWorker?.getRegistration?.("/");
+    if (swReg) {
+      const pushSub = await swReg.pushManager?.getSubscription?.();
+      if (pushSub) return;
+    }
+  } catch {
+    // serviceWorker API unavailable — fall through to Notification()
+  }
+
   try {
     const n = new Notification(title, { body: opts.body, icon: opts.icon });
     n.onclick = () => {
@@ -160,7 +172,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Refetch the session list so the sidebar reflects the latest
       // is_processing state (avoids stale spinner after cross-tab clear).
       queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey(),
+        queryKey: SESSION_LIST_QUERY_KEY,
       });
     }
     window.addEventListener("storage", handleStorage);

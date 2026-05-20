@@ -1,5 +1,6 @@
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
+import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -34,7 +35,7 @@ export const Flow = () => {
     flowExecutionID: parseAsString,
   });
 
-  const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
+  const { data: graph } = useGetV1GetSpecificGraph(
     flowID ?? "",
     {},
     {
@@ -139,10 +140,9 @@ export const Flow = () => {
         graphId={flowID || undefined}
       />
       {isBuilderChatEnabled && (
-        <BuilderChatPanel
-          isGraphLoaded={isInitialLoadComplete}
-          onGraphEdited={() => void refetchGraph()}
-        />
+        <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+          <BuilderChatPanel />
+        </ErrorBoundary>
       )}
     </div>
   );

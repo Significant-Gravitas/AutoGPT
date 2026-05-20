@@ -60,7 +60,7 @@ export function Navbar() {
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="inline-flex w-full items-center bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
+          className="inline-flex w-full items-center border-b border-[#f1f1f1] bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}
@@ -97,8 +97,8 @@ export function Navbar() {
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu
-                  userName={profile?.username}
-                  userEmail={profile?.name}
+                  userName={profile?.name || profile?.username}
+                  userEmail={user?.email}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}
                   isLoading={isLoadingProfile}

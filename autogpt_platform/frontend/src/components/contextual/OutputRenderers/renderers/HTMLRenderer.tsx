@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
   wrapWithHeadInjection,
 } from "@/lib/iframe-sandbox-csp";
@@ -13,7 +14,10 @@ import {
 function HTMLPreview({ value }: { value: string }) {
   // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
   const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-  const srcDoc = wrapWithHeadInjection(value, tailwindScript);
+  const srcDoc = wrapWithHeadInjection(
+    value,
+    tailwindScript + FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+  );
   return (
     <iframe
       sandbox="allow-scripts"

@@ -4,6 +4,7 @@ from ._oauth import WordPressOAuthHandler, WordPressScope
 
 wordpress = (
     ProviderBuilder("wordpress")
+    .with_description("Posts, pages, and media")
     .with_base_cost(1, BlockCostType.RUN)
     .with_oauth(
         WordPressOAuthHandler,
