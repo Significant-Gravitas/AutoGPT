@@ -13,6 +13,7 @@ export enum Flag {
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
+  CHAT_SEARCH = "chat-search",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -37,6 +38,7 @@ const defaultFlags = {
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
+  [Flag.CHAT_SEARCH]: false,
   [Flag.GRAPHITI_MEMORY]: true,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: true,
   [Flag.DREAM_PASS_ENABLED]: true,
