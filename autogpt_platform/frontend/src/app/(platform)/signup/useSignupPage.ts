@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
@@ -21,12 +22,18 @@ export function useSignupPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
-  // Get redirect destination from 'next' query parameter
-  const nextUrl = searchParams.get("next");
+  // Same-origin redirect target; off-site values are dropped so a crafted
+  // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
+  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
 
+  // Only honour explicit `?next=` deep links here. Generic "already logged in
+  // on /signup, get me out" is handled by OnboardingProvider so the user lands
+  // straight on /onboarding or /copilot. Otherwise we'd bounce
+  // /signup → / → /copilot → /onboarding, and each hop renders before the next
+  // redirect — that intermediate /copilot render is the flash users see.
   useEffect(() => {
-    if (isLoggedIn && !isSigningUp) {
-      router.push(nextUrl || "/");
+    if (isLoggedIn && !isSigningUp && nextUrl) {
+      router.replace(nextUrl);
     }
   }, [isLoggedIn, isSigningUp, nextUrl, router]);
 
