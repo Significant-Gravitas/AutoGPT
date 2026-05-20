@@ -19,11 +19,15 @@ from backend.data import graph as graph_db
 
 logger = logging.getLogger(__name__)
 
-# Strong references to in-flight embedding tasks. ``asyncio.create_task``
-# only holds a weak reference, so without this set a task could be
-# garbage-collected mid-run on Python implementations that don't follow
-# CPython 3.11+'s strong-reference behaviour. Tasks remove themselves via
-# ``add_done_callback`` once they complete.
+# ``asyncio.create_task`` only registers the task in a *weak* set on the
+# event loop, so a fire-and-forget task with no other strong reference can
+# be garbage-collected mid-run. The asyncio docs explicitly warn about
+# this and recommend keeping the task object alive elsewhere — see the
+# "Important" note at
+# https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task.
+# Our callers in ``library/db.py`` don't await the task (intentional
+# fire-and-forget), so we hold it here and let it remove itself via
+# ``add_done_callback`` once it finishes.
 _background_tasks: set[asyncio.Task[None]] = set()
 
 
