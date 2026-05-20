@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
 import { cn } from "@/lib/utils";
+import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
 import type { FleetSummary, AgentStatusFilter } from "../../types";
 
 interface Props {
@@ -23,7 +24,7 @@ const TILES: {
   {
     label: "Spent this month",
     key: "monthlySpend",
-    format: (v) => `$${v.toLocaleString()}`,
+    format: formatCents,
     filter: "all",
     emoji: "💵",
     color: "text-zinc-700",

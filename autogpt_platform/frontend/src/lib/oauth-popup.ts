@@ -11,6 +11,8 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const OAUTH_ERROR_WINDOW_CLOSED = "Sign-in window was closed";
 export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
 export const OAUTH_ERROR_FLOW_TIMED_OUT = "OAuth flow timed out";
+export const OAUTH_ERROR_POPUP_BLOCKED =
+  "Popup blocked — sign-in opened in a new tab. If you don't see it, allow popups for this site and retry.";
 
 export type OAuthPopupResult = {
   code: string;
@@ -21,13 +23,14 @@ export type OAuthPopupOptions = {
   /** State token to validate against incoming messages */
   stateToken: string;
   /**
-   * Use BroadcastChannel + localStorage polling for cross-origin OAuth (MCP).
-   * Standard OAuth only uses postMessage via window.opener.
+   * Use BroadcastChannel + localStorage polling on top of postMessage. Needed
+   * whenever `window.opener` may not survive (cross-origin OAuth providers
+   * stripped by COOP headers, popup-blocked → new-tab fallback, etc.).
    */
   useCrossOriginListeners?: boolean;
-  /** BroadcastChannel name (default: "mcp_oauth") */
+  /** BroadcastChannel name (default: "oauth_popup") */
   broadcastChannelName?: string;
-  /** localStorage key for cross-origin fallback (default: "mcp_oauth_result") */
+  /** localStorage key for cross-origin fallback (default: "oauth_popup_result") */
   localStorageKey?: string;
   /** Message types to accept (default: ["oauth_popup_result", "mcp_oauth_result"]) */
   acceptMessageTypes?: string[];
@@ -55,12 +58,21 @@ type Cleanup = {
 export function openOAuthPopup(
   loginUrl: string,
   options: OAuthPopupOptions,
-): { promise: Promise<OAuthPopupResult>; cleanup: Cleanup } {
+): {
+  promise: Promise<OAuthPopupResult>;
+  cleanup: Cleanup;
+  /**
+   * True iff the browser refused the popup and we fell back to opening the
+   * login URL in a new tab. Callers should surface a hint to the user (the
+   * tab can be easy to miss) and offer a retry path.
+   */
+  popupBlocked: boolean;
+} {
   const {
     stateToken,
     useCrossOriginListeners = false,
-    broadcastChannelName = "mcp_oauth",
-    localStorageKey = "mcp_oauth_result",
+    broadcastChannelName = "oauth_popup",
+    localStorageKey = "oauth_popup_result",
     acceptMessageTypes = ["oauth_popup_result", "mcp_oauth_result"],
     timeout = DEFAULT_TIMEOUT_MS,
   } = options;
@@ -78,10 +90,13 @@ export function openOAuthPopup(
     `width=${width},height=${height},left=${left},top=${top},popup=true,scrollbars=yes`,
   );
 
+  let popupBlocked = false;
   if (popup && !popup.closed) {
     popup.location.href = loginUrl;
   } else {
-    // Popup was blocked — open in new tab as fallback
+    // Popup was blocked — open in new tab as fallback so the OAuth flow can
+    // still complete via postMessage / BroadcastChannel / localStorage poll.
+    popupBlocked = true;
     window.open(loginUrl, "_blank");
   }
 
@@ -90,10 +105,16 @@ export function openOAuthPopup(
     if (popup && !popup.closed) popup.close();
   });
 
-  // Clear any stale localStorage entry
+  // Scope the localStorage key by stateToken so concurrent OAuth flows do
+  // not race for a single shared slot. Each flow only reads/writes its own
+  // key, so a poller cannot destructively consume a result intended for a
+  // different flow. BroadcastChannel is pub/sub so it doesn't need scoping.
+  const scopedLocalStorageKey = `${localStorageKey}_${stateToken}`;
+
+  // Clear any stale localStorage entry for this specific flow only.
   if (useCrossOriginListeners) {
     try {
-      localStorage.removeItem(localStorageKey);
+      localStorage.removeItem(scopedLocalStorageKey);
     } catch {}
   }
 
@@ -147,10 +168,10 @@ export function openOAuthPopup(
       // Listener: localStorage polling (most reliable cross-tab fallback)
       const pollInterval = setInterval(() => {
         try {
-          const stored = localStorage.getItem(localStorageKey);
+          const stored = localStorage.getItem(scopedLocalStorageKey);
           if (stored) {
             const data = JSON.parse(stored);
-            localStorage.removeItem(localStorageKey);
+            localStorage.removeItem(scopedLocalStorageKey);
             handleResult(data);
           }
         } catch {}
@@ -200,5 +221,6 @@ export function openOAuthPopup(
       abort: (reason?: string) => controller.abort(reason || "canceled"),
       signal: controller.signal,
     },
+    popupBlocked,
   };
 }

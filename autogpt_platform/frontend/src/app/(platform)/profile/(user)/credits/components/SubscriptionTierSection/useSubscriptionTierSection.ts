@@ -8,10 +8,11 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { getTierLabel } from "./helpers";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
-const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
+const TIER_ORDER = ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
@@ -82,12 +83,19 @@ export function useSubscriptionTierSection() {
         return;
       }
       await refetch();
+      const currentIdx = subscription
+        ? TIER_ORDER.indexOf(subscription.tier)
+        : -1;
+      const targetIdx = TIER_ORDER.indexOf(tier);
+      const isDowngrade = targetIdx >= 0 && targetIdx < currentIdx;
       toast({
         title: "Subscription updated",
         description:
-          tier === "FREE"
-            ? "Your plan will be downgraded to Free at the end of your current billing period."
-            : "Your subscription has been updated.",
+          tier === "NO_TIER"
+            ? "Your subscription is cancelled at the end of your current billing period; no further charges."
+            : isDowngrade
+              ? `Your plan will be downgraded to ${getTierLabel(tier)} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
+              : `Upgraded to ${getTierLabel(tier)}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate.`,
       });
     } catch (e: unknown) {
       const msg =
@@ -117,6 +125,47 @@ export function useSubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function cancelPendingChange() {
+    if (!subscription) return;
+    setTierError(null);
+    try {
+      // "Stay on my current tier" is a same-tier POST: the backend collapses
+      // cancel-pending into update-tier and releases any pending schedule.
+      // success_url/cancel_url are unused in this branch (no Stripe Checkout
+      // is created) but are sent to satisfy the request schema.
+      await doUpdateTier({
+        data: {
+          tier: subscription.tier as SubscriptionTierRequestTier,
+          success_url: `${window.location.origin}${window.location.pathname}`,
+          cancel_url: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      await refetch();
+      toast({
+        title: "Pending subscription change cancelled.",
+      });
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : "Failed to cancel pending subscription change";
+      setTierError(msg);
+      toast({
+        title: "Failed to cancel pending change",
+        description: msg,
+        variant: "destructive",
+      });
+      // Refetch on error so the UI reconciles if the server actually
+      // succeeded (e.g. webhook delivered after our client-side error).
+      // Swallow refetch errors — we already have the primary error for display.
+      try {
+        await refetch();
+      } catch {
+        // intentional
+      }
+    }
+  }
+
   const pendingTier =
     isPending && variables?.data?.tier ? variables.data.tier : null;
 
@@ -133,5 +182,6 @@ export function useSubscriptionTierSection() {
     isPaymentEnabled,
     changeTier,
     handleTierChange,
+    cancelPendingChange,
   };
 }

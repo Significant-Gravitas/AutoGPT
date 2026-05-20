@@ -34,6 +34,9 @@ class TranscriptEntry(BaseModel):
     message: dict[str, Any]
 
 
+TranscriptSnapshot = tuple[list[TranscriptEntry], str | None]
+
+
 class TranscriptBuilder:
     """Build complete JSONL transcript from SDK messages.
 
@@ -224,7 +227,7 @@ class TranscriptBuilder:
         lines = [entry.model_dump_json(exclude_none=True) for entry in self._entries]
         return "\n".join(lines) + "\n"
 
-    def snapshot(self) -> tuple[list[TranscriptEntry], str | None]:
+    def snapshot(self) -> TranscriptSnapshot:
         """Return a shallow snapshot of the current builder state.
 
         Use with :meth:`restore` to roll back transcript mutations from a
@@ -235,7 +238,7 @@ class TranscriptBuilder:
         """
         return list(self._entries), self._last_uuid
 
-    def restore(self, snap: tuple[list[TranscriptEntry], str | None]) -> None:
+    def restore(self, snap: TranscriptSnapshot) -> None:
         """Restore builder state from a :meth:`snapshot`.
 
         Replaces ``_entries`` and ``_last_uuid`` atomically so the builder

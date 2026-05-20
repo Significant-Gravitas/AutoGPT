@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -27,6 +28,7 @@ def build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
     sdk_cwd: str | None = None,
+    model: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -40,6 +42,11 @@ def build_sdk_env(
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
     history persistence, auto-memory writes, and non-essential traffic.
+
+    *model* is the resolved SDK model slug (e.g. ``"moonshotai/kimi-k2.6"``
+    or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
+    vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
+    Moonshot since the cache-cost rationale doesn't apply there).
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
@@ -103,10 +110,19 @@ def build_sdk_env(
     # this flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
-    # Trigger context compaction earlier — default is 70% of 200K = 140K.
-    # Set to 50% = 100K to keep context smaller and reduce cache creation costs.
-    # Context >200K accounts for 54% of total cost despite being only 3% of calls.
-    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
+    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
+    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
+    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
+    # writes happen, so there's no cost to cap) and an aggressive trigger
+    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # Operators can also set the config to 0 to disable globally.
+    if (
+        not is_moonshot_model(model)
+        and config.claude_agent_autocompact_pct_override > 0
+    ):
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
+            config.claude_agent_autocompact_pct_override
+        )
 
     # Disable gzip on API responses to prevent ZlibError decompression
     # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).

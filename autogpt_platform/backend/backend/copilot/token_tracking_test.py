@@ -37,7 +37,7 @@ class TestTotalTokens:
     async def test_returns_prompt_plus_completion(self):
         """total_tokens = prompt + completion (cache excluded from total)."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -63,7 +63,7 @@ class TestTotalTokens:
     async def test_cache_tokens_excluded_from_total(self):
         """Cache tokens are stored separately and not added to total_tokens."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -81,7 +81,7 @@ class TestTotalTokens:
     async def test_baseline_path_no_cache(self):
         """Baseline (OpenRouter) path passes no cache tokens; total = prompt + completion."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -97,7 +97,7 @@ class TestTotalTokens:
     async def test_sdk_path_with_cache(self):
         """SDK (Anthropic) path passes cache tokens; total still = prompt + completion."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -123,7 +123,7 @@ class TestSessionPersistence:
     async def test_appends_usage_to_session(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -144,7 +144,7 @@ class TestSessionPersistence:
     async def test_appends_cache_breakdown_to_session(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -163,7 +163,7 @@ class TestSessionPersistence:
     async def test_multiple_turns_append_multiple_records(self):
         session = _make_session()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             await persist_and_record_usage(
@@ -178,7 +178,7 @@ class TestSessionPersistence:
     async def test_none_session_does_not_raise(self):
         """When session is None (e.g. error path), no exception should be raised."""
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new_callable=AsyncMock,
         ):
             total = await persist_and_record_usage(
@@ -210,10 +210,11 @@ class TestSessionPersistence:
 
 class TestRateLimitRecording:
     @pytest.mark.asyncio
-    async def test_calls_record_token_usage_when_user_id_present(self):
+    async def test_calls_record_cost_usage_when_cost_and_user_id_present(self):
+        """Rate-limit counter is charged with the real provider cost (microdollars)."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -223,22 +224,35 @@ class TestRateLimitRecording:
                 completion_tokens=50,
                 cache_read_tokens=1000,
                 cache_creation_tokens=200,
+                cost_usd=0.0123,
             )
         mock_record.assert_awaited_once_with(
             user_id="user-abc",
-            prompt_tokens=100,
-            completion_tokens=50,
-            cache_read_tokens=1000,
-            cache_creation_tokens=200,
-            model_cost_multiplier=1.0,
+            cost_microdollars=12_300,
         )
+
+    @pytest.mark.asyncio
+    async def test_skips_record_when_cost_is_missing(self):
+        """Without a provider cost we have no authoritative figure to charge."""
+        mock_record = AsyncMock()
+        with patch(
+            "backend.copilot.token_tracking.record_cost_usage",
+            new=mock_record,
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=100,
+                completion_tokens=50,
+            )
+        mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_skips_record_when_user_id_is_none(self):
         """Anonymous sessions should not create Redis keys."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -246,32 +260,38 @@ class TestRateLimitRecording:
                 user_id=None,
                 prompt_tokens=100,
                 completion_tokens=50,
+                cost_usd=0.001,
             )
         mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_record_failure_does_not_raise(self):
-        """A Redis error in record_token_usage should be swallowed (fail-open)."""
-        mock_record = AsyncMock(side_effect=ConnectionError("Redis down"))
+    async def test_record_usage_bubbles_unexpected_error(self):
+        """Unexpected errors from record_cost_usage must propagate.
+
+        record_cost_usage() owns its own (RedisError, ConnectionError, OSError)
+        fail-open handling. Anything else is a real accounting bug and
+        should not be silently swallowed at this layer.
+        """
+        mock_record = AsyncMock(side_effect=RuntimeError("boom"))
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
-            # Should not raise
-            total = await persist_and_record_usage(
-                session=None,
-                user_id="user-xyz",
-                prompt_tokens=100,
-                completion_tokens=50,
-            )
-        assert total == 150
+            with pytest.raises(RuntimeError, match="boom"):
+                await persist_and_record_usage(
+                    session=None,
+                    user_id="user-xyz",
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    cost_usd=0.002,
+                )
 
     @pytest.mark.asyncio
-    async def test_skips_record_when_zero_tokens(self):
-        """Returns 0 before calling record_token_usage when tokens are zero."""
+    async def test_skips_record_when_zero_tokens_and_no_cost(self):
+        """Returns 0 before calling record_cost_usage when there is nothing to record."""
         mock_record = AsyncMock()
         with patch(
-            "backend.copilot.token_tracking.record_token_usage",
+            "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
             await persist_and_record_usage(
@@ -295,7 +315,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -336,7 +356,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -369,7 +389,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -394,7 +414,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -423,7 +443,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -452,7 +472,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -479,7 +499,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -509,7 +529,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -545,7 +565,7 @@ class TestPlatformCostLogging:
         mock_log = AsyncMock()
         with (
             patch(
-                "backend.copilot.token_tracking.record_token_usage",
+                "backend.copilot.token_tracking.record_cost_usage",
                 new_callable=AsyncMock,
             ),
             patch(

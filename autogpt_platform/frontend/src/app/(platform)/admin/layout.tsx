@@ -6,6 +6,8 @@ import {
   Gauge,
   Receipt,
   FileText,
+  Heartbeat,
+  CalculatorIcon,
 } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -22,6 +24,11 @@ const sidebarLinkGroups = [
         text: "User Spending",
         href: "/admin/spending",
         icon: <CurrencyDollar className="h-6 w-6" />,
+      },
+      {
+        text: "System Diagnostics",
+        href: "/admin/diagnostics",
+        icon: <Heartbeat className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
@@ -42,6 +49,11 @@ const sidebarLinkGroups = [
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
         icon: <FileText className="h-6 w-6" />,
+      },
+      {
+        text: "Block Cost Estimates",
+        href: "/admin/block-cost-estimates",
+        icon: <CalculatorIcon className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",
