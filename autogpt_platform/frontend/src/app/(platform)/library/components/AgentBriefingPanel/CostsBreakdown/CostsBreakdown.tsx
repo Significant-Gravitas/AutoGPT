@@ -92,8 +92,13 @@ function ExpandedBody({
     );
   }
 
+  // Divide by billable_run_count (runs with cost>0), not run_count, so the
+  // average isn't deflated by zero-cost runs that contribute to the count
+  // but nothing to the total.
   const avgCostCents =
-    summary.run_count > 0 ? summary.total_cents / summary.run_count : 0;
+    summary.billable_run_count > 0
+      ? summary.total_cents / summary.billable_run_count
+      : 0;
 
   return (
     <>

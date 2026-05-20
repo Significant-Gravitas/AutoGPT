@@ -9,7 +9,7 @@ from prisma.enums import AgentExecutionStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import AgentGraph, AgentGraphExecution, User
 
-from backend.data.execution import get_user_cost_summary
+from backend.data.execution_cost_summary import get_user_cost_summary
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -103,6 +103,7 @@ async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
         )
         assert summary.total_cents == 0
         assert summary.run_count == 0
+        assert summary.billable_run_count == 0
         assert summary.failed_cost_cents == 0
         assert summary.by_agent == []
         assert summary.top_runs == []
@@ -169,6 +170,16 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
             cost_cents=20,
             started_at=now - timedelta(minutes=10),
         )
+        # Zero-cost run — included in run_count but excluded from billable_run_count,
+        # so the frontend Avg / run denominator stays honest.
+        await _create_run(
+            run_id=f"e6-{uuid4()}",
+            user_id=user_id,
+            graph_id=graph_a,
+            status=AgentExecutionStatus.COMPLETED,
+            cost_cents=0,
+            started_at=now - timedelta(minutes=5),
+        )
 
         summary = await get_user_cost_summary(
             user_id=user_id,
@@ -178,13 +189,15 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
         )
 
         assert summary.total_cents == 1570
-        assert summary.run_count == 5
+        assert summary.run_count == 6
+        assert summary.billable_run_count == 5
         # 50 FAILED + 20 TERMINATED
         assert summary.failed_cost_cents == 70
 
         by_agent = {row.graph_id: row for row in summary.by_agent}
         assert by_agent[graph_a].cost_cents == 500
-        assert by_agent[graph_a].run_count == 2
+        # 2 paid runs + 1 zero-cost run on graph_a
+        assert by_agent[graph_a].run_count == 3
         assert by_agent[graph_b].cost_cents == 1070
         assert by_agent[graph_b].run_count == 3
         # graph_b leads on total spend so it sorts first
@@ -307,7 +320,7 @@ async def test_daily_buckets_follow_created_at_not_started_at(
 ):
     # A queued-then-started run lands in the createdAt bucket, not the
     # startedAt bucket — locks the index-hit invariant documented in
-    # backend/data/execution.py get_user_cost_summary docstring.
+    # backend/data/execution_cost_summary.py get_user_cost_summary docstring.
     user_id = f"cs-created-{uuid4()}"
     graph_id = f"cs-g-c-{uuid4()}"
     await _create_user(user_id)

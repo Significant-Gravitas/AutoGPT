@@ -537,7 +537,7 @@ def test_executions_cost_summary_returns_payload(
     """The /executions/cost-summary route returns the aggregated payload."""
     from prisma.enums import AgentExecutionStatus
 
-    from backend.data.execution import (
+    from backend.data.execution_cost_summary import (
         UserAgentCostRollup,
         UserDailyCost,
         UserExecutionCostSummary,
@@ -547,6 +547,7 @@ def test_executions_cost_summary_returns_payload(
     summary = UserExecutionCostSummary(
         total_cents=4200,
         run_count=12,
+        billable_run_count=10,
         failed_cost_cents=500,
         by_agent=[
             UserAgentCostRollup(graph_id="g-1", cost_cents=3000, run_count=8),
@@ -580,6 +581,7 @@ def test_executions_cost_summary_returns_payload(
     payload = response.json()
     assert payload["total_cents"] == 4200
     assert payload["run_count"] == 12
+    assert payload["billable_run_count"] == 10
     assert payload["failed_cost_cents"] == 500
     assert len(payload["by_agent"]) == 2
     assert payload["by_agent"][0]["graph_id"] == "g-1"
@@ -597,7 +599,7 @@ def test_executions_cost_summary_forwards_since_until(
     test_user_id: str,
 ) -> None:
     """since/until query params should reach get_user_cost_summary."""
-    from backend.data.execution import UserExecutionCostSummary
+    from backend.data.execution_cost_summary import UserExecutionCostSummary
 
     mock_fn = mocker.patch(
         "backend.api.features.v1.get_user_cost_summary",
@@ -605,6 +607,7 @@ def test_executions_cost_summary_forwards_since_until(
             return_value=UserExecutionCostSummary(
                 total_cents=0,
                 run_count=0,
+                billable_run_count=0,
                 failed_cost_cents=0,
                 by_agent=[],
                 top_runs=[],

@@ -18871,6 +18871,10 @@
         "properties": {
           "total_cents": { "type": "integer", "title": "Total Cents" },
           "run_count": { "type": "integer", "title": "Run Count" },
+          "billable_run_count": {
+            "type": "integer",
+            "title": "Billable Run Count"
+          },
           "failed_cost_cents": {
             "type": "integer",
             "title": "Failed Cost Cents"
@@ -18895,6 +18899,7 @@
         "required": [
           "total_cents",
           "run_count",
+          "billable_run_count",
           "failed_cost_cents",
           "by_agent",
           "top_runs",

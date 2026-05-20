@@ -73,6 +73,7 @@ function setupHandlers({ totalCents }: { totalCents: number }) {
     getGetV1UserCostSummaryMockHandler({
       total_cents: totalCents,
       run_count: totalCents > 0 ? 3 : 0,
+      billable_run_count: totalCents > 0 ? 3 : 0,
       failed_cost_cents: 0,
       by_agent:
         totalCents > 0

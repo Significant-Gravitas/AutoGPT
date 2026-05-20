@@ -87,6 +87,7 @@ function emptyCostSummary() {
     data: {
       total_cents: 0,
       run_count: 0,
+      billable_run_count: 0,
       failed_cost_cents: 0,
       by_agent: [],
       top_runs: [],
@@ -254,6 +255,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       data: {
         total_cents: 4250,
         run_count: 10,
+        billable_run_count: 10,
         failed_cost_cents: 50,
         by_agent: [
           { graph_id: "g-1", cost_cents: 3000, run_count: 6 },
@@ -346,6 +348,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       data: {
         total_cents: 500,
         run_count: 1,
+        billable_run_count: 1,
         failed_cost_cents: 0,
         by_agent: [
           { graph_id: "deadbeef-1234-5678", cost_cents: 500, run_count: 1 },
@@ -363,5 +366,41 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       screen.getByRole("button", { name: /see costs breakdown/i }),
     );
     expect(screen.getByText(/Agent deadbeef/)).toBeDefined();
+  });
+
+  it("computes Avg / run from billable_run_count, not run_count", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+    });
+    // 6 total runs but only 2 with cost > 0 — avg must be $5.00 (1000/2),
+    // not $1.67 (1000/6) which is what dividing by run_count would yield.
+    mockUseGetV1UserCostSummary.mockReturnValue({
+      data: {
+        total_cents: 1000,
+        run_count: 6,
+        billable_run_count: 2,
+        failed_cost_cents: 0,
+        by_agent: [{ graph_id: "g-1", cost_cents: 1000, run_count: 6 }],
+        top_runs: [],
+        daily: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+    mockUseGetFlag.mockReturnValue(false);
+
+    render(
+      <BriefingTabContent
+        activeTab="all"
+        agents={[makeAgent({ id: "lib-1", graph_id: "g-1", name: "Alpha" })]}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
+
+    expect(screen.getByText("$5.00")).toBeDefined();
+    expect(screen.queryByText("$1.67")).toBeNull();
   });
 });
