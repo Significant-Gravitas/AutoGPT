@@ -5,8 +5,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mcp.types import ToolAnnotations
+from mcp.types import ListToolsRequest, ToolAnnotations
 
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools import TOOL_REGISTRY
@@ -460,9 +461,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert len(call_log) == 1, (
-            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
-        )
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -1052,8 +1053,6 @@ class TestCreateCopilotMcpServerHidden:
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
-        from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
-
         server = create_copilot_mcp_server(hidden_tool_names=BUILDER_BLOCKED_TOOLS)
         registered = await self._registered_tool_names(server)
         for blocked in BUILDER_BLOCKED_TOOLS:
@@ -1063,8 +1062,6 @@ class TestCreateCopilotMcpServerHidden:
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
-        from mcp.types import ListToolsRequest
-
         instance = server["instance"]
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))

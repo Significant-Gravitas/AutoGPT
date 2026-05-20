@@ -128,7 +128,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup
+from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
@@ -4011,7 +4011,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        hidden_tools = _hidden_short_names_for_permissions(permissions)
+        disabled_tool_groups: list[ToolGroup] = []
+        if not graphiti_enabled:
+            disabled_tool_groups.append("graphiti")
+
+        # Hide both permission-denied tools AND group-disabled tools at
+        # registration. ``allowed_tools`` filtering alone routes group-
+        # disabled calls through the same auto-deny path the per-permission
+        # hiding is meant to eliminate (CLI returns "Permission to use ...
+        # has been denied", which the model narrates as a fake Allow/Deny
+        # prompt).
+        hidden_tools = _hidden_short_names_for_permissions(
+            permissions
+        ) | tool_names_in_groups(disabled_tool_groups)
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b, hidden_tool_names=hidden_tools
         )
@@ -4040,10 +4052,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
         )
-
-        disabled_tool_groups: list[ToolGroup] = []
-        if not graphiti_enabled:
-            disabled_tool_groups.append("graphiti")
 
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(

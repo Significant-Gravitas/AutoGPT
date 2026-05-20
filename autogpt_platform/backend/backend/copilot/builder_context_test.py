@@ -110,6 +110,7 @@ async def test_system_prompt_suffix_steers_to_edit_agent():
     assert "<tool_usage>" in suffix
     assert "edit_agent" in suffix
     assert "create_agent" in suffix
+    assert "customize_agent" in suffix
     assert "get_agent_building_guide" in suffix
     # The "no permission prompt UI" framing is what stops the model from
     # asking the user to "click Allow" when a tool is unavailable.

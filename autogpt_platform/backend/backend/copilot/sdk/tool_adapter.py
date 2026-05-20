@@ -709,6 +709,8 @@ def create_copilot_mcp_server(
     _MUTATING_E2B_TOOLS = {"write_file", "edit_file"}
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
+            if name in hidden:
+                continue
             ann = (
                 _MUTATING_ANNOTATION
                 if name in _MUTATING_E2B_TOOLS
@@ -728,53 +730,57 @@ def create_copilot_mcp_server(
     # "read_file", and "edit_file".  Registering both would give the LLM
     # duplicate tools per operation.
     if not use_e2b:
-        write_handler = get_write_tool_handler()
-        write_tool = tool(
-            WRITE_TOOL_NAME,
-            WRITE_TOOL_DESCRIPTION,
-            WRITE_TOOL_SCHEMA,
-            annotations=_MUTATING_ANNOTATION,
-        )(
-            _make_truncating_wrapper(
-                write_handler, WRITE_TOOL_NAME, input_schema=WRITE_TOOL_SCHEMA
+        if WRITE_TOOL_NAME not in hidden:
+            write_handler = get_write_tool_handler()
+            write_tool = tool(
+                WRITE_TOOL_NAME,
+                WRITE_TOOL_DESCRIPTION,
+                WRITE_TOOL_SCHEMA,
+                annotations=_MUTATING_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    write_handler, WRITE_TOOL_NAME, input_schema=WRITE_TOOL_SCHEMA
+                )
             )
-        )
-        sdk_tools.append(write_tool)
+            sdk_tools.append(write_tool)
 
-        read_file_handler = get_read_tool_handler()
-        read_file_tool = tool(
-            READ_TOOL_NAME,
-            READ_TOOL_DESCRIPTION,
-            READ_TOOL_SCHEMA,
-            annotations=_PARALLEL_ANNOTATION,
-        )(
-            _make_truncating_wrapper(
-                read_file_handler, READ_TOOL_NAME, input_schema=READ_TOOL_SCHEMA
+        if READ_TOOL_NAME not in hidden:
+            read_file_handler = get_read_tool_handler()
+            read_file_tool = tool(
+                READ_TOOL_NAME,
+                READ_TOOL_DESCRIPTION,
+                READ_TOOL_SCHEMA,
+                annotations=_PARALLEL_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    read_file_handler, READ_TOOL_NAME, input_schema=READ_TOOL_SCHEMA
+                )
             )
-        )
-        sdk_tools.append(read_file_tool)
+            sdk_tools.append(read_file_tool)
 
-        edit_handler = get_edit_tool_handler()
-        edit_tool = tool(
-            EDIT_TOOL_NAME,
-            EDIT_TOOL_DESCRIPTION,
-            EDIT_TOOL_SCHEMA,
-            annotations=_MUTATING_ANNOTATION,
-        )(
-            _make_truncating_wrapper(
-                edit_handler, EDIT_TOOL_NAME, input_schema=EDIT_TOOL_SCHEMA
+        if EDIT_TOOL_NAME not in hidden:
+            edit_handler = get_edit_tool_handler()
+            edit_tool = tool(
+                EDIT_TOOL_NAME,
+                EDIT_TOOL_DESCRIPTION,
+                EDIT_TOOL_SCHEMA,
+                annotations=_MUTATING_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    edit_handler, EDIT_TOOL_NAME, input_schema=EDIT_TOOL_SCHEMA
+                )
             )
-        )
-        sdk_tools.append(edit_tool)
+            sdk_tools.append(edit_tool)
 
     # Read tool for SDK-truncated tool results (always needed, read-only).
-    read_tool = tool(
-        _READ_TOOL_NAME,
-        _READ_TOOL_DESCRIPTION,
-        _READ_TOOL_SCHEMA,
-        annotations=_PARALLEL_ANNOTATION,
-    )(_make_truncating_wrapper(_read_file_handler, _READ_TOOL_NAME))
-    sdk_tools.append(read_tool)
+    if _READ_TOOL_NAME not in hidden:
+        read_tool = tool(
+            _READ_TOOL_NAME,
+            _READ_TOOL_DESCRIPTION,
+            _READ_TOOL_SCHEMA,
+            annotations=_PARALLEL_ANNOTATION,
+        )(_make_truncating_wrapper(_read_file_handler, _READ_TOOL_NAME))
+        sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(
         name=MCP_SERVER_NAME,
