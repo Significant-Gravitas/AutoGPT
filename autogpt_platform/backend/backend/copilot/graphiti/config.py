@@ -157,3 +157,24 @@ async def is_enabled_for_user(user_id: str | None) -> bool:
         user_id,
         default=False,
     )
+
+
+async def is_communities_enabled_for_user(user_id: str | None) -> bool:
+    """Check if per-user community-detection rebuilds are enabled.
+
+    Distinct from ``is_enabled_for_user`` — a user can have Graphiti
+    memory enabled (writes + reads work) without the weekly Leiden
+    rebuild + LLM summarization running on their graph. Gated by
+    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``; defaults False so the cost
+    only lands behind explicit opt-in.
+    """
+    if not user_id:
+        return False
+
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    return await is_feature_enabled(
+        Flag.GRAPHITI_COMMUNITIES_ENABLED,
+        user_id,
+        default=False,
+    )

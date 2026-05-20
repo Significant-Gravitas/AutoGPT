@@ -8,7 +8,8 @@ interface Props {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   targetCycle: "monthly" | "yearly";
-  body: string;
+  title?: string;
+  body: { label?: string; text: string }[];
   isSaving: boolean;
   onConfirm: () => void;
 }
@@ -17,6 +18,7 @@ export function SwitchCycleDialog({
   isOpen,
   onOpenChange,
   targetCycle,
+  title,
   body,
   isSaving,
   onConfirm,
@@ -25,15 +27,31 @@ export function SwitchCycleDialog({
 
   return (
     <Dialog
-      title={`Switch billing to ${targetLabel}?`}
+      title={title ?? `Switch billing to ${targetLabel}?`}
       styling={{ maxWidth: "440px" }}
       controlled={{ isOpen, set: onOpenChange }}
     >
       <Dialog.Content>
-        <div className="flex flex-col gap-4">
-          <Text variant="body" as="span" className="text-zinc-700">
-            {body}
-          </Text>
+        <div className="flex flex-col gap-2">
+          {body.map((line, index) => (
+            <div
+              key={`${index}-${line.label ?? ""}-${line.text}`}
+              className="flex flex-wrap gap-1"
+            >
+              {line.label ? (
+                <Text
+                  variant="body"
+                  as="span"
+                  className="font-semibold text-zinc-700"
+                >
+                  {line.label}
+                </Text>
+              ) : null}
+              <Text variant="body" as="span" className="text-zinc-700">
+                {line.text}
+              </Text>
+            </div>
+          ))}
         </div>
 
         <Dialog.Footer>

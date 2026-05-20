@@ -47,6 +47,11 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    # Gates the per-user weekly community rebuild registered by
+    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
+    # so the Leiden + LLM-summarization cost doesn't ramp before
+    # retrieval-relevance benefit is measured.
+    GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
