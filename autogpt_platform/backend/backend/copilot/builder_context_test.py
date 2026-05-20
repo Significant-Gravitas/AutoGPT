@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.builder_context import (
+    BUILDER_BLOCKED_TOOLS,
     BUILDER_CONTEXT_TAG,
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
@@ -109,9 +110,15 @@ async def test_system_prompt_suffix_steers_to_edit_agent():
 
     assert "<tool_usage>" in suffix
     assert "edit_agent" in suffix
-    assert "create_agent" in suffix
-    assert "customize_agent" in suffix
-    assert "get_agent_building_guide" in suffix
+    # Every blocked tool must be named in the prose (drift guard: if
+    # BUILDER_BLOCKED_TOOLS grows, the prose must grow with it).
+    for blocked in BUILDER_BLOCKED_TOOLS:
+        assert blocked in suffix
+    # "intentionally unavailable" is the prohibitive framing — a bare
+    # "create_agent in suffix" check would pass even if the prose said
+    # "create_agent is available". This anchors the assertion to the
+    # exclusion semantics.
+    assert "intentionally unavailable" in suffix
     # The "no permission prompt UI" framing is what stops the model from
     # asking the user to "click Allow" when a tool is unavailable.
     assert "no permission prompt UI" in suffix

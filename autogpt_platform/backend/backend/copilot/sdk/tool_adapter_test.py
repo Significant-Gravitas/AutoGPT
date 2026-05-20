@@ -463,9 +463,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert len(call_log) == 1, (
-            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
-        )
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -1033,10 +1033,14 @@ class TestCreateCopilotMcpServerHidden:
 
     @pytest.mark.asyncio
     async def test_hidden_tools_not_registered(self):
-        sample = next(iter(TOOL_REGISTRY.keys()))
-        server = create_copilot_mcp_server(hidden_tool_names=[sample])
+        # Use a named tool (find_block is stable + load-bearing in the
+        # builder flow) so the test reads as a real scenario instead of
+        # "the first key in dict insertion order".
+        hidden_name = "find_block"
+        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_block"
+        server = create_copilot_mcp_server(hidden_tool_names=[hidden_name])
         registered = await self._registered_tool_names(server)
-        assert sample not in registered
+        assert hidden_name not in registered
         # Other tools still register.
         assert len(registered) >= len(TOOL_REGISTRY) - 1
 
@@ -1055,6 +1059,19 @@ class TestCreateCopilotMcpServerHidden:
             assert blocked not in registered
         # edit_agent must remain so the model can populate the bound graph.
         assert "edit_agent" in registered
+
+    @pytest.mark.asyncio
+    async def test_unknown_hidden_name_is_silently_ignored(self):
+        """A typo in ``hidden_tool_names`` must not phantom-hide a real
+        tool or raise — the registration loop intersects with
+        TOOL_REGISTRY keys, so unknown names are a no-op."""
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["this_tool_does_not_exist"]
+        )
+        registered = await self._registered_tool_names(server)
+        # All real tools still register.
+        for short in TOOL_REGISTRY:
+            assert short in registered
 
     @staticmethod
     async def _registered_tool_names(server) -> set[str]:
