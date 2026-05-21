@@ -9,10 +9,14 @@ import {
   useGetV2GetMemoryOverview,
   usePostV2RebuildCommunities,
   usePostV2TriggerDreamPass,
+  usePostV2TriggerNightlyBatch,
+  usePostV2TriggerRatificationPass,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPassResponse";
 import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
+import type { NightlyBatchResponse } from "@/app/api/__generated__/models/nightlyBatchResponse";
+import type { RatificationResultResponse } from "@/app/api/__generated__/models/ratificationResultResponse";
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
@@ -123,12 +127,106 @@ export function useMemoryVisualizer() {
     },
   });
 
+  const ratification = usePostV2TriggerRatificationPass({
+    mutation: {
+      onSuccess: (res) => {
+        const result = res.data as RatificationResultResponse;
+        if (result.error) {
+          toast({
+            title: "Ratification failed",
+            description: result.error,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Ratification complete",
+            description:
+              `examined=${result.examined_count}, ` +
+              `ratified=${result.ratified_count}, ` +
+              `superseded=${result.superseded_count}`,
+          });
+        }
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        });
+      },
+      onError: (error: Error) => {
+        toast({
+          title: "Ratification failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const nightly = usePostV2TriggerNightlyBatch({
+    mutation: {
+      onSuccess: (res) => {
+        const result = res.data as NightlyBatchResponse;
+        if (result.skipped) {
+          toast({
+            title: "Nightly batch skipped",
+            description: `${result.skip_reason ?? "no_reason"} — ${
+              result.elapsed_seconds?.toFixed(2) ?? "?"
+            }s`,
+          });
+        } else if (result.error) {
+          toast({
+            title: "Nightly batch failed",
+            description: result.error,
+            variant: "destructive",
+          });
+        } else {
+          const dreamSummary = result.dream
+            ? `dream writes=${result.dream.consolidated_count}, ` +
+              `proposals=${result.dream.proposal_count}`
+            : "dream skipped";
+          const ratSummary = result.ratification
+            ? `ratified=${result.ratification.ratified_count}, ` +
+              `superseded=${result.ratification.superseded_count}`
+            : "ratification skipped";
+          toast({
+            title: "Nightly batch complete",
+            description: `${
+              result.elapsed_seconds?.toFixed(1) ?? "?"
+            }s — ${dreamSummary}; ${ratSummary}`,
+          });
+        }
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetMemoryOverviewQueryKey(USER_ID),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetGraphQueryKey(USER_ID),
+        });
+      },
+      onError: (error: Error) => {
+        toast({
+          title: "Nightly batch failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   function triggerRebuild() {
     rebuild.mutate({ userId: USER_ID, params: { force } });
   }
 
   function triggerDream() {
     dream.mutate({ userId: USER_ID });
+  }
+
+  function triggerRatification() {
+    ratification.mutate({ userId: USER_ID });
+  }
+
+  function triggerNightly() {
+    nightly.mutate({ userId: USER_ID });
   }
 
   // Narrow the Orval-union response shapes to their success types once
@@ -138,14 +236,19 @@ export function useMemoryVisualizer() {
   const graphData = graph.data?.data as GraphResponse | undefined;
   const rebuildData = rebuild.data?.data as RebuildResponse | undefined;
   const dreamData = dream.data?.data as DreamPassResponse | undefined;
+  const nightlyData = nightly.data?.data as NightlyBatchResponse | undefined;
 
   return {
     overview,
     graph,
     rebuild,
     dream,
+    ratification,
+    nightly,
     triggerRebuild,
     triggerDream,
+    triggerRatification,
+    triggerNightly,
     force,
     setForce,
     includeEpisodes,
@@ -156,5 +259,6 @@ export function useMemoryVisualizer() {
     graphData,
     rebuildData,
     dreamData,
+    nightlyData,
   };
 }

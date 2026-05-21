@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPassResponse";
+import type { NightlyBatchResponse } from "@/app/api/__generated__/models/nightlyBatchResponse";
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
@@ -20,6 +21,11 @@ export function MemoryVisualizer() {
     dream,
     triggerDream,
     dreamData,
+    ratification,
+    triggerRatification,
+    nightly,
+    triggerNightly,
+    nightlyData,
     force,
     setForce,
     includeEpisodes,
@@ -88,6 +94,11 @@ export function MemoryVisualizer() {
         onDream={triggerDream}
         dreamPending={dream.isPending}
         dreamResult={dreamData}
+        onRatification={triggerRatification}
+        ratificationPending={ratification.isPending}
+        onNightly={triggerNightly}
+        nightlyPending={nightly.isPending}
+        nightlyResult={nightlyData}
         force={force}
         setForce={setForce}
         includeEpisodes={includeEpisodes}
@@ -208,6 +219,11 @@ interface ControlBarProps {
   onDream: () => void;
   dreamPending: boolean;
   dreamResult: DreamPassResponse | undefined;
+  onRatification: () => void;
+  ratificationPending: boolean;
+  onNightly: () => void;
+  nightlyPending: boolean;
+  nightlyResult: NightlyBatchResponse | undefined;
   force: boolean;
   setForce: (v: boolean) => void;
   includeEpisodes: boolean;
@@ -226,6 +242,11 @@ function ControlBar({
   onDream,
   dreamPending,
   dreamResult,
+  onRatification,
+  ratificationPending,
+  onNightly,
+  nightlyPending,
+  nightlyResult,
   force,
   setForce,
   includeEpisodes,
@@ -260,9 +281,27 @@ function ControlBar({
         onClick={onDream}
         disabled={dreamPending}
         className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-        title="Run a three-phase dream pass synchronously (consolidate → recombine → sanitize)."
+        title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
       >
-        {dreamPending ? "Dreaming…" : "Run dream pass"}
+        {dreamPending ? "Dreaming…" : "Dream pass"}
+      </button>
+      <button
+        type="button"
+        onClick={onRatification}
+        disabled={ratificationPending}
+        className="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+        title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
+      >
+        {ratificationPending ? "Ratifying…" : "Ratification"}
+      </button>
+      <button
+        type="button"
+        onClick={onNightly}
+        disabled={nightlyPending}
+        className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+        title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
+      >
+        {nightlyPending ? "Running nightly…" : "Nightly batch"}
       </button>
       <span className="mx-2 h-5 border-l border-gray-200" />
       <label className="flex items-center gap-2 text-gray-700">
@@ -307,6 +346,16 @@ function ControlBar({
                   ` (w=${dreamResult.consolidated_count}` +
                   ` p=${dreamResult.proposal_count}` +
                   ` d=${dreamResult.demotion_count})`}
+          </span>
+        )}
+        {nightlyResult && (
+          <span className="ml-2">
+            last nightly:{" "}
+            {nightlyResult.skipped
+              ? `skipped (${nightlyResult.skip_reason})`
+              : nightlyResult.error
+                ? "errored"
+                : `${nightlyResult.elapsed_seconds?.toFixed(1)}s`}
           </span>
         )}
       </span>

@@ -628,12 +628,12 @@ async def trigger_dream_pass(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
 ) -> DreamPassResponse:
-    """Trigger an on-demand dream pass for the user.
+    """Trigger an on-demand dream pass for the user (in isolation).
 
-    Forwards to ``Scheduler.execute_dream_pass_now``. Runs the full
-    three-phase pipeline (consolidate → recombine → sanitize) synchronously
-    against the OpenRouter-fronted baseline path, applies operations
-    to Graphiti + Postgres, and writes a dream-kind ChatSession.
+    Forwards to ``Scheduler.execute_dream_pass_now``. Runs ONLY the
+    dream pass submitter — does NOT run community rebuild or
+    ratification. For the full nightly fan-out (matching what the
+    03:00 cron does), use ``POST /{user_id}/nightly`` instead.
     """
     target = _resolve_user_id(user_id, caller_id)
     try:
@@ -655,6 +655,116 @@ async def trigger_dream_pass(
         )
 
     return DreamPassResponse(**result)
+
+
+class RatificationResultResponse(BaseModel):
+    """Mirror of ``RatificationResult`` from dream/ratification.py.
+
+    Kept duplicated rather than importing the source model so the
+    admin route stays loosely-coupled to the dream module's internals.
+    """
+
+    user_id: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    examined_count: int = 0
+    ratified_count: int = 0
+    superseded_count: int = 0
+    error: str | None = None
+    skipped: bool = False
+    skip_reason: str | None = None
+    per_edge_errors: list[str] = Field(default_factory=list)
+
+
+class NightlyBatchResponse(BaseModel):
+    """Mirror of ``NightlyBatchResult`` from dream/nightly_batch.py."""
+
+    user_id: str
+    nightly_id: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    elapsed_seconds: float | None = None
+    # Per-submitter outcomes. None means the submitter was skipped
+    # (flag off, no input, etc.) or hasn't run.
+    dream: DreamPassResponse | None = None
+    ratification: RatificationResultResponse | None = None
+    skipped: bool = False
+    skip_reason: str | None = None
+    error: str | None = None
+
+
+@router.post("/{user_id}/ratification", response_model=RatificationResultResponse)
+async def trigger_ratification_pass(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> RatificationResultResponse:
+    """Trigger an on-demand ratification sweep for the user (in isolation).
+
+    Forwards to ``Scheduler.execute_ratification_pass_now``. Runs ONLY
+    the ratification supersession sweep — does NOT run dream pass or
+    community rebuild. Useful for testing ratification behavior
+    without the full nightly fan-out.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    try:
+        derive_group_id(target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        result = await get_scheduler_client().execute_ratification_pass_now(
+            user_id=target
+        )
+    except Exception as exc:
+        logger.warning(
+            "Admin-triggered ratification pass failed for user %s: %s",
+            target[:12],
+            exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ratification pass failed: {type(exc).__name__}: {exc}",
+        )
+    return RatificationResultResponse(**result)
+
+
+@router.post("/{user_id}/nightly", response_model=NightlyBatchResponse)
+async def trigger_nightly_batch(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> NightlyBatchResponse:
+    """Trigger the full nightly batch fan-out for the user.
+
+    Forwards to ``Scheduler.execute_nightly_batch_now``. Runs every
+    enabled batch-family submitter in sequence (dream pass +
+    ratification sweep today; future P2/P3/P4/P11 stages as they
+    land). One pre-flight billing check; per-submitter cost log rows
+    share the same ``nightly_id`` for downstream attribution.
+
+    Equivalent to what the 03:00 cron does — use this when you want
+    to exercise the full nightly composition on demand.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    try:
+        derive_group_id(target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        result = await get_scheduler_client().execute_nightly_batch_now(
+            user_id=target
+        )
+    except Exception as exc:
+        logger.warning(
+            "Admin-triggered nightly batch failed for user %s: %s",
+            target[:12],
+            exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Nightly batch failed: {type(exc).__name__}: {exc}",
+        )
+    return NightlyBatchResponse(**result)
 
 
 @router.post("/{user_id}/communities/rebuild", response_model=RebuildResponse)
