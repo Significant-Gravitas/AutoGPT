@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import SubscriptionTier
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
@@ -2706,6 +2706,65 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
         },
     )
     mock_schedule_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
+    """When ``set_subscription_tier`` fails after a successful Stripe modify,
+    the immediate ``subscription_upgraded`` emit must be skipped — the webhook
+    is the fallback emit path and would otherwise produce a duplicate event."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+            side_effect=PrismaError("db down"),
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    track_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
