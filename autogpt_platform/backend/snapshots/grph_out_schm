@@ -3,6 +3,7 @@
     "out_key": {
       "advanced": false,
       "description": "This is an output key",
+      "secret": false,
       "title": "out_key"
     }
   },

@@ -219,21 +219,9 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
             advanced=False,
         )
 
-    def _drop_secret(schema: dict[str, Any]) -> dict[str, Any]:
-        # Generated graph schemas do not carry the `secret` property anymore;
-        # SchemaField-produced reference schemas still emit `secret: false`
-        # by default, so strip it from the reference before comparing.
-        return {
-            **schema,
-            "properties": {
-                pn: {k: v for k, v in p.items() if k != "secret"}
-                for pn, p in schema.get("properties", {}).items()
-            },
-        }
-
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == _drop_secret(ExpectedInputSchema.jsonschema())
+    assert input_schema == ExpectedInputSchema.jsonschema()
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -243,7 +231,7 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     output_schema = created_graph.output_schema
     output_schema["title"] = "ExpectedOutputSchema"
-    assert output_schema == _drop_secret(ExpectedOutputSchema.jsonschema())
+    assert output_schema == ExpectedOutputSchema.jsonschema()
 
     # Add snapshot testing for the output schema
     snapshot.snapshot_dir = "snapshots"
