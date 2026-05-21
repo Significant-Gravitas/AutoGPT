@@ -40,6 +40,7 @@ from .manage_folders import (
     UpdateFolderTool,
 )
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .schedule_followup import ScheduleFollowupTool
 from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
@@ -88,6 +89,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Schedule management
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
+    "schedule_followup": ScheduleFollowupTool(),
     # Trigger discovery (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
     "run_block": RunBlockTool(),

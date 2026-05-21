@@ -4,8 +4,9 @@ import os
 import threading
 import time
 import uuid
+from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Annotated, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import (
@@ -19,6 +20,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -181,6 +183,43 @@ async def _execute_graph(**kwargs):
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
+            f"{type(e).__name__}: {e}"
+        )
+
+
+def execute_copilot_turn(**kwargs):
+    """Enqueue a copilot turn on the executor queue and wait for completion.
+
+    APScheduler dispatches scheduled copilot-turn jobs here. ``kwargs``
+    is the serialized form of :class:`CopilotTurnJobArgs`.
+    """
+    run_async(_execute_copilot_turn(**kwargs))
+
+
+async def _execute_copilot_turn(**kwargs):
+    args = CopilotTurnJobArgs(**kwargs)
+    start_time = asyncio.get_event_loop().time()
+    try:
+        # Local import: copilot.executor imports from backend.executor, so a
+        # top-level import here would create a cycle at module-load time.
+        from backend.copilot.executor.utils import enqueue_copilot_turn
+
+        await enqueue_copilot_turn(
+            session_id=args.session_id,
+            user_id=args.user_id,
+            message=args.message,
+            turn_id=str(uuid.uuid4()),
+        )
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.info(
+            f"Enqueued scheduled copilot turn for session "
+            f"{args.session_id[:12]} (took {elapsed:.2f}s)"
+        )
+    except Exception as e:
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.error(
+            f"Error enqueuing copilot turn for session "
+            f"{args.session_id[:12]} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
 
@@ -402,14 +441,37 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
+    # ``kind`` defaults to ``"graph"`` so existing persisted job kwargs
+    # (which predate the discriminator) deserialize as graph schedules.
+    kind: Literal["graph"] = "graph"
     schedule_id: str | None = None
     user_id: str
     graph_id: str
     graph_version: int
     agent_name: str | None = None
-    cron: str
+    # One of ``cron`` or ``run_at`` must be set. ``cron`` is recurring;
+    # ``run_at`` fires once (APScheduler ``DateTrigger`` auto-removes the
+    # job after fire because ``get_next_fire_time`` returns None).
+    cron: str | None = None
+    run_at: datetime | None = None
     input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
+
+
+class CopilotTurnJobArgs(BaseModel):
+    kind: Literal["copilot_turn"] = "copilot_turn"
+    schedule_id: str | None = None
+    user_id: str
+    session_id: str
+    message: str
+    cron: str | None = None
+    run_at: datetime | None = None
+
+
+def _timezone_from_job(job_obj: JobObj) -> str:
+    if hasattr(job_obj.trigger, "timezone"):
+        return str(job_obj.trigger.timezone)
+    return "UTC"
 
 
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
@@ -422,18 +484,82 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
     def from_db(
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
-        # Extract timezone from the trigger if it's a CronTrigger
-        timezone_str = "UTC"
-        if hasattr(job_obj.trigger, "timezone"):
-            timezone_str = str(job_obj.trigger.timezone)
-
         return GraphExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
             next_run_time=job_obj.next_run_time.isoformat(),
-            timezone=timezone_str,
+            timezone=_timezone_from_job(job_obj),
             **job_args.model_dump(),
         )
+
+
+class CopilotTurnJobInfo(CopilotTurnJobArgs):
+    id: str
+    name: str
+    next_run_time: str
+    timezone: str = Field(default="UTC", description="Timezone used for scheduling")
+
+    @staticmethod
+    def from_db(job_args: CopilotTurnJobArgs, job_obj: JobObj) -> "CopilotTurnJobInfo":
+        return CopilotTurnJobInfo(
+            id=job_obj.id,
+            name=job_obj.name,
+            next_run_time=job_obj.next_run_time.isoformat(),
+            timezone=_timezone_from_job(job_obj),
+            **job_args.model_dump(),
+        )
+
+
+# Polymorphic schedule info — the kind discriminator picks the right shape
+# during deserialization on the client side.
+ScheduleInfo = Annotated[
+    Union[GraphExecutionJobInfo, CopilotTurnJobInfo],
+    Field(discriminator="kind"),
+]
+
+
+def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
+    if user_timezone:
+        return user_timezone
+    logger.warning(
+        f"No timezone provided for user {user_id}, using UTC for scheduling. "
+        f"Client should pass user's timezone for correct scheduling."
+    )
+    return "UTC"
+
+
+def _build_trigger(
+    *, cron: str | None, run_at: datetime | None, user_timezone: str
+) -> Union[CronTrigger, DateTrigger]:
+    if (cron is None) == (run_at is None):
+        raise ValueError("Exactly one of `cron` or `run_at` must be provided")
+    if cron is not None:
+        return CronTrigger.from_crontab(cron, timezone=user_timezone)
+    return DateTrigger(run_date=run_at, timezone=user_timezone)
+
+
+def _job_to_info(
+    job: JobObj,
+) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo, None]:
+    """Materialize a polymorphic ``ScheduleInfo`` from an APScheduler job.
+
+    Returns ``None`` if the job's kwargs don't deserialize as either kind
+    (corrupted row or a schedule from a future code path).
+    """
+    job_kind = job.kwargs.get("kind", "graph")
+    if job_kind == "graph":
+        try:
+            args = GraphExecutionJobArgs.model_validate(job.kwargs)
+        except ValidationError:
+            return None
+        return GraphExecutionJobInfo.from_db(args, job)
+    if job_kind == "copilot_turn":
+        try:
+            args = CopilotTurnJobArgs.model_validate(job.kwargs)
+        except ValidationError:
+            return None
+        return CopilotTurnJobInfo.from_db(args, job)
+    return None
 
 
 class NotificationJobInfo(NotificationJobArgs):
@@ -702,9 +828,10 @@ class Scheduler(AppService):
         user_id: str,
         graph_id: str,
         graph_version: int,
-        cron: str,
         input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
+        cron: str | None = None,
+        run_at: datetime | None = None,
         name: Optional[str] = None,
         user_timezone: str | None = None,
     ) -> GraphExecutionJobInfo:
@@ -720,18 +847,8 @@ class Scheduler(AppService):
             )
         )
 
-        # Use provided timezone or default to UTC
-        # Note: Timezone should be passed from the client to avoid database lookups
-        if not user_timezone:
-            user_timezone = "UTC"
-            logger.warning(
-                f"No timezone provided for user {user_id}, using UTC for scheduling. "
-                f"Client should pass user's timezone for correct scheduling."
-            )
-
-        logger.info(
-            f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
-        )
+        user_timezone = _resolve_timezone(user_timezone, user_id)
+        trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
         schedule_id = str(uuid.uuid4())
 
         job_args = GraphExecutionJobArgs(
@@ -741,61 +858,160 @@ class Scheduler(AppService):
             graph_version=graph_version,
             agent_name=name,
             cron=cron,
+            run_at=run_at,
             input_data=input_data,
             input_credentials=input_credentials,
         )
         job = self.scheduler.add_job(
             execute_graph,
-            kwargs=job_args.model_dump(),
+            kwargs=job_args.model_dump(mode="json"),
             name=name,
-            trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
+            trigger=trigger,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
             id=schedule_id,
         )
         logger.info(
-            f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
+            f"Added graph job {job.id} ({trigger.__class__.__name__}) in "
+            f"timezone {user_timezone}, input data: {input_data}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
+    def add_copilot_turn_schedule(
+        self,
+        user_id: str,
+        session_id: str,
+        message: str,
+        cron: str | None = None,
+        run_at: datetime | None = None,
+        name: Optional[str] = None,
+        user_timezone: str | None = None,
+    ) -> CopilotTurnJobInfo:
+        """Schedule a copilot turn to resume *session_id* at a future time.
+
+        At fire time, the scheduler enqueues a copilot turn carrying
+        *message* against the existing session, so the copilot resumes
+        with the conversation history intact.
+        """
+        user_timezone = _resolve_timezone(user_timezone, user_id)
+        trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
+        schedule_id = str(uuid.uuid4())
+
+        job_args = CopilotTurnJobArgs(
+            schedule_id=schedule_id,
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+            cron=cron,
+            run_at=run_at,
+        )
+        display_name = name or f"copilot turn (session {session_id[:8]})"
+        job = self.scheduler.add_job(
+            execute_copilot_turn,
+            kwargs=job_args.model_dump(mode="json"),
+            name=display_name,
+            trigger=trigger,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            id=schedule_id,
+        )
+        logger.info(
+            f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "
+            f"for session {session_id[:12]} in timezone {user_timezone}"
+        )
+        return CopilotTurnJobInfo.from_db(job_args, job)
+
+    @expose
     def delete_graph_execution_schedule(
         self, schedule_id: str, user_id: str
-    ) -> GraphExecutionJobInfo:
+    ) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo]:
+        """Delete a schedule by id, regardless of kind.
+
+        Endpoint name kept for wire back-compat; the client binding is
+        ``SchedulerClient.delete_schedule`` and accepts both graph and
+        copilot-turn schedules.
+        """
         job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
             raise NotFoundError(f"Job #{schedule_id} not found.")
 
-        job_args = GraphExecutionJobArgs(**job.kwargs)
-        if job_args.user_id != user_id:
+        info = _job_to_info(job)
+        if info is None:
+            # kwargs neither parse as a graph nor a copilot-turn schedule —
+            # corrupted row, but we can still safely delete it by id.
+            logger.warning(f"Deleting job {schedule_id} with unrecognized kwargs shape")
+            job.remove()
+            raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
+
+        if info.user_id != user_id:
             raise NotAuthorizedError("User ID does not match the job's user ID")
 
-        logger.info(f"Deleting job {schedule_id}")
+        logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
-
-        return GraphExecutionJobInfo.from_db(job_args, job)
+        return info
 
     @expose
     def get_graph_execution_schedules(
         self, graph_id: str | None = None, user_id: str | None = None
     ) -> list[GraphExecutionJobInfo]:
+        """Return graph-kind schedules only (typed for legacy callers)."""
         jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-        schedules = []
+        schedules: list[GraphExecutionJobInfo] = []
         for job in jobs:
-            logger.debug(
-                f"Found job {job.id} with cron schedule {job.trigger} and args {job.kwargs}"
-            )
+            if job.next_run_time is None:
+                continue
+            if job.kwargs.get("kind", "graph") != "graph":
+                continue
             try:
                 job_args = GraphExecutionJobArgs.model_validate(job.kwargs)
             except ValidationError:
                 continue
-            if (
-                job.next_run_time is not None
-                and (graph_id is None or job_args.graph_id == graph_id)
-                and (user_id is None or job_args.user_id == user_id)
+            if (graph_id is None or job_args.graph_id == graph_id) and (
+                user_id is None or job_args.user_id == user_id
             ):
                 schedules.append(GraphExecutionJobInfo.from_db(job_args, job))
         return schedules
+
+    @expose
+    def get_execution_schedules(
+        self,
+        graph_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        kind: str | None = None,
+    ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+        """Return schedules of both kinds, filtered by the given fields.
+
+        *kind* may be ``"graph"``, ``"copilot_turn"``, or ``None`` for all.
+        Graph-only filters (*graph_id*) silently skip copilot-turn rows;
+        copilot-only filters (*session_id*) silently skip graph rows.
+        """
+        jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
+        for job in jobs:
+            if job.next_run_time is None:
+                continue
+            job_kind = job.kwargs.get("kind", "graph")
+            if kind is not None and job_kind != kind:
+                continue
+            if graph_id is not None and job_kind != "graph":
+                continue
+            if session_id is not None and job_kind != "copilot_turn":
+                continue
+            info = _job_to_info(job)
+            if info is None:
+                continue
+            if user_id is not None and info.user_id != user_id:
+                continue
+            if isinstance(info, GraphExecutionJobInfo) and graph_id is not None:
+                if info.graph_id != graph_id:
+                    continue
+            if isinstance(info, CopilotTurnJobInfo) and session_id is not None:
+                if info.session_id != session_id:
+                    continue
+            results.append(info)
+        return results
 
     @expose
     def execute_process_existing_batches(self, kwargs: dict):
@@ -840,5 +1056,11 @@ class SchedulerClient(AppServiceClient):
         return Scheduler
 
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
+    add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
-    get_execution_schedules = endpoint_to_async(Scheduler.get_graph_execution_schedules)
+    # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
+    get_graph_execution_schedules = endpoint_to_async(
+        Scheduler.get_graph_execution_schedules
+    )
+    # Polymorphic list — preferred for new callers; returns both kinds.
+    get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)

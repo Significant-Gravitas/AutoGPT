@@ -41,7 +41,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
 # AutoPilot can inspect/manage them).
-_CHAR_BUDGET = 35_500
+# Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
+# of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
+# explicit "ends your turn" caveat, and an example wake-up message.
+_CHAR_BUDGET = 36_500
 
 
 @pytest.fixture(scope="module")
