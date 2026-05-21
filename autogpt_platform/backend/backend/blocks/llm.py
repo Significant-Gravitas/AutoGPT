@@ -116,11 +116,44 @@ class LlmModelMeta(EnumMeta):
     pass
 
 
+# OpenRouter exposes Anthropic models under canonical ``anthropic/<model>``
+# slugs that drop the snapshot-date suffix Anthropic's own API uses
+# (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``).  The
+# generic provider-prefix strip in ``_missing_`` can't reverse the date
+# truncation, so map the OpenRouter slugs to the canonical direct-Anthropic
+# enum values here.  Only models that exist on OpenRouter need entries; the
+# newer 4.6/4.7 enum values already lack a snapshot date so the prefix
+# strip alone is enough for them.
+_OPENROUTER_ALIASES: dict[str, str] = {
+    "anthropic/claude-haiku-4-5": "claude-haiku-4-5-20251001",
+    "anthropic/claude-opus-4-5": "claude-opus-4-5-20251101",
+    "anthropic/claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
+}
+
+
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
-        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
-        if isinstance(value, str) and "/" in value:
+        """Resolve provider-prefixed model names.
+
+        Handles two shapes:
+
+        1. OpenRouter aliases for Anthropic models whose direct-API
+           identifier carries a snapshot suffix that the OpenRouter slug
+           drops — e.g. ``anthropic/claude-haiku-4-5`` ↔ enum value
+           ``claude-haiku-4-5-20251001``.  Looked up via
+           ``_OPENROUTER_ALIASES``.
+        2. Generic provider prefix strip — e.g.
+           ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
+        """
+        if not isinstance(value, str):
+            return None
+        if value in _OPENROUTER_ALIASES:
+            try:
+                return cls(_OPENROUTER_ALIASES[value])
+            except ValueError:
+                return None
+        if "/" in value:
             stripped = value.split("/", 1)[1]
             try:
                 return cls(stripped)

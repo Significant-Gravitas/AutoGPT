@@ -1047,9 +1047,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -1078,9 +1078,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -1108,9 +1108,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
@@ -1344,9 +1344,9 @@ class TestAnthropicCacheControl:
         an_tools = captured_kwargs.get("tools")
         assert isinstance(an_tools, list)
         assert len(an_tools) == 2
-        assert (
-            an_tools[0].get("cache_control") is None
-        ), "Only last tool gets cache_control"
+        assert an_tools[0].get("cache_control") is None, (
+            "Only last tool gets cache_control"
+        )
         assert an_tools[-1].get("cache_control") == {"type": "ephemeral"}
 
     @pytest.mark.asyncio
@@ -1382,9 +1382,9 @@ class TestAnthropicCacheControl:
         import anthropic
 
         tools_arg = captured_kwargs.get("tools")
-        assert (
-            tools_arg is anthropic.NOT_GIVEN
-        ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        assert tools_arg is anthropic.NOT_GIVEN, (
+            "Empty tools should pass anthropic.NOT_GIVEN sentinel"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_system_prompt_omits_system_key(self):
@@ -1416,9 +1416,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+        )
 
     @pytest.mark.asyncio
     async def test_whitespace_only_system_prompt_omits_system_key(self):
@@ -1454,9 +1454,9 @@ class TestAnthropicCacheControl:
                 max_tokens=50,
             )
 
-        assert (
-            "system" not in captured_kwargs
-        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        assert "system" not in captured_kwargs, (
+            "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+        )
 
 
 class TestLLMRequestTimeout:
@@ -1545,6 +1545,39 @@ class TestLLMRequestTimeout:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
+        assert call_count["n"] == 1, (
+            f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+        )
+
+
+class TestLlmModelMissingHandler:
+    """``LlmModel._missing_`` resolves provider-prefixed slugs back to enum
+    members.  Used by the dry-run simulator to send an OpenRouter slug
+    (``anthropic/claude-haiku-4-5``) that OpenRouter's OpenAI-compat endpoint
+    accepts, while still validating through ``OrchestratorBlock.Input.model``
+    which is typed as ``LlmModel``."""
+
+    def test_openrouter_alias_maps_to_canonical(self) -> None:
+        # The OpenRouter slug for Haiku 4.5 drops the snapshot suffix that
+        # Anthropic's direct API uses — pure prefix strip wouldn't find it,
+        # so the alias map is required.
         assert (
-            call_count["n"] == 1
-        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+            llm.LlmModel("anthropic/claude-haiku-4-5") is llm.LlmModel.CLAUDE_4_5_HAIKU
+        )
+        assert llm.LlmModel("anthropic/claude-opus-4-5") is llm.LlmModel.CLAUDE_4_5_OPUS
+        assert (
+            llm.LlmModel("anthropic/claude-sonnet-4-5")
+            is llm.LlmModel.CLAUDE_4_5_SONNET
+        )
+
+    def test_prefix_strip_still_works(self) -> None:
+        # 4.6/4.7 enum values already match OpenRouter's slug after prefix
+        # strip — no alias-map entry needed.
+        assert llm.LlmModel("anthropic/claude-opus-4-7") is llm.LlmModel.CLAUDE_4_7_OPUS
+        assert llm.LlmModel("anthropic/claude-opus-4-6") is llm.LlmModel.CLAUDE_4_6_OPUS
+
+    def test_unknown_slug_raises(self) -> None:
+        # Bare unknown strings still fail loudly — the alias map is an
+        # additive shortcut, not a silent catch-all.
+        with pytest.raises(ValueError):
+            llm.LlmModel("anthropic/claude-haiku-999")
