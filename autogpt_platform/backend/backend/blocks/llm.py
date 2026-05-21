@@ -6,6 +6,7 @@ import math
 import re
 import secrets
 from abc import ABC
+from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
@@ -119,8 +120,25 @@ class LlmModelMeta(EnumMeta):
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
-        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
-        if isinstance(value, str) and "/" in value:
+        """Resolve provider-prefixed model names.
+
+        Handles two shapes:
+
+        1. OpenRouter aliases for Anthropic models whose direct-API
+           identifier carries a snapshot suffix that the OpenRouter slug
+           drops — e.g. ``anthropic/claude-haiku-4-5`` ↔ enum value
+           ``claude-haiku-4-5-20251001``.  Looked up via
+           ``_OPENROUTER_ALIASES`` (defined below the class so it can hold
+           ``LlmModel`` members directly).
+        2. Generic provider prefix strip — e.g.
+           ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
+        """
+        if not isinstance(value, str):
+            return None
+        alias = _OPENROUTER_ALIASES.get(value)
+        if alias is not None:
+            return alias
+        if "/" in value:
             stripped = value.split("/", 1)[1]
             try:
                 return cls(stripped)
@@ -259,6 +277,24 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @property
     def max_output_tokens(self) -> int | None:
         return self.metadata.max_output_tokens
+
+
+# OpenRouter exposes Anthropic models under canonical ``anthropic/<model>``
+# slugs that drop the snapshot-date suffix Anthropic's own API uses
+# (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
+# generic provider-prefix strip in ``_missing_`` can't reverse the date
+# truncation, so map the OpenRouter slugs to ``LlmModel`` members here.
+# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
+# suffix need entries; values without a snapshot (4.6/4.7+) are already
+# covered by the prefix-strip path alone. Stored as ``LlmModel`` instances
+# (not strings) so a rename or snapshot rotation on the enum follows the
+# alias automatically — a stale entry becomes a load-time ``AttributeError``
+# rather than a silent ``_missing_`` miss at runtime.
+_OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
+    "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
+    "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
+    "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+}
 
 
 MODEL_METADATA = {
