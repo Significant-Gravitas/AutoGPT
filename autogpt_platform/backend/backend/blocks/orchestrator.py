@@ -1480,16 +1480,14 @@ class OrchestratorBlock(Block):
             yield "error", str(e)
             return
 
-        if loop_result.finished_naturally:
-            yield "finished", loop_result.response_text
-        else:
-            yield (
-                "finished",
-                (
-                    f"Agent mode completed after {loop_result.iterations} "
-                    "iterations (limit reached)"
-                ),
-            )
+        # ``loop_result.response_text`` is the full accumulated transcript
+        # across every iteration in both branches — the loop appends a
+        # ``[Agent mode cap reached after X iterations]`` suffix on the
+        # max-iter path so callers can still distinguish it from a natural
+        # finish without losing the multi-turn content the agent already
+        # produced (debate-style agents need every panellist's turn, not
+        # just the model's last sentence).
+        yield "finished", loop_result.response_text
         yield "conversations", loop_result.messages
 
     def _create_graph_mcp_server(

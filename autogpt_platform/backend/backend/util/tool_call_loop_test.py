@@ -558,3 +558,115 @@ async def test_max_iterations_zero_no_loop():
     assert results[0].finished_naturally is False
     assert results[0].iterations == 0
     assert "0 iterations" in results[0].response_text
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_response_text_accumulates_into_final_yield():
+    """When the model emits text alongside tool calls across multiple
+    iterations, the terminal yield's ``response_text`` carries the full
+    multi-turn transcript joined with newlines — not just the last
+    iteration's reply.  Mirrors the SDK (EXTENDED_THINKING) path's
+    behaviour and is the only way a BUILT_IN agent that runs a
+    debate/round-table pattern can surface every panellist's turn in
+    the ``finished`` output."""
+    call_count = 0
+
+    async def llm_call(
+        messages: list[dict[str, Any]], tools: Sequence[Any]
+    ) -> LLMLoopResponse:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return _make_response(
+                text="[PANELIST A] First argument.",
+                tool_calls=[LLMToolCall(id="tc_1", name="get_weather", arguments="{}")],
+            )
+        if call_count == 2:
+            return _make_response(
+                text="[PANELIST B] Rebuttal.",
+                tool_calls=[LLMToolCall(id="tc_2", name="get_weather", arguments="{}")],
+            )
+        return _make_response(text="[MODERATOR] Closing remarks.")
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content="x"
+        )
+
+    def update_conversation(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        pass
+
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Debate."}]
+    results: list[ToolCallLoopResult] = []
+    async for r in tool_call_loop(
+        messages=msgs,
+        tools=TOOL_DEFS,
+        llm_call=llm_call,
+        execute_tool=execute_tool,
+        update_conversation=update_conversation,
+    ):
+        results.append(r)
+
+    final = results[-1]
+    assert final.finished_naturally is True
+    # Every turn's text must be present in the final response_text.
+    assert "[PANELIST A] First argument." in final.response_text
+    assert "[PANELIST B] Rebuttal." in final.response_text
+    assert "[MODERATOR] Closing remarks." in final.response_text
+
+
+@pytest.mark.asyncio
+async def test_max_iterations_preserves_accumulated_transcript():
+    """Hitting the iteration cap must NOT drop the multi-turn text the
+    agent already emitted — the loop appends a cap-reached suffix instead
+    of replacing the transcript with it.  Without this, a debate-style
+    agent that runs out of iterations reports only the cap message and
+    every panellist's turn is lost."""
+
+    async def llm_call(
+        messages: list[dict[str, Any]], tools: Sequence[Any]
+    ) -> LLMLoopResponse:
+        return _make_response(
+            text="[Turn] Said something.",
+            tool_calls=[LLMToolCall(id="tc_x", name="get_weather", arguments="{}")],
+        )
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content="x"
+        )
+
+    def update_conversation(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        pass
+
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
+    results: list[ToolCallLoopResult] = []
+    async for r in tool_call_loop(
+        messages=msgs,
+        tools=TOOL_DEFS,
+        llm_call=llm_call,
+        execute_tool=execute_tool,
+        update_conversation=update_conversation,
+        max_iterations=3,
+    ):
+        results.append(r)
+
+    final = results[-1]
+    assert final.finished_naturally is False
+    # Every iteration's text is preserved.
+    assert final.response_text.count("[Turn] Said something.") == 3
+    # Cap-reached marker is appended, not substituted.
+    assert "cap reached" in final.response_text.lower()
+    assert "3 iterations" in final.response_text

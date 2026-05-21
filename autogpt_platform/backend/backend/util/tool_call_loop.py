@@ -199,6 +199,18 @@ async def tool_call_loop(
     total_prompt_tokens = 0
     total_completion_tokens = 0
     iteration = 0
+    # Accumulate every iteration's assistant text so the terminal yield
+    # carries the full multi-turn transcript, not just the final iteration's
+    # closing message.  This matches the SDK (EXTENDED_THINKING) path's
+    # behaviour where every ``AssistantMessage`` ``TextBlock`` is
+    # ``.append``ed onto ``response_parts`` before the final ``yield
+    # "finished", "".join(response_parts)`` in ``orchestrator.py``.  Without
+    # this, callers like ``OrchestratorBlock._execute_tools_agent_mode``
+    # only see the model's last turn — turns that ran between tool calls
+    # (e.g. a panellist's argument in a multi-turn debate) get dropped from
+    # the ``finished`` output even though they were emitted as conversation
+    # state.
+    accumulated_response_texts: list[str] = []
 
     while max_iterations < 0 or iteration < max_iterations:
         iteration += 1
@@ -226,12 +238,14 @@ async def tool_call_loop(
         response = await llm_call(iteration_messages, iteration_tools)
         total_prompt_tokens += response.prompt_tokens
         total_completion_tokens += response.completion_tokens
+        if response.response_text:
+            accumulated_response_texts.append(response.response_text)
 
         # No tool calls = done
         if not response.tool_calls:
             update_conversation(messages, response)
             yield ToolCallLoopResult(
-                response_text=response.response_text or "",
+                response_text="\n".join(accumulated_response_texts),
                 messages=messages,
                 total_prompt_tokens=total_prompt_tokens,
                 total_completion_tokens=total_completion_tokens,
@@ -273,9 +287,16 @@ async def tool_call_loop(
             last_tool_calls=list(response.tool_calls),
         )
 
-    # Hit max iterations
+    # Hit max iterations — keep the accumulated transcript so a debate-style
+    # agent that ran out of iterations still surfaces every turn it
+    # produced.  The cap-reached note is preserved as an explicit suffix so
+    # callers can still tell the loop exited via the limit rather than the
+    # model finishing.
+    accumulated_response_texts.append(
+        f"[Agent mode cap reached after {max_iterations} iterations]"
+    )
     yield ToolCallLoopResult(
-        response_text=f"Completed after {max_iterations} iterations (limit reached)",
+        response_text="\n".join(accumulated_response_texts),
         messages=messages,
         total_prompt_tokens=total_prompt_tokens,
         total_completion_tokens=total_completion_tokens,
