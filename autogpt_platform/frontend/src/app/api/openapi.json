@@ -10879,6 +10879,10 @@
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
           }
         },
         "type": "object",
@@ -16015,7 +16019,11 @@
             "title": "Chat Status",
             "default": "idle"
           },
-          "is_processing": { "type": "boolean", "title": "Is Processing" }
+          "is_processing": { "type": "boolean", "title": "Is Processing" },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],

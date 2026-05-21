@@ -24,11 +24,9 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  CheckCircle,
   CircleNotch,
   DotsThree,
   DownloadSimpleIcon,
-  HourglassIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
@@ -47,6 +45,7 @@ import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
 import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
+import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
@@ -213,31 +212,6 @@ export function ChatSidebar() {
     }
   }
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-
-    const day = date.getDate();
-    const ordinal =
-      day % 10 === 1 && day !== 11
-        ? "st"
-        : day % 10 === 2 && day !== 12
-          ? "nd"
-          : day % 10 === 3 && day !== 13
-            ? "rd"
-            : "th";
-    const month = date.toLocaleDateString("en-US", { month: "short" });
-    const year = date.getFullYear();
-
-    return `${day}${ordinal} ${month} ${year}`;
-  }
-
   return (
     <>
       <Sidebar
@@ -397,59 +371,28 @@ export function ChatSidebar() {
                             : "pr-10",
                         )}
                       >
-                        <div className="flex min-w-0 max-w-full items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <Text
-                              variant="body"
-                              className={cn(
-                                "truncate font-normal",
-                                session.id === sessionId
-                                  ? "text-zinc-600"
-                                  : "text-zinc-800",
-                              )}
-                            >
-                              <AnimatePresence mode="wait" initial={false}>
-                                <motion.span
-                                  key={session.title || "untitled"}
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: -4 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="block truncate"
-                                >
-                                  {session.title || "Untitled chat"}
-                                </motion.span>
-                              </AnimatePresence>
-                            </Text>
-                            <Text variant="small" className="text-neutral-400">
-                              {formatDate(session.updated_at)}
-                            </Text>
-                          </div>
-                          {session.chat_status === "running" && (
-                            <span
-                              aria-label="Session running"
-                              title="Running"
-                              data-testid="session-status-running"
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
-                            >
-                              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                            </span>
-                          )}
-                          {session.chat_status === "queued" && (
-                            <span
-                              aria-label="Session queued"
-                              title="Queued"
-                              data-testid="session-status-queued"
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-purple-600"
-                            >
-                              <HourglassIcon
-                                className="h-3.5 w-3.5"
-                                weight="bold"
-                              />
-                            </span>
-                          )}
-                          {session.chat_status !== "running" &&
-                            session.is_processing &&
+                        <ChatSessionBlock
+                          title={session.title}
+                          titleContent={
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.span
+                                key={session.title || "untitled"}
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                transition={{ duration: 0.2 }}
+                                className="block truncate"
+                              >
+                                {session.title || "Untitled chat"}
+                              </motion.span>
+                            </AnimatePresence>
+                          }
+                          updatedAt={session.updated_at}
+                          sourcePlatform={session.source_platform}
+                          isActive={session.id === sessionId}
+                          chatStatus={session.chat_status}
+                          showProcessing={
+                            !!session.is_processing &&
                             shouldShowSessionProcessingIndicator({
                               sessionId: session.id,
                               currentSessionId: sessionId,
@@ -458,20 +401,13 @@ export function ChatSidebar() {
                                 session.id,
                               ),
                               needsReload: !!sessionNeedsReload[session.id],
-                            }) && (
-                              <CircleNotch
-                                className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-                                weight="bold"
-                              />
-                            )}
-                          {completedSessionIDs.has(session.id) &&
-                            session.id !== sessionId && (
-                              <CheckCircle
-                                className="h-4 w-4 shrink-0 text-green-500"
-                                weight="fill"
-                              />
-                            )}
-                        </div>
+                            })
+                          }
+                          showCompleted={
+                            completedSessionIDs.has(session.id) &&
+                            session.id !== sessionId
+                          }
+                        />
                       </button>
                     )}
                     {exportingSessionIds.has(session.id) && (

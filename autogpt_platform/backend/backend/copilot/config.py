@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from backend.blocks.llm import LlmModel
 from backend.util.clients import OPENROUTER_BASE_URL
 
 
@@ -110,10 +111,14 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default="google/gemini-2.5-flash-lite",
-        description="Model for dry-run block simulation (should be fast/cheap with good JSON output). "
-        "Gemini 2.5 Flash-Lite is ~3x cheaper than Flash ($0.10/$0.40 vs $0.30/$1.20 per MTok) "
-        "with JSON-mode reliability adequate for shape-matching block outputs.",
+        default=LlmModel.CLAUDE_4_5_HAIKU.value,
+        description="Model for dry-run block simulation. Must be a real LlmModel "
+        "slug — OrchestratorBlock's input validates this against the enum, and a "
+        "bad value here breaks every dry-run of an agent that contains an "
+        "Orchestrator. Default is Claude Haiku 4.5 because the Orchestrator "
+        "dry-run picks tools and produces a finish message, so a substitute "
+        "with stronger reasoning gives a more faithful preview than Flash-Lite "
+        "while staying cheap.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
