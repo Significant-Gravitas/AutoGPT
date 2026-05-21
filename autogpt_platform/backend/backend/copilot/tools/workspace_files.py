@@ -15,7 +15,9 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
@@ -601,6 +603,15 @@ class ReadWorkspaceFileTool(BaseTool):
                 if path and is_allowed_local_path(path, sdk_cwd):
                     return _read_local_tool_result(
                         path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
+                # Path looks like SDK tool-results (e.g. shorthand
+                # ``tool-outputs/<id>.json``) but doesn't resolve as a
+                # full SDK path — redirect to read_tool_result / @@agptfile
+                # rather than returning a generic "Path not allowed".
+                if path and looks_like_sdk_tool_result_path(path):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
                     )
                 return resolved
             target_file_id, file_info = resolved

@@ -157,6 +157,52 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
+# Substring tokens that strongly suggest a string contains a host-side
+# SDK tool-result path (e.g. inside a bash command). Used by wrong-tool
+# detectors to redirect the model to ``read_tool_result`` / ``@@agptfile:``
+# rather than letting it bounce off ``Permission denied`` repeatedly.
+_SDK_TOOL_RESULT_HINTS: tuple[str, ...] = (
+    "/.claude/projects/",
+    "tool-results/",
+    "tool-outputs/",
+)
+
+
+def looks_like_sdk_tool_result_path(text: str) -> bool:
+    """Heuristic: does *text* look like a host-side SDK tool-result path?
+
+    Cheap substring scan suitable for pre-checking ``bash_exec`` commands
+    and ``read_workspace_file`` paths before they hit a sandbox boundary
+    they can't cross. Conservative — accepts both absolute SDK paths
+    (``/root/.claude/projects/.../tool-results/...``) and the short
+    relative form the model often invents (``tool-outputs/<id>.json``).
+    """
+    if not text:
+        return False
+    return any(hint in text for hint in _SDK_TOOL_RESULT_HINTS)
+
+
+def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
+    """User-facing redirect message for wrong-tool access to SDK tool-results.
+
+    Names the two right ways to get at the bytes so the model doesn't
+    burn another turn retrying with yet another wrong tool.
+    """
+    sample = path_or_command.strip().split()[0] if path_or_command else ""
+    return (
+        "This path lives in the Claude Agent SDK's host-side "
+        "tool-results directory, which is not mounted into the bash "
+        "sandbox / workspace storage. Use one of:\n"
+        "  - `read_tool_result(file_path=...)` for direct reads "
+        "(supports offset/limit; auto-unwraps the MCP envelope).\n"
+        "  - `@@agptfile:<absolute-path>[<start>-<end>]` inside another "
+        "tool's argument to inline a slice of the file's content "
+        '(e.g. `bash_exec(command="echo @@agptfile:/root/.claude/'
+        'projects/.../result.json[1-200] | jq .field")`).\n'
+        f"Offending fragment: {os.path.basename(sample) or sample!r}"
+    )
+
+
 def resolve_sandbox_path(path: str) -> str:
     """Normalise *path* to an absolute sandbox path under an allowed directory.
 

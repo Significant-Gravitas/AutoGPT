@@ -463,9 +463,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert (
-            len(call_log) == 1
-        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        )
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -1079,3 +1079,50 @@ class TestCreateCopilotMcpServerHidden:
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+class TestNavigableToolResultText:
+    """``_navigable_tool_result_text`` unwraps the CLI's MCP envelope and
+    pretty-prints inner JSON so line-based offset/limit slice into the
+    actual payload, not the envelope wrapper. Regression coverage for
+    the bug where the model bounced off ``bash_exec | python3 -c`` to
+    parse a tool result it could have read directly."""
+
+    def test_envelope_with_json_payload_is_pretty_printed(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        payload = {"execution": {"node_executions": [{"status": "FAILED"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        out = _navigable_tool_result_text(envelope)
+        # The output should be pretty-printed JSON with multiple lines,
+        # not the single minified blob that was inside the envelope.
+        assert "\n" in out
+        assert '"status": "FAILED"' in out
+        assert json.loads(out) == payload
+
+    def test_envelope_with_non_json_text_returns_unwrapped(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        envelope = json.dumps(
+            [{"type": "text", "text": "plain shell output\nwith newlines\n"}]
+        )
+        out = _navigable_tool_result_text(envelope)
+        assert out == "plain shell output\nwith newlines\n"
+
+    def test_non_envelope_input_is_returned_unchanged(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        # Files that don't match the envelope shape stay as-is.
+        assert _navigable_tool_result_text("not even json") == "not even json"
+        assert (
+            _navigable_tool_result_text('{"single": "object"}')
+            == '{"single": "object"}'
+        )
+        # Multi-block envelope: don't unwrap (lossy).
+        multi = json.dumps(
+            [
+                {"type": "text", "text": "a"},
+                {"type": "image", "data": "..."},
+            ]
+        )
+        assert _navigable_tool_result_text(multi) == multi
