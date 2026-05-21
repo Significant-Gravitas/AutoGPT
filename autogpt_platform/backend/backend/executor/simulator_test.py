@@ -221,13 +221,17 @@ class TestPrepareDryRun:
             f"got {result['model']!r}"
         )
 
-    def test_orchestrator_forces_built_in_execution_mode(self) -> None:
-        """prepare_dry_run overrides execution_mode to BUILT_IN regardless of
-        what the user picked.  Dry-run is a smoke check; we want it to stay
-        on the simpler OpenAI-SDK-with-tool-calling path and avoid the
-        EXTENDED_THINKING Claude Agent SDK subprocess (which has its own
-        Claude-only-model and env-var-auth constraints — every quirk there
-        is another failure mode for the dry-run path)."""
+    def test_orchestrator_preserves_user_execution_mode(self) -> None:
+        """prepare_dry_run leaves ``execution_mode`` alone so the user's
+        choice flows through. An earlier draft forced ``BUILT_IN`` to
+        dodge the EXTENDED_THINKING SDK subprocess path's quirks, but
+        both quirks are now mitigated by this same PR (the model is
+        always overridden to ``sim_model`` (Claude), and the OR
+        auth-env routing in orchestrator.py:1670-1691 sets a non-empty
+        ``ANTHROPIC_API_KEY``). Forcing ``BUILT_IN`` would actually
+        *break* OR+Claude dry-runs by routing them through
+        ``llm.llm_call``'s anthropic branch against
+        ``api.anthropic.com`` with an OR key (401)."""
         block = OrchestratorBlock()
         with patch(
             "backend.executor.simulator._get_platform_openrouter_key",
@@ -243,9 +247,10 @@ class TestPrepareDryRun:
                 },
             )
         assert result is not None
-        assert result["execution_mode"] == ExecutionMode.BUILT_IN.value, (
-            f"prepare_dry_run must force BUILT_IN to keep dry-run off the SDK "
-            f"path; got {result['execution_mode']!r}"
+        assert result["execution_mode"] == ExecutionMode.EXTENDED_THINKING.value, (
+            f"prepare_dry_run should preserve user-chosen execution_mode "
+            f"(this PR's SDK auth fix unblocks the EXTENDED_THINKING path); "
+            f"got {result['execution_mode']!r}"
         )
 
     def test_orchestrator_input_passes_jsonschema_validation(self) -> None:

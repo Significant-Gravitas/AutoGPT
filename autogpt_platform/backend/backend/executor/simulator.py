@@ -40,7 +40,7 @@ from openai.types import CompletionUsage
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
-from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
 
@@ -451,23 +451,22 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # The actual credentials are injected via extra_exec_kwargs in
         # manager.py using _dry_run_api_key.
         #
-        # Override ``execution_mode`` to ``BUILT_IN`` regardless of what
-        # the user picked.  Dry-run is a smoke check, not a perfect mirror
-        # of the real run.  ``EXTENDED_THINKING`` enters the Claude Agent
-        # SDK subprocess path, which has its own constraints
-        # (Claude-only models, brittle env-var auth wiring) — each one
-        # is a separate failure mode the dry-run has to keep working.
-        # ``BUILT_IN`` is the simpler OpenAI-SDK-with-tool-calling path
-        # that already exercises the orchestrator's tool-dispatch loop
-        # well enough to surface graph-wiring bugs.  Users on
-        # ``EXTENDED_THINKING`` still get their real model + iterations
-        # in production; the dry-run just previews via the BUILT_IN
-        # path.
+        # ``execution_mode`` is intentionally left as the user picked it.
+        # An earlier draft of this PR forced ``BUILT_IN`` to dodge the
+        # ``EXTENDED_THINKING`` Claude Agent SDK subprocess path's
+        # quirks, but both quirks the override defended against
+        # (Claude-only-model gate, brittle env-var auth wiring) are now
+        # mitigated by this same PR: the model is always overridden to
+        # ``sim_model`` (a Claude model) above, and the OR auth-env
+        # routing in orchestrator.py:1670-1691 sets a non-empty
+        # ``ANTHROPIC_API_KEY``.  Forcing ``BUILT_IN`` here would route
+        # OR + Claude through ``llm.llm_call``'s anthropic branch
+        # against ``api.anthropic.com`` with an OR key — a 401 — so the
+        # SDK path is actually the working dry-run target for OR+Claude.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
-            "execution_mode": ExecutionMode.BUILT_IN.value,
             "_dry_run_api_key": or_key,
         }
 
