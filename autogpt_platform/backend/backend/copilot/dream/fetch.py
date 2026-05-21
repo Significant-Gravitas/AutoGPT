@@ -17,11 +17,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from prisma.models import ChatSession as PrismaChatSession
-
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.data.db_accessors import chat_db
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +99,18 @@ async def _fetch_recent_episodes(
     window_start: datetime,
     limit: int,
 ) -> list[EpisodeRow]:
+    # FalkorDB does not implement Cypher's ``datetime()`` function, so
+    # we cannot use ``WHERE n.valid_at >= datetime($since)`` here — it
+    # raises ``Unknown function 'datetime'``. The dream window is
+    # already bounded by ``limit`` (default 50 most-recent episodes,
+    # which exceeds typical 14-day activity for any one user). The
+    # ``window_start`` argument is kept for caller bookkeeping but the
+    # Cypher itself just relies on the ORDER BY + LIMIT clamp.
+    _ = window_start
     try:
         result = await driver.execute_query(
             """
             MATCH (n:Episodic {group_id: $g})
-            WHERE n.valid_at >= datetime($since)
             RETURN n.uuid AS uuid,
                    n.name AS name,
                    n.content AS content,
@@ -115,7 +121,6 @@ async def _fetch_recent_episodes(
             LIMIT $limit
             """,
             g=group_id,
-            since=window_start.isoformat(),
             limit=limit,
         )
     except Exception:
@@ -196,25 +201,22 @@ async def _fetch_recent_sessions(
 ) -> list[SessionRow]:
     """Pull the most recent N chat sessions and their first chunk of content.
 
+    Routes through ``chat_db()`` so the dream pass — which runs in the
+    Scheduler subprocess — uses the DatabaseManager RPC when Prisma
+    isn't directly connected, and the in-process Postgres path when
+    it is. Direct ``PrismaChatSession.prisma()`` calls fail with
+    ``ClientNotConnectedError`` in the Scheduler subprocess otherwise.
+
     We only need a flavour-snapshot of each session, not the full
     message list — phase 1's prompt cares about *what was discussed
     recently* as context for consolidation, not about replaying it.
+    The ``window_start`` argument is informational here; the underlying
+    ``get_user_chat_sessions`` orders by most-recent and the ``limit``
+    clamp does the bounding.
     """
+    _ = window_start
     try:
-        sessions = await PrismaChatSession.prisma().find_many(
-            where={
-                "userId": user_id,
-                "createdAt": {"gte": window_start},
-            },
-            order={"createdAt": "desc"},
-            take=limit,
-            include={
-                "Messages": {
-                    "order_by": [{"sequence": "asc"}],
-                    "take": 20,
-                },
-            },
-        )
+        sessions = await chat_db().get_user_chat_sessions(user_id, limit=limit)
     except Exception:
         logger.warning(
             "Failed to fetch recent sessions for user %s",
@@ -225,7 +227,24 @@ async def _fetch_recent_sessions(
 
     out: list[SessionRow] = []
     for s in sessions:
-        messages = getattr(s, "Messages", None) or []
+        # ``ChatSessionInfo`` doesn't carry messages (it's a summary).
+        # Fetch the body lazily per-session via the paginated reader
+        # so the prompt has actual content. One round-trip per session
+        # is acceptable at limit=10; a bulk variant can replace this
+        # when chat_db gains one.
+        messages: list = []
+        try:
+            paginated = await chat_db().get_chat_messages_paginated(
+                session_id=s.id, limit=20, user_id=user_id
+            )
+            if paginated is not None:
+                messages = list(getattr(paginated, "messages", []) or [])
+        except Exception:
+            logger.debug(
+                "Failed to fetch messages for session %s — body left empty",
+                s.id[:12],
+                exc_info=True,
+            )
         body_parts: list[str] = []
         running_len = 0
         for m in messages:
@@ -239,7 +258,7 @@ async def _fetch_recent_sessions(
             SessionRow(
                 session_id=s.id,
                 title=s.title,
-                created_at=s.createdAt,
+                created_at=getattr(s, "createdAt", None) or getattr(s, "created_at", None),
                 body=body,
             )
         )

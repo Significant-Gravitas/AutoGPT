@@ -168,52 +168,20 @@ async def test_no_op_dream_still_writes_summary_session(mocker):
 
 
 @pytest.mark.asyncio
-async def test_apply_operations_connects_prisma_if_disconnected(mocker):
-    """If Prisma isn't connected when apply_operations runs (typical in
-    the scheduler service), the helper must call connect() before any
-    Graphiti / chat-session writes. Otherwise we crash with
-    'Client is not connected to the query engine'."""
-    from backend.copilot.dream import apply as apply_mod
-    from backend.copilot.dream.schemas import DreamOperations
+async def test_apply_operations_never_auto_connects_prisma(mocker):
+    """``apply_operations`` MUST NOT call ``platform_db.connect()``.
 
-    mock_db = mocker.patch.object(
-        apply_mod, "_write_dream_session", new_callable=AsyncMock
-    )
-    mock_db.return_value = "session-123"
-    mocker.patch.object(
-        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
-    )
-    mocker.patch.object(
-        apply_mod,
-        "_apply_entity_invalidations",
-        new_callable=AsyncMock,
-        return_value=(0, []),
-    )
-
-    mocker.patch("backend.data.db.is_connected", return_value=False)
-    platform_db_connect = mocker.patch(
-        "backend.data.db.connect", new_callable=AsyncMock
-    )
-
-    await apply_mod.apply_operations(
-        user_id="u-1",
-        pass_id="p-1",
-        ops=DreamOperations(
-            writes=[],
-            proposals=[],
-            demotions=[],
-            entity_invalidations=[],
-            summary_for_user="empty",
-        ),
-    )
-    platform_db_connect.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_apply_operations_skips_connect_when_already_connected(mocker):
-    """No-op when Prisma is already connected — avoids racing connect()
-    in services (like rest_api) that opened it during their own
-    lifespan startup."""
+    The dream pass runs in the Scheduler subprocess where Prisma is
+    intentionally left disconnected so callers route through
+    ``chat_db()`` / equivalents (which transparently use the
+    DatabaseManager RPC client). Auto-connecting here flips
+    ``is_connected()`` to True before the local Prisma engine is
+    reachable, racing with concurrent ``platform_cost_db()`` callers
+    from ``token_tracking._safe_log`` — they see
+    ``is_connected=True``, try the direct Prisma path, and hit
+    "All connection attempts failed" while the engine is still
+    booting. Regression pin: keep the auto-connect OUT.
+    """
     from backend.copilot.dream import apply as apply_mod
     from backend.copilot.dream.schemas import DreamOperations
 
@@ -230,21 +198,27 @@ async def test_apply_operations_skips_connect_when_already_connected(mocker):
         return_value=(0, []),
     )
 
-    mocker.patch("backend.data.db.is_connected", return_value=True)
-    connect_spy = mocker.patch("backend.data.db.connect", new_callable=AsyncMock)
+    # Whatever state Prisma is in, apply_operations must not touch
+    # ``platform_db.connect``. Spy on BOTH states to make the contract
+    # explicit.
+    for is_conn in (False, True):
+        mocker.patch("backend.data.db.is_connected", return_value=is_conn)
+        connect_spy = mocker.patch(
+            "backend.data.db.connect", new_callable=AsyncMock
+        )
 
-    await apply_mod.apply_operations(
-        user_id="u-1",
-        pass_id="p-1",
-        ops=DreamOperations(
-            writes=[],
-            proposals=[],
-            demotions=[],
-            entity_invalidations=[],
-            summary_for_user="empty",
-        ),
-    )
-    connect_spy.assert_not_called()
+        await apply_mod.apply_operations(
+            user_id="u-1",
+            pass_id="p-1",
+            ops=DreamOperations(
+                writes=[],
+                proposals=[],
+                demotions=[],
+                entity_invalidations=[],
+                summary_for_user="empty",
+            ),
+        )
+        connect_spy.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

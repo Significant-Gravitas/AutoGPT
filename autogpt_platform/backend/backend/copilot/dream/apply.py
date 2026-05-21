@@ -237,19 +237,23 @@ async def _write_dream_session(
     pass_id so that re-runs of the same pass (admin retries on
     failure) can each produce their own session row.
     """
-    # Lazy import — avoids a circular dependency between dream/ and copilot/db
-    # at module-import time.
-    from backend.copilot.db import add_chat_message, create_chat_session
+    # Lazy import — avoids circular dependency at module-import time
+    # AND keeps the dream-pass / chat-model coupling explicit. Routing
+    # through ``chat_db()`` means the dream pass (running in the
+    # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
+    # the DatabaseManager process itself uses the direct module.
     from backend.copilot.model import ChatSessionMetadata
+    from backend.data.db_accessors import chat_db
 
+    db = chat_db()
     session_id = str(uuidlib.uuid4())
-    await create_chat_session(
+    await db.create_chat_session(
         session_id=session_id,
         user_id=user_id,
         metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
     )
     body = summary_for_user.strip() or "Dream pass completed with no narrative output."
-    await add_chat_message(
+    await db.add_chat_message(
         session_id=session_id,
         role="assistant",
         sequence=0,
@@ -270,16 +274,18 @@ async def apply_operations(
     ``DreamPassResult``. Includes a ``snapshot`` key carrying the
     detailed ``DreamOperationsSnapshot`` payload for consumers that
     need per-operation rollups (eval, admin UI, future P9 SSE event).
+
+    Postgres writes route through ``chat_db()`` / equivalent
+    accessors. The dream pass runs in the Scheduler subprocess where
+    Prisma is intentionally NOT locally connected — those accessors
+    auto-route to the DatabaseManager RPC client. We deliberately do
+    NOT call ``platform_db.connect()`` here: setting ``is_connected``
+    True before the local Prisma engine is reachable causes a race
+    with concurrent ``platform_cost_db()`` callers from
+    ``token_tracking._safe_log`` (they'd see ``is_connected=True``,
+    try direct Prisma, hit "All connection attempts failed" while
+    the engine is still booting).
     """
-    # Ensure Prisma is connected — the dream pass runs in the scheduler
-    # service, which doesn't unconditionally open a Postgres connection
-    # at startup. Without this guard apply.py blows up with
-    # "Client is not connected to the query engine".
-    from backend.data import db as platform_db
-
-    if not platform_db.is_connected():
-        await platform_db.connect()
-
     group_id = derive_group_id(user_id)
 
     # Phase A — write a placeholder session up front so the
