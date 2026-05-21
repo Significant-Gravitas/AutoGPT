@@ -530,6 +530,141 @@ def test_list_invoices_default_limit(mocker: pytest_mock.MockFixture) -> None:
     assert mock_credit_model.list_invoices.await_args.kwargs == {"limit": 24}
 
 
+# Executions cost summary tests
+def test_executions_cost_summary_returns_payload(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The /executions/cost-summary route returns the aggregated payload."""
+    from prisma.enums import AgentExecutionStatus
+
+    from backend.data.execution_cost_summary import (
+        UserAgentCostRollup,
+        UserDailyCost,
+        UserExecutionCostSummary,
+        UserTopRun,
+    )
+
+    summary = UserExecutionCostSummary(
+        total_cents=4200,
+        run_count=12,
+        billable_run_count=10,
+        failed_cost_cents=500,
+        by_agent=[
+            UserAgentCostRollup(graph_id="g-1", cost_cents=3000, run_count=8),
+            UserAgentCostRollup(graph_id="g-2", cost_cents=1200, run_count=4),
+        ],
+        top_runs=[
+            UserTopRun(
+                execution_id="exec-1",
+                graph_id="g-1",
+                cost_cents=2500,
+                started_at=datetime(2026, 5, 10, 12, 0, tzinfo=timezone.utc),
+                status=AgentExecutionStatus.COMPLETED,
+                duration_seconds=45.5,
+                node_error_count=0,
+            ),
+        ],
+        daily=[
+            UserDailyCost(date="2026-05-10", cost_cents=3000, run_count=8),
+            UserDailyCost(date="2026-05-11", cost_cents=1200, run_count=4),
+        ],
+    )
+
+    mock_fn = mocker.patch(
+        "backend.api.features.v1.get_user_cost_summary",
+        AsyncMock(return_value=summary),
+    )
+
+    response = client.get("/executions/cost-summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_cents"] == 4200
+    assert payload["run_count"] == 12
+    assert payload["billable_run_count"] == 10
+    assert payload["failed_cost_cents"] == 500
+    assert len(payload["by_agent"]) == 2
+    assert payload["by_agent"][0]["graph_id"] == "g-1"
+    assert payload["by_agent"][0]["cost_cents"] == 3000
+    assert len(payload["top_runs"]) == 1
+    assert payload["top_runs"][0]["execution_id"] == "exec-1"
+    assert payload["top_runs"][0]["cost_cents"] == 2500
+    assert len(payload["daily"]) == 2
+    assert payload["daily"][0]["date"] == "2026-05-10"
+    mock_fn.assert_awaited_once()
+
+
+def test_executions_cost_summary_forwards_since_until(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """since/until query params should reach get_user_cost_summary."""
+    from backend.data.execution_cost_summary import UserExecutionCostSummary
+
+    mock_fn = mocker.patch(
+        "backend.api.features.v1.get_user_cost_summary",
+        AsyncMock(
+            return_value=UserExecutionCostSummary(
+                total_cents=0,
+                run_count=0,
+                billable_run_count=0,
+                failed_cost_cents=0,
+                by_agent=[],
+                top_runs=[],
+                daily=[],
+            )
+        ),
+    )
+
+    response = client.get(
+        "/executions/cost-summary"
+        "?since=2026-05-01T00:00:00Z"
+        "&until=2026-05-15T00:00:00Z"
+        "&top_runs_limit=5"
+    )
+
+    assert response.status_code == 200
+    kwargs = mock_fn.await_args.kwargs
+    assert kwargs["user_id"] == test_user_id
+    assert kwargs["since"] == datetime(2026, 5, 1, tzinfo=timezone.utc)
+    assert kwargs["until"] == datetime(2026, 5, 15, tzinfo=timezone.utc)
+    assert kwargs["top_runs_limit"] == 5
+
+
+def test_executions_cost_summary_rejects_out_of_range_limit(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """top_runs_limit must be within [1, 50]."""
+    mock_fn = mocker.patch(
+        "backend.api.features.v1.get_user_cost_summary",
+        AsyncMock(),
+    )
+
+    response = client.get("/executions/cost-summary?top_runs_limit=500")
+
+    assert response.status_code == 422
+    mock_fn.assert_not_awaited()
+
+
+def test_executions_cost_summary_rejects_inverted_window(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """`since > until` is bad client input — surface 422, don't quietly return zeros."""
+    mock_fn = mocker.patch(
+        "backend.api.features.v1.get_user_cost_summary",
+        AsyncMock(),
+    )
+
+    response = client.get(
+        "/executions/cost-summary"
+        "?since=2026-05-15T00:00:00Z"
+        "&until=2026-05-01T00:00:00Z"
+    )
+
+    assert response.status_code == 422
+    mock_fn.assert_not_awaited()
+
+
 # Graphs endpoints tests
 def test_get_graphs(
     mocker: pytest_mock.MockFixture,
