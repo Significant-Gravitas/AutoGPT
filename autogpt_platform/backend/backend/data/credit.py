@@ -2634,7 +2634,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
-        ) or await get_user_billing_cycle(user.id)
+        )
         _track_billing_event(
             "subscription_upgraded",
             user.id,
