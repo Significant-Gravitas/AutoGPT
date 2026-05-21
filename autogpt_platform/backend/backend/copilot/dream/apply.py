@@ -36,10 +36,14 @@ from backend.copilot.tools.graphiti_forget import (
 
 from .schemas import (
     ConsolidatedFact,
+    DemotionSummary,
     DreamDemotion,
     DreamOperations,
+    DreamOperationsSnapshot,
     EntityInvalidation,
+    EntityInvalidationSummary,
     ProposedFinding,
+    WriteSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,13 +128,15 @@ async def _apply_demotions(
     user_id: str,
     group_id: str,
     demotions: list[DreamDemotion],
-) -> tuple[int, int]:
+) -> tuple[int, int, list[DemotionSummary]]:
     """Run mark_edges_superseded once per (reason, new_status) bucket.
 
-    Returns (succeeded, failed).
+    Returns ``(succeeded_count, failed_count, summaries)`` where each
+    summary records the original DreamDemotion plus whether the
+    underlying Cypher actually touched a row (``applied`` flag).
     """
     if not demotions:
-        return 0, 0
+        return 0, 0, []
 
     # Group by (new_status, reason) so we minimize round-trips.
     buckets: dict[tuple[str, str], list[str]] = {}
@@ -145,6 +151,7 @@ async def _apply_demotions(
     )
     succeeded = 0
     failed = 0
+    succeeded_uuids: set[str] = set()
     try:
         for (new_status, reason), uuids in buckets.items():
             ok, bad = await mark_edges_superseded(
@@ -156,22 +163,34 @@ async def _apply_demotions(
             )
             succeeded += len(ok)
             failed += len(bad)
+            succeeded_uuids.update(ok)
     finally:
         await driver.close()
 
-    return succeeded, failed
+    summaries = [
+        DemotionSummary(
+            edge_uuid=d.edge_uuid,
+            reason=d.reason,
+            new_status=d.new_status,
+            applied=d.edge_uuid in succeeded_uuids,
+        )
+        for d in demotions
+    ]
+    return succeeded, failed, summaries
 
 
 async def _apply_entity_invalidations(
     group_id: str,
     invalidations: list[EntityInvalidation],
-) -> int:
+) -> tuple[int, list[EntityInvalidationSummary]]:
     """Single-hop demotion of every :RELATES_TO around each invalidated entity.
 
-    Returns total count of edges that were touched.
+    Returns ``(total_edges_touched, summaries)`` — summaries enumerate
+    the per-entity edge uuids so callers can render or audit which
+    edges fell off when an entity was invalidated.
     """
     if not invalidations:
-        return 0
+        return 0, []
     driver = AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,
@@ -179,6 +198,7 @@ async def _apply_entity_invalidations(
         database=group_id,
     )
     total = 0
+    summaries: list[EntityInvalidationSummary] = []
     try:
         for inv in invalidations:
             uuids = await invalidate_entity_direct_neighbors(
@@ -188,9 +208,16 @@ async def _apply_entity_invalidations(
                 reason=inv.reason,
             )
             total += len(uuids)
+            summaries.append(
+                EntityInvalidationSummary(
+                    entity_uuid=inv.entity_uuid,
+                    reason=inv.reason,
+                    edges_touched=list(uuids),
+                )
+            )
     finally:
         await driver.close()
-    return total
+    return total, summaries
 
 
 async def _write_dream_session(
@@ -230,11 +257,13 @@ async def apply_operations(
     user_id: str,
     pass_id: str,
     ops: DreamOperations,
-) -> dict[str, int | str]:
+) -> dict[str, int | str | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
     Returns a small stats dict the orchestrator can fold into
-    ``DreamPassResult``.
+    ``DreamPassResult``. Includes a ``snapshot`` key carrying the
+    detailed ``DreamOperationsSnapshot`` payload for consumers that
+    need per-operation rollups (eval, admin UI, future P9 SSE event).
     """
     # Ensure Prisma is connected — the dream pass runs in the scheduler
     # service, which doesn't unconditionally open a Postgres connection
@@ -256,21 +285,43 @@ async def apply_operations(
     )
 
     written = 0
+    write_summaries: list[WriteSummary] = []
     for i, fact in enumerate(ops.writes):
         if await _write_consolidated_fact(
             user_id, pass_id, i, fact, session_id=session_id
         ):
             written += 1
+            write_summaries.append(
+                WriteSummary(
+                    content=fact.content,
+                    scope=fact.scope,
+                    confidence=fact.confidence,
+                    status="active",
+                    source_episode_uuids=list(fact.source_episode_uuids),
+                )
+            )
 
     proposed = 0
+    proposal_summaries: list[WriteSummary] = []
     for i, prop in enumerate(ops.proposals):
         if await _write_proposed_finding(
             user_id, pass_id, i, prop, session_id=session_id
         ):
             proposed += 1
+            proposal_summaries.append(
+                WriteSummary(
+                    content=prop.content,
+                    scope=prop.scope,
+                    confidence=prop.confidence,
+                    status="tentative",
+                    source_episode_uuids=list(prop.source_episode_uuids),
+                )
+            )
 
-    demoted_ok, demoted_fail = await _apply_demotions(user_id, group_id, ops.demotions)
-    entity_edges_demoted = await _apply_entity_invalidations(
+    demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
+        user_id, group_id, ops.demotions
+    )
+    entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
         group_id, ops.entity_invalidations
     )
 
@@ -286,6 +337,13 @@ async def apply_operations(
         entity_edges_demoted,
     )
 
+    snapshot = DreamOperationsSnapshot(
+        writes=write_summaries,
+        proposals=proposal_summaries,
+        demotions=demotion_summaries,
+        entity_invalidations=entity_summaries,
+    )
+
     return {
         "session_id": session_id,
         "consolidated_count": written,
@@ -293,4 +351,5 @@ async def apply_operations(
         "demotion_count": demoted_ok,
         "demotion_failed_count": demoted_fail,
         "entity_invalidation_count": entity_edges_demoted,
+        "snapshot": snapshot,
     }

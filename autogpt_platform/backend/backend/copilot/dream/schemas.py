@@ -186,6 +186,103 @@ class DreamOperations(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class WriteSummary(BaseModel):
+    """One line per envelope written by apply.py.
+
+    Carries the durable Graphiti edge uuid so the eval / admin UI / the
+    future inline chat-stream `dream.operations` event (P9 daydreaming)
+    can render or audit individual operations. ``edge_uuid`` is None
+    when the underlying ``enqueue_episode`` call did not return one
+    (FalkorDB unreachable, etc.) — we still record the attempted write.
+    """
+
+    edge_uuid: str | None = None
+    content: str
+    scope: str = "real:global"
+    confidence: float | None = None
+    status: Literal["active", "tentative"] = "active"
+    source_episode_uuids: list[str] = Field(default_factory=list)
+
+
+class DemotionSummary(BaseModel):
+    """One line per demoted RELATES_TO edge."""
+
+    edge_uuid: str
+    reason: str
+    new_status: Literal["superseded", "contradicted"]
+    applied: bool = True
+    """False when the underlying Cypher reported zero rows touched —
+    typically because the edge uuid was stale by the time apply.py ran."""
+
+
+class EntityInvalidationSummary(BaseModel):
+    """Per-entity invalidation rollup."""
+
+    entity_uuid: str
+    reason: str
+    edges_touched: list[str] = Field(default_factory=list)
+
+
+class DreamOperationsSnapshot(BaseModel):
+    """Detailed per-operation rollup of a single dream pass.
+
+    Shape used by three downstream consumers:
+      1. The admin memory-visualizer UI (renders the per-edge detail).
+      2. AgentProbe eval scorers (read via ``rawExchangeKey``).
+      3. The future chat-stream ``dream.operations`` SSE event (P6 + P9
+         daydreaming, see ``dream/TODO.md``).
+
+    Kept additive on ``DreamPassResult`` so adding fields here doesn't
+    bump the count-only top-level columns existing clients rely on.
+    """
+
+    writes: list[WriteSummary] = Field(default_factory=list)
+    proposals: list[WriteSummary] = Field(default_factory=list)
+    demotions: list[DemotionSummary] = Field(default_factory=list)
+    entity_invalidations: list[EntityInvalidationSummary] = Field(default_factory=list)
+
+
+class PhaseUsage(BaseModel):
+    """Per-phase token + cost telemetry."""
+
+    phase: Literal["consolidate", "recombine", "sanitize"]
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float | None = None
+    """``None`` when the provider didn't return a cost and the model
+    isn't in ``model_pricing.py`` — caller treats as unknown rather
+    than zero. ``0.0`` is legitimate (zero tokens, edge case)."""
+
+
+class DreamPassUsage(BaseModel):
+    """Aggregate usage across all phases of one dream pass.
+
+    Surfaced on ``DreamPassResult.usage`` so eval / admin UI / billing
+    can read tokens + cost without recomputing. Written to
+    ``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;
+    charged against the user's rate-limit window via
+    ``persist_and_record_usage`` so dream-pass spend rolls into the
+    same daily/weekly subscription tier budget as chat-execution
+    overage.
+    """
+
+    phases: list[PhaseUsage] = Field(default_factory=list)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
+    total_cost_usd: float | None = None
+    """Sum of phase cost_usd values; ``None`` if any phase was unknown."""
+    discount_applied: float = 0.0
+    """Execution-path discount factor in [0, 1] — 0.0 for sync_baseline,
+    0.5 for anthropic_batch / openai_batch. The ``total_cost_usd``
+    above already has this factored in; recorded separately so the
+    cost ledger can audit the savings."""
+
+
 class DreamPassResult(BaseModel):
     """Return value of ``execute_dream_pass`` and the admin API.
 
@@ -198,7 +295,9 @@ class DreamPassResult(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     elapsed_seconds: float | None = None
-    execution_path: Literal["batch", "sync_baseline"] = "sync_baseline"
+    execution_path: Literal["sync_baseline", "anthropic_batch", "openai_batch"] = (
+        "sync_baseline"
+    )
 
     # Per-phase telemetry — null when the phase did not run.
     consolidated_count: int = 0
@@ -208,6 +307,17 @@ class DreamPassResult(BaseModel):
 
     summary_for_user: str = ""
     dream_session_id: str | None = None
+
+    # Detailed per-operation rollup. ``None`` when the pass was skipped
+    # or errored before phase 3 produced operations; ``DreamOperationsSnapshot()``
+    # with empty lists when the pass ran but produced no operations.
+    operations: DreamOperationsSnapshot | None = None
+
+    # Token + cost telemetry across all phases that actually ran.
+    # ``None`` for skipped passes (lock_held / no_input / insufficient_credits).
+    # Populated even on partial failures — we still paid for the phases
+    # that ran before the failure.
+    usage: DreamPassUsage | None = None
 
     # Failure / skip signalling — mirrors RebuildResponse.
     error: str | None = None

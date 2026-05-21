@@ -537,6 +537,57 @@ async def get_graph(
     )
 
 
+class DreamWriteSummaryResponse(BaseModel):
+    edge_uuid: str | None = None
+    content: str
+    scope: str = "real:global"
+    confidence: float | None = None
+    status: str = "active"
+    source_episode_uuids: list[str] = Field(default_factory=list)
+
+
+class DreamDemotionSummaryResponse(BaseModel):
+    edge_uuid: str
+    reason: str
+    new_status: str
+    applied: bool = True
+
+
+class DreamEntityInvalidationSummaryResponse(BaseModel):
+    entity_uuid: str
+    reason: str
+    edges_touched: list[str] = Field(default_factory=list)
+
+
+class DreamOperationsSnapshotResponse(BaseModel):
+    writes: list[DreamWriteSummaryResponse] = Field(default_factory=list)
+    proposals: list[DreamWriteSummaryResponse] = Field(default_factory=list)
+    demotions: list[DreamDemotionSummaryResponse] = Field(default_factory=list)
+    entity_invalidations: list[DreamEntityInvalidationSummaryResponse] = Field(
+        default_factory=list
+    )
+
+
+class DreamPhaseUsageResponse(BaseModel):
+    phase: str
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float | None = None
+
+
+class DreamPassUsageResponse(BaseModel):
+    phases: list[DreamPhaseUsageResponse] = Field(default_factory=list)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
+    total_cost_usd: float | None = None
+    discount_applied: float = 0.0
+
+
 class DreamPassResponse(BaseModel):
     """Mirror of ``DreamPassResult`` from the dream orchestrator.
 
@@ -556,6 +607,17 @@ class DreamPassResponse(BaseModel):
     entity_invalidation_count: int = 0
     summary_for_user: str = ""
     dream_session_id: str | None = None
+    # Detailed per-operation rollup — see DreamOperationsSnapshot in
+    # backend/copilot/dream/schemas.py. Consumed by the admin
+    # visualizer UI and the AgentProbe eval scorers (read via
+    # ``rawExchangeKey: "response.body.operations"``).
+    operations: DreamOperationsSnapshotResponse | None = None
+    # Token + cost telemetry across all phases that ran. ``None`` for
+    # skipped passes (lock_held / no_input / insufficient_credits).
+    # Populated even on partial failures — we still paid for the
+    # phases that ran before the failure, so billing has to charge
+    # for them.
+    usage: DreamPassUsageResponse | None = None
     error: str | None = None
     skipped: bool = False
     skip_reason: str | None = None

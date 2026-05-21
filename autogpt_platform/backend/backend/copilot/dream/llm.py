@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TypeVar
+import math
+from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -34,6 +36,32 @@ class DreamLLMError(RuntimeError):
     """Raised when a dream-pass LLM call cannot be parsed into the target schema."""
 
 
+@dataclass(slots=True)
+class CompletionUsage:
+    """Token + cost telemetry from a single LLM call.
+
+    Carries the provider-reported cost when present (OpenRouter
+    surfaces ``usage.cost`` when the request asks for ``usage:
+    {"include": True}``); falls back to None when absent. Token counts
+    are always present.
+    """
+
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float | None = None
+
+
+@dataclass(slots=True)
+class StructuredCompletion(Generic[T]):
+    """Return value of ``structured_completion``: parsed model + usage."""
+
+    value: T
+    usage: CompletionUsage
+
+
 async def structured_completion(
     *,
     model: str,
@@ -41,8 +69,12 @@ async def structured_completion(
     response_model: type[T],
     temperature: float = 0.2,
     max_output_tokens: int = 4096,
-) -> T:
+) -> StructuredCompletion[T]:
     """Call the LLM in JSON mode and parse into ``response_model``.
+
+    Returns a ``StructuredCompletion`` carrying both the parsed value
+    and a ``CompletionUsage`` block so the dream orchestrator can roll
+    token counts + cost up into a ``DreamPassUsage``.
 
     Raises ``DreamLLMError`` if the response is empty, unparseable, or
     fails Pydantic validation. Callers should treat that as "this
@@ -60,9 +92,15 @@ async def structured_completion(
             temperature=temperature,
             max_tokens=max_output_tokens,
             response_format={"type": "json_object"},
+            # Ask OpenRouter to surface real generation cost on the usage
+            # block; OpenAI/Anthropic-direct ignore the field, so it's
+            # additive and safe.
+            extra_body={"usage": {"include": True}},
         )
     except Exception as exc:
         raise DreamLLMError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
+
+    usage = _extract_usage(response, model)
 
     content = (response.choices[0].message.content or "").strip()
     if not content:
@@ -90,11 +128,65 @@ async def structured_completion(
             ) from exc
 
     try:
-        return response_model.model_validate(payload)
+        return StructuredCompletion(
+            value=response_model.model_validate(payload),
+            usage=usage,
+        )
     except ValidationError as exc:
         raise DreamLLMError(
             f"LLM JSON did not match {response_model.__name__}: {exc}"
         ) from exc
+
+
+def _extract_usage(response, model: str) -> CompletionUsage:
+    """Pull tokens + provider-reported cost off an OpenAI-compat response.
+
+    Provider quirks:
+      * OpenRouter returns ``cost`` on ``usage.model_extra`` when the
+        request body sets ``usage: {"include": True}``.
+      * Direct OpenAI / Anthropic don't return cost — callers compute
+        from the rate card in ``model_pricing.py``.
+      * Cache token names differ: ``cache_write_tokens`` (OpenRouter
+        Anthropic) vs ``cache_creation_input_tokens`` (Anthropic direct).
+    """
+    usage = response.usage
+    if usage is None:
+        return CompletionUsage(model=model)
+
+    prompt_tokens = int(usage.prompt_tokens or 0)
+    completion_tokens = int(usage.completion_tokens or 0)
+
+    cache_read = 0
+    cache_creation = 0
+    ptd = getattr(usage, "prompt_tokens_details", None)
+    if ptd is not None:
+        cache_read = int(getattr(ptd, "cached_tokens", 0) or 0)
+        ptd_extras = getattr(ptd, "model_extra", None) or {}
+        cache_creation = int(
+            ptd_extras.get("cache_write_tokens")
+            or ptd_extras.get("cache_creation_input_tokens")
+            or 0
+        )
+
+    cost_usd: float | None = None
+    extras = getattr(usage, "model_extra", None) or {}
+    raw_cost = extras.get("cost")
+    if raw_cost is not None:
+        try:
+            val = float(raw_cost)
+            if math.isfinite(val) and val >= 0:
+                cost_usd = val
+        except (TypeError, ValueError):
+            logger.warning("dream usage.cost non-numeric: %r", raw_cost)
+
+    return CompletionUsage(
+        model=model,
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_creation,
+        cost_usd=cost_usd,
+    )
 
 
 def _extract_first_json_object(content: str) -> str | None:

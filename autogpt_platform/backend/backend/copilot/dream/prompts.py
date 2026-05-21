@@ -68,11 +68,11 @@ def _format_sessions(input_bundle: DreamInput) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — Consolidation
+# Consolidation step — merge near-duplicate recent facts into canonical form.
 # ---------------------------------------------------------------------------
 
 
-PHASE_1_SYSTEM = (
+CONSOLIDATE_SYSTEM = (
     "You are the consolidation step of a sleep-time memory pass for an "
     "AI assistant. Your job is to look at the user's recent episodes "
     "and active facts and emit a small set of *consolidated* statements "
@@ -86,14 +86,14 @@ PHASE_1_SYSTEM = (
     " * Confidence is your own — 0.0 means 'I am unsure', 1.0 means "
     "'this is restated verbatim across multiple sources'.\n"
     f" * Output AT MOST {MAX_WRITES_PER_PASS} consolidated facts. Better "
-    "to consolidate hard than to flood phase 2.\n\n"
+    "to consolidate hard than to flood the recombination step.\n\n"
     "Return a JSON object matching this schema:\n"
     '{ "facts": [ { "content": str, "scope": str, "confidence": float, '
     '"source_episode_uuids": [str, ...] } ] }'
 )
 
 
-def build_phase_1_prompt(input_bundle: DreamInput) -> list[dict[str, str]]:
+def build_consolidate_prompt(input_bundle: DreamInput) -> list[dict[str, str]]:
     user_body = (
         "## Recent episodes (within window)\n"
         + _format_episodes(input_bundle)
@@ -103,25 +103,25 @@ def build_phase_1_prompt(input_bundle: DreamInput) -> list[dict[str, str]]:
         + _format_sessions(input_bundle)
     )
     return [
-        {"role": "system", "content": PHASE_1_SYSTEM},
+        {"role": "system", "content": CONSOLIDATE_SYSTEM},
         {"role": "user", "content": user_body},
     ]
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — Recombination
+# Recombination step — propose novel connections + weak-link findings.
 # ---------------------------------------------------------------------------
 
 
-PHASE_2_SYSTEM = (
+RECOMBINE_SYSTEM = (
     "You are the recombination step of a sleep-time memory pass. The "
     "previous step consolidated the user's recent facts. Your job is to "
     "look for *novel connections* — weak-link findings, implications "
     "across scopes, useful rules the user has implicitly demonstrated.\n\n"
     "Rules:\n"
     " * Every proposal must cite at least one source_fact_uuid or "
-    "source_episode_uuid from phase 1's input. Proposals with no citation "
-    "will be rejected by phase 3.\n"
+    "source_episode_uuid from the consolidation step's input. Proposals "
+    "with no citation will be rejected by the sanitizer.\n"
     " * Stay in scope — proposed findings live in the same scope as "
     "their evidence.\n"
     ' * Do not propose first-person-as-user statements ("I think X"). '
@@ -136,38 +136,39 @@ PHASE_2_SYSTEM = (
 )
 
 
-def build_phase_2_prompt(
-    input_bundle: DreamInput, phase_1_json: str
+def build_recombine_prompt(
+    input_bundle: DreamInput, consolidated_json: str
 ) -> list[dict[str, str]]:
     user_body = (
-        "## Phase 1 consolidated output\n"
-        + phase_1_json
+        "## Consolidated facts (from the consolidation step)\n"
+        + consolidated_json
         + "\n\n## Active facts (for reference)\n"
         + _format_facts(input_bundle)
         + "\n\n## Recent episodes (for reference)\n"
         + _format_episodes(input_bundle, max_chars_per_episode=300)
     )
     return [
-        {"role": "system", "content": PHASE_2_SYSTEM},
+        {"role": "system", "content": RECOMBINE_SYSTEM},
         {"role": "user", "content": user_body},
     ]
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — Sanitize + Gate
+# Sanitization step — decide what lands as a write and what gets demoted.
 # ---------------------------------------------------------------------------
 
 
-PHASE_3_SYSTEM = (
+SANITIZE_SYSTEM = (
     "You are the sanitizer step of a sleep-time memory pass. You receive "
-    "phase 1's consolidated facts and phase 2's proposals; you decide "
+    "the consolidated facts and the recombination proposals; you decide "
     "what actually lands in memory and what gets demoted.\n\n"
     "Rules (HARD — outputs that violate these will be dropped):\n"
     f" * AT MOST {MAX_WRITES_PER_PASS} writes.\n"
     f" * AT MOST {MAX_PROPOSALS_PER_PASS} proposals.\n"
     f" * AT MOST {MAX_DEMOTIONS_PER_PASS} demotions per pass. Demotions "
-    "are surgical — only demote a fact when phase 1 or phase 2 directly "
-    "contradicts it, or when it is obviously stale.\n"
+    "are surgical — only demote a fact when a consolidated fact or a "
+    "recombination proposal directly contradicts it, or when it is "
+    "obviously stale.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "
@@ -187,23 +188,23 @@ PHASE_3_SYSTEM = (
 )
 
 
-def build_phase_3_prompt(
+def build_sanitize_prompt(
     input_bundle: DreamInput,
-    phase_1_json: str,
-    phase_2_json: str,
+    consolidated_json: str,
+    recombined_json: str,
 ) -> list[dict[str, str]]:
     known_fact_uuids = sorted(input_bundle.known_fact_uuids)
     user_body = (
-        "## Phase 1 output (consolidated facts)\n"
-        + phase_1_json
-        + "\n\n## Phase 2 output (proposed findings)\n"
-        + phase_2_json
+        "## Consolidated facts (from the consolidation step)\n"
+        + consolidated_json
+        + "\n\n## Recombination proposals (from the recombination step)\n"
+        + recombined_json
         + "\n\n## Known fact uuids (only these are valid demotion targets)\n"
         + json.dumps(known_fact_uuids)
         + "\n\n## Active facts (for context when deciding demotions)\n"
         + _format_facts(input_bundle)
     )
     return [
-        {"role": "system", "content": PHASE_3_SYSTEM},
+        {"role": "system", "content": SANITIZE_SYSTEM},
         {"role": "user", "content": user_body},
     ]

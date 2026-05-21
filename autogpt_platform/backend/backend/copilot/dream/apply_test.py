@@ -181,10 +181,13 @@ async def test_apply_operations_connects_prisma_if_disconnected(mocker):
     )
     mock_db.return_value = "session-123"
     mocker.patch.object(
-        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0)
+        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
     )
     mocker.patch.object(
-        apply_mod, "_apply_entity_invalidations", new_callable=AsyncMock, return_value=0
+        apply_mod,
+        "_apply_entity_invalidations",
+        new_callable=AsyncMock,
+        return_value=(0, []),
     )
 
     mocker.patch("backend.data.db.is_connected", return_value=False)
@@ -218,10 +221,13 @@ async def test_apply_operations_skips_connect_when_already_connected(mocker):
         apply_mod, "_write_dream_session", new_callable=AsyncMock, return_value="s"
     )
     mocker.patch.object(
-        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0)
+        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
     )
     mocker.patch.object(
-        apply_mod, "_apply_entity_invalidations", new_callable=AsyncMock, return_value=0
+        apply_mod,
+        "_apply_entity_invalidations",
+        new_callable=AsyncMock,
+        return_value=(0, []),
     )
 
     mocker.patch("backend.data.db.is_connected", return_value=True)
@@ -239,3 +245,104 @@ async def test_apply_operations_skips_connect_when_already_connected(mocker):
         ),
     )
     connect_spy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# DreamOperationsSnapshot — eval/UI/SSE consumers need per-operation detail.
+# Tested at the apply.py boundary so the contract survives refactors.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
+    """The stats dict must include a ``snapshot: DreamOperationsSnapshot``
+    field with one entry per write/proposal and per-demotion detail.
+
+    Consumers (AgentProbe scorers, admin visualizer, future P9 SSE
+    event) read this; counts alone aren't enough."""
+    from backend.copilot.dream.schemas import DreamOperationsSnapshot
+
+    # The autouse fixture stubs mark_edges_superseded to return ["e1"]
+    # in the succeeded list, which doesn't match our test uuid "d1".
+    # Override so d1 lands in the succeeded list.
+    mocker.patch.object(
+        apply_mod,
+        "mark_edges_superseded",
+        AsyncMock(return_value=(["d1"], [])),
+    )
+
+    ops = DreamOperations(
+        writes=[
+            ConsolidatedFact(
+                content="A likes B",
+                confidence=0.8,
+                scope="real:global",
+                source_episode_uuids=["ep-1", "ep-2"],
+            )
+        ],
+        proposals=[
+            ProposedFinding(
+                content="A trusts B",
+                confidence=0.6,
+                rationale="implied",
+                source_fact_uuids=["f1"],
+            )
+        ],
+        demotions=[
+            DreamDemotion(edge_uuid="d1", reason="stale", new_status="superseded"),
+        ],
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="ent-x", reason="dead_to_us"),
+        ],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-snap", pass_id="p-snap", ops=ops
+    )
+
+    snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
+    assert len(snap.writes) == 1
+    assert snap.writes[0].content == "A likes B"
+    assert snap.writes[0].status == "active"
+    assert snap.writes[0].source_episode_uuids == ["ep-1", "ep-2"]
+    assert len(snap.proposals) == 1
+    assert snap.proposals[0].status == "tentative"
+    assert len(snap.demotions) == 1
+    assert snap.demotions[0].edge_uuid == "d1"
+    assert snap.demotions[0].new_status == "superseded"
+    assert snap.demotions[0].applied is True
+    assert len(snap.entity_invalidations) == 1
+    assert snap.entity_invalidations[0].entity_uuid == "ent-x"
+    # ``invalidate_entity_direct_neighbors`` returns ["e1","e2"] per fixture stub
+    assert snap.entity_invalidations[0].edges_touched == ["e1", "e2"]
+
+
+@pytest.mark.asyncio
+async def test_apply_operations_demotion_summary_marks_applied_false_on_miss(mocker):
+    """When mark_edges_superseded returns the uuid in the failed list,
+    the corresponding DemotionSummary records ``applied=False`` so the
+    consumer can render a "stale-uuid skip" without inferring it."""
+    from backend.copilot.dream.schemas import DreamOperationsSnapshot
+
+    # Override the default success stub: this uuid lands in the bad list.
+    mocker.patch.object(
+        apply_mod,
+        "mark_edges_superseded",
+        AsyncMock(return_value=([], ["d-missing"])),
+    )
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(
+                edge_uuid="d-missing", reason="stale", new_status="superseded"
+            ),
+        ],
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-miss", pass_id="p-miss", ops=ops
+    )
+    snap = stats["snapshot"]
+    assert isinstance(snap, DreamOperationsSnapshot)
+    assert len(snap.demotions) == 1
+    assert snap.demotions[0].edge_uuid == "d-missing"
+    assert snap.demotions[0].applied is False

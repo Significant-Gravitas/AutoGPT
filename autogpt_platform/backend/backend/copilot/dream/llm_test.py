@@ -3,7 +3,7 @@
 The structured_completion wrapper requests JSON mode, but some OpenRouter
 upstreams (Claude family, certain Gemini variants) still wrap responses in
 ```json ... ``` markdown fences. Without stripping them the dream pass
-aborts on phase_1 with "Expecting value: line 1 column 1". This file pins
+aborts on the consolidation step with "Expecting value: line 1 column 1". This file pins
 the fence-stripper that prevents the regression.
 """
 

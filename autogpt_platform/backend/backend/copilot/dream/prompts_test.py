@@ -14,9 +14,9 @@ from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
     MAX_PROPOSALS_PER_PASS,
     MAX_WRITES_PER_PASS,
-    build_phase_1_prompt,
-    build_phase_2_prompt,
-    build_phase_3_prompt,
+    build_consolidate_prompt,
+    build_recombine_prompt,
+    build_sanitize_prompt,
 )
 
 
@@ -73,8 +73,8 @@ def _build_bundle() -> DreamInput:
     )
 
 
-def test_phase_1_prompt_has_system_and_user_messages():
-    msgs = build_phase_1_prompt(_build_bundle())
+def test_consolidate_prompt_has_system_and_user_messages():
+    msgs = build_consolidate_prompt(_build_bundle())
     assert [m["role"] for m in msgs] == ["system", "user"]
     user_body = msgs[1]["content"]
     # The input bundle's episode body, facts, and session content should all
@@ -87,22 +87,22 @@ def test_phase_1_prompt_has_system_and_user_messages():
     assert "[scope=project:x]" in user_body
 
 
-def test_phase_2_prompt_includes_phase_1_output_and_active_facts():
+def test_recombine_prompt_includes_consolidated_output_and_active_facts():
     bundle = _build_bundle()
-    phase_1_json = '{"facts": [{"content": "consolidated"}]}'
-    msgs = build_phase_2_prompt(bundle, phase_1_json)
+    consolidated_json = '{"facts": [{"content": "consolidated"}]}'
+    msgs = build_recombine_prompt(bundle, consolidated_json)
     assert msgs[0]["role"] == "system"
     assert "recombination" in msgs[0]["content"].lower()
-    assert phase_1_json in msgs[1]["content"]
+    assert consolidated_json in msgs[1]["content"]
     assert "f-1" in msgs[1]["content"]
 
 
-def test_phase_3_prompt_includes_known_fact_uuids_for_demotion_guard():
-    """Phase 3 prompt MUST contain the allowlist so the sanitizer can reject
-    invented uuids in demotions. Regression guard: if this drops out of the
-    prompt, the runaway-demotion bug per p0-spec §3 comes back."""
+def test_sanitize_prompt_includes_known_fact_uuids_for_demotion_guard():
+    """Sanitizer prompt MUST contain the allowlist so the sanitizer can
+    reject invented uuids in demotions. Regression guard: if this drops
+    out of the prompt, the runaway-demotion bug per p0-spec §3 comes back."""
     bundle = _build_bundle()
-    msgs = build_phase_3_prompt(bundle, '{"facts": []}', '{"proposals": []}')
+    msgs = build_sanitize_prompt(bundle, '{"facts": []}', '{"proposals": []}')
     assert msgs[0]["role"] == "system"
     user_body = msgs[1]["content"]
     # Both known fact uuids surfaced as the demotion allowlist
@@ -124,11 +124,11 @@ def test_prompts_tolerate_empty_inputs():
         window_start=datetime.now(timezone.utc),
         window_end=datetime.now(timezone.utc),
     )
-    p1 = build_phase_1_prompt(bundle)
-    p2 = build_phase_2_prompt(bundle, "{}")
-    p3 = build_phase_3_prompt(bundle, "{}", "{}")
-    assert len(p1) == 2
-    assert len(p2) == 2
-    assert len(p3) == 2
-    assert "(no recent episodes in window)" in p1[1]["content"]
-    assert "(no active facts)" in p1[1]["content"]
+    consolidate_msgs = build_consolidate_prompt(bundle)
+    recombine_msgs = build_recombine_prompt(bundle, "{}")
+    sanitize_msgs = build_sanitize_prompt(bundle, "{}", "{}")
+    assert len(consolidate_msgs) == 2
+    assert len(recombine_msgs) == 2
+    assert len(sanitize_msgs) == 2
+    assert "(no recent episodes in window)" in consolidate_msgs[1]["content"]
+    assert "(no active facts)" in consolidate_msgs[1]["content"]

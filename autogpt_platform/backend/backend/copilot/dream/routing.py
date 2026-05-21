@@ -1,36 +1,45 @@
-"""Decide whether a dream pass runs via Anthropic batch or sync baseline.
+"""Decide which execution path a dream pass runs through.
 
 Per ``dream/p0-spec.md`` §13, the dream pass must work on every
-transport (openrouter / subscription / openai_compat / local). Batch
-is only available when we have a direct Anthropic API key AND the
-batch flag is on. Anything else falls back to the synchronous baseline
+transport (openrouter / subscription / openai_compat / local). Two
+batch APIs are supported (both Anthropic and OpenAI offer a 50%
+discount); we route to whichever has a direct API key present + the
+batch flag on. Anything else falls back to the synchronous baseline
 path through the existing ``copilot_executor``.
 
-Slice 1 of P-0 ships sync-baseline only. The batch path is a follow-up
-PR; this resolver is here from day one so adding batch is a one-line
-flip, not a routing-redesign.
+Slice 1 of P-0 ships sync-baseline only. Both batch paths land in
+task #33 (P0.1). This resolver is wired from day one so adding the
+batch executors is just flipping the conditional below.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-ExecutionPath = Literal["batch", "sync_baseline"]
+# Kept in sync with ``model_pricing.ExecutionPath`` so the discount
+# table in model_pricing.py reads our chosen path directly. If you add
+# a new path here, mirror it there.
+ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
 
 
 def resolve_dream_execution_path(
     *,
     has_anthropic_key: bool,
-    batch_processing_enabled: bool,
+    has_openai_key: bool = False,
+    batch_processing_enabled: bool = False,
 ) -> ExecutionPath:
     """Pick the dream pass execution path.
 
-    ``batch`` requires both a direct Anthropic API key (separate from
-    the OpenRouter / Claude SDK creds) and the ``batch_processing_enabled``
-    config / flag being on. Otherwise we run synchronously through the
-    standard copilot executor — slower and pricier per pass, but works
-    on every transport.
+    Both batch paths require their respective provider API key AND the
+    ``batch_processing_enabled`` flag. Anthropic batch is preferred
+    when both keys are present (better cache pricing for the consolidation
+    + sanitization phases that share context). Falls back to sync_baseline
+    when no batch path is viable — slower and pricier per pass, but
+    works on every transport.
     """
-    if has_anthropic_key and batch_processing_enabled:
-        return "batch"
+    if batch_processing_enabled:
+        if has_anthropic_key:
+            return "anthropic_batch"
+        if has_openai_key:
+            return "openai_batch"
     return "sync_baseline"

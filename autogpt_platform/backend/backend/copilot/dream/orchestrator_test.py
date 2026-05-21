@@ -16,7 +16,7 @@ import pytest
 
 from . import orchestrator as orchestrator_mod
 from .fetch import DreamInput, EpisodeRow, FactRow
-from .llm import DreamLLMError
+from .llm import CompletionUsage, DreamLLMError, StructuredCompletion
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -25,6 +25,16 @@ from .schemas import (
     ProposedFinding,
     RecombinationOutput,
 )
+
+
+def _wrap(value, model: str = "test-model") -> StructuredCompletion:
+    """Wrap a phase output in StructuredCompletion with zeroed usage.
+
+    Tests that don't care about token bookkeeping use this so they can
+    keep the side_effect list short. Tests that exercise the usage
+    pipeline build their own ``CompletionUsage`` with real numbers.
+    """
+    return StructuredCompletion(value=value, usage=CompletionUsage(model=model))
 
 
 def _build_input(*, episodes=1, facts=1) -> DreamInput:
@@ -100,17 +110,17 @@ async def test_empty_input_returns_skipped(mocker):
 
 
 @pytest.mark.asyncio
-async def test_happy_path_runs_three_phases_and_applies(mocker):
+async def test_happy_path_runs_three_steps_and_applies(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
 
-    phase_1 = ConsolidationOutput(
+    consolidated = ConsolidationOutput(
         facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
     )
-    phase_2 = RecombinationOutput(
+    recombined = RecombinationOutput(
         proposals=[
             ProposedFinding(
                 content="A probably trusts B",
@@ -119,9 +129,9 @@ async def test_happy_path_runs_three_phases_and_applies(mocker):
             )
         ]
     )
-    phase_3 = DreamOperations(
-        writes=phase_1.facts,
-        proposals=phase_2.proposals,
+    sanitized = DreamOperations(
+        writes=consolidated.facts,
+        proposals=recombined.proposals,
         demotions=[],
         entity_invalidations=[],
         summary_for_user="Dream consolidated 1 fact.",
@@ -129,7 +139,9 @@ async def test_happy_path_runs_three_phases_and_applies(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_completion",
-        AsyncMock(side_effect=[phase_1, phase_2, phase_3]),
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
     )
     apply_mock = mocker.patch.object(
         orchestrator_mod,
@@ -158,7 +170,9 @@ async def test_happy_path_runs_three_phases_and_applies(mocker):
 
 
 @pytest.mark.asyncio
-async def test_phase_1_llm_failure_surfaces_error_and_skips_apply(mocker):
+async def test_consolidate_llm_failure_surfaces_error_and_skips_apply(mocker):
+    """A failure in the consolidation step must surface as
+    ``error="consolidate: ..."`` and never trigger apply_operations."""
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
@@ -174,23 +188,23 @@ async def test_phase_1_llm_failure_surfaces_error_and_skips_apply(mocker):
     result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is not None
-    assert result.error.startswith("phase_1:")
+    assert result.error.startswith("consolidate:")
     apply_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_clamps_oversized_phase_3_output(mocker):
-    """Phase 3 model can over-emit; orchestrator must enforce caps."""
+async def test_clamps_oversized_sanitizer_output(mocker):
+    """The sanitizer model can over-emit; orchestrator must enforce caps."""
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
         AsyncMock(return_value=_build_input()),
     )
-    phase_1 = ConsolidationOutput(facts=[])
-    phase_2 = RecombinationOutput(proposals=[])
+    consolidated = ConsolidationOutput(facts=[])
+    recombined = RecombinationOutput(proposals=[])
 
-    # Build a phase-3 output that blows past every cap.
-    huge_phase_3 = DreamOperations(
+    # Build a sanitizer output that blows past every cap.
+    huge_sanitized = DreamOperations(
         writes=[ConsolidatedFact(content=f"w{i}", confidence=0.5) for i in range(100)],
         proposals=[
             ProposedFinding(
@@ -207,7 +221,9 @@ async def test_clamps_oversized_phase_3_output(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_completion",
-        AsyncMock(side_effect=[phase_1, phase_2, huge_phase_3]),
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(huge_sanitized)]
+        ),
     )
 
     captured: dict[str, DreamOperations] = {}
