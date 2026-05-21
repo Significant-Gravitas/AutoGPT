@@ -40,7 +40,7 @@ from openai.types import CompletionUsage
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
-from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
 
@@ -451,22 +451,30 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # The actual credentials are injected via extra_exec_kwargs in
         # manager.py using _dry_run_api_key.
         #
-        # ``execution_mode`` is intentionally left as the user picked it.
-        # An earlier draft of this PR forced ``BUILT_IN`` to dodge the
-        # ``EXTENDED_THINKING`` Claude Agent SDK subprocess path's
-        # quirks, but both quirks the override defended against
-        # (Claude-only-model gate, brittle env-var auth wiring) are now
-        # mitigated by this same PR: the model is always overridden to
-        # ``sim_model`` (a Claude model) above, and the OR auth-env
-        # routing in orchestrator.py:1670-1691 sets a non-empty
-        # ``ANTHROPIC_API_KEY``.  Forcing ``BUILT_IN`` here would route
-        # OR + Claude through ``llm.llm_call``'s anthropic branch
-        # against ``api.anthropic.com`` with an OR key — a 401 — so the
-        # SDK path is actually the working dry-run target for OR+Claude.
+        # Force ``execution_mode = EXTENDED_THINKING`` for the dry-run.
+        # Letting the user-chosen mode flow through is unsafe: the
+        # OrchestratorBlock default is ``BUILT_IN``, which routes the
+        # call through ``llm.llm_call`` → anthropic branch against
+        # ``api.anthropic.com`` (since the dispatch keys on
+        # ``llm_model.metadata.provider``, not credential type). With the
+        # dry-run model overridden to Claude + the platform key being
+        # an OpenRouter key, that path 401s — every default dry-run on
+        # an Orchestrator would fail.
+        #
+        # ``EXTENDED_THINKING`` routes through the Claude Agent SDK
+        # subprocess, whose OR-credential branch in
+        # ``orchestrator.py:1670-1691`` sets ``ANTHROPIC_BASE_URL`` to
+        # OpenRouter's Anthropic-compat endpoint AND ``ANTHROPIC_API_KEY``
+        # to the OR key (this PR fixes the previous empty-string bug).
+        # The two prerequisites the SDK path imposes
+        # (``model.metadata.provider in {anthropic, open_router}`` and
+        # ``model.value.startswith("claude")``) are both satisfied —
+        # ``sim_model`` is always Claude — so the path is reachable.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
+            "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
             "_dry_run_api_key": or_key,
         }
 

@@ -221,36 +221,41 @@ class TestPrepareDryRun:
             f"got {result['model']!r}"
         )
 
-    def test_orchestrator_preserves_user_execution_mode(self) -> None:
-        """prepare_dry_run leaves ``execution_mode`` alone so the user's
-        choice flows through. An earlier draft forced ``BUILT_IN`` to
-        dodge the EXTENDED_THINKING SDK subprocess path's quirks, but
-        both quirks are now mitigated by this same PR (the model is
-        always overridden to ``sim_model`` (Claude), and the OR
-        auth-env routing in orchestrator.py:1670-1691 sets a non-empty
-        ``ANTHROPIC_API_KEY``). Forcing ``BUILT_IN`` would actually
-        *break* OR+Claude dry-runs by routing them through
-        ``llm.llm_call``'s anthropic branch against
-        ``api.anthropic.com`` with an OR key (401)."""
+    def test_orchestrator_forces_extended_thinking_execution_mode(self) -> None:
+        """prepare_dry_run overrides ``execution_mode`` to
+        ``EXTENDED_THINKING`` so the dry-run hits the Claude Agent SDK
+        subprocess (which routes OR+Claude correctly via
+        ``ANTHROPIC_BASE_URL``) instead of ``BUILT_IN`` (which would
+        route OR+Claude through ``llm.llm_call``'s anthropic branch
+        against ``api.anthropic.com`` with an OR key — 401).
+
+        The override is unconditional because the OrchestratorBlock
+        default is ``BUILT_IN``; letting the user-chosen mode flow
+        through would break every default Orchestrator's dry-run.
+        ``EXTENDED_THINKING`` is safe under the dry-run's overrides
+        because ``sim_model`` is always Claude (satisfying the SDK
+        path's Claude-only gate) and the OR auth-env wiring is fixed
+        by this same PR (``orchestrator.py:1670-1691``)."""
         block = OrchestratorBlock()
         with patch(
             "backend.executor.simulator._get_platform_openrouter_key",
             return_value="sk-or-test-key",
         ):
+            # User explicitly picked BUILT_IN — the dry-run still
+            # overrides to EXTENDED_THINKING.
             result = prepare_dry_run(
                 block,
                 {
                     "prompt": "test",
                     "model": LlmModel.CLAUDE_4_7_OPUS.value,
-                    "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+                    "execution_mode": ExecutionMode.BUILT_IN.value,
                     "agent_mode_max_iterations": 1,
                 },
             )
         assert result is not None
         assert result["execution_mode"] == ExecutionMode.EXTENDED_THINKING.value, (
-            f"prepare_dry_run should preserve user-chosen execution_mode "
-            f"(this PR's SDK auth fix unblocks the EXTENDED_THINKING path); "
-            f"got {result['execution_mode']!r}"
+            f"prepare_dry_run must force EXTENDED_THINKING for OR+Claude "
+            f"routing; got {result['execution_mode']!r}"
         )
 
     def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
