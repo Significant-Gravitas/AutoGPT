@@ -1801,6 +1801,132 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_success_metadata_absent_uses_user_tier():
+    """When invoice metadata lacks tier/billing_cycle, falls back to user."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_no_meta",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch(
+            "backend.data.credit.get_user_billing_cycle",
+            new_callable=AsyncMock,
+            return_value="monthly",
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "monthly"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_reads_parent_metadata():
+    """Stripe API ≥2025-04-01 nests subscription_details under parent."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
+    invoice = {
+        "id": "in_parent",
+        "customer": "cus_123",
+        "amount_paid": 5000,
+        "parent": {
+            "subscription_details": {
+                "subscription": "sub_abc123",
+                "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+            }
+        },
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "yearly"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_swallows_posthog_errors():
+    """PostHog failures must not abort the surrounding webhook handler."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_err",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+        },
+    }
+    track_mock = MagicMock(side_effect=RuntimeError("posthog down"))
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_tracking_when_posthog_disabled():
+    """No API key configured → no capture call."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_disabled",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {"tier": "PRO", "billing_cycle": "yearly"},
+        },
+    }
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new=""),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    track_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_success_skips_non_subscription_invoice():
     """Invoices with no subscription field (one-off invoices) are no-ops —
     short-circuit lands before the flag check, so no LD eval is needed."""
@@ -2142,7 +2268,12 @@ async def test_top_up_credits_tracks_success():
             new_callable=AsyncMock,
             return_value=(0, "tx_123"),
         ),
-        patch.object(credit_system, "_enable_transaction", new_callable=AsyncMock),
+        patch.object(
+            credit_system,
+            "_enable_transaction",
+            new_callable=AsyncMock,
+            return_value=(500, "pi_123"),
+        ),
         patch(
             "backend.data.credit.get_stripe_customer_id",
             new_callable=AsyncMock,
@@ -2166,7 +2297,7 @@ async def test_top_up_credits_tracks_success():
     assert kwargs["event"] == "credit_topup_success"
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"] == {
-        "amount_cents": 500,
+        "amount_credits": 500,
         "top_up_type": "UNCATEGORIZED",
     }
 
@@ -2199,7 +2330,12 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
             "backend.data.credit.stripe.checkout.Session.retrieve",
             return_value=checkout_session,
         ),
-        patch.object(credit_system, "_enable_transaction", new_callable=AsyncMock),
+        patch.object(
+            credit_system,
+            "_enable_transaction",
+            new_callable=AsyncMock,
+            return_value=(2500, "pi_test_topup"),
+        ),
         patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
         patch("backend.data.credit.posthog.capture", new=track_mock),
     ):
@@ -2210,7 +2346,7 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
     assert kwargs["event"] == "credit_topup_success"
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"] == {
-        "amount_cents": 2500,
+        "amount_credits": 2500,
         "top_up_type": "CHECKOUT",
     }
 

@@ -48,6 +48,9 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if settings.secrets.posthog_api_key:
+    posthog.api_key = settings.secrets.posthog_api_key
+    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -1038,18 +1041,21 @@ class UserCredit(UserCreditBase):
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
             )
 
-        await self._enable_transaction(
+        activation = await self._enable_transaction(
             transaction_key=transaction_key,
             new_transaction_key=new_transaction_key,
             user_id=user_id,
             metadata=successful_transaction,
         )
-        if amount > 0:
+        # ``_enable_transaction`` returns None when the transaction is missing
+        # or already active — skip the conversion event in that no-op case so
+        # webhook/retry replays don't double-emit.
+        if activation is not None and amount > 0:
             _track_billing_event(
                 "credit_topup_success",
                 user_id,
                 {
-                    "amount_cents": amount,
+                    "amount_credits": amount,
                     "top_up_type": top_up_type.value,
                 },
             )
@@ -1169,20 +1175,21 @@ class UserCredit(UserCreditBase):
             else:
                 new_transaction_key = None
 
-            await self._enable_transaction(
+            activation = await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
-            _track_billing_event(
-                "credit_topup_success",
-                credit_transaction.userId,
-                {
-                    "amount_cents": credit_transaction.amount,
-                    "top_up_type": "CHECKOUT",
-                },
-            )
+            if activation is not None:
+                _track_billing_event(
+                    "credit_topup_success",
+                    credit_transaction.userId,
+                    {
+                        "amount_credits": credit_transaction.amount,
+                        "top_up_type": "CHECKOUT",
+                    },
+                )
 
     async def get_credits(self, user_id: str) -> int:
         balance, _ = await self._get_credits(user_id)
@@ -2710,8 +2717,6 @@ def _track_billing_event(
         return
 
     try:
-        posthog.api_key = settings.secrets.posthog_api_key
-        posthog.host = settings.secrets.posthog_host
         posthog.capture(
             event=event,
             distinct_id=distinct_id,
@@ -2740,8 +2745,6 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
             await get_user_billing_cycle(user.id) or "monthly"
         )
 
-        posthog.api_key = settings.secrets.posthog_api_key
-        posthog.host = settings.secrets.posthog_host
         posthog.capture(
             event="subscription_payment_success",
             distinct_id=user.id,
