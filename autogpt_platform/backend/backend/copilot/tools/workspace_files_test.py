@@ -803,3 +803,56 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
         assert isinstance(result, ErrorResponse)
         assert "read_tool_result" not in result.message
         assert "@@agptfile" not in result.message
+
+    @pytest.mark.asyncio
+    async def test_redirect_wins_over_sdk_cwd_local_fallback(self):
+        """When ``sdk_cwd`` is set, the relative shorthand
+        ``tool-outputs/<id>.json`` resolves under it and would otherwise
+        pass the ``is_allowed_local_path`` check, dispatching to
+        ``_read_local_tool_result`` which fails with a generic "Path not
+        allowed" — defeating the whole point of the redirect.
+
+        Regression coverage: with ``sdk_cwd`` set, the relative-shorthand
+        redirect must still fire before the local-read fallback runs.
+        """
+        from backend.copilot.context import set_execution_context
+
+        # Override the autouse fixture that cleared sdk_cwd — we
+        # specifically want sdk_cwd set here to exercise the bug.
+        set_execution_context(
+            user_id="user-redirect-test",
+            session=None,
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-redirect-test",
+        )
+
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._read_local_tool_result",
+            ) as mock_local_read,
+        ):
+            result = await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path="tool-outputs/toolu_x.json",
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "@@agptfile" in result.message
+        # The local-read fallback must NOT have run — that's the bug
+        # this test guards against.
+        mock_local_read.assert_not_called()
