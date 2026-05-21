@@ -39,6 +39,7 @@ from openai.types import CompletionUsage
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
@@ -46,11 +47,14 @@ from backend.util.clients import get_openai_client
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  Same provider
-# as Flash ($0.10 / $0.40 per MTok vs $0.30 / $1.20 — ~3× cheaper) with JSON-mode
-# reliability that's more than enough for dry-run shape-matching.  Configurable
-# via ChatConfig.simulation_model (CHAT_SIMULATION_MODEL env var).
-_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash-lite"
+# Default simulator model — Claude Haiku 4.5 via the platform's OpenRouter
+# credential.  Dry-run isn't pure shape-matching for the Orchestrator block:
+# it picks tools and produces a finish message, so the substitute model's
+# reasoning quality affects how faithful the preview is.  Haiku 4.5 keeps
+# the substitute small/cheap while giving materially better tool-use
+# decisions than Flash-Lite.  Configurable via ChatConfig.simulation_model
+# (CHAT_SIMULATION_MODEL env var) — value must be a real LlmModel slug.
+_DEFAULT_SIMULATOR_MODEL = LlmModel.CLAUDE_4_5_HAIKU.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
