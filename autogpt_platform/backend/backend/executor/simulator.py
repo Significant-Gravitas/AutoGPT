@@ -427,7 +427,23 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # because OpenRouter's Anthropic-compat endpoint (which the
         # orchestrator's SDK mode hits when credentials are OPEN_ROUTER)
         # accepts both the snapshot and the OR slug.
-        sim_model = LlmModel(_simulator_model()).value
+        #
+        # Fall back to the default if the configured override is malformed
+        # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
+        # shouldn't take out every dry-run.  The default is asserted as
+        # ``LlmModel``-parseable by ``TestDefaultSimulatorModel``, so the
+        # fallback ``LlmModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
+        # unless someone breaks that pin too.
+        configured_sim_model = _simulator_model()
+        try:
+            sim_model = LlmModel(configured_sim_model).value
+        except ValueError:
+            logger.warning(
+                "Dry-run: invalid simulation model %r; falling back to default %r",
+                configured_sim_model,
+                _DEFAULT_SIMULATOR_MODEL,
+            )
+            sim_model = LlmModel(_DEFAULT_SIMULATOR_MODEL).value
 
         # Keep the original credentials dict in input_data so the block's
         # JSON schema validation passes (validate_data strips None values,

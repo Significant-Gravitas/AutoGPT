@@ -20,6 +20,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 from backend.blocks.llm import LlmModel
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _extract_cost_usd,
@@ -188,6 +189,38 @@ class TestPrepareDryRun:
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
 
+    def test_orchestrator_invalid_sim_model_override_falls_back_to_default(
+        self,
+    ) -> None:
+        """An invalid ``CHAT_SIMULATION_MODEL`` env value must not crash
+        ``prepare_dry_run`` — fall back to the default so dry-run keeps
+        working.  Without the guard, ``LlmModel('<garbage>')`` raises
+        ``ValueError`` and aborts every Orchestrator dry-run."""
+        with (
+            patch(
+                "backend.executor.simulator._get_platform_openrouter_key",
+                return_value="sk-or-test-key",
+            ),
+            patch(
+                "backend.executor.simulator._simulator_model",
+                return_value="not-a-real-model-slug",
+            ),
+        ):
+            result = prepare_dry_run(
+                OrchestratorBlock(),
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        # Must land on the default value, not the garbage override.
+        assert result["model"] == LlmModel(_DEFAULT_SIMULATOR_MODEL).value, (
+            "Invalid CHAT_SIMULATION_MODEL should fall back to default; "
+            f"got {result['model']!r}"
+        )
+
     def test_orchestrator_forces_built_in_execution_mode(self) -> None:
         """prepare_dry_run overrides execution_mode to BUILT_IN regardless of
         what the user picked.  Dry-run is a smoke check; we want it to stay
@@ -195,10 +228,6 @@ class TestPrepareDryRun:
         EXTENDED_THINKING Claude Agent SDK subprocess (which has its own
         Claude-only-model and env-var-auth constraints — every quirk there
         is another failure mode for the dry-run path)."""
-        from unittest.mock import patch
-
-        from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
-
         block = OrchestratorBlock()
         with patch(
             "backend.executor.simulator._get_platform_openrouter_key",
@@ -227,10 +256,6 @@ class TestPrepareDryRun:
         via the alias map at the Pydantic layer, but jsonschema enum
         validation (which runs *before* Pydantic) rejects.
         """
-        from unittest.mock import patch
-
-        from backend.blocks.orchestrator import OrchestratorBlock
-
         block = OrchestratorBlock()
         user_input = {
             "prompt": "test",
