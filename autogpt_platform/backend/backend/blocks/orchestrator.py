@@ -1701,7 +1701,21 @@ class OrchestratorBlock(Block):
             prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
         )
 
-        response_parts: list[str] = []
+        # ``final_response_parts`` is the agent's *final answer* — only the
+        # text from the last assistant message that has no tool calls.  We
+        # intentionally do NOT accumulate every assistant TextBlock across
+        # the SDK stream: those intermediate texts are narration between
+        # tool calls, not the composed answer the user wired into
+        # ``AgentOutputBlock``.  This matches BUILT_IN's behaviour where
+        # ``tool_call_loop`` only yields ``response.response_text`` once
+        # the model stops calling tools.  If the agent never produces a
+        # text-only message (e.g. it keeps calling tools until max
+        # iterations), ``final_response_parts`` stays empty and the
+        # ``finished`` output surfaces as an empty string — that's useful
+        # signal for dry-run / autopilot diagnostics ("the agent didn't
+        # compose a final answer; repair the prompt") rather than a
+        # transcript dump that masks the missing composition.
+        final_response_parts: list[str] = []
         conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
         total_completion_tokens = 0
@@ -1788,7 +1802,6 @@ class OrchestratorBlock(Block):
                             for content_block in sdk_msg.content:
                                 if isinstance(content_block, TextBlock):
                                     text_parts.append(content_block.text)
-                                    response_parts.append(content_block.text)
                                 elif isinstance(content_block, ToolUseBlock):
                                     raw_name = getattr(content_block, "name", "unknown")
                                     # Strip MCP prefix for readability in
@@ -1802,6 +1815,13 @@ class OrchestratorBlock(Block):
                                             ),
                                         }
                                     )
+                            # Capture the final answer: the last assistant
+                            # message that has only text (no tool calls)
+                            # wins.  See ``final_response_parts`` declaration
+                            # for the rationale.
+                            if text_parts and not tool_use_parts:
+                                final_response_parts = list(text_parts)
+
                             if text_parts or tool_use_parts:
                                 msg_content = "".join(text_parts)
                                 if tool_use_parts:
@@ -1894,7 +1914,7 @@ class OrchestratorBlock(Block):
             yield "error", str(sdk_error)
             return
 
-        response_text = "".join(response_parts)
+        response_text = "".join(final_response_parts)
 
         yield "finished", response_text
         yield "conversations", conversation
