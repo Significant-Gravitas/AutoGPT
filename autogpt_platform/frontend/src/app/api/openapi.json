@@ -12003,6 +12003,65 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "DreamDemotionSummaryResponse": {
+        "properties": {
+          "edge_uuid": { "type": "string", "title": "Edge Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "new_status": { "type": "string", "title": "New Status" },
+          "applied": { "type": "boolean", "title": "Applied", "default": true }
+        },
+        "type": "object",
+        "required": ["edge_uuid", "reason", "new_status"],
+        "title": "DreamDemotionSummaryResponse"
+      },
+      "DreamEntityInvalidationSummaryResponse": {
+        "properties": {
+          "entity_uuid": { "type": "string", "title": "Entity Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "edges_touched": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Touched"
+          }
+        },
+        "type": "object",
+        "required": ["entity_uuid", "reason"],
+        "title": "DreamEntityInvalidationSummaryResponse"
+      },
+      "DreamOperationsSnapshotResponse": {
+        "properties": {
+          "writes": {
+            "items": {
+              "$ref": "#/components/schemas/DreamWriteSummaryResponse"
+            },
+            "type": "array",
+            "title": "Writes"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/DreamWriteSummaryResponse"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "demotions": {
+            "items": {
+              "$ref": "#/components/schemas/DreamDemotionSummaryResponse"
+            },
+            "type": "array",
+            "title": "Demotions"
+          },
+          "entity_invalidations": {
+            "items": {
+              "$ref": "#/components/schemas/DreamEntityInvalidationSummaryResponse"
+            },
+            "type": "array",
+            "title": "Entity Invalidations"
+          }
+        },
+        "type": "object",
+        "title": "DreamOperationsSnapshotResponse"
+      },
       "DreamPassResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -12053,6 +12112,20 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Session Id"
           },
+          "operations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DreamOperationsSnapshotResponse"
+              },
+              { "type": "null" }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassUsageResponse" },
+              { "type": "null" }
+            ]
+          },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
@@ -12071,6 +12144,110 @@
         "required": ["user_id", "pass_id"],
         "title": "DreamPassResponse",
         "description": "Mirror of ``DreamPassResult`` from the dream orchestrator.\n\nKept duplicated rather than importing the source model so the\nadmin route stays loosely-coupled to the dream module's internals."
+      },
+      "DreamPassUsageResponse": {
+        "properties": {
+          "phases": {
+            "items": { "$ref": "#/components/schemas/DreamPhaseUsageResponse" },
+            "type": "array",
+            "title": "Phases"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Total Cost Usd"
+          },
+          "discount_applied": {
+            "type": "number",
+            "title": "Discount Applied",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "DreamPassUsageResponse"
+      },
+      "DreamPhaseUsageResponse": {
+        "properties": {
+          "phase": { "type": "string", "title": "Phase" },
+          "model": { "type": "string", "title": "Model" },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_creation_tokens": {
+            "type": "integer",
+            "title": "Cache Creation Tokens",
+            "default": 0
+          },
+          "cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": ["phase", "model"],
+        "title": "DreamPhaseUsageResponse"
+      },
+      "DreamWriteSummaryResponse": {
+        "properties": {
+          "edge_uuid": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Edge Uuid"
+          },
+          "content": { "type": "string", "title": "Content" },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": "real:global"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "active"
+          },
+          "source_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Episode Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["content"],
+        "title": "DreamWriteSummaryResponse"
       },
       "EntityListResponse": {
         "properties": {
