@@ -1044,6 +1044,15 @@ class UserCredit(UserCreditBase):
             user_id=user_id,
             metadata=successful_transaction,
         )
+        if amount > 0:
+            _track_billing_event(
+                "credit_topup_success",
+                user_id,
+                {
+                    "amount_cents": amount,
+                    "top_up_type": top_up_type.value,
+                },
+            )
 
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         if amount < 500 or amount % 100 != 0:
@@ -1165,6 +1174,14 @@ class UserCredit(UserCreditBase):
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
+            )
+            _track_billing_event(
+                "credit_topup_success",
+                credit_transaction.userId,
+                {
+                    "amount_cents": credit_transaction.amount,
+                    "top_up_type": "CHECKOUT",
+                },
             )
 
     async def get_credits(self, user_id: str) -> int:
@@ -1515,6 +1532,12 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         )
         if cancelled_count > 0:
             get_pending_subscription_change.cache_delete(user_id)
+            current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+            _track_billing_event(
+                "subscription_cancellation_scheduled",
+                user_id,
+                {"subscription_tier": current_tier.value},
+            )
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1959,8 +1982,10 @@ async def modify_stripe_subscription_for_tier(
         # Only catch actual DB/connection failures — letting KeyError,
         # AttributeError etc. propagate so programming errors surface in Sentry
         # instead of being silently masked as benign DB-write-swallow events.
+        db_flip_succeeded = False
         try:
             await set_subscription_tier(user_id, tier)
+            db_flip_succeeded = True
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
@@ -1976,6 +2001,19 @@ async def modify_stripe_subscription_for_tier(
             user_id,
             tier,
         )
+        # Only emit on real tier upgrade AND when the DB flip succeeded — the
+        # ``customer.subscription.updated`` webhook is the fallback emit when
+        # the DB flip fails, so gating here avoids double-firing on success.
+        if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
+            _track_billing_event(
+                "subscription_upgraded",
+                user_id,
+                {
+                    "previous_subscription_tier": current_tier.value,
+                    "subscription_tier": tier.value,
+                    "billing_cycle": billing_cycle,
+                },
+            )
         return True
     finally:
         get_pending_subscription_change.cache_delete(user_id)
@@ -2586,6 +2624,19 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    if is_tier_upgrade(current_tier, tier):
+        billing_cycle = (
+            metadata.get("billing_cycle") if isinstance(metadata, dict) else None
+        ) or await get_user_billing_cycle(user.id)
+        _track_billing_event(
+            "subscription_upgraded",
+            user.id,
+            {
+                "previous_subscription_tier": current_tier.value,
+                "subscription_tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
+        )
     # Tier changed — bust any cached pending-change view so the next
     # dashboard fetch reflects the new state immediately.
     get_pending_subscription_change.cache_delete(user.id)
@@ -2650,6 +2701,29 @@ def _invoice_subscription_id(invoice: dict) -> str:
                 return new_sub
     legacy = invoice.get("subscription")
     return legacy if isinstance(legacy, str) and legacy else ""
+
+
+def _track_billing_event(
+    event: str, distinct_id: str, properties: dict[str, Any]
+) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        posthog.api_key = settings.secrets.posthog_api_key
+        posthog.host = settings.secrets.posthog_host
+        posthog.capture(
+            event=event,
+            distinct_id=distinct_id,
+            properties=properties,
+        )
+    except Exception:
+        logger.warning(
+            "failed to track billing event %s for user %s",
+            event,
+            distinct_id,
+            exc_info=True,
+        )
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:

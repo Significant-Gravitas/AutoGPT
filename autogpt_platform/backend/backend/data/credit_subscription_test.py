@@ -12,6 +12,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
+    UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -123,6 +124,55 @@ async def test_sync_subscription_from_stripe_active():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_tracks_upgrade():
+    mock_user = _make_user(tier=SubscriptionTier.BASIC)
+    stripe_sub = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_pro_yearly"}}]},
+        "metadata": {"billing_cycle": "yearly"},
+    }
+    track_mock = MagicMock()
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+            return "price_pro_yearly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit._cleanup_stale_subscriptions", new_callable=AsyncMock
+        ),
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_upgraded"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "previous_subscription_tier": "BASIC",
+        "subscription_tier": "PRO",
+        "billing_cycle": "yearly",
+    }
 
 
 @pytest.mark.asyncio
@@ -471,6 +521,37 @@ async def test_cancel_stripe_subscription_cancels_active():
     ):
         await cancel_stripe_subscription("user-1")
         mock_modify.assert_called_once_with("sub_abc123", cancel_at_period_end=True)
+
+
+@pytest.mark.asyncio
+async def test_cancel_stripe_subscription_tracks_cancellation():
+    mock_user = _make_user_with_stripe("cus_123")
+    mock_user.subscription_tier = SubscriptionTier.PRO
+    track_mock = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit._cancel_customer_subscriptions",
+            new_callable=AsyncMock,
+            return_value=1,
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch.object(get_pending_subscription_change, "cache_delete"),
+    ):
+        result = await cancel_stripe_subscription("user-1")
+
+    assert result is True
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_cancellation_scheduled"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {"subscription_tier": "PRO"}
 
 
 @pytest.mark.asyncio
@@ -2042,6 +2123,96 @@ async def test_top_up_intent_references_product_id_when_flag_set():
     }
     # No product_data — that path is mutually exclusive with product reference.
     assert "product_data" not in price_data
+
+
+@pytest.mark.asyncio
+async def test_top_up_credits_tracks_success():
+    credit_system = UserCredit()
+    payment_method = MagicMock()
+    payment_method.id = "pm_123"
+    payment_intent = MagicMock()
+    payment_intent.status = "succeeded"
+    payment_intent.id = "pi_123"
+    track_mock = MagicMock()
+
+    with (
+        patch.object(
+            credit_system,
+            "_add_transaction",
+            new_callable=AsyncMock,
+            return_value=(0, "tx_123"),
+        ),
+        patch.object(credit_system, "_enable_transaction", new_callable=AsyncMock),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.stripe.PaymentMethod.list",
+            return_value=[payment_method],
+        ),
+        patch(
+            "backend.data.credit.stripe.PaymentIntent.create",
+            return_value=payment_intent,
+        ),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+    ):
+        await credit_system._top_up_credits("user-1", 500)
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "amount_cents": 500,
+        "top_up_type": "UNCATEGORIZED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_fulfill_checkout_tracks_credit_topup_success():
+    credit_system = UserCredit()
+    transaction = MagicMock()
+    transaction.transactionKey = "cs_test_topup"
+    transaction.userId = "user-1"
+    transaction.amount = 2500
+    checkout_session = stripe.checkout.Session.construct_from(
+        {
+            "id": "cs_test_topup",
+            "payment_status": "paid",
+            "payment_intent": stripe.PaymentIntent.construct_from(
+                {"id": "pi_test_topup"}, "k"
+            ),
+        },
+        "k",
+    )
+    track_mock = MagicMock()
+
+    with (
+        patch(
+            "backend.data.credit.CreditTransaction.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=transaction)),
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.retrieve",
+            return_value=checkout_session,
+        ),
+        patch.object(credit_system, "_enable_transaction", new_callable=AsyncMock),
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+    ):
+        await credit_system.fulfill_checkout(session_id="cs_test_topup")
+
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"] == {
+        "amount_cents": 2500,
+        "top_up_type": "CHECKOUT",
+    }
 
 
 @pytest.mark.asyncio
