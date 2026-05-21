@@ -12320,6 +12320,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -15517,6 +15523,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_created",
           "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
@@ -15921,25 +15928,49 @@
       "ScheduleSummary": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
           "name": { "type": "string", "title": "Name" },
-          "cron": { "type": "string", "title": "Cron" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
         },
         "type": "object",
         "required": [
           "schedule_id",
+          "kind",
           "name",
-          "cron",
           "timezone",
-          "next_run_time",
-          "graph_id",
-          "graph_version"
+          "next_run_time"
         ],
         "title": "ScheduleSummary",
-        "description": "Summary of a single schedule."
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
       },
       "SchedulesListResponse": {
         "properties": {
