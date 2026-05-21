@@ -313,3 +313,65 @@ class TestFormatContextEmptyWrapper:
         )
         result = _format_context(edges=[], episodes=[ep])
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Ratification sync hit-hook spawned from warm-context retrieval
+# ---------------------------------------------------------------------------
+
+
+class TestRatificationHitHookFiresFireAndForget:
+    """The hit-hook records warm-context hits + promotes tentative
+    edges inline. It must NOT block the retrieval response — the
+    chat turn cares about latency, the promotion can race the next
+    retrieval to apply."""
+
+    def test_spawn_helper_skips_empty_edge_list_no_task_created(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        created_tasks: list[str] = []
+
+        def fake_create_task(coro, name=None):
+            created_tasks.append(name or "")
+            coro.close()  # don't actually run the coroutine in test
+            return AsyncMock()
+
+        monkeypatch.setattr(context.asyncio, "create_task", fake_create_task)
+        context._spawn_ratification_hits("user-abc", edges=[])
+        assert created_tasks == []
+
+    def test_spawn_helper_creates_task_with_retrieved_uuids(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Edges with uuid attrs → fire-and-forget task scheduled with
+        all of their uuids. Edges missing a uuid are filtered out so
+        the hook never passes ``None`` to the ratification module."""
+        captured_calls: list[tuple[str, list[str]]] = []
+
+        async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+            captured_calls.append((user_id, edge_uuids))
+
+        from backend.copilot.dream import ratification as ratification_mod
+
+        monkeypatch.setattr(
+            ratification_mod, "try_ratify_on_hit", fake_try_ratify
+        )
+
+        # asyncio.create_task needs an event loop — exercise via
+        # run_until_complete instead of an actual task spawn.
+        async def driver():
+            edges = [
+                SimpleNamespace(uuid="edge-a"),
+                SimpleNamespace(uuid="edge-b"),
+                SimpleNamespace(uuid=None),  # filtered
+                SimpleNamespace(),  # no uuid attr at all → filtered
+            ]
+            context._spawn_ratification_hits("user-xyz", edges=edges)
+            # Yield once so the spawned task runs.
+            await asyncio.sleep(0)
+
+        asyncio.run(driver())
+        assert len(captured_calls) == 1
+        user_id, uuids = captured_calls[0]
+        assert user_id == "user-xyz"
+        assert uuids == ["edge-a", "edge-b"]

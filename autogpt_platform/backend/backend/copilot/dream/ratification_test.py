@@ -266,6 +266,126 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
 
 
 # ---------------------------------------------------------------------------
+# try_ratify_on_hit — sync hit-hook fired from warm-context retrieval
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_try_ratify_on_hit_empty_edge_list_returns_zero_without_redis_or_cypher(
+    mocker,
+):
+    """No edges retrieved → no Redis hit recording, no driver opened."""
+    record_spy = mocker.patch.object(
+        ratification_mod, "record_memory_hit", new=AsyncMock()
+    )
+    driver_spy = mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver")
+
+    promoted = await ratification_mod.try_ratify_on_hit("u1", [])
+
+    assert promoted == 0
+    record_spy.assert_not_called()
+    driver_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_try_ratify_on_hit_records_hits_for_every_retrieved_edge(mocker):
+    """Hit counters get bumped for ALL retrieved uuids — the Cypher
+    filter (status='tentative') decides which ones flip; the counter
+    is a separate signal the nightly sweep also reads."""
+    record_spy = AsyncMock()
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=record_spy)
+    # Driver returns no promotions (everything already-active).
+    driver = _make_driver(records_for_list=[], records_for_promote=[])
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
+    )
+
+    await ratification_mod.try_ratify_on_hit(
+        "u1", ["edge-a", "edge-b", "edge-c"]
+    )
+
+    assert record_spy.await_count == 3
+    called_uuids = [c.args[1] for c in record_spy.await_args_list]
+    assert called_uuids == ["edge-a", "edge-b", "edge-c"]
+
+
+@pytest.mark.asyncio
+async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker):
+    """Cypher's WHERE clause filters to status='tentative' only — the
+    returned count is the number that actually flipped, not the
+    number we attempted."""
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
+
+    promote_results = iter([
+        # First uuid promotes (was tentative)
+        [{"uuid": "edge-1"}],
+        # Second uuid: already active, Cypher WHERE filters → no row
+        [],
+        # Third uuid promotes
+        [{"uuid": "edge-3"}],
+    ])
+
+    driver = MagicMock()
+    driver.close = AsyncMock(return_value=None)
+
+    async def fake_execute(query: str, **kwargs):
+        return (list(next(promote_results)), None, None)
+
+    driver.execute_query = AsyncMock(side_effect=fake_execute)
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
+    )
+
+    promoted = await ratification_mod.try_ratify_on_hit(
+        "u1", ["edge-1", "edge-2", "edge-3"]
+    )
+
+    assert promoted == 2
+
+
+@pytest.mark.asyncio
+async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
+    """One bad Cypher call mustn't poison the rest of the retrieved
+    edges — log + continue."""
+    mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
+
+    calls = {"n": 0}
+
+    async def fake_execute(query: str, **kwargs):
+        calls["n"] += 1
+        if kwargs.get("uuid") == "edge-poison":
+            raise RuntimeError("simulated cypher explosion")
+        return ([{"uuid": kwargs.get("uuid")}], None, None)
+
+    driver = MagicMock()
+    driver.close = AsyncMock(return_value=None)
+    driver.execute_query = AsyncMock(side_effect=fake_execute)
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
+    )
+
+    promoted = await ratification_mod.try_ratify_on_hit(
+        "u1", ["edge-a", "edge-poison", "edge-c"]
+    )
+
+    # The poison edge errored; the others promoted.
+    assert promoted == 2
+    assert calls["n"] == 3  # all three attempted; one raised
+
+
+@pytest.mark.asyncio
+async def test_try_ratify_on_hit_empty_user_id_is_noop(mocker):
+    record_spy = mocker.patch.object(
+        ratification_mod, "record_memory_hit", new=AsyncMock()
+    )
+    driver_spy = mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver")
+    promoted = await ratification_mod.try_ratify_on_hit("", ["edge-a"])
+    assert promoted == 0
+    record_spy.assert_not_called()
+    driver_spy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

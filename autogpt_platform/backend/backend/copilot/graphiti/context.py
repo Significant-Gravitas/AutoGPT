@@ -81,10 +81,42 @@ async def _fetch(user_id: str, message: str) -> str | None:
     )
     edges = edge_results.edges if edge_results is not None else []
 
+    # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
+    # that's currently ``status='tentative'`` gets promoted to
+    # ``active`` inline, and every retrieved edge bumps its
+    # warm-context hit counter. Fire-and-forget so the chat turn
+    # never blocks on Redis or FalkorDB writes.
+    if edges:
+        _spawn_ratification_hits(user_id, edges)
+
     if not edges and not episodes:
         return None
 
     return _format_context(edges, episodes)
+
+
+def _spawn_ratification_hits(user_id: str, edges) -> None:
+    """Fire-and-forget the ratification hit-hook for retrieved edges.
+
+    Imports lazily so the dream/ratification module isn't pulled into
+    every retrieval boot path; keeps the cold-start cost zero for
+    users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
+    combination.
+    """
+    edge_uuids = [
+        uuid
+        for uuid in (getattr(e, "uuid", None) for e in edges)
+        if uuid
+    ]
+    if not edge_uuids:
+        return
+
+    from backend.copilot.dream.ratification import try_ratify_on_hit
+
+    asyncio.create_task(
+        try_ratify_on_hit(user_id, edge_uuids),
+        name=f"ratify-hits-{user_id[:12]}",
+    )
 
 
 def _format_context(edges, episodes) -> str | None:

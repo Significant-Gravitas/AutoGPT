@@ -38,15 +38,15 @@ from .ratification_hits import (
 
 logger = logging.getLogger(__name__)
 
-# Re-export so callers (scheduler wrapper, future warm-context wiring)
-# only have to know one module name. Trailing-comma tuple silences
-# unused-import lint for the re-exports.
+# Re-export so callers (scheduler wrapper, warm-context retrieval, the
+# nightly batch fan-out) only have to know one module name.
 __all__ = (
     "HIT_TRACKER_KEY_PREFIX",
     "RATIFICATION_GRACE_PERIOD",
     "RatificationResult",
     "record_memory_hit",
     "run_ratification_pass",
+    "try_ratify_on_hit",
 )
 
 
@@ -236,6 +236,108 @@ async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     """
     query = """
     MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+    SET e.status = 'active', e.ratified_at = datetime()
+    RETURN e.uuid AS uuid
+    """
+    result = await driver.execute_query(query, uuid=edge_uuid)
+    records = result[0] if result else []
+    return bool(records)
+
+
+async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
+    """Record warm-context hits and promote any tentative edges inline.
+
+    Called from warm-context retrieval (``graphiti/context.py``) once
+    per turn with the list of edge uuids that landed in the user's
+    context. For each uuid we:
+
+      1. Bump the ``mem:hits:{user_id}:{edge_uuid}`` Redis counter
+         (so the nightly ratification sweep also sees the hit and
+         agrees on promotion if Cypher fails here).
+      2. Issue a targeted Cypher ``SET status='active'`` filtered by
+         ``status='tentative' AND expired_at IS NULL`` — already-active
+         and already-retracted edges are no-ops via the WHERE clause.
+
+    Returns the count of edges this call actually promoted. The
+    function is **safe to fire-and-forget** from the retrieval path:
+    failures are caught and logged, never raised; the user's chat
+    turn is never blocked on this.
+
+    Per the architecture plan, this is the sync hit-time half of P0.4
+    ratification. The nightly batch's ratification sweep still owns
+    grace-period supersession; with this hook landing, the sweep
+    rarely promotes (most tentatives get hit at least once within a
+    day) and primarily cleans up the truly-unused.
+    """
+    if not edge_uuids:
+        return 0
+    if not user_id:
+        return 0
+
+    # Step 1: bump hit counters (Redis, best-effort, swallows errors).
+    # Done before the Cypher promotion so the counter survives even
+    # when the promotion path fails.
+    for uuid in edge_uuids:
+        await record_memory_hit(user_id, uuid)
+
+    # Step 2: targeted Cypher promotion. We open our own driver here
+    # because callers are warm-context retrieval call sites that have
+    # a higher-level graphiti client but no raw driver — and we want
+    # the brief write-lock semantics to be local to this function.
+    try:
+        group_id = derive_group_id(user_id)
+    except ValueError as exc:
+        logger.debug(
+            "try_ratify_on_hit: invalid user_id %s: %s", user_id[:12], exc
+        )
+        return 0
+
+    promoted_count = 0
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+    )
+    try:
+        for uuid in edge_uuids:
+            try:
+                if await _promote_if_tentative(driver, uuid):
+                    promoted_count += 1
+            except Exception:
+                # Per-edge: log + continue. One bad uuid mustn't poison
+                # the rest of the retrieved set.
+                logger.debug(
+                    "try_ratify_on_hit: Cypher failed for user %s edge %s",
+                    user_id[:12],
+                    uuid,
+                    exc_info=True,
+                )
+    finally:
+        await driver.close()
+
+    if promoted_count:
+        logger.info(
+            "Ratification hit-hook promoted %d edge(s) for user %s",
+            promoted_count,
+            user_id[:12],
+        )
+    return promoted_count
+
+
+async def _promote_if_tentative(
+    driver: AutoGPTFalkorDriver, edge_uuid: str
+) -> bool:
+    """``_promote_edge`` with a ``status='tentative'`` guard.
+
+    Distinct from ``_promote_edge`` because the hit-hook fires on
+    EVERY retrieved edge, including already-active ones — we don't
+    want to overwrite an active edge's ``ratified_at`` with a fresh
+    timestamp on every retrieval. The guard makes the call idempotent.
+    """
+    query = """
+    MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+    WHERE e.status = 'tentative' AND e.expired_at IS NULL
     SET e.status = 'active', e.ratified_at = datetime()
     RETURN e.uuid AS uuid
     """
