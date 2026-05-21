@@ -19,6 +19,7 @@ from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
+from backend.blocks.llm import LlmModel
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _extract_cost_usd,
@@ -167,6 +168,9 @@ class TestPrepareDryRun:
         assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
+        # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+        # Pydantic input validation accepts it.
+        assert LlmModel(result["model"]) is not None
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
@@ -567,10 +571,16 @@ def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
 
 class TestDefaultSimulatorModel:
     """Pin the default model — anyone flipping this without a cost review
-    trips the test."""
+    trips the test, and anyone setting it to a non-enum value fails the
+    LlmModel parseability check (the bug class behind SECRT-2368)."""
 
-    def test_default_is_flash_lite(self) -> None:
-        assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
+    def test_default_is_haiku_4_5(self) -> None:
+        assert _DEFAULT_SIMULATOR_MODEL == "claude-haiku-4-5-20251001"
+
+    def test_default_parses_as_llm_model(self) -> None:
+        # OrchestratorBlock.Input.model is typed as LlmModel and rejects
+        # any default that isn't an enum member — keep this guard tight.
+        assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.CLAUDE_4_5_HAIKU
 
 
 class TestExtractCostUsd:
