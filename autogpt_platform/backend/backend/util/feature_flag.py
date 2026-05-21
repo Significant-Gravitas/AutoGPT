@@ -79,6 +79,14 @@ class Flag(str, Enum):
     # external network calls when this flag is off.
     DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check"
 
+    # Orchestrator-level kill switch for the web-fact-check hook
+    # introduced alongside the P0.5 scaffolding. Distinct from
+    # ``DREAM_PASS_WEB_FACT_CHECK`` so the hook can be wired into the
+    # orchestrator without auto-running on every dream pass before a
+    # search backend is bound — flip this on per-user once a backend
+    # is configured.
+    DREAM_WEB_FACT_CHECK_ENABLED = "dream-web-fact-check-enabled"
+
     # Per-feature gate for the cascading-expiry helper
     # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
     # dream pass may demote every ``:RELATES_TO`` edge directly

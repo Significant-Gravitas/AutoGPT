@@ -22,7 +22,6 @@ from .models import BatchRequest, BatchResult, BatchStatus, BatchSubmission
 from .openai_provider import OpenAIBatchProvider
 from .provider import BatchProvider, NullBatchProvider
 
-
 # ---------------------------------------------------------------------------
 # Model round-trips
 # ---------------------------------------------------------------------------
@@ -66,9 +65,7 @@ async def test_null_provider_submit_reports_failed_status_with_empty_batch_id():
     """The Null provider's contract: never succeed, fail in a way the
     orchestrator can read structurally (no exception)."""
     provider = NullBatchProvider()
-    sub = await provider.submit(
-        [BatchRequest(custom_id="x", model="m")]
-    )
+    sub = await provider.submit([BatchRequest(custom_id="x", model="m")])
     assert sub.status == BatchStatus.FAILED
     assert sub.provider_batch_id == ""
     assert sub.provider == "null"
