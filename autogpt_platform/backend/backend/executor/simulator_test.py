@@ -188,6 +188,37 @@ class TestPrepareDryRun:
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
 
+    def test_orchestrator_forces_built_in_execution_mode(self) -> None:
+        """prepare_dry_run overrides execution_mode to BUILT_IN regardless of
+        what the user picked.  Dry-run is a smoke check; we want it to stay
+        on the simpler OpenAI-SDK-with-tool-calling path and avoid the
+        EXTENDED_THINKING Claude Agent SDK subprocess (which has its own
+        Claude-only-model and env-var-auth constraints — every quirk there
+        is another failure mode for the dry-run path)."""
+        from unittest.mock import patch
+
+        from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            result = prepare_dry_run(
+                block,
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        assert result["execution_mode"] == ExecutionMode.BUILT_IN.value, (
+            f"prepare_dry_run must force BUILT_IN to keep dry-run off the SDK "
+            f"path; got {result['execution_mode']!r}"
+        )
+
     def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
         """The injected dry-run input must pass OrchestratorBlock.validate_data.
 
