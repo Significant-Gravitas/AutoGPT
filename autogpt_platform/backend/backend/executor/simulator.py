@@ -39,6 +39,7 @@ from openai.types import CompletionUsage
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
@@ -411,7 +412,22 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # untouched so a tiny bounded cap was asymmetric anyway.
         original = input_data.get("agent_mode_max_iterations", 0)
         max_iters = min(original, 10) if original != 0 else 0
-        sim_model = _simulator_model()
+        # Resolve the configured simulator model (typically an OpenRouter
+        # slug like "anthropic/claude-haiku-4-5") to its canonical
+        # ``LlmModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
+        # to do this BEFORE injecting into ``input["model"]`` because the
+        # block runs through ``validate_data`` → ``jsonschema.validate``
+        # before Pydantic gets the value, and the JSON Schema's ``enum``
+        # is the literal list of ``LlmModel.value``s — the
+        # ``_OPENROUTER_ALIASES`` map in ``LlmModel._missing_`` does NOT
+        # surface in the generated schema, so the OR-slug is rejected
+        # with ``"'<slug>' is not one of [...]"``.  After this
+        # translation, the OrchestratorBlock receives a model identifier
+        # that both validators accept; the OR-routing still works
+        # because OpenRouter's Anthropic-compat endpoint (which the
+        # orchestrator's SDK mode hits when credentials are OPEN_ROUTER)
+        # accepts both the snapshot and the OR slug.
+        sim_model = LlmModel(_simulator_model()).value
 
         # Keep the original credentials dict in input_data so the block's
         # JSON schema validation passes (validate_data strips None values,

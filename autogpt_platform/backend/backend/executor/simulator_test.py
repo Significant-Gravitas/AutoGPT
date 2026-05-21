@@ -171,10 +171,63 @@ class TestPrepareDryRun:
         # Simulation model must parse as a real LlmModel so OrchestratorBlock's
         # Pydantic input validation accepts it.
         assert LlmModel(result["model"]) is not None
+        # The injected model must be a canonical LlmModel value (string equal
+        # to one of the enum's ``.value``s), not an OpenRouter alias slug —
+        # OrchestratorBlock.validate_data → jsonschema only accepts literal
+        # ``LlmModel.value``s in the schema's ``enum``, and the alias map
+        # in ``LlmModel._missing_`` does not surface in the generated
+        # JSON Schema.  Anything else trips
+        # ``"'<slug>' is not one of [...]"`` at runtime.
+        canonical_values = {m.value for m in LlmModel}
+        assert result["model"] in canonical_values, (
+            f"prepare_dry_run injected non-canonical model {result['model']!r}; "
+            f"jsonschema validation will reject it"
+        )
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
+
+    def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
+        """The injected dry-run input must pass OrchestratorBlock.validate_data.
+
+        Pinning this prevents the SECRT-2368 follow-up bug class where
+        prepare_dry_run injects an OpenRouter slug that LlmModel resolves
+        via the alias map at the Pydantic layer, but jsonschema enum
+        validation (which runs *before* Pydantic) rejects.
+        """
+        from unittest.mock import patch
+
+        from backend.blocks.orchestrator import OrchestratorBlock
+
+        block = OrchestratorBlock()
+        user_input = {
+            "prompt": "test",
+            "model": LlmModel.CLAUDE_4_7_OPUS.value,
+            "credentials": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "provider": "open_router",
+                "type": "api_key",
+            },
+            "agent_mode_max_iterations": 1,
+            "execution_mode": "built_in",
+            "multiple_tool_calls": False,
+            "max_tokens": 50,
+            "retry": 0,
+        }
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            dry_input = prepare_dry_run(block, user_input)
+        assert dry_input is not None
+        # Strip simulator-internal markers before validating, just like
+        # manager.py does before calling Input(**...).
+        validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
+        err = block.input_schema.validate_data(validation_input)
+        assert err is None, (
+            f"prepare_dry_run produced input that fails jsonschema validation: {err}"
+        )
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
