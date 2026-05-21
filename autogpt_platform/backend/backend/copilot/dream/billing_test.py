@@ -18,7 +18,6 @@ from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from . import billing as billing_mod
 from .schemas import PhaseUsage
 
-
 # ---------------------------------------------------------------------------
 # check_dream_budget
 # ---------------------------------------------------------------------------

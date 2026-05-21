@@ -148,12 +148,16 @@ async def record_phase_cost(
     card). Matches ``persist_and_record_usage``'s contract: tokens
     without cost still log but don't charge the rate-limit counter.
     """
-    if phase_usage.cost_usd is None and (
-        phase_usage.input_tokens
-        + phase_usage.output_tokens
-        + phase_usage.cache_read_tokens
-        + phase_usage.cache_creation_tokens
-    ) == 0:
+    if (
+        phase_usage.cost_usd is None
+        and (
+            phase_usage.input_tokens
+            + phase_usage.output_tokens
+            + phase_usage.cache_read_tokens
+            + phase_usage.cache_creation_tokens
+        )
+        == 0
+    ):
         return
 
     provider = _PROVIDER_BY_PATH.get(execution_path, "open_router")

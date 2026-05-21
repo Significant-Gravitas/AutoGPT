@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 from .fetch import DreamInput
+from .staleness import identify_stale_candidates
 
 # Hard cap shared across phases — phase 3 must reject demotion lists
 # longer than this regardless of what phase 1/2 produced. Mirrors the
@@ -166,9 +167,18 @@ SANITIZE_SYSTEM = (
     f" * AT MOST {MAX_WRITES_PER_PASS} writes.\n"
     f" * AT MOST {MAX_PROPOSALS_PER_PASS} proposals.\n"
     f" * AT MOST {MAX_DEMOTIONS_PER_PASS} demotions per pass. Demotions "
-    "are surgical — only demote a fact when a consolidated fact or a "
-    "recombination proposal directly contradicts it, or when it is "
-    "obviously stale.\n"
+    "are surgical — only demote a fact when (a) a consolidated fact or "
+    "recombination proposal directly contradicts it, (b) it appears in "
+    "the stale-fact candidates list below AND general knowledge tells "
+    "you it has gone stale, or (c) the user has clearly retracted it.\n"
+    " * STALE-FACT GUARDRAIL: the candidates list flags facts whose "
+    "phrasing suggests they go stale fast (pricing, leadership, "
+    "model versions, 'best'/'current'/'latest' claims). It is NOT a "
+    "demote-on-sight list — stable facts can match the heuristics by "
+    "coincidence (e.g. 'user's birthday is March 5' is dated but not "
+    "stale). For each candidate, demote only when general knowledge or "
+    "a phase-1 consolidated fact contradicts it. When in doubt, "
+    "preserve.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "
@@ -188,6 +198,28 @@ SANITIZE_SYSTEM = (
 )
 
 
+def _format_stale_candidates(input_bundle: DreamInput) -> str:
+    """Render the staleness-heuristic candidate list for the sanitize prompt.
+
+    ``identify_stale_candidates`` returns ``(fact, score)`` ordered by
+    descending score so the most-suspect candidates render first when
+    the prompt is near its budget. Use the explicit demotion reason
+    string ``"stale_fact"`` so apply.py's audit trail matches the
+    spec's reason enumeration.
+    """
+    candidates = identify_stale_candidates(input_bundle.facts)
+    if not candidates:
+        return "(no stale-fact candidates flagged this pass)"
+    lines: list[str] = []
+    for fact, score in candidates:
+        lines.append(
+            f"- uuid={fact.uuid} score={score:.2f} "
+            f"created_at={fact.created_at or '?'}: "
+            f"{(fact.fact or '').strip()}"
+        )
+    return "\n".join(lines)
+
+
 def build_sanitize_prompt(
     input_bundle: DreamInput,
     consolidated_json: str,
@@ -201,6 +233,8 @@ def build_sanitize_prompt(
         + recombined_json
         + "\n\n## Known fact uuids (only these are valid demotion targets)\n"
         + json.dumps(known_fact_uuids)
+        + "\n\n## Stale-fact candidates (heuristic flags — verify before demoting)\n"
+        + _format_stale_candidates(input_bundle)
         + "\n\n## Active facts (for context when deciding demotions)\n"
         + _format_facts(input_bundle)
     )

@@ -115,6 +115,82 @@ def test_sanitize_prompt_includes_known_fact_uuids_for_demotion_guard():
     assert str(MAX_WRITES_PER_PASS) in sys
 
 
+def test_sanitize_prompt_surfaces_stale_fact_candidates():
+    """The staleness heuristics flag candidates for the sanitizer to
+    judge. If this section drops out of the prompt, P0.3a fails
+    silently — the sanitizer would never see the candidates and
+    couldn't issue stale-fact demotions even when warranted."""
+    bundle = DreamInput(
+        user_id="u-1",
+        group_id="g-1",
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        facts=[
+            # Stale candidate — fires the version + recency heuristics.
+            FactRow(
+                uuid="stale-1",
+                source=None,
+                target=None,
+                name=None,
+                fact="GPT-4 is the best LLM available",
+                scope="real:global",
+                confidence=0.8,
+                status="active",
+                created_at="2024-01-01T00:00:00Z",
+            ),
+            # Stable fact — fires no heuristics.
+            FactRow(
+                uuid="stable-1",
+                source=None,
+                target=None,
+                name=None,
+                fact="user's birthday is March 5",
+                scope="real:global",
+                confidence=0.9,
+                status="active",
+                created_at="2024-01-01T00:00:00Z",
+            ),
+        ],
+        known_fact_uuids={"stale-1", "stable-1"},
+    )
+    msgs = build_sanitize_prompt(bundle, "{}", "{}")
+    user_body = msgs[1]["content"]
+    assert "Stale-fact candidates" in user_body
+    assert "uuid=stale-1" in user_body
+    # Guardrail: the stable fact must NOT appear as a candidate
+    assert (
+        "uuid=stable-1"
+        not in user_body.split("Stale-fact candidates")[1].split("Active facts")[0]
+    )
+
+
+def test_sanitize_prompt_emits_no_stale_candidates_placeholder_when_clean():
+    """Clean fact set → placeholder text, not a missing section. The
+    sanitizer's prompt structure must be stable across runs."""
+    bundle = DreamInput(
+        user_id="u",
+        group_id="g",
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        facts=[
+            FactRow(
+                uuid="stable",
+                source=None,
+                target=None,
+                name=None,
+                fact="user prefers dark mode",
+                scope="real:global",
+                confidence=0.9,
+                status="active",
+                created_at=None,
+            ),
+        ],
+        known_fact_uuids={"stable"},
+    )
+    msgs = build_sanitize_prompt(bundle, "{}", "{}")
+    assert "(no stale-fact candidates flagged this pass)" in msgs[1]["content"]
+
+
 def test_prompts_tolerate_empty_inputs():
     """A bundle with no episodes / facts / sessions still produces valid
     prompts — the model should answer with an empty list."""
