@@ -1592,7 +1592,10 @@ class TestLlmModelMissingHandler:
         validation fails. Catches the drift class where a new snapshot-
         dated Claude member is added without updating ``_OPENROUTER_ALIASES``.
         """
-        snapshot_re = re.compile(r"^claude-(.+)-\d{8}$")
+        # Capture the full ``claude-...`` base so the OpenRouter slug is
+        # constructed correctly: ``claude-haiku-4-5-20251001`` →
+        # ``anthropic/claude-haiku-4-5`` (NOT ``anthropic/haiku-4-5``).
+        snapshot_re = re.compile(r"^(claude-.+)-\d{8}$")
         for member in llm.LlmModel:
             match = snapshot_re.match(member.value)
             if match is None:
