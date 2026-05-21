@@ -1043,6 +1043,144 @@ async def test_prepare_block_file_ref_expansion_error() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Null credential-field normalisation tests
+# ---------------------------------------------------------------------------
+
+
+def _make_block_with_cred_field(
+    field_name: str = "credentials",
+) -> MagicMock:
+    """Simple block that declares one credential-typed input field."""
+    block = _make_simple_block(
+        required=["term"],
+        properties={
+            "term": {"type": "string"},
+            field_name: {"type": "object"},
+        },
+    )
+    block.input_schema.get_credentials_fields.return_value = {
+        field_name: MagicMock()
+    }
+    return block
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_credentials_field_stripped() -> None:
+    """Passing credentials=None is equivalent to omitting the field entirely."""
+    block = _make_block_with_cred_field()
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"term": "hello", "credentials": None},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+            dry_run=False,
+        )
+    assert isinstance(result, BlockPreparation)
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_credentials_same_as_absent() -> None:
+    """credentials=None and no credentials key produce identical results."""
+    block = _make_block_with_cred_field()
+    excl_ids, excl_types = _patch_excluded()
+
+    async def _run(input_data: dict):
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            excl_ids,
+            excl_types,
+            patch(
+                "backend.copilot.tools.helpers.resolve_block_credentials",
+                AsyncMock(return_value=({}, [])),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.expand_file_refs_in_args",
+                AsyncMock(side_effect=lambda d, *a, **kw: d),
+            ),
+        ):
+            return await prepare_block_for_execution(
+                block_id="blk-1",
+                input_data=input_data,
+                user_id=_PREP_USER,
+                session=_make_prep_session(),
+                session_id=_PREP_SESSION,
+                dry_run=False,
+            )
+
+    result_absent = await _run({"term": "hello"})
+    result_null = await _run({"term": "hello", "credentials": None})
+    assert type(result_absent) is type(result_null)
+    assert isinstance(result_absent, BlockPreparation)
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
+    """Null on a regular (non-credential) field is left intact."""
+    block = _make_block_with_cred_field()
+    # Override schema to also include a non-credential nullable field
+    block.input_schema.jsonschema.return_value = {
+        "type": "object",
+        "properties": {
+            "term": {"type": "string"},
+            "optional_note": {"type": ["string", "null"]},
+            "credentials": {"type": "object"},
+        },
+        "required": ["term"],
+    }
+    excl_ids, excl_types = _patch_excluded()
+    captured: list[dict] = []
+
+    async def _capture_resolve(user_id, block, input_data):
+        captured.append(dict(input_data))
+        return {}, []
+
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            side_effect=_capture_resolve,
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"term": "hello", "optional_note": None, "credentials": None},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+            dry_run=False,
+        )
+
+    assert len(captured) == 1
+    seen = captured[0]
+    # credentials (credential field) should have been stripped
+    assert "credentials" not in seen
+    # optional_note (non-credential field) must remain
+    assert "optional_note" in seen
+    assert seen["optional_note"] is None
+
+
+# ---------------------------------------------------------------------------
 # Auto-credentials (Google Drive picker) regression tests for execute_block
 # ---------------------------------------------------------------------------
 
