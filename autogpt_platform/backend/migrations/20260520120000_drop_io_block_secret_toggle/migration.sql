@@ -1,7 +1,8 @@
--- Drop `secret` and `value` keys from `constantInput` on AgentInput* /
--- AgentOutput nodes that have `secret = true`. The `secret` key is no
--- longer part of the block schema, so any persisted `value` behind it
--- is orphaned. Affected users were notified ahead of this migration.
+-- For AgentInput* / AgentOutput nodes where `constantInput.secret = true`,
+-- drop both the `secret` key (no longer part of the block schema) and
+-- the `value` key (the default value the user explicitly marked as
+-- secret, which would otherwise become visible without the masking
+-- toggle).
 --
 -- Block IDs below cover the AgentInput base block, every subclass
 -- declared in `backend/blocks/io.py`, and the AgentOutput block.
