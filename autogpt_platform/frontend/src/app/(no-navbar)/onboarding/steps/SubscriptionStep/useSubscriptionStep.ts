@@ -12,6 +12,7 @@ import {
   type PlanKey,
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
+import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -26,7 +27,6 @@ interface CheckoutResponse {
 }
 
 export function useSubscriptionStep() {
-  const billing = useOnboardingWizardStore((s) => s.selectedBilling);
   const setSelectedBilling = useOnboardingWizardStore(
     (s) => s.setSelectedBilling,
   );
@@ -39,6 +39,7 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
+  const { billing, plans } = useSubscriptionPricingExperiment();
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.
@@ -126,6 +127,7 @@ export function useSubscriptionStep() {
   return {
     billing,
     setBilling: setSelectedBilling,
+    plans,
     country,
     isYearly,
     handlePlanSelect,

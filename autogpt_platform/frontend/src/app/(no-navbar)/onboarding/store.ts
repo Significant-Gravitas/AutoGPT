@@ -13,6 +13,7 @@ interface OnboardingWizardState {
   otherPainPoint: string;
   selectedPlan: string | null;
   selectedBilling: "monthly" | "yearly";
+  hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
   setName(name: string): void;
   setRole(role: string): void;
@@ -21,6 +22,7 @@ interface OnboardingWizardState {
   setOtherPainPoint(otherPainPoint: string): void;
   setSelectedPlan(plan: string): void;
   setSelectedBilling(billing: "monthly" | "yearly"): void;
+  applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;
   nextStep(): void;
   prevStep(): void;
@@ -39,6 +41,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       otherPainPoint: "",
       selectedPlan: null,
       selectedBilling: "yearly",
+      hasUserSelectedBilling: false,
       selectedCountryCode: "US",
       setName(name) {
         set({ name });
@@ -68,7 +71,12 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
         set({ selectedPlan: plan });
       },
       setSelectedBilling(billing) {
-        set({ selectedBilling: billing });
+        set({ selectedBilling: billing, hasUserSelectedBilling: true });
+      },
+      applyPricingExperimentBilling(billing) {
+        set((state) =>
+          state.hasUserSelectedBilling ? state : { selectedBilling: billing },
+        );
       },
       setSelectedCountryCode(code) {
         set({ selectedCountryCode: code });
@@ -96,6 +104,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
           otherPainPoint: "",
           selectedPlan: null,
           selectedBilling: "yearly",
+          hasUserSelectedBilling: false,
           selectedCountryCode: "US",
         });
       },
@@ -128,6 +137,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
         painPoints: state.painPoints,
         otherPainPoint: state.otherPainPoint,
         selectedBilling: state.selectedBilling,
+        hasUserSelectedBilling: state.hasUserSelectedBilling,
         selectedCountryCode: state.selectedCountryCode,
       }),
     },
