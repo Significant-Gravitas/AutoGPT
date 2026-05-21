@@ -237,9 +237,7 @@ def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
     the *actual* matched SDK path (not just ``bash``/``cat``) so the
     model knows which fragment of its command tripped the redirect.
     """
-    fragment = (
-        _extract_offending_segment(path_or_command) if path_or_command else ""
-    )
+    fragment = _extract_offending_segment(path_or_command) if path_or_command else ""
     return (
         "This path lives in the Claude Agent SDK's host-side "
         "tool-results directory, which is not mounted into the bash "
