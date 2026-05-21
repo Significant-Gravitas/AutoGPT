@@ -8,6 +8,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
+from collections.abc import Mapping
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
@@ -116,21 +117,6 @@ class LlmModelMeta(EnumMeta):
     pass
 
 
-# OpenRouter exposes Anthropic models under canonical ``anthropic/<model>``
-# slugs that drop the snapshot-date suffix Anthropic's own API uses
-# (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``).  The
-# generic provider-prefix strip in ``_missing_`` can't reverse the date
-# truncation, so map the OpenRouter slugs to the canonical direct-Anthropic
-# enum values here.  Only models that exist on OpenRouter need entries; the
-# newer 4.6/4.7 enum values already lack a snapshot date so the prefix
-# strip alone is enough for them.
-_OPENROUTER_ALIASES: dict[str, str] = {
-    "anthropic/claude-haiku-4-5": "claude-haiku-4-5-20251001",
-    "anthropic/claude-opus-4-5": "claude-opus-4-5-20251101",
-    "anthropic/claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
-}
-
-
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
@@ -142,17 +128,16 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
            identifier carries a snapshot suffix that the OpenRouter slug
            drops — e.g. ``anthropic/claude-haiku-4-5`` ↔ enum value
            ``claude-haiku-4-5-20251001``.  Looked up via
-           ``_OPENROUTER_ALIASES``.
+           ``_OPENROUTER_ALIASES`` (defined below the class so it can hold
+           ``LlmModel`` members directly).
         2. Generic provider prefix strip — e.g.
            ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
         """
         if not isinstance(value, str):
             return None
-        if value in _OPENROUTER_ALIASES:
-            try:
-                return cls(_OPENROUTER_ALIASES[value])
-            except ValueError:
-                return None
+        alias = _OPENROUTER_ALIASES.get(value)
+        if alias is not None:
+            return alias
         if "/" in value:
             stripped = value.split("/", 1)[1]
             try:
@@ -292,6 +277,24 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @property
     def max_output_tokens(self) -> int | None:
         return self.metadata.max_output_tokens
+
+
+# OpenRouter exposes Anthropic models under canonical ``anthropic/<model>``
+# slugs that drop the snapshot-date suffix Anthropic's own API uses
+# (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
+# generic provider-prefix strip in ``_missing_`` can't reverse the date
+# truncation, so map the OpenRouter slugs to ``LlmModel`` members here.
+# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
+# suffix need entries; values without a snapshot (4.6/4.7+) are already
+# covered by the prefix-strip path alone. Stored as ``LlmModel`` instances
+# (not strings) so a rename or snapshot rotation on the enum follows the
+# alias automatically — a stale entry becomes a load-time ``AttributeError``
+# rather than a silent ``_missing_`` miss at runtime.
+_OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
+    "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
+    "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
+    "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+}
 
 
 MODEL_METADATA = {

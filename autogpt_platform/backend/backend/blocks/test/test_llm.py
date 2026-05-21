@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1581,3 +1582,23 @@ class TestLlmModelMissingHandler:
         # additive shortcut, not a silent catch-all.
         with pytest.raises(ValueError):
             llm.LlmModel("anthropic/claude-haiku-999")
+
+    def test_all_claude_snapshots_reachable_via_openrouter_slug(self) -> None:
+        """Every Claude enum value whose canonical form carries a trailing
+        ``-YYYYMMDD`` snapshot suffix must be reachable via the OpenRouter
+        ``anthropic/<base>`` slug — otherwise the dry-run simulator (and any
+        other caller passing the OpenRouter form) hits ``_missing_``'s
+        prefix-strip path with a string the enum doesn't recognise and
+        validation fails. Catches the drift class where a new snapshot-
+        dated Claude member is added without updating ``_OPENROUTER_ALIASES``.
+        """
+        snapshot_re = re.compile(r"^claude-(.+)-\d{8}$")
+        for member in llm.LlmModel:
+            match = snapshot_re.match(member.value)
+            if match is None:
+                continue
+            slug = f"anthropic/{match.group(1)}"
+            assert llm.LlmModel(slug) is member, (
+                f"OpenRouter alias missing for {member.value} — expected slug "
+                f"{slug!r} to resolve back to {member.name}"
+            )
