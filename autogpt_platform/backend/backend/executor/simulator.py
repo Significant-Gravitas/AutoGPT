@@ -39,7 +39,6 @@ from openai.types import CompletionUsage
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
@@ -48,13 +47,23 @@ logger = logging.getLogger(__name__)
 
 
 # Default simulator model — Claude Haiku 4.5 via the platform's OpenRouter
-# credential.  Dry-run isn't pure shape-matching for the Orchestrator block:
-# it picks tools and produces a finish message, so the substitute model's
-# reasoning quality affects how faithful the preview is.  Haiku 4.5 keeps
-# the substitute small/cheap while giving materially better tool-use
-# decisions than Flash-Lite.  Configurable via ChatConfig.simulation_model
-# (CHAT_SIMULATION_MODEL env var) — value must be a real LlmModel slug.
-_DEFAULT_SIMULATOR_MODEL = LlmModel.CLAUDE_4_5_HAIKU.value
+# credential, in OpenRouter slug form (``anthropic/claude-haiku-4-5``).
+# The LLM-simulation path (``_call_llm_for_simulation``) hits OpenRouter's
+# OpenAI-compat endpoint at ``openrouter.ai/api/v1/chat/completions``,
+# which only accepts ``<vendor>/<model>`` slugs — the direct-Anthropic
+# snapshot ID ``claude-haiku-4-5-20251001`` is rejected with HTTP 400.
+# For OrchestratorBlock dry-runs, this string is parsed via
+# ``LlmModel._missing_`` (the ``_OPENROUTER_ALIASES`` table maps it back
+# to ``LlmModel.CLAUDE_4_5_HAIKU``), and the orchestrator's Anthropic SDK
+# sends the snapshot value to OpenRouter's Anthropic-compat endpoint at
+# ``openrouter.ai/api/v1/messages``, which accepts both formats.  Haiku
+# 4.5 via OpenRouter is already battle-tested for copilot title generation
+# (see ``ChatConfig.title_model``) and gives materially better tool-use
+# decisions for Orchestrator dry-runs than the Flash-Lite tier while
+# staying cheap.  Configurable via ``ChatConfig.simulation_model``
+# (``CHAT_SIMULATION_MODEL`` env var) — overrides must satisfy both
+# constraints (OpenRouter-slug shape AND resolvable through ``LlmModel``).
+_DEFAULT_SIMULATOR_MODEL = "anthropic/claude-haiku-4-5"
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
