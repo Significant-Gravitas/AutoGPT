@@ -793,6 +793,7 @@ class ExecutionProcessor:
         set_service_name("GraphExecutor")
         self.tid = threading.get_ident()
         self.creds_manager = IntegrationCredentialsManager()
+        self.nodes_input_masks: Optional[NodesInputMasks] = None
         self.node_execution_loop = asyncio.new_event_loop()
         self.node_evaluation_loop = asyncio.new_event_loop()
         self.node_execution_thread = threading.Thread(
@@ -963,6 +964,11 @@ class ExecutionProcessor:
         self.running_node_evaluation: dict[str, Future] = {}
         self.execution_stats = execution_stats
         self.execution_stats_lock = execution_stats_lock
+        # Expose nodes_input_masks so OrchestratorBlock tool dispatch can
+        # merge credential metadata into tool node inputs. The normal queue
+        # dispatch below merges it directly into queued_node_exec.inputs;
+        # the orchestrator path bypasses the queue and reads from here.
+        self.nodes_input_masks = graph_exec.nodes_input_masks
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
 
         running_node_execution = self.running_node_execution

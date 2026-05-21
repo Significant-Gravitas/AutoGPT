@@ -1219,3 +1219,199 @@ async def test_orchestrator_agent_falls_back_to_graph_name():
     assert result["type"] == "function"
     assert result["function"]["name"] == "original_agent_name"  # Graph name cleaned
     assert result["function"]["_sink_node_id"] == "test-agent-node-id"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_tool_merges_nodes_input_masks():
+    """Regression test for OPEN-3132.
+
+    When an Orchestrator-attached tool block requires credentials and the
+    agent is launched from Library/AutoPilot, those credentials live in
+    `graph_exec.nodes_input_masks` (not in `node.input_default`). The
+    orchestrator's tool dispatch must merge them into the tool node's
+    inputs; otherwise the tool fails with a missing-credentials error.
+    """
+    from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
+
+    block = OrchestratorBlock()
+
+    sink_node_id = "test-sink-node-id"
+    credentials_field = {
+        "id": "cred-123",
+        "provider": "openai",
+        "type": "api_key",
+        "title": "Test API key",
+    }
+
+    tool_call = MagicMock()
+    tool_call.id = "call_1"
+    tool_call.function = MagicMock()
+    tool_call.function.name = "search"
+
+    tool_info = ToolInfo(
+        tool_call=tool_call,
+        tool_name="search",
+        tool_def={
+            "type": "function",
+            "function": {
+                "name": "search",
+                "_sink_node_id": sink_node_id,
+                "_field_mapping": {},
+            },
+        },
+        input_data={"query": "hello"},
+        field_mapping={},
+    )
+
+    mock_target_node = MagicMock()
+    mock_target_node.block_id = "test-block-id"
+    mock_target_node.input_default = {}  # Library path: creds NOT here
+
+    mock_node_exec_result = MagicMock()
+    mock_node_exec_result.node_exec_id = "test-tool-exec-id"
+
+    mock_db_client = AsyncMock()
+    mock_db_client.get_node.return_value = mock_target_node
+    mock_db_client.upsert_execution_input.return_value = (
+        mock_node_exec_result,
+        {"query": "hello", "credentials": credentials_field},
+    )
+    mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {"result": "ok"}
+
+    mock_node_stats = MagicMock()
+    mock_node_stats.error = None
+
+    mock_execution_processor = AsyncMock()
+    mock_execution_processor.running_node_execution = defaultdict(MagicMock)
+    mock_execution_processor.execution_stats = MagicMock()
+    mock_execution_processor.execution_stats_lock = threading.Lock()
+    mock_execution_processor.on_node_execution = AsyncMock(return_value=mock_node_stats)
+    mock_execution_processor.charge_node_usage = AsyncMock(return_value=(0, 1000))
+    # The credentials live in nodes_input_masks (Library/AutoPilot path),
+    # NOT in the node's input_default.
+    mock_execution_processor.nodes_input_masks = {
+        sink_node_id: {"credentials": credentials_field},
+    }
+
+    execution_params = ExecutionParams(
+        graph_id="g",
+        graph_version=1,
+        graph_exec_id="gx",
+        node_id="orch-node-id",
+        node_exec_id="orch-node-exec-id",
+        user_id="u",
+        execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+    )
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db_client,
+    ):
+        await block._execute_single_tool_with_manager(
+            tool_info=tool_info,
+            execution_params=execution_params,
+            execution_processor=mock_execution_processor,
+        )
+
+    # Verify the credential metadata was upserted as an input on the tool
+    # node — this is the assertion that fails before the fix.
+    upserted_input_names = {
+        call.kwargs.get("input_name") or call.args[2]
+        for call in mock_db_client.upsert_execution_input.call_args_list
+    }
+    assert "credentials" in upserted_input_names, (
+        "Tool node did not receive credentials from nodes_input_masks — "
+        "Library/AutoPilot runs would fail with missing-credentials."
+    )
+
+    # And on_node_execution receives the same masks so downstream dispatch
+    # stays consistent with the normal queue path.
+    on_node_call = mock_execution_processor.on_node_execution.call_args
+    assert on_node_call.kwargs["nodes_input_masks"] == {
+        sink_node_id: {"credentials": credentials_field},
+    }
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_tool_works_without_nodes_input_masks():
+    """Builder path (no nodes_input_masks): tool dispatch still works."""
+    from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
+
+    block = OrchestratorBlock()
+    sink_node_id = "test-sink-node-id"
+
+    tool_call = MagicMock()
+    tool_call.id = "call_1"
+    tool_call.function = MagicMock()
+    tool_call.function.name = "search"
+
+    tool_info = ToolInfo(
+        tool_call=tool_call,
+        tool_name="search",
+        tool_def={
+            "type": "function",
+            "function": {
+                "name": "search",
+                "_sink_node_id": sink_node_id,
+                "_field_mapping": {},
+            },
+        },
+        input_data={"query": "hello"},
+        field_mapping={},
+    )
+
+    mock_target_node = MagicMock()
+    mock_target_node.block_id = "test-block-id"
+    # Builder path: credentials baked into input_default
+    mock_target_node.input_default = {
+        "credentials": {"id": "x", "provider": "p", "type": "api_key", "title": "t"}
+    }
+
+    mock_node_exec_result = MagicMock()
+    mock_node_exec_result.node_exec_id = "test-tool-exec-id"
+
+    mock_db_client = AsyncMock()
+    mock_db_client.get_node.return_value = mock_target_node
+    mock_db_client.upsert_execution_input.return_value = (
+        mock_node_exec_result,
+        {"query": "hello"},
+    )
+    mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {}
+
+    mock_node_stats = MagicMock()
+    mock_node_stats.error = None
+
+    mock_execution_processor = AsyncMock()
+    mock_execution_processor.running_node_execution = defaultdict(MagicMock)
+    mock_execution_processor.execution_stats = MagicMock()
+    mock_execution_processor.execution_stats_lock = threading.Lock()
+    mock_execution_processor.on_node_execution = AsyncMock(return_value=mock_node_stats)
+    mock_execution_processor.charge_node_usage = AsyncMock(return_value=(0, 1000))
+    mock_execution_processor.nodes_input_masks = None
+
+    execution_params = ExecutionParams(
+        graph_id="g",
+        graph_version=1,
+        graph_exec_id="gx",
+        node_id="orch-node-id",
+        node_exec_id="orch-node-exec-id",
+        user_id="u",
+        execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+    )
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db_client,
+    ):
+        await block._execute_single_tool_with_manager(
+            tool_info=tool_info,
+            execution_params=execution_params,
+            execution_processor=mock_execution_processor,
+        )
+
+    assert mock_execution_processor.on_node_execution.call_count == 1
+    # No masks were passed through
+    assert (
+        mock_execution_processor.on_node_execution.call_args.kwargs["nodes_input_masks"]
+        is None
+    )

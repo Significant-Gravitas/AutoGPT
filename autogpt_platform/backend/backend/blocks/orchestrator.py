@@ -1079,6 +1079,18 @@ class OrchestratorBlock(Block):
         # so the execution record is complete for from_db() reconstruction.
         merged_input_data = {**target_node.input_default, **raw_input_data}
 
+        # Merge credential metadata for the tool node. Library/AutoPilot runs
+        # ship credentials via graph_exec.nodes_input_masks instead of
+        # node.input_default; the normal queue dispatch in manager.py merges
+        # them, but the orchestrator's tool dispatch bypasses that path.
+        # Without this, tool blocks fail with missing-credentials when the
+        # agent is launched from anywhere except the Builder. (OPEN-3132)
+        nodes_input_masks = execution_processor.nodes_input_masks
+        if nodes_input_masks and (
+            sink_node_input_mask := nodes_input_masks.get(sink_node_id)
+        ):
+            merged_input_data.update(sink_node_input_mask)
+
         # Add all inputs to the execution
         if not merged_input_data:
             raise ValueError(f"Tool call has no input data: {tool_call}")
@@ -1142,7 +1154,7 @@ class OrchestratorBlock(Block):
                 tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
-                    nodes_input_masks=None,
+                    nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
                 if tool_node_stats is None:
