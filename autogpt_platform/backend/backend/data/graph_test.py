@@ -256,8 +256,8 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 async def test_clean_graph(server: SpinTestServer):
     """
     Test the stripped_for_export function that:
-    1. Strips the `id` from credentials references on fields the block
-       schema declares as `CredentialsMetaInput`.
+    1. Drops the entire value of any field the block schema declares as a
+       `CredentialsMetaInput` (importers must wire up their own credentials).
     2. Nulls out `webhook_id`.
     3. Leaves everything else in node inputs untouched — including fields
        whose names look sensitive (`api_key`, `password`, `token`) and
@@ -352,12 +352,9 @@ async def test_clean_graph(server: SpinTestServer):
         for n in cleaned_graph.nodes
         if n.input_default["_test_id"] == "credentials_node"
     )
-    # The schema declares `credentials` as a CredentialsMetaInput, so
-    # `id` is stripped while the rest of the ref is preserved.
-    assert credentials_node.input_default["credentials"] == {
-        "provider": "e2b",
-        "type": "api_key",
-    }
+    # The schema declares `credentials` as a CredentialsMetaInput, so the
+    # whole credentials reference is dropped from the export.
+    assert "credentials" not in credentials_node.input_default
 
     for node in cleaned_graph.nodes:
         assert node.webhook_id is None
