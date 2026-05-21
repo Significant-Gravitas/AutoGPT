@@ -246,12 +246,14 @@ async def test_clean_graph(server: SpinTestServer):
     Test the stripped_for_export function that:
     1. Drops the entire value of any field the block schema declares as a
        `CredentialsMetaInput` (importers must wire up their own credentials).
-    2. Nulls out `webhook_id`.
-    3. Leaves everything else in node inputs untouched — including fields
+    2. Drops the value of any field the schema marks `secret: true` via
+       `SchemaField(secret=True)`.
+    3. Nulls out `webhook_id`.
+    4. Leaves everything else in node inputs untouched — including fields
        whose names look sensitive (`api_key`, `password`, `token`) and
        even dicts shaped like a credentials reference but sitting on a
-       field the schema does not declare as credentials. Genuine secrets
-       belong in the credentials system, not raw node input defaults.
+       field the schema does not declare as credentials. Suggestive key
+       names alone don't trigger any stripping.
     """
     graph = Graph(
         id="test_clean_graph",
