@@ -1,43 +1,47 @@
 """Lazy auto-registration of per-user dream-system schedules.
 
-A single helper, :func:`ensure_dream_system_scheduled`, that registers
-ALL of a user's dream-related background passes the first time we see
-them write a memory:
+Two per-user APScheduler cron jobs cover the whole dream system through
+P12 (the cross-scope insight cron for P8 will add a third row when it
+builds):
 
-  * Community rebuild  — ``graphiti-communities-enabled`` (P-1.7)
-  * Dream pass         — ``dream-pass-enabled`` (P-0.2)
-  * Ratification pass  — ``dream-pass-enabled`` (P-0.4, rides the
-                          same master gate as the dream pass)
+  * ``community_rebuild_{user_id}``    — Sun 04:00 user-local (P-1.7),
+    direct LLM (not batch), activity-gated inside the function.
+  * ``dream_nightly_batch_{user_id}``  — daily 03:00 user-local,
+    submits all nightly-batch-family work (dream pass, ratification
+    supersession sweep, plus future P2 / P3 / P4 / P11 stages).
 
-Per ``dream/p0-spec.md`` §8 and the "holy grail" architecture
-discussion: rather than three near-identical helpers, the per-user
-jobs are described in :data:`DREAM_SYSTEM_JOBS` and the helper walks
-that registry. Adding a new dream-system job (e.g. a P9 daydreaming
-pass) is a one-row registry change, not a new helper module.
+Both crons share the same registration helper. Adding a future cron
+(P8 cross-scope insight, P9 lucid dream queue if it grows beyond
+nightly batch, etc.) is a single row in :data:`DREAM_SYSTEM_JOBS`.
 
-Three layers of flag gating in this design:
+Three layers of flag gating:
 
-  1. **Registration helper (this file)** — cheapest gate; the flag
-     check runs before the Redis SETNX dedup so a flag-off user
+  1. **Registration helper (this file)** — cheapest gate; LD flag
+     check runs before the Redis CAS-style dedup so a flag-off user
      never burns an RPC or a Redis key.
   2. **Scheduler ``@expose`` body** — defense-in-depth for direct
-     callers (admin endpoint, external API, ad-hoc Python scripts)
-     that bypass this helper. The scheduler refuses to register the
-     job when the flag is off and returns a structured "skipped" dict.
-  3. **Execution wrapper (``execute_*_sync``)** — runtime gate. If
-     the flag was on at registration time and flips off later, the
-     scheduled job keeps firing until the cron is deleted; the
-     execution wrapper short-circuits to a skip-log so the body
-     never runs.
+     callers (admin endpoint, ad-hoc scripts) that bypass this helper.
+  3. **Execution wrapper (``execute_*_sync``)** — runtime gate; if the
+     flag flips off after registration, the scheduled job still fires
+     but short-circuits before the body runs.
 
-Per-job idempotency: each job has its own Redis SETNX key (NOT a
-shared one). Flipping a single flag from off→on after another job
-already registered must let the newly-enabled job in without the
-shared dedup key blocking it.
+**Timezone drift handling.** APScheduler binds the cron trigger to
+the timezone at job-creation time — a later ``User.timezone`` change
+silently leaves the cron firing at the old local time. To detect and
+recover from drift, the Redis dedup key stores the timezone the cron
+was registered with (not the literal ``"1"`` it stored historically).
+Every call to :func:`ensure_dream_system_scheduled` compares the
+stored value to the user's current timezone; on mismatch, re-registers
+via ``replace_existing=True``. The eager path (``force_refresh=True``)
+is invoked from the ``User.timezone`` update endpoint; the lazy path
+catches direct-DB / webhook / SSO writes that bypass the API.
 
-Per-job failure isolation: a scheduler RPC failure for one job does
-not skip the others — every job's outcome is captured independently
-in the helper's return dict.
+Per-job idempotency: each cron has its OWN Redis dedup key. Flipping
+a single flag from off→on after the other cron already registered
+must let the newly-enabled cron in.
+
+Per-job failure isolation: a scheduler RPC failure for one cron
+surfaces in this call's return dict but never blocks the other crons.
 
 Failures are logged at WARN and swallowed; the caller (the graphiti
 ingestion path) must never break because dream-system registration
@@ -56,9 +60,10 @@ logger = logging.getLogger(__name__)
 
 
 # Matches the longest cron cadence in the registry (weekly community
-# rebuild) so we re-check at least once per cron-tick. Going longer
-# leaves a window where Redis says "registered" but the schedule was
-# deleted out-of-band; going shorter wastes scheduler RPC calls.
+# rebuild) so the lazy drift-detection path re-checks at least once
+# per cron-tick. Going longer leaves a window where Redis says
+# "registered with tz X" but the cron was deleted out-of-band; going
+# shorter wastes scheduler RPC calls when nothing changed.
 REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
 
 
@@ -74,10 +79,10 @@ class DreamSystemJob:
     """One row of the dream-system schedule registry.
 
     The registry is the single source of truth for "what background
-    passes does the dream system run per user". Adding a new pass
-    (e.g. a P9 daydreaming job) means appending a row here; the helper
-    picks it up automatically, the scheduler call gets the right
-    job_id, and the Redis dedup key falls out naturally.
+    crons does the dream system run per user". Adding a new cron
+    (e.g. weekly cross-scope insight for P8) means appending a row
+    here; the helper picks it up automatically, the scheduler call
+    gets the right job_id, and the Redis dedup key falls out naturally.
     """
 
     name: str
@@ -88,8 +93,8 @@ class DreamSystemJob:
     Must match the scheduler ``@expose`` method's own job_id format."""
 
     registration_key_prefix: str
-    """Redis SETNX key prefix. Each job has its OWN key so flipping
-    a single flag mid-life lets only that job re-enter the helper —
+    """Redis dedup key prefix. Each cron has its OWN key so flipping
+    a single flag mid-life lets only that cron re-enter the helper —
     a shared key would block recovery on flag drift."""
 
     flag: Flag
@@ -102,10 +107,7 @@ class DreamSystemJob:
 
     register: Callable[[SchedulerLike, str, str], Awaitable[dict]]
     """``(client, user_id, user_timezone) -> awaitable[result dict]``.
-    The actual SchedulerClient method that creates the cron job. Kept
-    as a callable rather than a method name so the registry decouples
-    from the SchedulerClient class symbol (eases mocking in tests
-    and future cross-process call shapes)."""
+    The actual SchedulerClient method that creates the cron job."""
 
 
 def _register_community_rebuild(
@@ -116,25 +118,18 @@ def _register_community_rebuild(
     )
 
 
-def _register_dream_pass(
+def _register_nightly_batch(
     client: SchedulerLike, user_id: str, user_timezone: str
 ) -> Awaitable[dict]:
-    return client.add_dream_pass_schedule(
-        user_id=user_id, user_timezone=user_timezone
-    )
-
-
-def _register_ratification_pass(
-    client: SchedulerLike, user_id: str, user_timezone: str
-) -> Awaitable[dict]:
-    return client.add_ratification_pass_schedule(
+    return client.add_nightly_batch_schedule(
         user_id=user_id, user_timezone=user_timezone
     )
 
 
 # The registry. Listed in cron-frequency order (rarest first) so the
-# log trail when a new user lands reads "weekly → daily → 6h" — the
-# narrative matches how the schedules build up over time.
+# log trail when a new user lands reads "weekly → daily" — the
+# narrative matches how the schedules build up over time. The future
+# P8 cross-scope cron (weekly, batch) will land between these two.
 DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
@@ -145,26 +140,20 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
         register=_register_community_rebuild,
     ),
     DreamSystemJob(
-        name="Dream pass",
-        job_id_prefix="dream_pass",
-        registration_key_prefix="dream_pass_registered",
+        name="Dream nightly batch",
+        job_id_prefix="dream_nightly_batch",
+        # NOT shared with the now-removed individual dream/ratification
+        # crons — those keys (``dream_pass_registered``,
+        # ``ratification_pass_registered``) are orphaned by the
+        # consolidation and naturally expire via their 7-day TTL.
+        registration_key_prefix="dream_nightly_batch_registered",
+        # The nightly batch cron carries dream pass + ratification
+        # supersession + future P2/P3/P4/P11 work. All ride the same
+        # master gate; finer-grained flags inside individual submitters
+        # control whether each stage actually runs within the cron.
         flag=Flag.DREAM_PASS_ENABLED,
         skip_reason="dream_pass_disabled",
-        register=_register_dream_pass,
-    ),
-    DreamSystemJob(
-        name="Ratification pass",
-        job_id_prefix="ratification_pass",
-        # Distinct key prefix so flipping the master flag from off→on
-        # lets the ratification pass register even if the dream pass
-        # already used its own key in a prior call.
-        registration_key_prefix="ratification_pass_registered",
-        # Ratification rides the same master gate as the dream pass —
-        # a tentative edge that the dream pass writes is the only
-        # thing ratification has to do, so they share a lifecycle.
-        flag=Flag.DREAM_PASS_ENABLED,
-        skip_reason="dream_pass_disabled",
-        register=_register_ratification_pass,
+        register=_register_nightly_batch,
     ),
 ]
 
@@ -174,7 +163,7 @@ async def _resolve_user_timezone(user_id: str) -> str:
 
     Single DB call — cached at the helper level for the duration of
     one ``ensure_dream_system_scheduled`` invocation so registering
-    three jobs doesn't take three round-trips.
+    multiple crons doesn't take multiple round-trips.
     """
     try:
         from prisma import Prisma  # noqa: F401 — ensures registry
@@ -198,48 +187,91 @@ async def _resolve_user_timezone(user_id: str) -> str:
         return "UTC"
 
 
-async def _try_redis_setnx(key: str) -> bool | None:
-    """SETNX with TTL — returns:
-      * True  → we are the first writer; proceed to register.
-      * False → another writer already registered within TTL; skip.
-      * None  → Redis unavailable; caller should still try to register
-                (the scheduler's ``replace_existing=True`` is the
-                durable backstop).
+async def _read_registration_tz(user_id: str, key_prefix: str) -> str | None:
+    """Read the timezone the cron was last registered with.
+
+    Returns:
+      * The stored timezone string when the key exists.
+      * ``None`` when the key is missing OR Redis is unavailable. The
+        caller treats both as "needs registration" — scheduler-side
+        ``replace_existing=True`` makes a redundant call a cheap no-op.
     """
     try:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        ok = await redis.set(key, "1", nx=True, ex=REGISTRATION_TTL_SECONDS)
-        return bool(ok)
+        key = f"{key_prefix}:{user_id}"
+        stored = await redis.get(key)
+        if stored is None:
+            return None
+        if isinstance(stored, bytes):
+            return stored.decode("utf-8", errors="replace")
+        return str(stored)
     except Exception:
         logger.debug(
-            "Redis SETNX failed for %s; falling back to scheduler-side dedup",
-            key,
+            "Redis read failed for %s:%s; treating as not-registered",
+            key_prefix,
+            user_id[:12],
             exc_info=True,
         )
         return None
 
 
-async def ensure_dream_system_scheduled(user_id: str) -> dict[str, Any]:
-    """Idempotently register every flag-enabled dream-system job for a user.
+async def _write_registration_tz(
+    user_id: str, key_prefix: str, current_tz: str
+) -> None:
+    """Persist the timezone we just registered the cron with.
 
-    Fire-and-forget callable — designed to be invoked from the graphiti
-    ingestion path on first memory write. Walks :data:`DREAM_SYSTEM_JOBS`,
-    gating each entry on its LD flag, then on a per-job Redis SETNX
-    dedup key, then on the actual scheduler RPC. Each step's failure
-    is isolated; a single bad job never blocks the others.
+    Best-effort — a Redis write failure means the next call will see
+    the key as missing and force a redundant re-register (cheap via
+    ``replace_existing=True``).
+    """
+    try:
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        key = f"{key_prefix}:{user_id}"
+        await redis.set(key, current_tz, ex=REGISTRATION_TTL_SECONDS)
+    except Exception:
+        logger.debug(
+            "Redis write failed for %s:%s; lazy path will re-detect later",
+            key_prefix,
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+async def ensure_dream_system_scheduled(
+    user_id: str, *, force_refresh: bool = False
+) -> dict[str, Any]:
+    """Idempotently register every flag-enabled dream-system cron for a user.
+
+    Fire-and-forget callable from two trigger points:
+
+    * **Lazy path** — called from the graphiti ingestion's
+      ``_ensure_worker`` the first time we see a memory write for a
+      user in this process. Drift-detects timezone changes via the
+      Redis stored value and re-registers when the user's current
+      timezone differs from the stored one.
+    * **Eager path** — called with ``force_refresh=True`` from the
+      ``User.timezone`` update endpoint so a profile change takes
+      effect within a single APScheduler tick instead of waiting for
+      the dedup key's 7-day TTL to expire.
+
+    Walks :data:`DREAM_SYSTEM_JOBS`, gating each entry on its LD flag,
+    then on per-job drift detection, then the actual scheduler RPC.
+    Each step's failure is isolated; a single bad cron never blocks
+    the others.
 
     Returns a dict keyed by ``job_id_prefix`` so callers can audit
     "what happened for this user this call":
 
-      * Missing key   → that job wasn't attempted (shouldn't happen,
-        the registry is iterated unconditionally; here only for
-        debugging if we ever short-circuit).
-      * ``None``      → SETNX said "already registered", no RPC made.
-      * ``{"skipped": True, "reason": ...}`` → flag off, or
-        registration RPC failed.
-      * Anything else → the scheduler's own result dict (job id,
+      * ``None`` — already registered with the current timezone; no
+        RPC made. (Lazy path's happy case.)
+      * ``{"skipped": True, "reason": "<flag>_disabled"}`` — flag off.
+      * ``{"skipped": True, "reason": "registration_failed"}`` — RPC
+        raised; logged.
+      * Anything else — the scheduler's own result dict (job id,
         next_run_time, etc.).
 
     Empty ``user_id`` → ``{}`` (no work, no error).
@@ -254,8 +286,7 @@ async def ensure_dream_system_scheduled(user_id: str) -> dict[str, Any]:
     for job in DREAM_SYSTEM_JOBS:
         try:
             # Layer 1 of gating: the LD flag check. Cheapest of the
-            # three (sub-ms LD lookup, cached for the user's targeting
-            # context), so we always run it first.
+            # three; always run it first.
             if not await is_feature_enabled(job.flag, user_id):
                 results[job.job_id_prefix] = {
                     "skipped": True,
@@ -263,30 +294,43 @@ async def ensure_dream_system_scheduled(user_id: str) -> dict[str, Any]:
                 }
                 continue
 
-            # Per-job Redis dedup. Each job's own key — flipping one
-            # flag on after another already registered MUST let the
-            # newly-enabled job in.
-            setnx_key = f"{job.registration_key_prefix}:{user_id}"
-            setnx_status = await _try_redis_setnx(setnx_key)
-            if setnx_status is False:
-                # Already registered within TTL.
-                results[job.job_id_prefix] = None
-                continue
-            # setnx_status is True (we got the key) OR None (Redis
-            # unavailable — proceed anyway; scheduler-side
-            # ``replace_existing=True`` is the backstop).
-
-            # Resolve the inputs to the scheduler RPC lazily. Both the
-            # timezone (DB call) and the client handle are shared
-            # across all enabled jobs in this invocation.
+            # Resolve current timezone once per invocation (single DB
+            # call shared across enabled crons).
             if tz_cached is None:
                 tz_cached = await _resolve_user_timezone(user_id)
+
+            # Drift detection (unless caller explicitly forced refresh).
+            if not force_refresh:
+                stored_tz = await _read_registration_tz(
+                    user_id, job.registration_key_prefix
+                )
+                if stored_tz == tz_cached:
+                    # Same tz, still within TTL → no work.
+                    results[job.job_id_prefix] = None
+                    continue
+                if stored_tz is not None and stored_tz != tz_cached:
+                    logger.info(
+                        "Dream-system: timezone drift for user %s job %s "
+                        "(stored=%s, current=%s) — re-registering",
+                        user_id[:12],
+                        job.name,
+                        stored_tz,
+                        tz_cached,
+                    )
+                # else: stored_tz is None → first registration OR
+                # Redis was unavailable. Either way, register.
+
+            # Lazy client handle so a fully-flag-off user never even
+            # constructs the scheduler client.
             if client_cached is None:
                 from backend.util.clients import get_scheduler_client
 
                 client_cached = get_scheduler_client()
 
             result = await job.register(client_cached, user_id, tz_cached)
+            await _write_registration_tz(
+                user_id, job.registration_key_prefix, tz_cached
+            )
             logger.info(
                 "Dream-system: registered %s for user %s (tz=%s)",
                 job.name,

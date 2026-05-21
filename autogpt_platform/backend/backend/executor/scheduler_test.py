@@ -167,37 +167,45 @@ class TestExecuteCommunityRebuildPass:
 
 
 # ---------------------------------------------------------------------------
-# Dream pass + ratification @expose methods — registration-time flag gating
+# Dream nightly batch @expose methods — registration-time flag gating
+#
+# The dream pass and ratification pass crons were consolidated into a
+# single nightly batch cron. The underlying ``execute_dream_pass_now``
+# and ``execute_ratification_pass_now`` @expose methods remain as
+# admin debug endpoints (not cron-registered) — tested below.
 # ---------------------------------------------------------------------------
 
 
-class TestAddDreamPassSchedule:
+class TestAddNightlyBatchSchedule:
     def test_flag_on_registers_with_03_00_daily_cron(self) -> None:
         s = _stub_scheduler()
         s.scheduler.add_job.return_value = MagicMock(
-            id="dream_pass_abc", next_run_time=None
+            id="dream_nightly_batch_abc", next_run_time=None
         )
         with patch("backend.executor.scheduler.run_async", return_value=True):
-            result = s.add_dream_pass_schedule(
+            result = s.add_nightly_batch_schedule(
                 user_id="abc", user_timezone="America/New_York"
             )
         kwargs = s.scheduler.add_job.call_args.kwargs
-        assert kwargs["id"] == "dream_pass_abc"
+        assert kwargs["id"] == "dream_nightly_batch_abc"
         assert kwargs["max_instances"] == 1
         assert kwargs["replace_existing"] is True
         assert kwargs["jobstore"] == Jobstores.EXECUTION.value
         trigger_repr = repr(kwargs["trigger"])
+        # Daily 03:00 cron — same as the former dream pass cron, but
+        # carries the consolidated submitter set.
         assert "hour='3'" in trigger_repr
-        assert result["id"] == "dream_pass_abc"
+        assert result["id"] == "dream_nightly_batch_abc"
         assert result.get("skipped") is not True
 
     def test_flag_off_returns_skipped_dict_without_calling_add_job(self) -> None:
-        """Layer 2 of the 3-layer flag gating — direct callers (admin
-        endpoint, ad-hoc scripts) that bypass ``ensure_dream_system_scheduled``
-        must STILL be refused when the flag is off."""
+        """Layer 2 of the 3-layer flag gating — direct callers
+        (admin endpoint, ad-hoc scripts) that bypass
+        ``ensure_dream_system_scheduled`` must STILL be refused when
+        the flag is off."""
         s = _stub_scheduler()
         with patch("backend.executor.scheduler.run_async", return_value=False):
-            result = s.add_dream_pass_schedule(user_id="abc")
+            result = s.add_nightly_batch_schedule(user_id="abc")
         s.scheduler.add_job.assert_not_called()
         assert result == {
             "id": None,
@@ -209,77 +217,49 @@ class TestAddDreamPassSchedule:
         }
 
 
-class TestAddRatificationPassSchedule:
-    def test_flag_on_registers_with_6_hourly_cron(self) -> None:
+class TestDeleteNightlyBatchSchedule:
+    def test_returns_true_when_job_exists(self) -> None:
         s = _stub_scheduler()
-        s.scheduler.add_job.return_value = MagicMock(
-            id="ratification_pass_abc", next_run_time=None
+        fake_job = MagicMock()
+        s.scheduler.get_job.return_value = fake_job
+        assert s.delete_nightly_batch_schedule("abc") is True
+        s.scheduler.get_job.assert_called_once_with(
+            "dream_nightly_batch_abc", jobstore=Jobstores.EXECUTION.value
         )
-        with patch("backend.executor.scheduler.run_async", return_value=True):
-            result = s.add_ratification_pass_schedule(
-                user_id="abc", user_timezone="UTC"
-            )
-        kwargs = s.scheduler.add_job.call_args.kwargs
-        assert kwargs["id"] == "ratification_pass_abc"
-        # Every 6h cron — repr asserts on the */6 step
-        trigger_repr = repr(kwargs["trigger"])
-        assert "hour='*/6'" in trigger_repr or "hour='0,6,12,18'" in trigger_repr
-        assert result["id"] == "ratification_pass_abc"
+        fake_job.remove.assert_called_once()
 
-    def test_flag_off_returns_skipped_dict_no_job_registered(self) -> None:
+    def test_returns_false_when_no_job(self) -> None:
         s = _stub_scheduler()
-        with patch("backend.executor.scheduler.run_async", return_value=False):
-            result = s.add_ratification_pass_schedule(user_id="abc")
-        s.scheduler.add_job.assert_not_called()
-        assert result["skipped"] is True
-        assert result["reason"] == "dream_pass_disabled"
+        s.scheduler.get_job.return_value = None
+        assert s.delete_nightly_batch_schedule("abc") is False
 
 
 # ---------------------------------------------------------------------------
-# Execution-time flag gates (layer 3 of the 3-layer design)
+# Execution-time flag gate for the nightly batch cron (layer 3)
 # ---------------------------------------------------------------------------
 
 
-class TestExecuteDreamPassSyncRuntimeGate:
-    def test_flag_off_short_circuits_before_calling_orchestrator(self) -> None:
-        """A user whose ``DREAM_PASS_ENABLED`` flag was on at registration
-        time but flipped off later must not have their dream pass body
-        run — the schedule keeps firing until explicitly deleted; this
-        is the runtime kill-switch."""
-        from backend.executor.scheduler import execute_dream_pass_sync
+class TestExecuteNightlyBatchSyncRuntimeGate:
+    def test_flag_off_short_circuits_before_calling_submitter_fanout(self) -> None:
+        """``DREAM_PASS_ENABLED`` flipped off after registration → the
+        cron still fires but never calls ``run_nightly_batch_submit``,
+        so no submitter runs."""
+        from backend.executor.scheduler import execute_nightly_batch_sync
 
         with (
             patch(
                 "backend.executor.scheduler.run_async", return_value=False
             ) as run_async_mock,
             patch(
-                "backend.copilot.dream.orchestrator.execute_dream_pass"
-            ) as orchestrator_mock,
+                "backend.copilot.dream.nightly_batch.run_nightly_batch_submit"
+            ) as fanout_mock,
         ):
-            execute_dream_pass_sync("abc")
+            execute_nightly_batch_sync("abc")
 
-        # Exactly one run_async call (the flag check). Orchestrator
-        # never gets invoked because the gate short-circuited.
+        # Exactly one run_async call (the flag check). The fan-out
+        # function never gets invoked.
         run_async_mock.assert_called_once()
-        orchestrator_mock.assert_not_called()
-
-
-class TestExecuteRatificationPassSyncRuntimeGate:
-    def test_flag_off_short_circuits_before_acquiring_lock(self) -> None:
-        from backend.executor.scheduler import execute_ratification_pass_sync
-
-        with (
-            patch(
-                "backend.executor.scheduler.run_async", return_value=False
-            ) as run_async_mock,
-            patch(
-                "backend.copilot.dream.ratification.run_ratification_pass"
-            ) as ratification_mock,
-        ):
-            execute_ratification_pass_sync("abc")
-
-        run_async_mock.assert_called_once()
-        ratification_mock.assert_not_called()
+        fanout_mock.assert_not_called()
 
 
 class TestExecuteCommunityRebuildRuntimeGate:
