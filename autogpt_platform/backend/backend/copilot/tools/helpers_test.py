@@ -1058,9 +1058,7 @@ def _make_block_with_cred_field(
             field_name: {"type": "object"},
         },
     )
-    block.input_schema.get_credentials_fields.return_value = {
-        field_name: MagicMock()
-    }
+    block.input_schema.get_credentials_fields.return_value = {field_name: MagicMock()}
     return block
 
 
