@@ -12,6 +12,7 @@ import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.data.graph import (
@@ -255,13 +256,14 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 async def test_clean_graph(server: SpinTestServer):
     """
     Test the stripped_for_export function that:
-    1. Strips the `id` from any embedded credentials reference (links to the
-       original owner's credentials store).
+    1. Strips the `id` from credentials references on fields the block
+       schema declares as `CredentialsMetaInput`.
     2. Nulls out `webhook_id`.
     3. Leaves everything else in node inputs untouched — including fields
-       whose names look sensitive (`api_key`, `password`, `token`). Genuine
-       secrets are expected to live in the credentials system, not in raw
-       node input defaults.
+       whose names look sensitive (`api_key`, `password`, `token`) and
+       even dicts shaped like a credentials reference but sitting on a
+       field the schema does not declare as credentials. Genuine secrets
+       belong in the credentials system, not raw node input defaults.
     """
     graph = Graph(
         id="test_clean_graph",
@@ -280,18 +282,26 @@ async def test_clean_graph(server: SpinTestServer):
             Node(
                 block_id=StoreValueBlock().id,
                 input_default={
-                    "_test_id": "node_with_credentials",
+                    "_test_id": "non_credentials_node",
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
                     "api_key": "left_alone_now",  # pragma: allowlist secret
+                    # `credentials`-shaped dict on a block that does NOT
+                    # declare a credentials field — must NOT be stripped.
                     "credentials": {
                         "id": "fake-github-credentials-id",
                         "provider": "github",
                         "type": "api_key",
                     },
-                    "anthropic_credentials": {
-                        "id": "fake-anthropic-credentials-id",
-                        "provider": "anthropic",
+                },
+            ),
+            Node(
+                block_id=ExecuteCodeBlock().id,
+                input_default={
+                    "_test_id": "credentials_node",
+                    "credentials": {
+                        "id": "fake-e2b-credentials-id",
+                        "provider": "e2b",
                         "type": "api_key",
                     },
                 },
@@ -317,24 +327,35 @@ async def test_clean_graph(server: SpinTestServer):
     assert input_node.input_default["description"] == "Test input description"
     assert "secret" not in input_node.input_default
 
-    credentials_node = next(
+    non_credentials_node = next(
         n
         for n in cleaned_graph.nodes
-        if n.input_default["_test_id"] == "node_with_credentials"
+        if n.input_default["_test_id"] == "non_credentials_node"
     )
-    # Plain fields are untouched, including the suggestively named ones —
-    # the old substring heuristic is gone now.
-    assert credentials_node.input_default["input"] == "normal_value"
-    assert credentials_node.input_default["control_test_input"] == "should be preserved"
-    assert credentials_node.input_default["api_key"] == "left_alone_now"
-
-    # Credentials references keep their shape but lose `id`.
-    assert credentials_node.input_default["credentials"] == {
+    # Plain fields untouched. `api_key` survives — the old substring scan is
+    # gone. The credentials-shaped dict survives intact because the schema
+    # does not declare this field as a CredentialsMetaInput.
+    assert non_credentials_node.input_default["input"] == "normal_value"
+    assert (
+        non_credentials_node.input_default["control_test_input"]
+        == "should be preserved"
+    )
+    assert non_credentials_node.input_default["api_key"] == "left_alone_now"
+    assert non_credentials_node.input_default["credentials"] == {
+        "id": "fake-github-credentials-id",
         "provider": "github",
         "type": "api_key",
     }
-    assert credentials_node.input_default["anthropic_credentials"] == {
-        "provider": "anthropic",
+
+    credentials_node = next(
+        n
+        for n in cleaned_graph.nodes
+        if n.input_default["_test_id"] == "credentials_node"
+    )
+    # The schema declares `credentials` as a CredentialsMetaInput, so
+    # `id` is stripped while the rest of the ref is preserved.
+    assert credentials_node.input_default["credentials"] == {
+        "provider": "e2b",
         "type": "api_key",
     }
 

@@ -162,41 +162,23 @@ class NodeModel(Node):
     def stripped_for_export(self) -> "NodeModel":
         """
         Returns a copy of the node model with non-transferable references removed:
-        the `id` field on any embedded credentials reference (points at the
-        original owner's credentials store) and `webhook_id` (points at the
-        original owner's webhook subscription).
+        the `id` on any field the schema declares as a `CredentialsMetaInput`
+        (points at the original owner's credentials store) and `webhook_id`
+        (points at the original owner's webhook subscription).
         """
         stripped_node = self.model_copy(deep=True)
 
         if stripped_node.input_default:
-            stripped_node.input_default = NodeModel._strip_credential_ids(
-                stripped_node.input_default
-            )
+            for field_name in self.block.input_schema.get_credentials_fields():
+                cred_ref = stripped_node.input_default.get(field_name)
+                if isinstance(cred_ref, dict) and "id" in cred_ref:
+                    stripped_node.input_default[field_name] = {
+                        k: v for k, v in cred_ref.items() if k != "id"
+                    }
 
         stripped_node.webhook_id = None
 
         return stripped_node
-
-    @staticmethod
-    def _strip_credential_ids(input_data: BlockInput) -> BlockInput:
-        result: BlockInput = {}
-        for key, value in input_data.items():
-            result[key] = NodeModel._strip_credential_ids_in(value)
-        return result
-
-    @staticmethod
-    def _strip_credential_ids_in(value: Any) -> Any:
-        if isinstance(value, dict):
-            if NodeModel._looks_like_credentials_ref(value):
-                return {k: v for k, v in value.items() if k != "id"}
-            return {k: NodeModel._strip_credential_ids_in(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [NodeModel._strip_credential_ids_in(item) for item in value]
-        return value
-
-    @staticmethod
-    def _looks_like_credentials_ref(value: dict[str, Any]) -> bool:
-        return "id" in value and "provider" in value and "type" in value
 
 
 class GraphBaseMeta(BaseDbModel):
