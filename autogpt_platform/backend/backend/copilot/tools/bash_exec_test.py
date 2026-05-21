@@ -229,8 +229,43 @@ class TestBashExecSdkToolResultRedirect:
         assert isinstance(result, ErrorResponse)
         assert "read_tool_result" in result.message
         assert "@@agptfile" in result.message
+        # Offending fragment must be the SDK path, not the executable name
+        # — the model needs to know which fragment tripped the redirect.
+        assert "tool-results/toolu_x.json" in result.message
+        assert "Offending fragment: 'cat'" not in result.message
         # Sandbox must not have been invoked at all.
         sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_redirect_on_user_path_containing_tool_outputs(self):
+        """Regression: a user repo path that happens to contain a
+        ``tool-outputs`` directory must NOT trigger the redirect, since
+        the user's data isn't an SDK tool-result file."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox(stdout="ok")
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="ls my-pipeline/tool-outputs/data.json",
+                timeout=10,
+            )
+        assert isinstance(result, BashExecResponse)
+        sandbox.commands.run.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_redirect_on_relative_tool_outputs_path(self):
