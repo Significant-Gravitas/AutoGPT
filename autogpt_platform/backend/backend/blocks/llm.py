@@ -6,9 +6,9 @@ import math
 import re
 import secrets
 from abc import ABC
+from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from collections.abc import Mapping
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
