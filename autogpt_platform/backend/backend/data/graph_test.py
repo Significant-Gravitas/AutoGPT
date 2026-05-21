@@ -20,6 +20,7 @@ from backend.data.graph import (
     GraphModel,
     Link,
     Node,
+    NodeModel,
     get_graph,
     migrate_llm_models,
     validate_graph_execution_permissions,
@@ -279,17 +280,6 @@ async def test_clean_graph(server: SpinTestServer):
                     },
                 },
             ),
-            Node(
-                block_id=ExecuteCodeBlock().id,
-                input_default={
-                    "_test_id": "credentials_node",
-                    "credentials": {
-                        "id": "fake-e2b-credentials-id",
-                        "provider": "e2b",
-                        "type": "api_key",
-                    },
-                },
-            ),
         ],
         links=[],
     )
@@ -328,17 +318,34 @@ async def test_clean_graph(server: SpinTestServer):
         "type": "api_key",
     }
 
-    credentials_node = next(
-        n
-        for n in cleaned_graph.nodes
-        if n.input_default["_test_id"] == "credentials_node"
-    )
-    # The schema declares `credentials` as a CredentialsMetaInput, so the
-    # whole credentials reference is dropped from the export.
-    assert "credentials" not in credentials_node.input_default
-
     for node in cleaned_graph.nodes:
         assert node.webhook_id is None
+
+
+def test_stripped_for_export_drops_declared_credentials_field():
+    """A field the block schema declares as `CredentialsMetaInput` is dropped
+    entirely on export, even when the rest of `input_default` is left alone."""
+    node = NodeModel(
+        id="n1",
+        block_id=ExecuteCodeBlock().id,
+        input_default={
+            "credentials": {
+                "id": "fake-e2b-credentials-id",
+                "provider": "e2b",
+                "type": "api_key",
+            },
+            "code": "print('hi')",
+        },
+        graph_id="g1",
+        graph_version=1,
+        webhook_id="wh-1",
+    )
+
+    stripped = node.stripped_for_export()
+
+    assert "credentials" not in stripped.input_default
+    assert stripped.input_default["code"] == "print('hi')"
+    assert stripped.webhook_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
