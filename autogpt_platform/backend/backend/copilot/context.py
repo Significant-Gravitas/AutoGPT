@@ -182,13 +182,49 @@ def looks_like_sdk_tool_result_path(text: str) -> bool:
     return any(hint in text for hint in _SDK_TOOL_RESULT_HINTS)
 
 
+# Shell separators used by ``_extract_offending_segment`` to bound the
+# path-like token that triggered the redirect. Quotes are included so a
+# quoted SDK path inside a command (e.g. ``cat "/root/.claude/..."``)
+# extracts the path without the surrounding quotes.
+_SHELL_TOKEN_DELIMS = frozenset(" |;&<>'\"\n\t`()")
+
+
+def _extract_offending_segment(text: str) -> str:
+    """Return the path-shaped token in *text* that tripped a redirect hint.
+
+    For bash commands the ``looks_like_sdk_tool_result_path`` hint is
+    almost always a substring of one shell token (e.g. the file argument
+    of a ``cat``), not the command itself. Pull that token out so the
+    redirect message surfaces the offending *path*, not the executable.
+    Falls back to the first whitespace-separated token of *text* so
+    paths passed via ``read_workspace_file`` (where the input is just
+    the path) still echo cleanly.
+    """
+    for hint in _SDK_TOOL_RESULT_HINTS:
+        idx = text.find(hint)
+        if idx < 0:
+            continue
+        end = idx + len(hint)
+        while end < len(text) and text[end] not in _SHELL_TOKEN_DELIMS:
+            end += 1
+        start = idx
+        while start > 0 and text[start - 1] not in _SHELL_TOKEN_DELIMS:
+            start -= 1
+        return text[start:end]
+    stripped = text.strip()
+    return stripped.split()[0] if stripped else ""
+
+
 def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
     """User-facing redirect message for wrong-tool access to SDK tool-results.
 
     Names the two right ways to get at the bytes so the model doesn't
-    burn another turn retrying with yet another wrong tool.
+    burn another turn retrying with yet another wrong tool. The
+    "Offending fragment" surfaces the actual path-shaped token from
+    *path_or_command* (so a ``cat /…/tool-results/foo.json | jq``
+    invocation echoes the path, not the ``cat`` executable).
     """
-    sample = path_or_command.strip().split()[0] if path_or_command else ""
+    sample = _extract_offending_segment(path_or_command) if path_or_command else ""
     return (
         "This path lives in the Claude Agent SDK's host-side "
         "tool-results directory, which is not mounted into the bash "
@@ -199,7 +235,7 @@ def sdk_tool_result_redirect_hint(path_or_command: str) -> str:
         "tool's argument to inline a slice of the file's content "
         '(e.g. `bash_exec(command="echo @@agptfile:/root/.claude/'
         'projects/.../result.json[1-200] | jq .field")`).\n'
-        f"Offending fragment: {os.path.basename(sample) or sample!r}"
+        f"Offending fragment: {sample!r}"
     )
 
 
