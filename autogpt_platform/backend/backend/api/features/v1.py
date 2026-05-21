@@ -80,6 +80,10 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    get_user_cost_summary,
+)
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
@@ -1922,6 +1926,43 @@ async def list_graphs_executions(
         paginated_result.executions, user_id
     )
     return filtered_executions
+
+
+@v1_router.get(
+    path="/executions/cost-summary",
+    summary="User cost summary",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def get_executions_cost_summary(
+    user_id: Annotated[str, Security(get_user_id)],
+    since: datetime | None = Query(
+        None,
+        description="Window start (UTC). Defaults to start of current calendar month.",
+    ),
+    until: datetime | None = Query(
+        None,
+        description="Window end (UTC). Defaults to now.",
+    ),
+    top_runs_limit: int = Query(
+        10,
+        ge=1,
+        le=50,
+        description="Maximum number of top-cost runs to return.",
+    ),
+) -> UserExecutionCostSummary:
+    """Aggregated cost breakdown for the calling user's graph executions."""
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="`since` must be earlier than or equal to `until`.",
+        )
+    return await get_user_cost_summary(
+        user_id=user_id,
+        since=since,
+        until=until,
+        top_runs_limit=top_runs_limit,
+    )
 
 
 @v1_router.get(

@@ -33,6 +33,7 @@ const sessions = [
     id: "s1",
     title: "Budget notes",
     is_processing: false,
+    source_platform: "slack",
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
   },
@@ -81,6 +82,7 @@ describe("MobileDrawer search", () => {
     render(<MobileDrawer />);
 
     expect(await screen.findByText("Budget notes")).toBeDefined();
+    expect(screen.getByAltText("Slack")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: /search chats/i }));
     expect(
