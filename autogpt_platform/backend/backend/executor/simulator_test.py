@@ -570,17 +570,28 @@ def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
 
 
 class TestDefaultSimulatorModel:
-    """Pin the default model — anyone flipping this without a cost review
-    trips the test, and anyone setting it to a non-enum value fails the
-    LlmModel parseability check (the bug class behind SECRT-2368)."""
+    """Pin the default model — three guards.  Anyone flipping this without
+    a cost review trips the value pin.  Anyone setting it to a non-enum
+    value fails the ``LlmModel`` parseability check (the bug class behind
+    SECRT-2368).  Anyone setting it to a direct-provider snapshot ID like
+    ``claude-haiku-4-5-20251001`` fails the OpenRouter-slug check —
+    OpenRouter's OpenAI-compat endpoint, which the LLM-simulation path
+    uses, rejects anything that isn't in ``<vendor>/<model>`` form."""
 
-    def test_default_is_haiku_4_5(self) -> None:
-        assert _DEFAULT_SIMULATOR_MODEL == "claude-haiku-4-5-20251001"
+    def test_default_is_haiku_openrouter_slug(self) -> None:
+        assert _DEFAULT_SIMULATOR_MODEL == "anthropic/claude-haiku-4-5"
 
     def test_default_parses_as_llm_model(self) -> None:
-        # OrchestratorBlock.Input.model is typed as LlmModel and rejects
-        # any default that isn't an enum member — keep this guard tight.
+        # OrchestratorBlock.Input.model is typed as LlmModel; the default
+        # must resolve through the enum (either directly or via the
+        # OpenRouter-alias map in ``LlmModel._missing_``).
         assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.CLAUDE_4_5_HAIKU
+
+    def test_default_is_openrouter_slug(self) -> None:
+        # The LLM-simulation path hits OpenRouter's OpenAI-compat endpoint,
+        # which only accepts canonical ``<vendor>/<model>`` slugs.  Anything
+        # else returns HTTP 400 even if it's a real provider model.
+        assert "/" in _DEFAULT_SIMULATOR_MODEL
 
 
 class TestExtractCostUsd:

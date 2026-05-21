@@ -3984,6 +3984,82 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/executions/cost-summary": {
+      "get": {
+        "tags": ["v1", "graphs"],
+        "summary": "User cost summary",
+        "description": "Aggregated cost breakdown for the calling user's graph executions.",
+        "operationId": "getV1User cost summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window start (UTC). Defaults to start of current calendar month.",
+              "title": "Since"
+            },
+            "description": "Window start (UTC). Defaults to start of current calendar month."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window end (UTC). Defaults to now.",
+              "title": "Until"
+            },
+            "description": "Window end (UTC). Defaults to now."
+          },
+          {
+            "name": "top_runs_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Maximum number of top-cost runs to return.",
+              "default": 10,
+              "title": "Top Runs Limit"
+            },
+            "description": "Maximum number of top-cost runs to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserExecutionCostSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
@@ -18731,6 +18807,16 @@
         "title": "UsageWindowPublic",
         "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
+      "UserAgentCostRollup": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["graph_id", "cost_cents", "run_count"],
+        "title": "UserAgentCostRollup"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -18778,6 +18864,56 @@
           "request_count"
         ],
         "title": "UserCostSummary"
+      },
+      "UserDailyCost": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["date", "cost_cents", "run_count"],
+        "title": "UserDailyCost"
+      },
+      "UserExecutionCostSummary": {
+        "properties": {
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "billable_run_count": {
+            "type": "integer",
+            "title": "Billable Run Count"
+          },
+          "failed_cost_cents": {
+            "type": "integer",
+            "title": "Failed Cost Cents"
+          },
+          "by_agent": {
+            "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
+            "type": "array",
+            "title": "By Agent"
+          },
+          "top_runs": {
+            "items": { "$ref": "#/components/schemas/UserTopRun" },
+            "type": "array",
+            "title": "Top Runs"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/UserDailyCost" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cents",
+          "run_count",
+          "billable_run_count",
+          "failed_cost_cents",
+          "by_agent",
+          "top_runs",
+          "daily"
+        ],
+        "title": "UserExecutionCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -19042,6 +19178,32 @@
         "type": "object",
         "required": ["user_id", "tier"],
         "title": "UserTierResponse"
+      },
+      "UserTopRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "duration_seconds": { "type": "number", "title": "Duration Seconds" },
+          "node_error_count": { "type": "integer", "title": "Node Error Count" }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "cost_cents",
+          "started_at",
+          "status",
+          "duration_seconds",
+          "node_error_count"
+        ],
+        "title": "UserTopRun"
       },
       "UserTransaction": {
         "properties": {

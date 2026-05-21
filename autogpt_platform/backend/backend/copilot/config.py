@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-from backend.blocks.llm import LlmModel
 from backend.util.clients import OPENROUTER_BASE_URL
 
 
@@ -111,14 +110,17 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default=LlmModel.CLAUDE_4_5_HAIKU.value,
-        description="Model for dry-run block simulation. Must be a real LlmModel "
-        "slug — OrchestratorBlock's input validates this against the enum, and a "
-        "bad value here breaks every dry-run of an agent that contains an "
-        "Orchestrator. Default is Claude Haiku 4.5 because the Orchestrator "
-        "dry-run picks tools and produces a finish message, so a substitute "
-        "with stronger reasoning gives a more faithful preview than Flash-Lite "
-        "while staying cheap.",
+        default="anthropic/claude-haiku-4-5",
+        description="Model for dry-run block simulation. Must be in "
+        "OpenRouter ``<vendor>/<model>`` format AND resolvable through "
+        "``LlmModel`` (directly or via ``LlmModel._missing_``'s "
+        "``_OPENROUTER_ALIASES`` map). The LLM-simulation path hits "
+        "OpenRouter's OpenAI-compat endpoint, which rejects direct-Anthropic "
+        "snapshot IDs like ``claude-haiku-4-5-20251001`` with HTTP 400. "
+        "OrchestratorBlock validates this against ``LlmModel``, so it must "
+        "resolve there. Haiku 4.5 via OpenRouter is already used in "
+        "production for ``title_model``, so it's battle-tested through "
+        "this same client.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
