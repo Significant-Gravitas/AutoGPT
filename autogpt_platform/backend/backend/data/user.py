@@ -519,6 +519,32 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             get_user_by_email.cache_delete(user.email)
         get_or_create_user.cache_clear()
 
+        # Dream-system schedules are bound to the timezone at job-creation
+        # time; without an eager re-register they'd keep firing at the old
+        # local time. Fire-and-forget so this profile update returns
+        # immediately — the helper's lazy drift-detection path (via the
+        # Redis dedup key value) is the durable backstop if this
+        # fails or the user doesn't trigger a memory write within the
+        # 7-day key TTL.
+        try:
+            import asyncio
+
+            from backend.copilot.dream.scheduling import (
+                ensure_dream_system_scheduled,
+            )
+
+            asyncio.create_task(
+                ensure_dream_system_scheduled(user_id, force_refresh=True),
+                name=f"tz-reregister-{user_id[:12]}",
+            )
+        except Exception:
+            logger.warning(
+                "Failed to spawn dream-system re-register after timezone "
+                "update for user %s — lazy drift detection will catch it",
+                user_id[:12],
+                exc_info=True,
+            )
+
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e

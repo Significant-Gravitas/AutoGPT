@@ -64,3 +64,40 @@ class TestUpdateUserTimezone:
 
         assert "user-1" in str(exc.value)
         assert "connection lost" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_eagerly_re_registers_dream_schedules_with_force_refresh(self):
+        """APScheduler cron triggers bind to the timezone at registration
+        time. A profile-page timezone change MUST eagerly re-register
+        the dream-system crons so they fire at the right local time
+        without waiting for the 7-day Redis dedup-key TTL to expire."""
+        from backend.copilot.dream import scheduling as dream_scheduling
+
+        prisma_user = MagicMock(id="user-tz", email="user@example.com")
+        captured: list[tuple[str, bool]] = []
+
+        async def fake_ensure(user_id: str, *, force_refresh: bool = False):
+            captured.append((user_id, force_refresh))
+            return {}
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+            patch.object(user_module.get_user_by_email, "cache_delete"),
+            patch.object(user_module.get_or_create_user, "cache_clear"),
+            patch.object(
+                dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
+            ),
+        ):
+            mock_prisma_user.prisma.return_value.update = AsyncMock(
+                return_value=prisma_user
+            )
+            await update_user_timezone("user-tz", "Europe/Paris")
+            # Yield once so the asyncio.create_task body runs before we
+            # assert it was called.
+            import asyncio as _asyncio
+
+            await _asyncio.sleep(0)
+
+        assert captured == [("user-tz", True)]
