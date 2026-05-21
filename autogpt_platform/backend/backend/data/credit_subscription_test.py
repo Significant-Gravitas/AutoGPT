@@ -1678,6 +1678,48 @@ async def test_handle_subscription_payment_success_skips_when_disabled():
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_disabled():
+    """Successful paid subscription invoices emit the subscription analytics."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_paid_yearly",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "subscription_details": {
+            "metadata": {
+                "tier": "PRO",
+                "billing_cycle": "yearly",
+            },
+        },
+    }
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=AsyncMock(),
+        ) as add_tx_mock,
+        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
+        patch("backend.data.credit.posthog.capture", new=track_mock),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    add_tx_mock.assert_not_called()
+    track_mock.assert_called_once()
+    _, kwargs = track_mock.call_args
+    assert kwargs["event"] == "subscription_payment_success"
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"]["subscription_tier"] == "PRO"
+    assert kwargs["properties"]["billing_cycle"] == "yearly"
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_success_skips_non_subscription_invoice():
     """Invoices with no subscription field (one-off invoices) are no-ops —
     short-circuit lands before the flag check, so no LD eval is needed."""

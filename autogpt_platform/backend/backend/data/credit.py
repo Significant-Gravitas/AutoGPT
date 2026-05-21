@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import posthog
 import stripe
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import (
@@ -2651,6 +2652,53 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
+async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        metadata = _invoice_subscription_metadata(invoice)
+        tier = (
+            metadata.get("tier")
+            or (user.subscriptionTier or SubscriptionTier.NO_TIER).value
+        )
+        billing_cycle = metadata.get("billing_cycle") or (
+            await get_user_billing_cycle(user.id) or "monthly"
+        )
+
+        posthog.api_key = settings.secrets.posthog_api_key
+        posthog.host = settings.secrets.posthog_host
+        posthog.capture(
+            event="subscription_payment_success",
+            distinct_id=user.id,
+            properties={
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "handle_subscription_payment_success: failed to track payment event"
+            " for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
+def _invoice_subscription_metadata(invoice: dict) -> dict:
+    subscription_details = invoice.get("subscription_details")
+    if not isinstance(subscription_details, dict):
+        parent = invoice.get("parent") or {}
+        if isinstance(parent, dict):
+            subscription_details = parent.get("subscription_details")
+
+    if not isinstance(subscription_details, dict):
+        return {}
+
+    metadata = subscription_details.get("metadata") or {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
 async def handle_subscription_payment_failure(invoice: dict) -> None:
     """Handle a failed Stripe subscription payment.
 
@@ -2842,6 +2890,8 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             user.id,
         )
         return
+
+    await _track_subscription_payment_success(user, invoice)
 
     if not settings.config.enable_subscription_credit_grant:
         logger.debug(
