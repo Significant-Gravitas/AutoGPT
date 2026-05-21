@@ -16,6 +16,8 @@ import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
 import { useLoginPage } from "./useLoginPage";
 
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const nextUrl = searchParams.get("next");
@@ -44,9 +46,11 @@ export default function LoginPage() {
 
   if (!isSupabaseAvailable) {
     return (
-      <div className="flex h-full min-h-[60vh] items-center justify-center px-6 text-center">
-        User accounts are disabled because Supabase client is unavailable
-      </div>
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <Text variant="body-medium" className="text-center !text-slate-500">
+          User accounts are disabled because Supabase client is unavailable
+        </Text>
+      </AuthSplitLayout>
     );
   }
 

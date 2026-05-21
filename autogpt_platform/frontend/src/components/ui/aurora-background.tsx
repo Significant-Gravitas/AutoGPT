@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 import React, { ReactNode } from "react";
 
-interface AuroraBackgroundProps extends React.HTMLProps<HTMLDivElement> {
+interface Props extends React.HTMLProps<HTMLDivElement> {
   children?: ReactNode;
   showRadialGradient?: boolean;
 }
@@ -12,7 +12,7 @@ export function AuroraBackground({
   children,
   showRadialGradient = true,
   ...props
-}: AuroraBackgroundProps) {
+}: Props) {
   return (
     <div
       className={cn(
