@@ -18,6 +18,53 @@ properties at least *can* live on the durable edge.
 
 import pytest
 
+from .client import derive_group_id
+from .config import graphiti_config
+from .falkordb_driver import AutoGPTFalkorDriver
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_hyphenated_uuid_group_id_round_trips_through_cypher(
+    falkordb_available: bool,
+) -> None:
+    """P-1.6 regression: derive_group_id intentionally preserves hyphens
+    (UUIDs contain them), and older Graphiti versions mangled hyphens in
+    Cypher property keys (upstream issue #1483). This test pins that a
+    real hyphenated UUID survives a write + read as a ``group_id`` property
+    so we notice immediately if a future driver/version regresses.
+
+    Uses its own driver — the ``clean_graph`` fixture mints hyphen-free
+    test ids on purpose, which would mask the bug we are guarding.
+    """
+    user_id = "3237579d-a31a-4bb8-ab56-d6e8f7cd0244"
+    group_id = derive_group_id(user_id)
+    assert "-" in group_id, "derive_group_id must preserve hyphens for this regression"
+
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+    )
+    try:
+        await driver.execute_query(
+            "CREATE (n:Entity {uuid: 'probe', name: 'Alice', group_id: $gid})",
+            gid=group_id,
+        )
+        records, _, _ = await driver.execute_query(
+            "MATCH (n:Entity {group_id: $gid}) RETURN n.uuid AS uuid, n.group_id AS gid",
+            gid=group_id,
+        )
+        assert len(records) == 1
+        assert records[0]["uuid"] == "probe"
+        assert records[0]["gid"] == group_id
+    finally:
+        try:
+            await driver.execute_query("MATCH (n) DETACH DELETE n")
+        finally:
+            await driver.close()
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio

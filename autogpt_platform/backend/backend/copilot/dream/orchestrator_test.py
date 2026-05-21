@@ -86,6 +86,20 @@ def _stub_lock(mocker):
     mocker.patch.object(orchestrator_mod, "dream_lock", _noop_lock)
 
 
+@pytest.fixture(autouse=True)
+def _stub_billing(mocker):
+    """Default-allow billing so happy-path tests don't have to plumb
+    Redis/Supabase. Tests that exercise the budget-skip path re-patch
+    ``check_dream_budget`` with a (False, reason) AsyncMock.
+
+    ``record_phase_cost`` is a no-op fire-and-forget here; the billing
+    seam itself has dedicated coverage in ``billing_test.py``."""
+    mocker.patch.object(
+        orchestrator_mod, "check_dream_budget", AsyncMock(return_value=(True, None))
+    )
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", AsyncMock())
+
+
 @pytest.mark.asyncio
 async def test_empty_input_returns_skipped(mocker):
     """No episodes AND no facts ⇒ skipped, no LLM calls."""
@@ -274,6 +288,121 @@ async def test_lock_held_returns_skipped_lock_held(mocker):
     assert result.skipped is True
     assert result.skip_reason == "lock_held"
     fetch_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_budget_skip_returns_insufficient_credits_without_running_phases(mocker):
+    """Pre-flight rate-limit cap exceeded → skipped, no LLM calls, no apply."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "check_dream_budget",
+        AsyncMock(return_value=(False, "insufficient_credits")),
+    )
+    structured = mocker.patch.object(
+        orchestrator_mod, "structured_completion", AsyncMock()
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+    fetch_mock = mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "insufficient_credits"
+    structured.assert_not_called()
+    apply_mock.assert_not_awaited()
+    fetch_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_budget_check_failing_closed_surfaces_as_error(mocker):
+    """Redis brown-out during pre-flight → error, NOT skipped, so the
+    admin endpoint surfaces it and the scheduler retries next tick."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "check_dream_budget",
+        AsyncMock(return_value=(False, "rate_limit_unavailable")),
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert "rate_limit_unavailable" in result.error
+    assert result.skipped is False
+    apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_each_completed_phase_charges_once(mocker):
+    """One billing row per LLM call — verifies the chat convention
+    (per-call rows) is preserved end-to-end in the orchestrator."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    consolidated = ConsolidationOutput(facts=[])
+    recombined = RecombinationOutput(proposals=[])
+    sanitized = DreamOperations()
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[_wrap(consolidated), _wrap(recombined), _wrap(sanitized)]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s",
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+    charge_spy = AsyncMock()
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
+
+    await orchestrator_mod.execute_dream_pass("u")
+
+    assert charge_spy.await_count == 3
+    phases_charged = [c.kwargs["phase_usage"].phase for c in charge_spy.await_args_list]
+    assert phases_charged == ["consolidate", "recombine", "sanitize"]
+
+
+@pytest.mark.asyncio
+async def test_partial_failure_still_charges_completed_phases(mocker):
+    """If recombine errors after consolidate succeeded, we must still
+    bill for the consolidate tokens — we already paid the provider."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    consolidated = ConsolidationOutput(facts=[])
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(side_effect=[_wrap(consolidated), DreamLLMError("recombine boom")]),
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+    charge_spy = AsyncMock()
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert result.error.startswith("recombine:")
+    assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
+    assert charge_spy.await_args.kwargs["phase_usage"].phase == "consolidate"
+    apply_mock.assert_not_awaited()
 
 
 _ = MagicMock  # keep import for editor convenience; not directly used

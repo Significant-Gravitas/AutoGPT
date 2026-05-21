@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from backend.copilot.config import ChatConfig
 
 from .apply import apply_operations
+from .billing import check_dream_budget, record_phase_cost
 from .fetch import DreamInput, gather_dream_input
 from .llm import (
     CompletionUsage,
@@ -221,6 +222,31 @@ async def _execute_dream_pass_async(
     ttl = _resolve_lock_ttl(transport_is_local)
     try:
         async with dream_lock(user_id, ttl_seconds=ttl):
+            # Pre-flight billing check. Runs inside the lock so a
+            # paywalled user doesn't burn the slot for an eligible
+            # concurrent pass on a shared FalkorDB.
+            budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
+            if not budget_ok:
+                if budget_skip == "rate_limit_unavailable":
+                    return _failure_result(
+                        user_id,
+                        pass_id,
+                        started_at,
+                        monotonic_start,
+                        execution_path,
+                        f"billing: {budget_skip}",
+                    )
+                return DreamPassResult(
+                    user_id=user_id,
+                    pass_id=pass_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(timezone.utc),
+                    elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
+                    execution_path=execution_path,
+                    skipped=True,
+                    skip_reason=budget_skip or "insufficient_credits",
+                )
+
             input_bundle = await gather_dream_input(user_id)
 
             if not input_bundle.episodes and not input_bundle.facts:
@@ -256,6 +282,12 @@ async def _execute_dream_pass_async(
                     "consolidate", consolidate_completion.usage, execution_path
                 )
             )
+            await record_phase_cost(
+                user_id=user_id,
+                pass_id=pass_id,
+                phase_usage=step_usages[-1],
+                execution_path=execution_path,
+            )
             consolidated = consolidate_completion.value
 
             try:
@@ -277,6 +309,12 @@ async def _execute_dream_pass_async(
                     "recombine", recombine_completion.usage, execution_path
                 )
             )
+            await record_phase_cost(
+                user_id=user_id,
+                pass_id=pass_id,
+                phase_usage=step_usages[-1],
+                execution_path=execution_path,
+            )
             recombined = recombine_completion.value
 
             try:
@@ -297,6 +335,12 @@ async def _execute_dream_pass_async(
                 _phase_usage_from_completion(
                     "sanitize", sanitize_completion.usage, execution_path
                 )
+            )
+            await record_phase_cost(
+                user_id=user_id,
+                pass_id=pass_id,
+                phase_usage=step_usages[-1],
+                execution_path=execution_path,
             )
             sanitized = sanitize_completion.value
 
