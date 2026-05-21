@@ -86,6 +86,11 @@ def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        # Indices are built by the long-lived chat-write client when the
+        # user first writes a memory; the dream pass reads from an
+        # already-indexed graph and shouldn't refire the
+        # background-task race that produces "Buffer is closed" spam.
+        build_indices=False,
     )
 
 

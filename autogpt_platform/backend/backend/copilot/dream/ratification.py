@@ -97,6 +97,9 @@ async def run_ratification_pass(user_id: str) -> RatificationResult:
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        # Indices live with the chat-write client; skip the
+        # background-task race that produces "Buffer is closed" spam.
+        build_indices=False,
     )
     try:
         try:
@@ -298,6 +301,9 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        # Indices live with the chat-write client; skip the
+        # background-task race that produces "Buffer is closed" spam.
+        build_indices=False,
     )
     try:
         for uuid in edge_uuids:

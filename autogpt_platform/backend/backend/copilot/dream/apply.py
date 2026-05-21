@@ -148,6 +148,9 @@ async def _apply_demotions(
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        # Indices live with the chat-write client; skip the per-driver
+        # indexing race ("Buffer is closed" spam).
+        build_indices=False,
     )
     succeeded = 0
     failed = 0
@@ -196,6 +199,9 @@ async def _apply_entity_invalidations(
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        # Indices live with the chat-write client; skip the per-driver
+        # indexing race ("Buffer is closed" spam).
+        build_indices=False,
     )
     total = 0
     summaries: list[EntityInvalidationSummary] = []

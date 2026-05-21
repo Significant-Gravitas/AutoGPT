@@ -164,12 +164,20 @@ def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     The visualizer's read paths only need Cypher; we avoid the
     ~1s LLM-client + cross-encoder setup cost for what should be
     snappy dashboard calls.
+
+    ``build_indices=False`` suppresses graphiti-core's per-init
+    fire-and-forget indexing task. For a user whose graph the admin
+    is inspecting, the indices are already in place from the
+    long-lived chat-write client; firing the index-creation task per
+    short-lived admin request creates a race with the route's own
+    queries and produces "Buffer is closed" log spam.
     """
     return AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        build_indices=False,
     )
 
 
