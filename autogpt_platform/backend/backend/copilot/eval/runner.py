@@ -39,9 +39,9 @@ from typing import Any, Sequence
 
 from backend.copilot.dream.schemas import DreamPassResult
 
-from .cost_latency_suite import CostLatencySuiteResult, run_cost_latency_suite
+from .cost_latency_suite import run_cost_latency_suite
 from .datasets import ALL_STALENESS_FIXTURES, StalenessFixture
-from .staleness_suite import StalenessSuiteResult, run_staleness_suite
+from .staleness_suite import run_staleness_suite
 
 
 @dataclass(frozen=True)
@@ -104,9 +104,7 @@ def run_dream_eval(
     suites: dict[str, Any] = {}
 
     if config.run_staleness:
-        suites["staleness"] = run_staleness_suite(
-            config.staleness_fixtures, now=now
-        )
+        suites["staleness"] = run_staleness_suite(config.staleness_fixtures, now=now)
     if config.run_cost_latency:
         suites["cost_latency"] = run_cost_latency_suite(passes)
 

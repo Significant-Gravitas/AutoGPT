@@ -69,9 +69,10 @@ class TestAddCommunityRebuildSchedule:
         fake_job = MagicMock(id="community_rebuild_abc", next_run_time=None)
         s.scheduler.add_job.return_value = fake_job
 
-        result = s.add_community_rebuild_schedule(
-            user_id="abc", user_timezone="America/New_York"
-        )
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_community_rebuild_schedule(
+                user_id="abc", user_timezone="America/New_York"
+            )
 
         s.scheduler.add_job.assert_called_once()
         kwargs = s.scheduler.add_job.call_args.kwargs
@@ -101,7 +102,8 @@ class TestAddCommunityRebuildSchedule:
         s.scheduler.add_job.return_value = MagicMock(
             id="community_rebuild_abc", next_run_time=None
         )
-        result = s.add_community_rebuild_schedule(user_id="abc", user_timezone="")
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_community_rebuild_schedule(user_id="abc", user_timezone="")
         assert result["user_timezone"] == "UTC"
 
     def test_next_run_time_isoformatted_when_present(self) -> None:
@@ -110,7 +112,8 @@ class TestAddCommunityRebuildSchedule:
         s.scheduler.add_job.return_value = MagicMock(
             id="community_rebuild_abc", next_run_time=nrt
         )
-        result = s.add_community_rebuild_schedule(user_id="abc")
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_community_rebuild_schedule(user_id="abc")
         assert result["next_run_time"] == nrt.isoformat()
 
 

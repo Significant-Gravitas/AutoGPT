@@ -5,6 +5,8 @@ import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPass
 import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
+import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
+import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
 
 export function MemoryVisualizer() {
   const {
@@ -96,6 +98,8 @@ export function MemoryVisualizer() {
         nodeCount={nodes.length}
         edgeCount={edges.length}
       />
+
+      <DreamResultPanel result={dreamData} />
 
       <div className="grid grid-cols-12 gap-4">
         <Sidebar
@@ -415,6 +419,24 @@ interface DetailPanelProps {
     otherUuid: string;
   }[];
   onClear: () => void;
+}
+
+interface DreamResultPanelProps {
+  result: DreamPassResponse | undefined;
+}
+
+function DreamResultPanel({ result }: DreamResultPanelProps) {
+  if (!result) return null;
+  if (result.skipped || result.error) return null;
+  return (
+    <div
+      className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+      data-testid="dream-result-panel"
+    >
+      <DreamOperationsView operations={result.operations} />
+      <DreamUsageSummary usage={result.usage} />
+    </div>
+  );
 }
 
 function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {

@@ -12,17 +12,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from backend.copilot.dream.schemas import (
-    DreamPassResult,
-    DreamPassUsage,
-    PhaseUsage,
-)
+from backend.copilot.dream.schemas import DreamPassResult, DreamPassUsage, PhaseUsage
 
-from .datasets import (
-    ALL_STALENESS_FIXTURES,
-    STABLE_FACT_FIXTURES,
-    STALE_FACT_FIXTURES,
-)
+from .datasets import ALL_STALENESS_FIXTURES, STABLE_FACT_FIXTURES, STALE_FACT_FIXTURES
 from .runner import DreamEvalConfig, run_dream_eval
 from .staleness_suite import run_staleness_suite
 
@@ -207,8 +199,9 @@ def test_full_fixture_meets_quality_floor_for_p0_ship():
 def test_each_fixture_row_classifies_to_its_expected_label(fixture):
     """Per-row visibility: if one fixture flips, the failing test name
     tells you exactly which fact regressed."""
-    from .staleness_suite import _fixture_to_fact
     from backend.copilot.dream.staleness import STALENESS_THRESHOLD, score_staleness
+
+    from .staleness_suite import _fixture_to_fact
 
     fact = _fixture_to_fact(fixture, _now())
     score = score_staleness(fact, now=_now())

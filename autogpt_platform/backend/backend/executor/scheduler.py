@@ -310,6 +310,79 @@ def execute_dream_pass_sync(user_id: str):
         )
 
 
+# Lock key prefix for the per-user ratification pass. Separate from the
+# dream lock so a dream and a ratification pass can run in parallel —
+# they touch different tentative-edge populations (dream writes new
+# tentatives; ratification only operates on already-written ones).
+RATIFICATION_LOCK_KEY_PREFIX = "ratification:"
+# 30 min ceiling — ratification is a few Cypher writes per tentative
+# plus Redis reads; even on a backlog of thousands of edges it should
+# finish well inside this. The TTL is a fallback release on crash.
+RATIFICATION_LOCK_TTL_SECONDS = 1800
+
+
+def execute_ratification_pass_sync(user_id: str):
+    """Per-user ratification pass (P-0.4).
+
+    Sync wrapper for APScheduler. Acquires a per-user Redis SETNX lock
+    so two scheduler workers can't double-process the same user's
+    tentative population. If the lock is already held we log + skip
+    rather than wait — the next 6h tick will pick up where this one
+    left off.
+    """
+    from backend.copilot.dream.ratification import run_ratification_pass
+
+    async def _run_with_lock():
+        # Lazy import — keeps Redis out of the scheduler-bootstrap path.
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        lock_key = f"{RATIFICATION_LOCK_KEY_PREFIX}{user_id}"
+        acquired = await redis.set(
+            lock_key, "1", nx=True, ex=RATIFICATION_LOCK_TTL_SECONDS
+        )
+        if not acquired:
+            logger.info(
+                "Ratification pass skipped for user %s — lock %s already held",
+                user_id[:12],
+                lock_key,
+            )
+            return None
+        try:
+            return await run_ratification_pass(user_id)
+        finally:
+            try:
+                await redis.delete(lock_key)
+            except Exception:
+                logger.warning(
+                    "Failed to release ratification lock for user %s — "
+                    "TTL %ds will clear",
+                    user_id[:12],
+                    RATIFICATION_LOCK_TTL_SECONDS,
+                    exc_info=True,
+                )
+
+    result = run_async(_run_with_lock())
+    if result is None:
+        return
+    if result.error:
+        logger.warning(
+            "Ratification pass errored for user %s: %s",
+            user_id[:12],
+            result.error,
+        )
+    else:
+        logger.info(
+            "Ratification pass completed for user %s: "
+            "examined=%d ratified=%d superseded=%d per_edge_errors=%d",
+            user_id[:12],
+            result.examined_count,
+            result.ratified_count,
+            result.superseded_count,
+            len(result.per_edge_errors),
+        )
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -1052,6 +1125,77 @@ class Scheduler(AppService):
         result = run_async(execute_dream_pass(user_id))
         return result.model_dump(mode="json")
 
+    # --- Ratification pass (P-0.4) ---
+    #
+    # Per-user job that flips ``status='tentative'`` MemoryFact edges
+    # written by the dream pass to ``status='active'`` if they earned
+    # at least one warm-context hit, or supersedes them once the grace
+    # period elapses with no hits. Cron is every 6h so a tentative
+    # written just after a daily dream pass gets multiple chances to
+    # ratify within its grace window without a one-day quantization.
+
+    @expose
+    def add_ratification_pass_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a 6-hourly ratification pass for one user."""
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"ratification_pass_{user_id}"
+        job = self.scheduler.add_job(
+            execute_ratification_pass_sync,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 */6 * * *", timezone=user_timezone),
+            id=job_id,
+            name=f"Ratification pass for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered ratification pass job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_ratification_pass_schedule(self, user_id: str) -> bool:
+        """Remove the 6-hourly ratification pass for one user."""
+        job_id = f"ratification_pass_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        logger.info("Removed ratification pass job for user %s", user_id[:12])
+        return True
+
+    @expose
+    def execute_ratification_pass_now(self, user_id: str) -> dict:
+        """Manually trigger a ratification pass for one user (bypasses cron).
+
+        Used by admin debugging when you want to see a tentative
+        memory flip without waiting for the next 6h tick. Returns the
+        ``RatificationResult`` as a dict so the admin route can
+        deserialize without taking a hard dependency on the
+        ratification module shape.
+        """
+        from backend.copilot.dream.ratification import run_ratification_pass
+
+        result = run_async(run_ratification_pass(user_id))
+        return result.model_dump(mode="json")
+
 
 class SchedulerClient(AppServiceClient):
     @classmethod
@@ -1075,3 +1219,13 @@ class SchedulerClient(AppServiceClient):
     add_dream_pass_schedule = endpoint_to_async(Scheduler.add_dream_pass_schedule)
     delete_dream_pass_schedule = endpoint_to_async(Scheduler.delete_dream_pass_schedule)
     execute_dream_pass_now = endpoint_to_async(Scheduler.execute_dream_pass_now)
+
+    add_ratification_pass_schedule = endpoint_to_async(
+        Scheduler.add_ratification_pass_schedule
+    )
+    delete_ratification_pass_schedule = endpoint_to_async(
+        Scheduler.delete_ratification_pass_schedule
+    )
+    execute_ratification_pass_now = endpoint_to_async(
+        Scheduler.execute_ratification_pass_now
+    )
