@@ -742,6 +742,16 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
     workspace storage.
     """
 
+    @pytest.fixture(autouse=True)
+    def _clear_sdk_cwd(self):
+        """Sibling test classes set ``sdk_cwd`` via the shared ContextVar.
+        Clear it so ``is_allowed_local_path`` doesn't claim our relative
+        shorthand paths as legitimate sdk_cwd children and short-circuit
+        the redirect branch we're testing."""
+        from backend.copilot.context import set_execution_context
+
+        set_execution_context(user_id="test", session=None, sandbox=None, sdk_cwd=None)
+
     @staticmethod
     async def _call_read_with_resolve_failure(path: str):
         read_tool = ReadWorkspaceFileTool()
