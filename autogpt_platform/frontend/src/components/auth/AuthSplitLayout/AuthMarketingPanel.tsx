@@ -28,16 +28,16 @@ export function AuthMarketingPanel({
       <div className="absolute inset-0 -z-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.18),transparent_55%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.18),transparent_60%)]" />
       <div className="relative z-10 flex flex-col gap-12">
         <AutoGPTLogoMark />
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <Text
             variant="h1"
             as="h1"
-            className="!leading-[1.1] tracking-[-0.02em] !text-white"
+            className="!w-full !text-[clamp(2.75rem,6.5vw,5.5rem)] !font-semibold !leading-[1.02] tracking-[-0.03em] !text-white"
           >
             {heading}
           </Text>
           {description ? (
-            <Text variant="large" className="max-w-sm !text-slate-300">
+            <Text variant="large" className="max-w-md !text-slate-300">
               {description}
             </Text>
           ) : null}
