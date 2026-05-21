@@ -8,16 +8,13 @@ import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarket
 export function SignupMarketingPanel() {
   return (
     <AuthMarketingPanel
-      heading={
-        <>
-          AI agents
-          <br />
-          that work
-          <br />
-          <span className="text-slate-400">for you.</span>
-        </>
-      }
-      description="Discover, build, and deploy AI agents that automate real work — no code required."
+      headingLines={[
+        "AI agents",
+        <span key="line-2">
+          that work <span className="text-slate-400">for you.</span>
+        </span>,
+      ]}
+      description="Discover, build, and deploy AI agents that automate real work — no code required. Start building agents in minutes."
       items={[
         {
           icon: <LightningIcon size={20} weight="duotone" />,

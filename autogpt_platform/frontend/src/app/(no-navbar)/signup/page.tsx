@@ -64,12 +64,9 @@ export default function SignupPage() {
 
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
-      <div className="mb-8 flex flex-col gap-2">
+      <div className="mb-8">
         <Text variant="h3" as="h1" className="!text-slate-950">
           Create your account
-        </Text>
-        <Text variant="large" className="!text-slate-500">
-          Start building agents in minutes
         </Text>
       </div>
 

@@ -8,13 +8,7 @@ import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarket
 export function LoginMarketingPanel() {
   return (
     <AuthMarketingPanel
-      heading={
-        <>
-          Welcome
-          <br />
-          back
-        </>
-      }
+      headingLines={["Welcome back"]}
       description="Pick up where you left off. Your agents are waiting."
       itemsTitle="What's new"
       items={[

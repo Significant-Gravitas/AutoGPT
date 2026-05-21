@@ -52,11 +52,8 @@ export default function LoginPage() {
 
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
-      <div className="mb-8 flex flex-col gap-2">
+      <div className="mb-8">
         <Text variant="h3" as="h1" className="!text-slate-950">
-          Welcome back
-        </Text>
-        <Text variant="large" className="!text-slate-500">
           Log in to your account to continue
         </Text>
       </div>
