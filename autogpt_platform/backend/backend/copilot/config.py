@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from backend.blocks.llm import LlmModel
 from backend.util.clients import OPENROUTER_BASE_URL
 
 
@@ -110,17 +111,17 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default="anthropic/claude-haiku-4-5",
-        description="Model for dry-run block simulation. Must be in "
-        "OpenRouter ``<vendor>/<model>`` format AND resolvable through "
-        "``LlmModel`` (directly or via ``LlmModel._missing_``'s "
-        "``_OPENROUTER_ALIASES`` map). The LLM-simulation path hits "
-        "OpenRouter's OpenAI-compat endpoint, which rejects direct-Anthropic "
-        "snapshot IDs like ``claude-haiku-4-5-20251001`` with HTTP 400. "
-        "OrchestratorBlock validates this against ``LlmModel``, so it must "
-        "resolve there. Haiku 4.5 via OpenRouter is already used in "
-        "production for ``title_model``, so it's battle-tested through "
-        "this same client.",
+        default=LlmModel.GEMINI_2_5_FLASH_LITE.value,
+        description="Model for dry-run block simulation. Constraints: "
+        "(1) the LLM-simulation path calls OpenRouter's OpenAI-compat "
+        "endpoint with ``response_format=json_object`` and "
+        "``json.loads()`` the response — Claude wraps JSON in markdown "
+        "fences here, Gemini doesn't; (2) the orchestrator BUILT_IN "
+        "dry-run path dispatches on ``llm_model.metadata.provider`` — "
+        "a Claude default would hit ``api.anthropic.com`` with the "
+        "platform OR key and 401, while Gemini has provider=open_router "
+        "and routes correctly. Flash-Lite satisfies both and keeps "
+        "platform OR cost low.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(

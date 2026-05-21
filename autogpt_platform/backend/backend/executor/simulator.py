@@ -47,24 +47,32 @@ from backend.util.clients import get_openai_client
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Claude Haiku 4.5 via the platform's OpenRouter
-# credential, in OpenRouter slug form (``anthropic/claude-haiku-4-5``).
-# The LLM-simulation path (``_call_llm_for_simulation``) hits OpenRouter's
-# OpenAI-compat endpoint at ``openrouter.ai/api/v1/chat/completions``,
-# which only accepts ``<vendor>/<model>`` slugs — the direct-Anthropic
-# snapshot ID ``claude-haiku-4-5-20251001`` is rejected with HTTP 400.
-# For OrchestratorBlock dry-runs, this string is parsed via
-# ``LlmModel._missing_`` (the ``_OPENROUTER_ALIASES`` table maps it back
-# to ``LlmModel.CLAUDE_4_5_HAIKU``), and the orchestrator's Anthropic SDK
-# sends the snapshot value to OpenRouter's Anthropic-compat endpoint at
-# ``openrouter.ai/api/v1/messages``, which accepts both formats.  Haiku
-# 4.5 via OpenRouter is already battle-tested for copilot title generation
-# (see ``ChatConfig.title_model``) and gives materially better tool-use
-# decisions for Orchestrator dry-runs than the Flash-Lite tier while
-# staying cheap.  Configurable via ``ChatConfig.simulation_model``
-# (``CHAT_SIMULATION_MODEL`` env var) — overrides must satisfy both
-# constraints (OpenRouter-slug shape AND resolvable through ``LlmModel``).
-_DEFAULT_SIMULATOR_MODEL = "anthropic/claude-haiku-4-5"
+# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  The
+# choice is forced by three independent routing constraints; Flash-Lite
+# is the smallest enum member that satisfies all three:
+#
+# 1. **LLM-simulation path** (``_call_llm_for_simulation``) calls
+#    OpenRouter's OpenAI-compat endpoint with
+#    ``response_format=json_object`` and ``json.loads()`` the response.
+#    Claude via OR's OpenAI-compat wraps JSON in markdown code fences
+#    (```​``json\\n{...}\\n``​```) even when JSON mode is requested
+#    — ``json.loads`` trips on the leading backtick with
+#    ``Expecting value: line 1 column 1 (char 0)``.  Gemini emits raw JSON.
+# 2. **Orchestrator BUILT_IN dry-run path** (``llm.llm_call``) dispatches
+#    on ``llm_model.metadata.provider``, not credential type.  A Claude
+#    default would land in the Anthropic-Python-SDK branch against
+#    ``api.anthropic.com`` with the platform OR key → 401.  Gemini has
+#    ``metadata.provider == "open_router"`` so dispatch routes through
+#    the OpenRouter branch correctly.
+# 3. **Orchestrator EXTENDED_THINKING dry-run path** would impose
+#    ``model.value.startswith("claude")`` (orchestrator.py SDK guard) —
+#    Flash-Lite would fail that check, which is why we override
+#    ``execution_mode`` to BUILT_IN below regardless of user choice.
+#
+# Configurable via ``ChatConfig.simulation_model``
+# (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
+# constraints (1) and (2).
+_DEFAULT_SIMULATOR_MODEL = LlmModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
@@ -451,30 +459,29 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # The actual credentials are injected via extra_exec_kwargs in
         # manager.py using _dry_run_api_key.
         #
-        # Force ``execution_mode = EXTENDED_THINKING`` for the dry-run.
-        # Letting the user-chosen mode flow through is unsafe: the
-        # OrchestratorBlock default is ``BUILT_IN``, which routes the
-        # call through ``llm.llm_call`` → anthropic branch against
-        # ``api.anthropic.com`` (since the dispatch keys on
-        # ``llm_model.metadata.provider``, not credential type). With the
-        # dry-run model overridden to Claude + the platform key being
-        # an OpenRouter key, that path 401s — every default dry-run on
-        # an Orchestrator would fail.
+        # Force ``execution_mode = BUILT_IN`` for the dry-run, regardless
+        # of what the user picked.  With Flash-Lite as the sim model:
         #
-        # ``EXTENDED_THINKING`` routes through the Claude Agent SDK
-        # subprocess, whose OR-credential branch in
-        # ``orchestrator.py:1670-1691`` sets ``ANTHROPIC_BASE_URL`` to
-        # OpenRouter's Anthropic-compat endpoint AND ``ANTHROPIC_API_KEY``
-        # to the OR key (this PR fixes the previous empty-string bug).
-        # The two prerequisites the SDK path imposes
-        # (``model.metadata.provider in {anthropic, open_router}`` and
-        # ``model.value.startswith("claude")``) are both satisfied —
-        # ``sim_model`` is always Claude — so the path is reachable.
+        #   - BUILT_IN routes ``llm.llm_call`` to the open_router branch
+        #     (dispatch on ``metadata.provider``) → OpenAI SDK against
+        #     openrouter.ai with the platform OR key → works.
+        #   - EXTENDED_THINKING would hit the SDK subprocess's
+        #     ``model.value.startswith("claude")`` guard
+        #     (orchestrator.py) and ``ValueError`` immediately — Flash-Lite
+        #     is not Claude.
+        #
+        # Honouring the user's pick of EXTENDED_THINKING would force the
+        # sim model back to Claude (Haiku, etc.), which then trips the
+        # JSON-mode markdown-wrap on the LLM-simulation path for every
+        # *other* block in the same graph.  BUILT_IN sidesteps every
+        # path-specific quirk by staying on the simpler OpenAI-SDK-
+        # with-tool-calling route — the actual purpose of dry-run is a
+        # smoke check, not a perfect mirror of EXTENDED_THINKING.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
-            "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+            "execution_mode": ExecutionMode.BUILT_IN.value,
             "_dry_run_api_key": or_key,
         }
 
