@@ -297,6 +297,38 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
 }
 
 
+# Reverse lookup: enum member → OpenRouter slug. Built once at module
+# load so callers don't re-scan the alias map on every request.
+_CANONICAL_TO_OPENROUTER_SLUG: Mapping[LlmModel, str] = {
+    member: slug for slug, member in _OPENROUTER_ALIASES.items()
+}
+
+
+def openrouter_model_id(llm_model: LlmModel) -> str:
+    """Return the model identifier OpenRouter's OpenAI-compat endpoint accepts.
+
+    OpenRouter's ``/v1/chat/completions`` endpoint only accepts canonical
+    ``<vendor>/<model>`` slugs. Three cases:
+
+    1. Anthropic 4.5 models — canonical value carries a ``-YYYYMMDD``
+       snapshot suffix that the OR slug drops; reverse the alias map.
+    2. Anthropic 4.6/4.7+ models — no snapshot suffix, just prepend
+       ``anthropic/`` since the canonical value already matches OR's
+       slug after the prefix.
+    3. Everything else — non-Anthropic OR-routed models already use the
+       ``<vendor>/<model>`` shape as their enum value (e.g. ``mistralai/
+       mistral-large-2512``), so the canonical value is the slug.
+
+    This is the inverse of ``LlmModel._missing_``'s OR-slug resolution
+    — together they form a round-trip for every OR-routed model.
+    """
+    if llm_model in _CANONICAL_TO_OPENROUTER_SLUG:
+        return _CANONICAL_TO_OPENROUTER_SLUG[llm_model]
+    if llm_model.metadata.provider == "anthropic":
+        return f"anthropic/{llm_model.value}"
+    return llm_model.value
+
+
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
@@ -1201,7 +1233,13 @@ async def _llm_call(
             # Ask OpenRouter to include the per-request USD cost on the usage
             # object. Same shape used by simulator.py — keep aligned.
             extra_body={"usage": {"include": True}},
-            model=llm_model.value,
+            # Use the OR slug, not ``llm_model.value``. For Anthropic models
+            # with snapshot suffixes (Claude 4.5 family) the canonical value
+            # is rejected by OR's ``/v1/chat/completions`` with
+            # ``"not a valid model ID"``. ``openrouter_model_id`` reverses
+            # the alias map and prepends ``anthropic/`` for the post-4.5
+            # entries that already match after the prefix.
+            model=openrouter_model_id(llm_model),
             messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
             tools=(

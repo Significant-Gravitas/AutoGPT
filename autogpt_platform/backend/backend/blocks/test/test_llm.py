@@ -1605,3 +1605,74 @@ class TestLlmModelMissingHandler:
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )
+
+
+class TestOpenRouterModelId:
+    """``openrouter_model_id`` returns the model identifier OpenRouter's
+    OpenAI-compat ``/v1/chat/completions`` endpoint actually accepts.
+
+    Anthropic models with snapshot suffixes (Claude 4.5 family) MUST go
+    through the OR slug — the canonical value is rejected with HTTP 400
+    ``"not a valid model ID"``. Anthropic models without snapshots
+    (4.6/4.7+) need the ``anthropic/`` prefix. Non-Anthropic models
+    already use ``<vendor>/<model>`` as their canonical value, so the
+    canonical is the slug.
+
+    Regression coverage for the bug class where the BUILT_IN orchestrator
+    path used ``llm_model.value`` directly and broke OR-routed Anthropic
+    calls.
+    """
+
+    def test_4_5_anthropic_snapshot_reverses_to_or_slug(self) -> None:
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_5_HAIKU)
+            == "anthropic/claude-haiku-4-5"
+        )
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_5_OPUS)
+            == "anthropic/claude-opus-4-5"
+        )
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_5_SONNET)
+            == "anthropic/claude-sonnet-4-5"
+        )
+
+    def test_4_6_4_7_anthropic_gets_prefix(self) -> None:
+        # No snapshot suffix on 4.6/4.7 enum values, so the alias map
+        # has no entry; ``anthropic/`` prefix added directly.
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_6_OPUS)
+            == "anthropic/claude-opus-4-6"
+        )
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_7_OPUS)
+            == "anthropic/claude-opus-4-7"
+        )
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.CLAUDE_4_6_SONNET)
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    def test_or_routed_non_anthropic_returns_canonical(self) -> None:
+        # Mistral / Kimi / Gemini-via-OR canonical values are already
+        # ``<vendor>/<model>`` slugs — no transformation needed.
+        assert (
+            llm.openrouter_model_id(llm.LlmModel.MISTRAL_LARGE_3)
+            == "mistralai/mistral-large-2512"
+        )
+        assert llm.openrouter_model_id(llm.LlmModel.KIMI_K2_6) == "moonshotai/kimi-k2.6"
+
+    def test_or_slug_round_trips_through_missing(self) -> None:
+        """The id ``openrouter_model_id`` returns must resolve back to
+        the same enum member via ``_missing_`` — that's the contract
+        that lets callers (and OpenRouter) round-trip the identifier."""
+        for member in llm.LlmModel:
+            if member.metadata.provider not in ("anthropic", "open_router"):
+                # Direct-provider models (OpenAI, Groq, Ollama, etc.)
+                # aren't expected to round-trip through OR.
+                continue
+            slug = llm.openrouter_model_id(member)
+            assert llm.LlmModel(slug) is member, (
+                f"openrouter_model_id({member.name}) returned {slug!r}; "
+                f"it does not resolve back to the same enum member."
+            )
