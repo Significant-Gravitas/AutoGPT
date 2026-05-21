@@ -489,8 +489,25 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
+        # CAVEAT: only bridge when the on-disk bytes and what the model
+        # just read are the same — i.e. when ``_navigable_tool_result_text``
+        # did *not* transform the content. If we pretty-printed an MCP
+        # envelope, the model sees a pretty-printed slice while the
+        # bridged sandbox file would hold the raw envelope; bash commands
+        # operating on the bridged copy would then see different content
+        # than the model just read, leading to silent format-mismatch
+        # bugs. Same constraint applies to char-mode slices. The new
+        # bash_exec SDK-path redirect (added in this PR) covers the
+        # alternative workflow when the bridge is skipped — the model
+        # can use ``read_tool_result`` again with offsets, or pipe a
+        # slice via ``@@agptfile:<path>[<start>-<end>]``.
         sandbox = _current_sandbox.get(None)
-        if sandbox is not None:
+        if (
+            sandbox is not None
+            and navigable == raw
+            and char_offset is None
+            and char_limit is None
+        ):
             annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
             if annotation:
                 text += annotation

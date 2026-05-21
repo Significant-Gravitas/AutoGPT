@@ -723,6 +723,113 @@ class TestReadFileHandlerBridge:
             _current_sandbox.reset(token)
 
     @pytest.mark.asyncio
+    async def test_bridge_skipped_when_envelope_pretty_printed(
+        self, tmp_path, monkeypatch
+    ):
+        """Pretty-printing the MCP envelope transforms the content the
+        model reads. The on-disk bytes are the raw envelope, so bridging
+        them to the sandbox would point the model at content that
+        doesn't match what ``read_tool_result`` just returned. Skip the
+        bridge in that case — the model can re-read or pipe via
+        ``@@agptfile:`` if it needs bash access."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # MCP envelope with JSON inner payload — _navigable_tool_result_text
+        # will pretty-print this, so navigable != raw.
+        test_file = tmp_path / "tool-results" / "envelope.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"execution": {"node_executions": [{"status": "OK"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        test_file.write_text(envelope)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-envelope.json]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {"file_path": str(test_file), "offset": 0, "limit": 2000}
+            )
+
+            assert result["isError"] is False
+            # The bridge MUST NOT be called: model sees pretty-printed
+            # JSON but the on-disk file holds the raw envelope.
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
+            # And the returned text is the pretty-printed payload, not
+            # the envelope wrapper, so the slicing is useful.
+            assert '"status": "OK"' in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_skipped_when_char_offset_used(self, tmp_path, monkeypatch):
+        """``char_offset`` slices the navigable content; the on-disk
+        bytes don't carry that slice, so bridging would mislead bash
+        operations into reading a different range than the model just
+        saw. Skip the bridge regardless of whether pretty-printing
+        kicked in for this file."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # File whose content is NOT an envelope — navigable == raw.
+        # The bridge would normally fire here; char_offset must still
+        # suppress it.
+        test_file = tmp_path / "tool-results" / "plain.txt"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("the quick brown fox " * 100)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-plain.txt]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {
+                    "file_path": str(test_file),
+                    "char_offset": 100,
+                    "char_limit": 50,
+                }
+            )
+
+            assert result["isError"] is False
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
     async def test_bridge_not_called_without_sandbox(self, tmp_path, monkeypatch):
         """When no sandbox is set, bridge_and_annotate is not called."""
         from .tool_adapter import _read_file_handler
