@@ -658,12 +658,10 @@ async def _generate_session_title(
                     "role": "user",
                     "content": (
                         "Here is the conversation that you need to generate a title for. "
-                        "\n\n<conversation>\n"
-                        + message[:500]
-                        + "\n</conversation>\n\n"
+                        "\n\n<conversation>\n" + message[:500] + "\n</conversation>\n\n"
                         "Respond only with a one to three word title with no additional commentary."
                     ),
-                }
+                },
             ],
             max_tokens=20,
             extra_body=extra_body,
