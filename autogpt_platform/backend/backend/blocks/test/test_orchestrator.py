@@ -915,6 +915,7 @@ async def test_orchestrator_agent_mode():
         mock_execution_processor.running_node_execution = defaultdict(MagicMock)
         mock_execution_processor.execution_stats = MagicMock()
         mock_execution_processor.execution_stats_lock = threading.Lock()
+        mock_execution_processor.nodes_input_masks = None
 
         # Mock the on_node_execution method to return successful stats
         mock_node_stats = MagicMock()
@@ -1223,9 +1224,7 @@ async def test_orchestrator_agent_falls_back_to_graph_name():
 
 @pytest.mark.asyncio
 async def test_orchestrator_tool_merges_nodes_input_masks():
-    """Regression test for OPEN-3132.
-
-    When an Orchestrator-attached tool block requires credentials and the
+    """When an Orchestrator-attached tool block requires credentials and the
     agent is launched from Library/AutoPilot, those credentials live in
     `graph_exec.nodes_input_masks` (not in `node.input_default`). The
     orchestrator's tool dispatch must merge them into the tool node's

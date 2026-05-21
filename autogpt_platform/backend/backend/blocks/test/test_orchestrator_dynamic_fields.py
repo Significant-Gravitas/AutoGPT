@@ -622,6 +622,7 @@ async def test_validation_errors_dont_pollute_conversation():
                 mock_execution_processor = AsyncMock()
                 mock_execution_processor.execution_stats = MagicMock()
                 mock_execution_processor.execution_stats_lock = MagicMock()
+                mock_execution_processor.nodes_input_masks = None
 
                 # Create a mock NodeExecutionProgress for the sink node
                 mock_node_exec_progress = MagicMock()

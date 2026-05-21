@@ -954,6 +954,7 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     ep.running_node_execution = defaultdict(MagicMock)
     ep.execution_stats = MagicMock()
     ep.execution_stats_lock = threading.Lock()
+    ep.nodes_input_masks = None
     ns = MagicMock(error=None)
     ep.on_node_execution = AsyncMock(return_value=ns)
     # Mock charge_node_usage (called after successful tool execution).

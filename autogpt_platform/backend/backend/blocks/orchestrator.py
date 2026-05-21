@@ -1084,7 +1084,7 @@ class OrchestratorBlock(Block):
         # node.input_default; the normal queue dispatch in manager.py merges
         # them, but the orchestrator's tool dispatch bypasses that path.
         # Without this, tool blocks fail with missing-credentials when the
-        # agent is launched from anywhere except the Builder. (OPEN-3132)
+        # agent is launched from anywhere except the Builder.
         nodes_input_masks = execution_processor.nodes_input_masks
         if nodes_input_masks and (
             sink_node_input_mask := nodes_input_masks.get(sink_node_id)
