@@ -257,9 +257,11 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
     the state dict (which avoids a TOCTOU race if the worker times out
     and cleans up between this call and the put_nowait).
 
-    Also fires the auto-registration of the user's community rebuild
-    schedule the first time we see them in this process (lazy on first
-    memory write — see ``scheduling.ensure_community_rebuild_scheduled``).
+    Also fires the auto-registration of the user's dream-system
+    schedules (community rebuild + dream pass + ratification pass) the
+    first time we see them in this process — lazy on first memory write,
+    per-job flag-gated, per-job idempotent. See
+    ``copilot/dream/scheduling.py:ensure_dream_system_scheduled``.
     Fire-and-forget; failures are swallowed inside the helper so
     ingestion is never affected.
     """
@@ -277,14 +279,15 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
         queue = state.user_queues[user_id]
 
     if is_new_user_for_this_process:
-        # Fire-and-forget; Redis SETNX inside the helper provides
-        # cross-process / cross-restart idempotency. Done outside the
-        # workers_lock so the scheduler RPC can't deadlock ingestion.
-        from .scheduling import ensure_community_rebuild_scheduled
+        # Fire-and-forget; per-job Redis SETNX inside the helper
+        # provides cross-process / cross-restart idempotency. Done
+        # outside the workers_lock so the scheduler RPC can't
+        # deadlock ingestion.
+        from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
 
         asyncio.create_task(
-            ensure_community_rebuild_scheduled(user_id),
-            name=f"graphiti-comm-register-{user_id[:12]}",
+            ensure_dream_system_scheduled(user_id),
+            name=f"dream-system-register-{user_id[:12]}",
         )
 
     return queue

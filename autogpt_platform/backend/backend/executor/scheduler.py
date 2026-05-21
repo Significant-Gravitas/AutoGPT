@@ -255,7 +255,22 @@ def execute_community_rebuild(user_id: str):
     Sync wrapper around the async ``rebuild_communities_for_user`` so it
     can run on the APScheduler thread pool. Failures are caught inside
     the coroutine; this wrapper logs the outcome.
+
+    Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
+    on→off after the schedule was registered, this body short-circuits
+    instead of running. Registration-time gating is in
+    ``add_community_rebuild_schedule``; this is the third layer of
+    defense (see ``copilot/dream/scheduling.py`` module docstring).
     """
+    from backend.copilot.graphiti.config import is_communities_enabled_for_user
+
+    if not run_async(is_communities_enabled_for_user(user_id)):
+        logger.info(
+            "Community rebuild skipped for user %s — flag flipped off post-registration",
+            user_id[:12],
+        )
+        return
+
     result = run_async(rebuild_communities_for_user(user_id))
     if result.get("error"):
         logger.warning(
@@ -279,8 +294,21 @@ def execute_dream_pass_sync(user_id: str):
     threaded jobstore can call it directly. Failures inside the
     coroutine are already trapped and surface as ``DreamPassResult.error``
     — this wrapper just logs the outcome.
+
+    Runtime flag gate: if ``DREAM_PASS_ENABLED`` flipped off after the
+    schedule was registered, this body short-circuits before the
+    orchestrator runs. See ``copilot/dream/scheduling.py`` for the
+    three-layer flag-gating design.
     """
     from backend.copilot.dream.orchestrator import execute_dream_pass
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+        logger.info(
+            "Dream pass skipped for user %s — DREAM_PASS_ENABLED flipped off",
+            user_id[:12],
+        )
+        return
 
     result = run_async(execute_dream_pass(user_id))
     if result.error:
@@ -329,8 +357,20 @@ def execute_ratification_pass_sync(user_id: str):
     tentative population. If the lock is already held we log + skip
     rather than wait — the next 6h tick will pick up where this one
     left off.
+
+    Runtime flag gate: if ``DREAM_PASS_ENABLED`` flipped off after the
+    schedule was registered, this body short-circuits before the
+    ratification pass runs. See ``copilot/dream/scheduling.py``.
     """
     from backend.copilot.dream.ratification import run_ratification_pass
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+        logger.info(
+            "Ratification pass skipped for user %s — DREAM_PASS_ENABLED flipped off",
+            user_id[:12],
+        )
+        return
 
     async def _run_with_lock():
         # Lazy import — keeps Redis out of the scheduler-bootstrap path.
@@ -1069,7 +1109,32 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a nightly dream pass for one user."""
+        """Register a nightly dream pass for one user.
+
+        Gated by ``Flag.DREAM_PASS_ENABLED`` per-user. When the flag is
+        off the call is a no-op — returns a structured "skipped" dict
+        so callers see the same shape as a successful registration.
+        Defense-in-depth: the auto-registration helper in
+        ``copilot/dream/scheduling.py`` already gates this, but direct
+        callers (admin endpoint, ad-hoc scripts) bypass that helper.
+        """
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+            logger.info(
+                "Dream pass registration skipped for user %s — "
+                "DREAM_PASS_ENABLED flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "dream_pass_disabled",
+            }
+
         if not user_timezone:
             user_timezone = "UTC"
 
@@ -1140,7 +1205,29 @@ class Scheduler(AppService):
         user_id: str,
         user_timezone: str = "UTC",
     ) -> dict:
-        """Register a 6-hourly ratification pass for one user."""
+        """Register a 6-hourly ratification pass for one user.
+
+        Rides the same ``Flag.DREAM_PASS_ENABLED`` master gate as the
+        dream pass — a tentative edge that the dream pass writes is the
+        only thing ratification has to do, so they share a lifecycle.
+        """
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+            logger.info(
+                "Ratification pass registration skipped for user %s — "
+                "DREAM_PASS_ENABLED flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "dream_pass_disabled",
+            }
+
         if not user_timezone:
             user_timezone = "UTC"
 

@@ -164,3 +164,140 @@ class TestExecuteCommunityRebuildPass:
         ):
             s.execute_community_rebuild_pass(user_id="abc", force=True)
         rebuild_mock.assert_called_once_with("abc", force=True)
+
+
+# ---------------------------------------------------------------------------
+# Dream pass + ratification @expose methods — registration-time flag gating
+# ---------------------------------------------------------------------------
+
+
+class TestAddDreamPassSchedule:
+    def test_flag_on_registers_with_03_00_daily_cron(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.add_job.return_value = MagicMock(
+            id="dream_pass_abc", next_run_time=None
+        )
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_dream_pass_schedule(
+                user_id="abc", user_timezone="America/New_York"
+            )
+        kwargs = s.scheduler.add_job.call_args.kwargs
+        assert kwargs["id"] == "dream_pass_abc"
+        assert kwargs["max_instances"] == 1
+        assert kwargs["replace_existing"] is True
+        assert kwargs["jobstore"] == Jobstores.EXECUTION.value
+        trigger_repr = repr(kwargs["trigger"])
+        assert "hour='3'" in trigger_repr
+        assert result["id"] == "dream_pass_abc"
+        assert result.get("skipped") is not True
+
+    def test_flag_off_returns_skipped_dict_without_calling_add_job(self) -> None:
+        """Layer 2 of the 3-layer flag gating — direct callers (admin
+        endpoint, ad-hoc scripts) that bypass ``ensure_dream_system_scheduled``
+        must STILL be refused when the flag is off."""
+        s = _stub_scheduler()
+        with patch("backend.executor.scheduler.run_async", return_value=False):
+            result = s.add_dream_pass_schedule(user_id="abc")
+        s.scheduler.add_job.assert_not_called()
+        assert result == {
+            "id": None,
+            "user_id": "abc",
+            "user_timezone": "UTC",
+            "next_run_time": None,
+            "skipped": True,
+            "reason": "dream_pass_disabled",
+        }
+
+
+class TestAddRatificationPassSchedule:
+    def test_flag_on_registers_with_6_hourly_cron(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.add_job.return_value = MagicMock(
+            id="ratification_pass_abc", next_run_time=None
+        )
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_ratification_pass_schedule(
+                user_id="abc", user_timezone="UTC"
+            )
+        kwargs = s.scheduler.add_job.call_args.kwargs
+        assert kwargs["id"] == "ratification_pass_abc"
+        # Every 6h cron — repr asserts on the */6 step
+        trigger_repr = repr(kwargs["trigger"])
+        assert "hour='*/6'" in trigger_repr or "hour='0,6,12,18'" in trigger_repr
+        assert result["id"] == "ratification_pass_abc"
+
+    def test_flag_off_returns_skipped_dict_no_job_registered(self) -> None:
+        s = _stub_scheduler()
+        with patch("backend.executor.scheduler.run_async", return_value=False):
+            result = s.add_ratification_pass_schedule(user_id="abc")
+        s.scheduler.add_job.assert_not_called()
+        assert result["skipped"] is True
+        assert result["reason"] == "dream_pass_disabled"
+
+
+# ---------------------------------------------------------------------------
+# Execution-time flag gates (layer 3 of the 3-layer design)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteDreamPassSyncRuntimeGate:
+    def test_flag_off_short_circuits_before_calling_orchestrator(self) -> None:
+        """A user whose ``DREAM_PASS_ENABLED`` flag was on at registration
+        time but flipped off later must not have their dream pass body
+        run — the schedule keeps firing until explicitly deleted; this
+        is the runtime kill-switch."""
+        from backend.executor.scheduler import execute_dream_pass_sync
+
+        with (
+            patch(
+                "backend.executor.scheduler.run_async", return_value=False
+            ) as run_async_mock,
+            patch(
+                "backend.copilot.dream.orchestrator.execute_dream_pass"
+            ) as orchestrator_mock,
+        ):
+            execute_dream_pass_sync("abc")
+
+        # Exactly one run_async call (the flag check). Orchestrator
+        # never gets invoked because the gate short-circuited.
+        run_async_mock.assert_called_once()
+        orchestrator_mock.assert_not_called()
+
+
+class TestExecuteRatificationPassSyncRuntimeGate:
+    def test_flag_off_short_circuits_before_acquiring_lock(self) -> None:
+        from backend.executor.scheduler import execute_ratification_pass_sync
+
+        with (
+            patch(
+                "backend.executor.scheduler.run_async", return_value=False
+            ) as run_async_mock,
+            patch(
+                "backend.copilot.dream.ratification.run_ratification_pass"
+            ) as ratification_mock,
+        ):
+            execute_ratification_pass_sync("abc")
+
+        run_async_mock.assert_called_once()
+        ratification_mock.assert_not_called()
+
+
+class TestExecuteCommunityRebuildRuntimeGate:
+    def test_flag_off_short_circuits_before_rebuild_runs(self) -> None:
+        from backend.executor.scheduler import execute_community_rebuild
+
+        # First run_async returns False (flag check). If we let the gate
+        # pass, a second call would invoke rebuild_communities_for_user;
+        # asserting that doesn't happen is the contract.
+        with (
+            patch(
+                "backend.executor.scheduler.run_async", return_value=False
+            ) as run_async_mock,
+            patch(
+                "backend.executor.scheduler.rebuild_communities_for_user"
+            ) as rebuild_mock,
+        ):
+            execute_community_rebuild("abc")
+
+        run_async_mock.assert_called_once()
+        rebuild_mock.assert_not_called()
