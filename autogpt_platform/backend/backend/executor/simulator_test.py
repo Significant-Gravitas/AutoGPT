@@ -19,6 +19,7 @@ from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
+from backend.blocks.llm import LlmModel
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _extract_cost_usd,
@@ -169,8 +170,6 @@ class TestPrepareDryRun:
         assert result["model"] != "gpt-4o"  # overridden to simulation model
         # Simulation model must parse as a real LlmModel so OrchestratorBlock's
         # Pydantic input validation accepts it.
-        from backend.blocks.llm import LlmModel
-
         assert LlmModel(result["model"]) is not None
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
