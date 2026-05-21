@@ -40,12 +40,12 @@ from .manage_folders import (
     UpdateFolderTool,
 )
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
-from .schedule_followup import ScheduleFollowupTool
 from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
+from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool

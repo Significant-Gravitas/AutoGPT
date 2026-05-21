@@ -46,7 +46,6 @@ class ScheduleListResponse(ToolResponseBase):
 def _to_summary(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo,
 ) -> ScheduleSummary:
-    run_at_str = job.run_at.isoformat() if job.run_at else None
     if isinstance(job, GraphExecutionJobInfo):
         return ScheduleSummary(
             schedule_id=job.id,
@@ -55,10 +54,10 @@ def _to_summary(
             timezone=job.timezone,
             next_run_time=job.next_run_time,
             cron=job.cron,
-            run_at=run_at_str,
             graph_id=job.graph_id,
             graph_version=job.graph_version,
         )
+    run_at_str = job.run_at.isoformat() if job.run_at else None
     return ScheduleSummary(
         schedule_id=job.id,
         kind="copilot_turn",

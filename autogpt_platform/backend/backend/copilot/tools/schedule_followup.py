@@ -15,7 +15,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from apscheduler.triggers.cron import CronTrigger
+
 from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_followup_scheduled
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -149,6 +152,20 @@ class ScheduleFollowupTool(BaseTool):
         user = await user_db().get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+        # Pre-validate cron locally — CronTrigger.from_crontab raises ValueError
+        # on the scheduler service, which crosses the RPC boundary as a generic
+        # RemoteError and won't match `except ValueError` below. Validating
+        # here gives the model a clean, actionable error message.
+        if cron is not None:
+            try:
+                CronTrigger.from_crontab(cron, timezone=user_timezone)
+            except ValueError as e:
+                return ErrorResponse(
+                    message=f"Invalid cron expression: {e}",
+                    error="invalid_cron",
+                    session_id=session_id,
+                )
+
         try:
             info = await get_scheduler_client().add_copilot_turn_schedule(
                 user_id=user_id,
@@ -167,6 +184,12 @@ class ScheduleFollowupTool(BaseTool):
             )
 
         is_recurring = cron is not None
+        track_followup_scheduled(
+            user_id=user_id,
+            session_id=session_id,
+            schedule_id=info.id,
+            is_recurring=is_recurring,
+        )
         when_str = (
             f"every '{cron}' ({user_timezone})"
             if is_recurring

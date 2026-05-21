@@ -629,8 +629,9 @@ async def get_all_schedules_details(
     """
     scheduler = get_scheduler_client()
 
-    # Get all schedules from scheduler
-    all_schedules = await scheduler.get_execution_schedules()
+    # Get all graph schedules — diagnostics only surfaces graph-kind schedules
+    # (copilot-turn followups are session-scoped and shown in the copilot UI).
+    all_schedules = await scheduler.get_graph_execution_schedules()
 
     # Filter to user schedules only
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -684,8 +685,8 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
     """
     scheduler = get_scheduler_client()
 
-    # Get all schedules
-    all_schedules = await scheduler.get_execution_schedules()
+    # Get all graph schedules — orphan detection is graph-specific.
+    all_schedules = await scheduler.get_graph_execution_schedules()
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
 
     # Detect orphans with categorization

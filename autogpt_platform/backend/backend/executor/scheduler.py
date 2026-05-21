@@ -200,9 +200,23 @@ async def _execute_copilot_turn(**kwargs):
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     try:
-        # Local import: copilot.executor imports from backend.executor, so a
+        # Local imports: copilot.* imports from backend.executor, so a
         # top-level import here would create a cycle at module-load time.
         from backend.copilot.executor.utils import enqueue_copilot_turn
+        from backend.copilot.model import get_chat_session
+
+        # Verify the session still exists — if the user deleted their
+        # conversation between scheduling and now, enqueueing would create
+        # an orphan turn that no UI ever surfaces. Self-clean the dead
+        # schedule instead.
+        session = await get_chat_session(args.session_id, args.user_id)
+        if session is None:
+            logger.info(
+                f"Copilot turn schedule {args.schedule_id} skipped — session "
+                f"{args.session_id[:12]} no longer exists; removing schedule"
+            )
+            await _self_delete_copilot_turn_schedule(args)
+            return
 
         await enqueue_copilot_turn(
             session_id=args.session_id,
@@ -221,6 +235,26 @@ async def _execute_copilot_turn(**kwargs):
             f"Error enqueuing copilot turn for session "
             f"{args.session_id[:12]} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
+        )
+
+
+async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
+    """Best-effort: delete an orphaned copilot-turn schedule whose session is gone.
+
+    Failures are logged and swallowed — the schedule will fire again on
+    its next cron tick and re-attempt cleanup. For one-shot ``run_at``
+    schedules, APScheduler removes the job after the fire anyway.
+    """
+    if not args.schedule_id:
+        return
+    try:
+        await get_scheduler_client().delete_schedule(
+            schedule_id=args.schedule_id, user_id=args.user_id
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to self-delete dead copilot-turn schedule {args.schedule_id}",
+            exc_info=True,
         )
 
 
@@ -449,11 +483,7 @@ class GraphExecutionJobArgs(BaseModel):
     graph_id: str
     graph_version: int
     agent_name: str | None = None
-    # One of ``cron`` or ``run_at`` must be set. ``cron`` is recurring;
-    # ``run_at`` fires once (APScheduler ``DateTrigger`` auto-removes the
-    # job after fire because ``get_next_fire_time`` returns None).
-    cron: str | None = None
-    run_at: datetime | None = None
+    cron: str
     input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
@@ -828,10 +858,9 @@ class Scheduler(AppService):
         user_id: str,
         graph_id: str,
         graph_version: int,
+        cron: str,
         input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
-        cron: str | None = None,
-        run_at: datetime | None = None,
         name: Optional[str] = None,
         user_timezone: str | None = None,
     ) -> GraphExecutionJobInfo:
@@ -848,7 +877,9 @@ class Scheduler(AppService):
         )
 
         user_timezone = _resolve_timezone(user_timezone, user_id)
-        trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
+        logger.info(
+            f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
+        )
         schedule_id = str(uuid.uuid4())
 
         job_args = GraphExecutionJobArgs(
@@ -858,7 +889,6 @@ class Scheduler(AppService):
             graph_version=graph_version,
             agent_name=name,
             cron=cron,
-            run_at=run_at,
             input_data=input_data,
             input_credentials=input_credentials,
         )
@@ -866,14 +896,14 @@ class Scheduler(AppService):
             execute_graph,
             kwargs=job_args.model_dump(mode="json"),
             name=name,
-            trigger=trigger,
+            trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
             id=schedule_id,
         )
         logger.info(
-            f"Added graph job {job.id} ({trigger.__class__.__name__}) in "
-            f"timezone {user_timezone}, input data: {input_data}"
+            f"Added job {job.id} with cron schedule '{cron}' in timezone "
+            f"{user_timezone}, input data: {input_data}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
