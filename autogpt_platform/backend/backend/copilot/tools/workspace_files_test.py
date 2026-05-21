@@ -735,51 +735,60 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
     That path is neither in workspace storage nor a resolvable local
     file, so without the redirect branch the model gets a generic
     "Path not allowed" with no pointer to the right tool. This mirrors
-    the bash_exec redirect coverage."""
+    the bash_exec redirect coverage.
+
+    Mocks ``_resolve_file`` and ``get_workspace_manager`` so the unit
+    test stays scoped to the redirect branch without touching Prisma /
+    workspace storage.
+    """
+
+    @staticmethod
+    async def _call_read_with_resolve_failure(path: str):
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+        ):
+            return await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path=path,
+            )
 
     @pytest.mark.asyncio
-    async def test_relative_tool_outputs_shorthand_returns_redirect_hint(
-        self, setup_test_data
-    ):
-        user, _, session = setup_test_data
-        # No real file on disk → _resolve_file returns ErrorResponse,
-        # is_allowed_local_path returns False (relative path, no sdk_cwd
-        # context set) → the new branch under
-        # looks_like_sdk_tool_result_path fires.
-        read_tool = ReadWorkspaceFileTool()
-        result = await read_tool._execute(
-            user_id=user.id,
-            session=session,
-            path="tool-outputs/toolu_nonexistent.json",
+    async def test_relative_tool_outputs_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-outputs/toolu_nonexistent.json"
         )
         assert isinstance(result, ErrorResponse)
         assert "read_tool_result" in result.message
         assert "@@agptfile" in result.message
 
     @pytest.mark.asyncio
-    async def test_relative_tool_results_shorthand_returns_redirect_hint(
-        self, setup_test_data
-    ):
-        user, _, session = setup_test_data
-        read_tool = ReadWorkspaceFileTool()
-        result = await read_tool._execute(
-            user_id=user.id,
-            session=session,
-            path="tool-results/toolu_nonexistent.json",
+    async def test_relative_tool_results_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-results/toolu_nonexistent.json"
         )
         assert isinstance(result, ErrorResponse)
         assert "read_tool_result" in result.message
 
     @pytest.mark.asyncio
-    async def test_unrelated_missing_path_does_not_redirect(self, setup_test_data):
+    async def test_unrelated_missing_path_does_not_redirect(self):
         """Regression: paths that don't look like SDK tool-results must
         still surface the original resolve error, not the redirect hint."""
-        user, _, session = setup_test_data
-        read_tool = ReadWorkspaceFileTool()
-        result = await read_tool._execute(
-            user_id=user.id,
-            session=session,
-            path="some/random/missing-file.txt",
+        result = await self._call_read_with_resolve_failure(
+            "some/random/missing-file.txt"
         )
         assert isinstance(result, ErrorResponse)
         assert "read_tool_result" not in result.message
