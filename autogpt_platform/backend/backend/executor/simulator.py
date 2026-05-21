@@ -46,11 +46,24 @@ from backend.util.clients import get_openai_client
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  Same provider
-# as Flash ($0.10 / $0.40 per MTok vs $0.30 / $1.20 — ~3× cheaper) with JSON-mode
-# reliability that's more than enough for dry-run shape-matching.  Configurable
-# via ChatConfig.simulation_model (CHAT_SIMULATION_MODEL env var).
-_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash-lite"
+# Default simulator model — Claude Haiku 4.5 via the platform's OpenRouter
+# credential, in OpenRouter slug form (``anthropic/claude-haiku-4-5``).
+# The LLM-simulation path (``_call_llm_for_simulation``) hits OpenRouter's
+# OpenAI-compat endpoint at ``openrouter.ai/api/v1/chat/completions``,
+# which only accepts ``<vendor>/<model>`` slugs — the direct-Anthropic
+# snapshot ID ``claude-haiku-4-5-20251001`` is rejected with HTTP 400.
+# For OrchestratorBlock dry-runs, this string is parsed via
+# ``LlmModel._missing_`` (the ``_OPENROUTER_ALIASES`` table maps it back
+# to ``LlmModel.CLAUDE_4_5_HAIKU``), and the orchestrator's Anthropic SDK
+# sends the snapshot value to OpenRouter's Anthropic-compat endpoint at
+# ``openrouter.ai/api/v1/messages``, which accepts both formats.  Haiku
+# 4.5 via OpenRouter is already battle-tested for copilot title generation
+# (see ``ChatConfig.title_model``) and gives materially better tool-use
+# decisions for Orchestrator dry-runs than the Flash-Lite tier while
+# staying cheap.  Configurable via ``ChatConfig.simulation_model``
+# (``CHAT_SIMULATION_MODEL`` env var) — overrides must satisfy both
+# constraints (OpenRouter-slug shape AND resolvable through ``LlmModel``).
+_DEFAULT_SIMULATOR_MODEL = "anthropic/claude-haiku-4-5"
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service

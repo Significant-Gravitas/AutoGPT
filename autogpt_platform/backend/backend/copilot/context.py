@@ -69,7 +69,7 @@ _encode_cwd_for_cli = encode_cwd_for_cli
 
 def set_execution_context(
     user_id: str | None,
-    session: ChatSession,
+    session: ChatSession | None,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,

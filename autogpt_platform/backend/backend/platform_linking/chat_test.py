@@ -74,6 +74,7 @@ class TestStartChatTurn:
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         session = MagicMock(session_id="sess-new")
+        mock_create_chat_session = AsyncMock(return_value=session)
 
         with (
             patch(
@@ -82,7 +83,7 @@ class TestStartChatTurn:
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session",
-                new=AsyncMock(return_value=session),
+                new=mock_create_chat_session,
             ),
             patch(
                 "backend.platform_linking.chat.append_and_save_message",
@@ -103,6 +104,9 @@ class TestStartChatTurn:
         assert handle.user_id == "owner-1"
         assert handle.turn_id
         assert handle.subscribe_from == "0-0"
+        create_call = mock_create_chat_session.await_args
+        assert create_call is not None
+        assert create_call.kwargs["source_platform"] == "discord"
         mock_stream_registry.create_session.assert_awaited_once()
         mock_enqueue.assert_awaited_once()
 

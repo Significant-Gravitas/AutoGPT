@@ -41,6 +41,34 @@ export function shouldRedirectFromOnboarding(
   );
 }
 
+/**
+ * Decide where to route a logged-in user once we know their onboarding
+ * completion state.
+ *
+ * Returns the destination path, or `null` to leave the user where they are.
+ * `null` covers two distinct cases:
+ *   1. A pending `?next=…` deep link — the auth page will handle it, so we
+ *      must not race it.
+ *   2. The user is already on the right surface (incomplete on /onboarding,
+ *      completed on any non-auth/non-onboarding page).
+ */
+export function decideOnboardingRedirect({
+  isCompleted,
+  isOnOnboardingRoute,
+  isOnAuthRoute,
+  hasPendingAuthDeepLink,
+}: {
+  isCompleted: boolean;
+  isOnOnboardingRoute: boolean;
+  isOnAuthRoute: boolean;
+  hasPendingAuthDeepLink: boolean;
+}): "/onboarding" | "/copilot" | null {
+  if (hasPendingAuthDeepLink) return null;
+  if (!isCompleted && !isOnOnboardingRoute) return "/onboarding";
+  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/copilot";
+  return null;
+}
+
 export function updateOnboardingState(
   prevState: UserOnboarding | null,
   newState: LocalOnboardingStateUpdate,

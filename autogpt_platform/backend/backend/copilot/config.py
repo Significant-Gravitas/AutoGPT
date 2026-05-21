@@ -110,10 +110,17 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default="google/gemini-2.5-flash-lite",
-        description="Model for dry-run block simulation (should be fast/cheap with good JSON output). "
-        "Gemini 2.5 Flash-Lite is ~3x cheaper than Flash ($0.10/$0.40 vs $0.30/$1.20 per MTok) "
-        "with JSON-mode reliability adequate for shape-matching block outputs.",
+        default="anthropic/claude-haiku-4-5",
+        description="Model for dry-run block simulation. Must be in "
+        "OpenRouter ``<vendor>/<model>`` format AND resolvable through "
+        "``LlmModel`` (directly or via ``LlmModel._missing_``'s "
+        "``_OPENROUTER_ALIASES`` map). The LLM-simulation path hits "
+        "OpenRouter's OpenAI-compat endpoint, which rejects direct-Anthropic "
+        "snapshot IDs like ``claude-haiku-4-5-20251001`` with HTTP 400. "
+        "OrchestratorBlock validates this against ``LlmModel``, so it must "
+        "resolve there. Haiku 4.5 via OpenRouter is already used in "
+        "production for ``title_model``, so it's battle-tested through "
+        "this same client.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
