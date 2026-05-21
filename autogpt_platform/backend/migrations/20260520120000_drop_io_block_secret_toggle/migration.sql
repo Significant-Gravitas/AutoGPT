@@ -1,11 +1,10 @@
--- One-off data cleanup: drop the obsolete `secret` and `value` keys from
--- AgentInput* / AgentOutput nodes that had the (now removed) secret
--- toggle enabled. Affected users were notified in advance with a
--- heads-up to migrate any sensitive defaults out of node configs.
+-- Drop `secret` and `value` keys from `constantInput` on AgentInput* /
+-- AgentOutput nodes that have `secret = true`. The `secret` key is no
+-- longer part of the block schema, so any persisted `value` behind it
+-- is orphaned. Affected users were notified ahead of this migration.
 --
--- The block IDs below cover the AgentInput base block plus every
--- subclass declared in `backend/blocks/io.py`, and the AgentOutput
--- block.
+-- Block IDs below cover the AgentInput base block, every subclass
+-- declared in `backend/blocks/io.py`, and the AgentOutput block.
 
 UPDATE "AgentNode"
 SET "constantInput" = "constantInput" - 'secret' - 'value'

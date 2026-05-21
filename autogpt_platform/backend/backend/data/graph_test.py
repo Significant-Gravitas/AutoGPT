@@ -243,17 +243,13 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_clean_graph(server: SpinTestServer):
     """
-    Test the stripped_for_export function that:
+    `stripped_for_export`:
     1. Drops the entire value of any field the block schema declares as a
        `CredentialsMetaInput` (importers must wire up their own credentials).
     2. Drops the value of any field the schema marks `secret: true` via
        `SchemaField(secret=True)`.
     3. Nulls out `webhook_id`.
-    4. Leaves everything else in node inputs untouched — including fields
-       whose names look sensitive (`api_key`, `password`, `token`) and
-       even dicts shaped like a credentials reference but sitting on a
-       field the schema does not declare as credentials. Suggestive key
-       names alone don't trigger any stripping.
+    4. Leaves every other field in `input_default` untouched.
     """
     graph = Graph(
         id="test_clean_graph",
@@ -276,8 +272,6 @@ async def test_clean_graph(server: SpinTestServer):
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
                     "api_key": "left_alone_now",  # pragma: allowlist secret
-                    # `credentials`-shaped dict on a block that does NOT
-                    # declare a credentials field — must NOT be stripped.
                     "credentials": {
                         "id": "fake-github-credentials-id",
                         "provider": "github",
@@ -322,9 +316,6 @@ async def test_clean_graph(server: SpinTestServer):
         for n in cleaned_graph.nodes
         if n.input_default["_test_id"] == "non_credentials_node"
     )
-    # Plain fields untouched. `api_key` survives — the old substring scan is
-    # gone. The credentials-shaped dict survives intact because the schema
-    # does not declare this field as a CredentialsMetaInput.
     assert non_credentials_node.input_default["input"] == "normal_value"
     assert (
         non_credentials_node.input_default["control_test_input"]
