@@ -131,6 +131,7 @@ from ..token_tracking import persist_and_record_usage
 from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.skills import build_skills_context
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -4298,8 +4299,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # NOT block the turn — log and continue with an empty index.
             skills_ctx_content = ""
             try:
-                from backend.copilot.tools.skills import build_skills_context
-
                 skills_ctx_content = await build_skills_context(user_id)
             except Exception:
                 logger.exception(

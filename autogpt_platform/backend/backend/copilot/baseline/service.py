@@ -94,6 +94,7 @@ from backend.copilot.token_tracking import (
     persist_and_record_usage,
 )
 from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -1654,8 +1655,6 @@ async def stream_chat_completion_baseline(
         # here MUST NOT block the turn; log and proceed with empty index.
         skills_ctx = ""
         try:
-            from backend.copilot.tools.skills import build_skills_context
-
             skills_ctx = await build_skills_context(user_id)
         except Exception:
             logger.exception(

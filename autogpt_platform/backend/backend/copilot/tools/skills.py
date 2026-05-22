@@ -23,17 +23,19 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from backend.copilot.context import get_workspace_manager
-from backend.copilot.model import ChatSession
-from backend.util.workspace import WorkspaceManager
-from backend.data.db_accessors import workspace_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.model import ChatSession
+from backend.data.db_accessors import workspace_db
+from backend.data.redis_client import get_redis_async
+from backend.executor.cluster_lock import AsyncClusterLock
+from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -204,6 +206,16 @@ async def _get_user_skill_manager(user_id: str) -> WorkspaceManager:
     return WorkspaceManager(user_id, workspace.id, session_id=None)
 
 
+# Redis lock key for serialising store_skill writes per user. A per-user
+# distributed lock turns the otherwise-racy "count existing skills, then
+# write a new one" into an atomic critical section so two concurrent
+# ``store_skill`` calls cannot both pass the MAX_USER_SKILLS check.
+# Held only for the duration of the count + write; skill reads stay
+# lock-free.
+_SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
+_SKILL_WRITE_LOCK_TTL_SECONDS = 30
+
+
 def _skill_md_path(name: str) -> str:
     return f"{SKILL_FOLDER}/{name}/SKILL.md"
 
@@ -294,9 +306,7 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
         return ""
     lines = []
     for s in skills:
-        trigger_hint = (
-            f" (triggers: {', '.join(s.triggers)})" if s.triggers else ""
-        )
+        trigger_hint = f" (triggers: {', '.join(s.triggers)})" if s.triggers else ""
         lines.append(f"- {s.name} — {s.description}{trigger_hint}")
     return "\n".join(lines)
 
@@ -448,14 +458,30 @@ class StoreSkillTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Serialise the count-then-write critical section per-user so two
+        # concurrent ``store_skill`` calls cannot both pass the MAX
+        # check.  Lock failure (Redis unavailable, already held) falls
+        # back to a best-effort write without the cap — better than
+        # blocking the user's distillation entirely, and the cap is a
+        # soft per-turn budget cue, not a hard quota.
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        lock_owner = await lock.try_acquire()
+        lock_held = lock_owner == lock.owner_id
         try:
             manager = await _get_user_skill_manager(user_id)
             # Enforce the per-user cap *before* we write — counting only
             # existing slugs other than the one being upserted so updating
-            # an existing skill doesn't trip the limit.
+            # an existing skill doesn't trip the limit.  When the lock is
+            # held this is a true atomic check-then-write; otherwise it
+            # is best-effort.
             existing = await list_user_skills(user_id)
-            other_slugs = {s.name for s in existing if s.name != name}
-            if name not in {s.name for s in existing} and len(other_slugs) >= MAX_USER_SKILLS:
+            existing_slugs = {s.name for s in existing}
+            if name not in existing_slugs and len(existing_slugs) >= MAX_USER_SKILLS:
                 return ErrorResponse(
                     message=(
                         f"Skill limit reached ({MAX_USER_SKILLS}). "
@@ -494,6 +520,16 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
+        finally:
+            if lock_held:
+                try:
+                    await lock.release()
+                except Exception:
+                    logger.warning(
+                        "[skills] failed to release write lock for user %s",
+                        user_id,
+                        exc_info=True,
+                    )
 
         return StoreSkillResponse(
             name=name,
@@ -613,7 +649,9 @@ class ReadSkillTool(BaseTool):
                 limit=50,
                 include_all_sessions=True,
             )
-            sibling_paths = [f.path for f in siblings if not f.path.endswith("/SKILL.md")]
+            sibling_paths = [
+                f.path for f in siblings if not f.path.endswith("/SKILL.md")
+            ]
         except Exception:
             logger.warning(
                 "[skills] failed to list siblings for %s", name, exc_info=True

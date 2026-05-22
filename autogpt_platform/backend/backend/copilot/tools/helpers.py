@@ -1,6 +1,7 @@
 """Shared helpers for chat tools."""
 
 import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -909,8 +910,6 @@ def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
     argument.  Defensive against malformed JSON / missing args so a
     badly-formed historical row does not crash the guard.
     """
-    import json  # noqa: PLC0415 — local import keeps helpers light
-
     for msg in reversed(session.messages):
         if msg.role != "assistant" or not msg.tool_calls:
             continue
@@ -955,8 +954,6 @@ def require_guide_read(session: ChatSession, tool_name: str):
     Kimi K2.6 in particular because its aggressive tool-call chaining
     exercises this path far more than Sonnet does.
     """
-    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
-
     # Builder-bound sessions always receive the guide inline via the
     # per-turn ``<builder_context>`` injection (see
     # ``backend.copilot.builder_context``), so no tool-call gate is needed —
@@ -969,7 +966,7 @@ def require_guide_read(session: ChatSession, tool_name: str):
         return None
     return ErrorResponse(
         message=(
-            f"Call get_agent_building_guide (or read_skill(name=\"agent_building_guide\")) "
+            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
             f"first, then retry {tool_name}. The guide documents required block ids, "
             "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
             "usage — generating agent JSON without it produces schema mismatches."
