@@ -633,3 +633,224 @@ async def test_list_all_skills_user_skills_follow_defaults():
     default_names = {d.name for d in DEFAULT_SKILLS}
     first_n = [s.name for s in skills[: len(DEFAULT_SKILLS)]]
     assert set(first_n) == default_names
+
+
+# ---------------------------------------------------------------------------
+# Edge-path coverage — malformed files, exceptions, error wrappers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_skips_unreadable_files():
+    """``list_user_skills`` must not crash if one file fails to read —
+    the registry is best-effort, a stray broken file shouldn't kill
+    the per-turn index for every other skill."""
+    from backend.copilot.tools.skills import list_user_skills
+
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/good/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="good", description="ok", body="ok")
+    ).encode()
+    fake_manager.files["/skills/bad/SKILL.md"] = b"\xff not utf-8"
+    # Sibling files should be ignored too.
+    fake_manager.files["/skills/good/refs/a.md"] = b"sibling"
+    with _patch_skills_path(fake_manager):
+        skills = await list_user_skills("user-1")
+    # Bad file may parse as None and get skipped; we just need no crash.
+    names = {s.name for s in skills}
+    assert "good" in names
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_handles_read_file_errors():
+    """If ``manager.read_file`` raises, the loop logs and continues —
+    other entries in the listing still resolve."""
+    from backend.copilot.tools.skills import list_user_skills
+
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/good/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="good", description="ok", body="ok")
+    ).encode()
+    fake_manager.files["/skills/broken/SKILL.md"] = b"placeholder"
+
+    original_read = fake_manager.read_file
+
+    async def fail_on_broken(path):
+        if "broken" in path:
+            raise IOError("simulated read failure")
+        return await original_read(path)
+
+    fake_manager.read_file = fail_on_broken  # type: ignore[method-assign]
+    with _patch_skills_path(fake_manager):
+        skills = await list_user_skills("user-1")
+    names = {s.name for s in skills}
+    assert names == {"good"}
+
+
+def test_get_default_skills_handles_missing_body_file(tmp_path, monkeypatch):
+    """If a default skill's on-disk body is missing, ``get_default_skills``
+    must log + continue rather than crash the whole index."""
+    from backend.copilot.tools import skills as skills_module
+
+    fake_missing = skills_module._DefaultSkill(
+        name="missing_default",
+        description="a default whose body file does not exist",
+        body_path=tmp_path / "does_not_exist.md",
+        triggers=(),
+    )
+    monkeypatch.setattr(
+        skills_module,
+        "DEFAULT_SKILLS",
+        (*skills_module.DEFAULT_SKILLS, fake_missing),
+    )
+    result = skills_module.get_default_skills()
+    names = {s.name for s in result}
+    # The fake-missing skill is silently skipped; the real defaults still load.
+    assert "missing_default" not in names
+    assert "agent_building_guide" in names
+
+
+@pytest.mark.asyncio
+async def test_read_skill_returns_error_for_malformed_user_skill():
+    """A user-stored ``SKILL.md`` that no longer parses (e.g. legacy
+    file edited by hand into invalid YAML) yields an actionable
+    ErrorResponse, not a silent corruption."""
+    tool = ReadSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    # Missing frontmatter — parse_skill_markdown returns None.
+    fake_manager.files["/skills/broken/SKILL.md"] = b"no frontmatter here"
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1", session=_make_session(), name="broken"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "malformed" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_skill_wraps_workspace_exceptions():
+    """A non-FileNotFound exception from the workspace must come back
+    as an ErrorResponse so the model gets a structured failure rather
+    than a raw stack trace."""
+    tool = ReadSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.read_file = AsyncMock(side_effect=RuntimeError("disk full"))  # type: ignore[method-assign]
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1", session=_make_session(), name="some_skill"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "Failed to read" in result.message
+
+
+@pytest.mark.asyncio
+async def test_delete_skill_lookup_failure_returns_error():
+    """If ``get_file_info_by_path`` raises mid-delete the user gets
+    a structured ErrorResponse, not a 500-style crash."""
+    tool = DeleteSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.get_file_info_by_path = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("db unavailable")
+    )
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1", session=_make_session(), name="my_skill"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "look up" in result.message
+
+
+@pytest.mark.asyncio
+async def test_delete_skill_continues_after_sibling_delete_failure():
+    """A sibling-delete failure during cleanup must not abort the
+    overall delete — the main SKILL.md is the source of truth."""
+    tool = DeleteSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/my_skill/SKILL.md"] = b"x"
+    fake_manager.files["/skills/my_skill/refs/a.md"] = b"sibling"
+    original_delete = fake_manager.delete_file
+
+    async def flaky_delete(file_id):
+        if "refs/a.md" in file_id:
+            raise IOError("sibling delete failure")
+        await original_delete(file_id)
+
+    fake_manager.delete_file = flaky_delete  # type: ignore[method-assign]
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1", session=_make_session(), name="my_skill"
+        )
+    assert isinstance(result, DeleteSkillResponse)
+    assert "/skills/my_skill/SKILL.md" not in fake_manager.files
+
+
+@pytest.mark.asyncio
+async def test_store_skill_returns_error_on_virus_detection():
+    """The workspace virus scanner can reject content — store_skill
+    must surface that as an ErrorResponse, never a raw exception."""
+    from backend.api.features.store.exceptions import VirusDetectedError
+
+    tool = StoreSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.write_file = AsyncMock(side_effect=VirusDetectedError("nasty"))  # type: ignore[method-assign]
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1",
+            session=_make_session(),
+            name="risky_skill",
+            description="x",
+            body="x",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "virus scan" in result.message
+
+
+@pytest.mark.asyncio
+async def test_store_skill_wraps_generic_exception():
+    """Any unexpected exception during the write yields a structured
+    ErrorResponse, not a bare 500 to the streaming client."""
+    tool = StoreSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.write_file = AsyncMock(side_effect=RuntimeError("disk error"))  # type: ignore[method-assign]
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1",
+            session=_make_session(),
+            name="my_skill",
+            description="x",
+            body="x",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "Failed to store" in result.message
+    assert result.error == "disk error"
+
+
+@pytest.mark.asyncio
+async def test_read_skill_default_skill_missing_body_returns_error():
+    """If a default skill's on-disk body has been removed, ``read_skill``
+    returns an actionable ErrorResponse instead of crashing."""
+    from backend.copilot.tools import skills as skills_module
+
+    tool = ReadSkillTool()
+    with patch.object(
+        skills_module, "_load_default_body", side_effect=OSError("file gone")
+    ):
+        result = await tool._execute(
+            user_id=None,
+            session=_make_session(),
+            name="agent_building_guide",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "default skill" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_build_skills_context_authed_includes_user_skills():
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+    assert "mine" in ctx
+    assert "agent_building_guide" in ctx  # defaults still present

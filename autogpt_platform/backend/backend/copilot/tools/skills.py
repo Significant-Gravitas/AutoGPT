@@ -257,7 +257,14 @@ async def list_user_skills(user_id: str) -> list[ParsedSkill]:
             logger.warning("[skills] failed to read %s", f.path, exc_info=True)
             continue
         slug = f.path.rsplit("/", 2)[-2] if "/" in f.path else ""
-        parsed = parse_skill_markdown(raw.decode("utf-8"), fallback_name=slug)
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # A stray binary file should not break the per-turn index —
+            # log and skip, same contract as the read-failure branch.
+            logger.warning("[skills] non-UTF-8 contents at %s — skipping", f.path)
+            continue
+        parsed = parse_skill_markdown(text, fallback_name=slug)
         if parsed is not None:
             skills.append(parsed)
     skills.sort(key=lambda s: s.name)
@@ -667,7 +674,17 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
-        parsed = parse_skill_markdown(raw.decode("utf-8"), fallback_name=name)
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return ErrorResponse(
+                message=(
+                    f"Skill '{name}' is malformed (non-UTF-8 contents). "
+                    "Re-create it with store_skill."
+                ),
+                session_id=session_id,
+            )
+        parsed = parse_skill_markdown(text, fallback_name=name)
         if parsed is None:
             return ErrorResponse(
                 message=(
