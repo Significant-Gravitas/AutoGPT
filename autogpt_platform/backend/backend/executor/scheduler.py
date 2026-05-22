@@ -903,7 +903,7 @@ class Scheduler(AppService):
         )
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
-            f"{user_timezone}, input data: {input_data}"
+            f"{user_timezone}"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
@@ -968,10 +968,15 @@ class Scheduler(AppService):
 
         info = _job_to_info(job)
         if info is None:
-            # kwargs neither parse as a graph nor a copilot-turn schedule —
-            # corrupted row, but we can still safely delete it by id.
-            logger.warning(f"Deleting job {schedule_id} with unrecognized kwargs shape")
-            job.remove()
+            # kwargs parse as neither graph nor copilot-turn — we have no
+            # `user_id` field to authorize against, so refuse the delete.
+            # Removing without an ownership check would let any caller who
+            # can guess a schedule_id wipe corrupted rows. Surface 404 so
+            # the caller can't probe for shape via timing either.
+            logger.warning(
+                f"Refusing delete for job {schedule_id} with unrecognized "
+                f"kwargs shape (no parseable user_id to authorize against)"
+            )
             raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
 
         if info.user_id != user_id:
