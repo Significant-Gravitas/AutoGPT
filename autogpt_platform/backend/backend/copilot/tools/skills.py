@@ -268,6 +268,33 @@ async def delete_user_skill(user_id: str, name: str) -> str:
     if info is None:
         raise SkillNotFoundError(f"Skill '{slug}' not found")
 
+    # Audit-log the delete BEFORE the workspace mutation runs so the
+    # log row is present even if the delete itself raises mid-cleanup.
+    # Decode best-effort: a malformed body is fine for the audit trail —
+    # the slug + truncated description is what an operator needs to
+    # correlate later support requests.
+    description_for_log = ""
+    try:
+        raw = await manager.read_file(_skill_md_path(slug))
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = ""
+        if text:
+            parsed = parse_skill_markdown(text, fallback_name=slug)
+            if parsed is not None:
+                description_for_log = parsed.description
+    except Exception:
+        # Audit-log enrichment is best-effort; failure must not block the
+        # delete the user requested.
+        pass
+    logger.info(
+        "[skills] user %s… deleting skill %s: %s",
+        user_id[:8],
+        slug,
+        description_for_log[:60],
+    )
+
     try:
         siblings = await manager.list_files(
             path=f"{SKILL_FOLDER}/{slug}/",
@@ -473,7 +500,8 @@ class StoreSkillTool(BaseTool):
                 "body": {
                     "type": "string",
                     "description": (
-                        "Markdown body. Sections: Why / Trigger / Steps / Notes."
+                        "Markdown body. Sections: Why / Trigger / Steps / Notes. "
+                        "Must be non-empty after trim — empty bodies are rejected."
                     ),
                 },
                 "triggers": {

@@ -355,6 +355,24 @@ async def test_store_skill_rejects_oversized_body():
     assert "body" in result.message
 
 
+@pytest.mark.parametrize("empty_body", ["", "   ", "\n\n\n", "\t\t"])
+@pytest.mark.asyncio
+async def test_store_skill_rejects_empty_body(empty_body: str):
+    """A skill whose body is whitespace-only is functionally empty — the
+    model would load it via ``read_skill`` and get nothing actionable.
+    Reject up-front instead of writing an empty SKILL.md."""
+    tool = StoreSkillTool()
+    result = await tool._execute(
+        user_id="user-1",
+        session=_make_session(),
+        name="foo",
+        description="ok",
+        body=empty_body,
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "body" in result.message.lower()
+
+
 @pytest.mark.asyncio
 async def test_store_skill_rejects_too_many_triggers():
     tool = StoreSkillTool()
@@ -958,6 +976,39 @@ async def test_build_skills_context_authed_includes_user_skills():
 # delete_user_skill helper (consumed by the REST endpoint as well as the
 # delete_skill tool)
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_emits_audit_log(caplog):
+    """``delete_user_skill`` is a permanent delete — the audit log line
+    is the only post-hoc trace.  Must include the user-id prefix, slug,
+    and (truncated) description so operators can correlate later
+    support requests."""
+    import logging
+
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/audited/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(
+            name="audited",
+            description="A description that should appear in the audit log",
+            body="x",
+        )
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        with caplog.at_level(logging.INFO, logger="backend.copilot.tools.skills"):
+            await delete_user_skill("user-abcdefgh-123", "audited")
+    audit_lines = [
+        r
+        for r in caplog.records
+        if "[skills]" in r.getMessage() and "deleting skill audited" in r.getMessage()
+    ]
+    assert (
+        len(audit_lines) == 1
+    ), f"expected one audit log line, got {[r.getMessage() for r in caplog.records]}"
+    msg = audit_lines[0].getMessage()
+    assert "user-abc" in msg  # truncated user_id[:8]
+    assert "audited" in msg
+    assert "A description" in msg
 
 
 @pytest.mark.asyncio
