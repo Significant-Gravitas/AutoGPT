@@ -19,7 +19,12 @@ from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import AgentGraph, AgentGraphExecution, ChatLinkedShare
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import SharedChatFile, UserWorkspace, UserWorkspaceFile
+from prisma.models import (
+    SharedChatFile,
+    SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
+)
 
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.model import ChatSessionInfo
@@ -245,6 +250,14 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
                 # Another chat share still depends on this execution —
                 # leave it shared.
                 continue
+            # Drop the execution's file allowlist before clearing the share
+            # token.  Orphan ``SharedExecutionFile`` rows would still
+            # authorise downloads if anyone bookmarked the pre-revoke URL,
+            # mirroring the cleanup ``disable_execution_sharing`` does on
+            # the user-initiated path.
+            await SharedExecutionFile.prisma(tx).delete_many(
+                where={"executionId": execution.id}
+            )
             await AgentGraphExecution.prisma(tx).update(
                 where={"id": execution.id},
                 data={
@@ -465,15 +478,100 @@ async def _link_executions_to_share(
         # existing share state alone; the ChatLinkedShare row above still
         # records the linkage, so the public viewer keeps drilling into
         # the user-shared token.
-        await AgentGraphExecution.prisma(tx).update_many(
+        new_token = generate_share_token()
+        flipped = await AgentGraphExecution.prisma(tx).update_many(
             where={"id": execution.id, "isShared": False},
             data={
                 "isShared": True,
-                "shareToken": generate_share_token(),
+                "shareToken": new_token,
                 "sharedAt": shared_at,
                 "sharedVia": SharedVia.CHAT_LINK,
             },
         )
+        if flipped:
+            # Mirror enable_execution_sharing's allowlist build so the
+            # public execution viewer can serve the run's workspace files.
+            # Without this, the chat viewer renders the run card but
+            # every file download 404s — uniform 404 (anti-enumeration)
+            # masks the bug, but the artifacts are unreachable.
+            await _build_shared_execution_file_allowlist(
+                execution_id=execution.id,
+                share_token=new_token,
+                user_id=execution.userId,
+                tx=tx,
+            )
+
+
+async def _build_shared_execution_file_allowlist(
+    *,
+    execution_id: str,
+    share_token: str,
+    user_id: str,
+    tx: Any | None = None,
+) -> int:
+    """Build ``SharedExecutionFile`` rows for a CHAT_LINK-flipped execution.
+
+    Mirrors :func:`backend.data.execution.create_shared_execution_files` but
+    is transaction-aware so the allowlist commits with the same atomic
+    boundary as the share-state flip.  Scans the execution's node-execution
+    outputs for ``workspace://`` references AND ``file_id`` JSON refs and
+    creates one allowlist row per file the user actually owns.  Without
+    this, the chat-link execution's public viewer renders the run card but
+    every workspace file 404s because the public file-download endpoint
+    consults this exact allowlist.
+    """
+    # Pull only the node-execution outputs (no I/O for cancelled / running
+    # nodes, no metadata we don't need).  Each ``AgentNodeExecution`` row's
+    # ``Outputs`` are the structured block outputs that may carry
+    # ``workspace://`` URIs or ``file_id`` JSON tokens.
+    node_rows = await AgentGraphExecution.prisma(tx).find_unique(
+        where={"id": execution_id},
+        include={"NodeExecutions": {"include": {"Output": True}}},
+    )
+    if node_rows is None or node_rows.NodeExecutions is None:
+        return 0
+
+    file_ids: set[str] = set()
+    for ne in node_rows.NodeExecutions:
+        if ne.Output is None:
+            continue
+        for out in ne.Output:
+            if out.data is not None:
+                file_ids |= extract_workspace_file_ids(out.data)
+
+    if not file_ids:
+        return 0
+
+    workspace = await UserWorkspace.prisma(tx).find_unique(where={"userId": user_id})
+    if workspace is None:
+        return 0
+
+    owned_files = await UserWorkspaceFile.prisma(tx).find_many(
+        where={
+            "id": {"in": list(file_ids)},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+
+    created = 0
+    for file in owned_files:
+        try:
+            await SharedExecutionFile.prisma(tx).create(
+                data={
+                    "executionId": execution_id,
+                    "fileId": file.id,
+                    "shareToken": share_token,
+                }
+            )
+            created += 1
+        except UniqueViolationError:
+            logger.debug(
+                "SharedExecutionFile already exists: %s/%s", execution_id, file.id
+            )
+        except ForeignKeyViolationError:
+            logger.debug("SharedExecutionFile FK violation for file %s", file.id)
+    return created
 
 
 async def _resolve_linked_executions(

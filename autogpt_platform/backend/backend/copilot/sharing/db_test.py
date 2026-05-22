@@ -15,7 +15,7 @@ import pytest
 from prisma.enums import SharedVia
 from prisma.models import AgentGraphExecution, ChatLinkedShare
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import SharedChatFile
+from prisma.models import SharedChatFile, SharedExecutionFile
 
 from backend.copilot.sharing.db import (
     _collect_execution_ids_from_messages,
@@ -118,12 +118,24 @@ def mock_prisma_calls():
         patch.object(ChatLinkedShare, "prisma") as linked_prisma,
         patch.object(AgentGraphExecution, "prisma") as exec_prisma,
         patch.object(SharedChatFile, "prisma") as file_prisma,
+        patch.object(SharedExecutionFile, "prisma") as exec_file_prisma,
     ):
+        # Default no-op for the execution-file allowlist so tests that
+        # don't exercise the file-build / cascade-cleanup paths still see
+        # an awaitable.  Tests that DO exercise those paths override.
+        exec_file_prisma.return_value.delete_many = AsyncMock(return_value=0)
+        exec_file_prisma.return_value.create = AsyncMock()
+        # ``_build_shared_execution_file_allowlist`` calls find_unique
+        # on AgentGraphExecution to pull NodeExecutions.Output for the
+        # workspace-file scan.  Default to None so the helper short-
+        # circuits unless a test explicitly sets up node-execution data.
+        exec_prisma.return_value.find_unique = AsyncMock(return_value=None)
         yield {
             "session": session_prisma,
             "linked": linked_prisma,
             "execution": exec_prisma,
             "file": file_prisma,
+            "exec_file": exec_file_prisma,
         }
 
 
@@ -244,6 +256,73 @@ class TestDisableCascade:
 
         mock_prisma_calls["linked"].return_value.delete_many.assert_not_called()
         mock_prisma_calls["session"].return_value.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cascade_revoke_deletes_execution_file_allowlist(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """Revoking a chat that flipped an execution to CHAT_LINK must
+        also drop the execution's ``SharedExecutionFile`` allowlist.  A
+        stale allowlist row would still authorise public file downloads
+        for a leaked pre-revoke URL even though the share token field
+        is cleared on the execution."""
+        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+            return_value=_mock_session()
+        )
+        mock_prisma_calls["linked"].return_value.find_many = AsyncMock(
+            return_value=[_mock_linked_share()]
+        )
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
+            return_value=None
+        )
+        mock_prisma_calls["linked"].return_value.delete_many = AsyncMock(return_value=1)
+        mock_prisma_calls["execution"].return_value.update = AsyncMock()
+        mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
+        mock_prisma_calls["session"].return_value.update = AsyncMock()
+        exec_file_delete = AsyncMock(return_value=2)
+        mock_prisma_calls["exec_file"].return_value.delete_many = exec_file_delete
+
+        await disable_chat_session_share(SESSION_ID, USER_ID)
+
+        exec_file_delete.assert_called_once()
+        assert exec_file_delete.call_args.kwargs["where"] == {
+            "executionId": EXECUTION_ID
+        }
+
+    @pytest.mark.asyncio
+    async def test_cascade_skips_exec_file_delete_when_another_chat_references_execution(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """Multi-chat reference → cascade skips the execution entirely
+        (including its file allowlist).  Without this the second chat's
+        public viewer would break when the first chat is revoked."""
+        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+            return_value=_mock_session()
+        )
+        mock_prisma_calls["linked"].return_value.find_many = AsyncMock(
+            return_value=[_mock_linked_share()]
+        )
+        other_link = ChatLinkedShare.model_construct(
+            id="link-2",
+            createdAt=datetime.now(UTC),
+            sessionId=OTHER_SESSION_ID,
+            executionId=EXECUTION_ID,
+        )
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
+            return_value=other_link
+        )
+        mock_prisma_calls["linked"].return_value.delete_many = AsyncMock(return_value=1)
+        mock_prisma_calls["execution"].return_value.update = AsyncMock()
+        mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
+        mock_prisma_calls["session"].return_value.update = AsyncMock()
+        exec_file_delete = AsyncMock(return_value=0)
+        mock_prisma_calls["exec_file"].return_value.delete_many = exec_file_delete
+
+        await disable_chat_session_share(SESSION_ID, USER_ID)
+
+        # Same posture as the execution.update assertion: don't touch
+        # the allowlist when another chat still references the execution.
+        exec_file_delete.assert_not_called()
 
 
 class TestEnableChatShareState:
