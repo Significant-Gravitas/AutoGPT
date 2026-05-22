@@ -1,1 +1,0 @@
-# Component tests package
