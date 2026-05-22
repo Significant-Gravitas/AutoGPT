@@ -386,7 +386,7 @@ def _select_final_answer_parts(
     diagnostic signal that the agent's prompt didn't compose a final
     answer.
     """
-    if text_parts and not has_tool_calls:
+    if not has_tool_calls and any(part.strip() for part in text_parts):
         return list(text_parts)
     return current
 

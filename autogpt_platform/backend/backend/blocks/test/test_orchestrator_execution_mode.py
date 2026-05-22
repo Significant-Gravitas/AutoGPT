@@ -295,3 +295,15 @@ class TestSelectFinalAnswerParts:
         )
         text_parts.clear()
         assert result == ["final"]
+
+    def test_blank_text_only_message_keeps_current(self) -> None:
+        # Whitespace-only / empty-string text blocks with no tool calls
+        # would otherwise look like a "final" answer and clobber a real
+        # one captured earlier in the stream. The docstring says empty
+        # messages don't contribute — enforce that for blank strings too.
+        for blank in [[""], ["   "], ["\n"], ["", "  ", "\t"]]:
+            assert _select_final_answer_parts(
+                text_parts=blank,
+                has_tool_calls=False,
+                current=["real final answer"],
+            ) == ["real final answer"], f"blank={blank!r} clobbered current"
