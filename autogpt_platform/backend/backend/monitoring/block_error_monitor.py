@@ -76,7 +76,10 @@ class BlockErrorMonitor:
             # For blocks with high error rates, fetch error samples
             threshold = self.config.block_error_rate_threshold
             for block_name, stats in block_stats.items():
-                if stats.total_executions >= 10 and stats.platform_error_rate >= threshold * 100:
+                if (
+                    stats.total_executions >= 10
+                    and stats.platform_error_rate >= threshold * 100
+                ):
                     # Only fetch error samples for blocks that exceed threshold
                     error_samples = self._get_error_samples_for_block(
                         stats.block_id, start_time, end_time, limit=3
@@ -147,7 +150,10 @@ class BlockErrorMonitor:
         alerts = []
 
         for block_name, stats in block_stats.items():
-            if stats.total_executions >= 10 and stats.platform_error_rate >= threshold * 100:
+            if (
+                stats.total_executions >= 10
+                and stats.platform_error_rate >= threshold * 100
+            ):
                 error_groups = self._group_similar_errors(stats.error_samples)
 
                 alert_msg = (
