@@ -50,6 +50,12 @@ from backend.api.model import (
 )
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillNotFoundError,
+    delete_user_skill,
+    list_user_skills,
+)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -2365,6 +2371,80 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+########################################################
+##################### COPILOT SKILLS #####################
+########################################################
+
+
+class CopilotSkillInfo(BaseModel):
+    """User-distilled copilot skill metadata for the library UI.
+
+    Defaults (built-in agent-building / MCP-tool guides) are intentionally
+    excluded — they cannot be edited or deleted, so surfacing them in the
+    user-facing list would add noise without affordances.
+    """
+
+    name: str
+    description: str
+    triggers: list[str] = []
+
+
+@v1_router.get(
+    path="/skills",
+    summary="List user-distilled copilot skills",
+    operation_id="listCopilotSkills",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_skills(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[CopilotSkillInfo]:
+    """Return user-stored skills for the current user.
+
+    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
+    library UI sees the exact same set the copilot ``<available_skills>``
+    block surfaces, minus the built-in defaults (which are read-only and
+    handled separately by the copilot runtime).
+    """
+    skills = await list_user_skills(user_id)
+    return [
+        CopilotSkillInfo(
+            name=s.name,
+            description=s.description,
+            triggers=list(s.triggers),
+        )
+        for s in skills
+    ]
+
+
+@v1_router.delete(
+    path="/skills/{name}",
+    summary="Delete a user-distilled copilot skill",
+    operation_id="deleteCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def delete_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to delete"),
+) -> dict[str, str]:
+    """Delete a user-distilled skill by slug.
+
+    Built-in defaults are not user-deletable — attempting to delete one
+    returns 400.  Missing skills return 404 so the UI can reconcile a
+    stale list.
+    """
+    try:
+        slug = await delete_user_skill(user_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BuiltInSkillError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"name": slug}
 
 
 ########################################################

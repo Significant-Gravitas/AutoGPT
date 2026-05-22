@@ -745,6 +745,33 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
 
+# Paths under ``/skills/`` are managed by the skills registry — the
+# ``store_skill`` / ``delete_skill`` tools enforce frontmatter validation,
+# the per-user cap, name regex, and content sanitisation. Allowing plain
+# write_workspace_file / delete_workspace_file there would bypass all of
+# that and let the model accidentally (or maliciously) corrupt the
+# registry. Reads stay open so the model can still inspect sibling
+# references inside a skill bundle.
+_SKILLS_REGISTRY_PREFIX = "skills/"
+_SKILLS_REGISTRY_ERROR = (
+    "Path is managed by the skills registry; use store_skill / "
+    "delete_skill instead. (read_workspace_file can still read "
+    "sibling files inside a skill bundle.)"
+)
+
+
+def _path_under_skills_registry(path: str | None) -> bool:
+    """Return ``True`` when *path* normalises to a location under
+    the skills-registry folder (``/skills/...`` or ``skills/...``,
+    case-insensitive)."""
+    if not path:
+        return False
+    # Strip leading slashes + whitespace, lower-case so case variants
+    # (``Skills/foo``) cannot bypass the check.
+    normalised = path.strip().lstrip("/").lower()
+    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
+
+
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
 
@@ -847,6 +874,14 @@ class WriteWorkspaceFileTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a filename", session_id=session_id
             )
+
+        # Block writes to the skills registry folder — they would bypass
+        # store_skill's validation (cap, body limits, name regex,
+        # sanitisation of server-injected tags).  Either an explicit
+        # ``path`` or a ``filename`` defaulting to ``skills/...`` count.
+        candidate_path = path if path is not None else f"/{filename}"
+        if _path_under_skills_registry(candidate_path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
 
         source_path_arg: str | None = source_path
         content_text: str | None = content
@@ -1001,12 +1036,23 @@ class DeleteWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path", session_id=session_id
             )
 
+        # Reject deletes targeting the skills registry by path up-front.
+        # file_id targets are checked AFTER resolution below, since the
+        # path is only known once the file is looked up.
+        if _path_under_skills_registry(path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
             target_file_id, file_info = resolved
+
+            if _path_under_skills_registry(getattr(file_info, "path", None)):
+                return ErrorResponse(
+                    message=_SKILLS_REGISTRY_ERROR, session_id=session_id
+                )
 
             if not await manager.delete_file(target_file_id):
                 return ErrorResponse(

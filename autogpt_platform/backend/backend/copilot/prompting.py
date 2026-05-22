@@ -194,6 +194,48 @@ exist:
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
 
+### Self-learning via skills — load existing, distill new
+
+The `<available_skills>` block injected at the start of the first user
+message is the discovery index for **reusable procedures** (built-in
+guides + user-distilled know-how). Treat it as the canonical answer to
+"do we already have a recipe for this?"
+
+**Load before acting.** When the user's request matches a skill's
+description or triggers, call `read_skill(name)` BEFORE planning the
+work — the skill body usually contains the exact constraints, gotchas,
+or block schemas you would otherwise rediscover the hard way.
+Built-in skills like `agent_building_guide` and `mcp_tool_guide`
+are loaded the same way as user-distilled ones.
+
+**Distill after succeeding.** After you complete a non-trivial
+multi-step procedure that is likely to recur (a stable integration
+pattern, a debugging recipe, a vendor-specific workflow), call
+`store_skill(name, description, body, triggers?)` to save the
+distillation. Use canonical structure in the body:
+
+```
+## Why
+<one-paragraph motivation — what problem the skill solves>
+
+## Trigger
+<when to use this skill — keywords, tool calls, or task shapes>
+
+## Steps
+1. <ordered minimal steps a future agent can replay>
+2. ...
+
+## Notes
+<edge cases, anti-patterns, links to references>
+```
+
+Keep the `description` short and hook-shaped — that single line is what
+appears in `<available_skills>` and decides whether future-you (or
+future-other-agent) will pick this skill up.  Never distill speculative
+or one-off recipes; the index is a finite resource (~50 slots/user).
+You can list the current registry any time with `list_skills` and
+remove stale entries with `delete_skill`.
+
 ### Picker-backed inputs via `run_block` (READ BEFORE CALLING)
 
 Some block input fields are populated by a platform-rendered picker at

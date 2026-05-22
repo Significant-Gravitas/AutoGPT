@@ -47,6 +47,7 @@ from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
 from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
+from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -103,6 +104,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
+    # Skills (self-distilled procedure registry; see tools/skills.py).
+    # Defaults seed the agent-building / MCP guides so the registry is
+    # the single discovery surface for both built-in and user knowledge.
+    "store_skill": StoreSkillTool(),
+    "read_skill": ReadSkillTool(),
+    "delete_skill": DeleteSkillTool(),
+    "list_skills": ListSkillsTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
     "web_search": WebSearchTool(),

@@ -49,7 +49,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the same user (parent autopilot → sub-session followups). The parameter
 # description spends ~170 chars on the ownership-rejection semantics so
 # the model doesn't try to wake up other users' sessions.
-_CHAR_BUDGET = 37_000
+# Bumped 37000 -> 38500 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop. Absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+_CHAR_BUDGET = 38_500
 
 
 @pytest.fixture(scope="module")
