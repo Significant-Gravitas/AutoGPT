@@ -199,12 +199,13 @@ def execute_copilot_turn(**kwargs):
 async def _execute_copilot_turn(**kwargs):
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
-    try:
-        # Local imports: copilot.* imports from backend.executor, so a
-        # top-level import here would create a cycle at module-load time.
-        from backend.copilot.executor.utils import schedule_turn
-        from backend.copilot.model import get_chat_session
+    # Local imports: copilot.* imports from backend.executor, so a top-level
+    # import here would create a cycle at module-load time.
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+    from backend.copilot.executor.utils import schedule_turn
+    from backend.copilot.model import get_chat_session
 
+    try:
         # Verify the session still exists — if the user deleted their
         # conversation between scheduling and now, dispatching would create
         # an orphan turn that no UI ever surfaces. Self-clean the dead
@@ -236,12 +237,70 @@ async def _execute_copilot_turn(**kwargs):
             f"Dispatched scheduled copilot turn for session "
             f"{args.session_id[:12]} (took {elapsed:.2f}s)"
         )
+    except ConcurrentTurnLimitError as e:
+        # User is at their per-user concurrency cap. For cron schedules the
+        # next tick retries automatically; for one-shot (run_at) schedules
+        # APScheduler removes the job after fire regardless of our error,
+        # so re-schedule a copy 5 min out to give the slot time to free.
+        logger.warning(
+            f"Scheduled copilot turn for session {args.session_id[:12]} "
+            f"hit concurrency cap; cron={args.cron is not None}: {e}"
+        )
+        if args.run_at is not None:
+            await _reschedule_one_shot_after_cap(args)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error dispatching copilot turn for session "
             f"{args.session_id[:12]} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
+        )
+
+
+# One-shot schedules that hit the per-user concurrency cap are pushed out
+# this many seconds and retried once. If the cap is still hit on the
+# retry, the schedule is dropped (logged as an error). We don't loop
+# indefinitely because the original use case ("check CI in 20 min") is
+# time-sensitive — a multi-hour delay defeats the purpose.
+_CONCURRENCY_RETRY_DELAY_SECONDS = 300
+
+
+async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
+    """Re-create a one-shot copilot-turn schedule a few minutes in the future.
+
+    Best-effort: failures are logged. Already-retried schedules (detected
+    via a sentinel suffix on ``schedule_id``) are dropped to avoid loops.
+    """
+    if args.schedule_id and args.schedule_id.endswith("-cap-retry"):
+        logger.error(
+            f"Dropping one-shot copilot turn for session "
+            f"{args.session_id[:12]} — second concurrency-cap miss"
+        )
+        return
+    try:
+        from datetime import timedelta as _td
+        from datetime import timezone as _tz
+
+        new_run_at = datetime.now(tz=_tz.utc) + _td(
+            seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
+        )
+        await get_scheduler_client().add_copilot_turn_schedule(
+            user_id=args.user_id,
+            session_id=args.session_id,
+            message=args.message,
+            run_at=new_run_at,
+            name=f"{args.schedule_id or 'copilot'}-cap-retry",
+        )
+        logger.info(
+            f"Rescheduled one-shot copilot turn for session "
+            f"{args.session_id[:12]} to {new_run_at.isoformat()} after "
+            f"concurrency cap"
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to reschedule capped one-shot copilot turn for "
+            f"session {args.session_id[:12]}",
+            exc_info=True,
         )
 
 
@@ -511,6 +570,12 @@ def _timezone_from_job(job_obj: JobObj) -> str:
     return "UTC"
 
 
+def _next_run_time_iso(job_obj: JobObj) -> str:
+    """Render APScheduler's next_run_time. Returns "" for jobs already fired
+    (one-shot DateTrigger jobs have ``next_run_time=None`` post-fire)."""
+    return job_obj.next_run_time.isoformat() if job_obj.next_run_time else ""
+
+
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
     id: str
     name: str
@@ -524,7 +589,7 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
         return GraphExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
+            next_run_time=_next_run_time_iso(job_obj),
             timezone=_timezone_from_job(job_obj),
             **job_args.model_dump(),
         )
@@ -541,7 +606,7 @@ class CopilotTurnJobInfo(CopilotTurnJobArgs):
         return CopilotTurnJobInfo(
             id=job_obj.id,
             name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
+            next_run_time=_next_run_time_iso(job_obj),
             timezone=_timezone_from_job(job_obj),
             **job_args.model_dump(),
         )
