@@ -582,14 +582,31 @@ class StoreSkillTool(BaseTool):
             )
         try:
             manager = await _get_user_skill_manager(user_id)
-            # Enforce the per-user cap *before* we write — counting only
-            # existing slugs other than the one being upserted so updating
-            # an existing skill doesn't trip the limit.  When the lock is
-            # held this is a true atomic check-then-write; otherwise it
-            # is best-effort.
+            # Enforce the per-user cap *before* we write.
+            #
+            # When the lock IS held this is a true atomic check-then-write
+            # — an upsert at-cap is safe because no new slot is consumed.
+            #
+            # When the lock FAILED to acquire (Redis hiccup or genuine
+            # contention) the check is no longer atomic, so two unlocked
+            # writers could both see ``N == MAX_USER_SKILLS`` and both
+            # commit, landing at ``MAX_USER_SKILLS+1``.  Treat the cap
+            # strictly in that branch: refuse any write at-or-above the
+            # cap, including upserts (the model can retry; a transient
+            # Redis blip is rare and recovery is cheap).
             existing = await list_user_skills(user_id)
             existing_slugs = {s.name for s in existing}
-            if name not in existing_slugs and len(existing_slugs) >= MAX_USER_SKILLS:
+            at_cap = len(existing_slugs) >= MAX_USER_SKILLS
+            is_new = name not in existing_slugs
+            if at_cap and (is_new or not lock_held):
+                if not lock_held:
+                    logger.warning(
+                        "[skills] refusing at-cap unlocked write for user %s "
+                        "(is_new=%s) — concurrent store_skill could "
+                        "otherwise overrun the cap",
+                        user_id,
+                        is_new,
+                    )
                 return ErrorResponse(
                     message=(
                         f"Skill limit reached ({MAX_USER_SKILLS}). "

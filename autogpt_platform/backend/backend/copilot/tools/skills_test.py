@@ -464,6 +464,63 @@ async def test_store_skill_enforces_max_user_skills_cap():
 
 
 @pytest.mark.asyncio
+async def test_store_skill_at_cap_refuses_when_lock_not_held():
+    """When ``AsyncClusterLock.try_acquire`` returns a DIFFERENT owner
+    (i.e. contention or Redis hiccup) the fallback path is unlocked.
+    In that branch the cap check must be treated strictly — refuse the
+    write at-or-above MAX_USER_SKILLS even on an upsert, otherwise two
+    concurrent writers could both see N==cap and both commit."""
+    tool = StoreSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    for i in range(MAX_USER_SKILLS):
+        slug = f"skill_{i}"
+        fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=slug, description="old", body="old")
+        ).encode()
+
+    fake_lock = MagicMock()
+    fake_lock.owner_id = "self"
+    # Simulate contention: another owner currently holds the lock.
+    fake_lock.try_acquire = AsyncMock(return_value="someone-else")
+    fake_lock.release = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.tools.skills._get_user_skill_manager",
+            new=AsyncMock(return_value=fake_manager),
+        ),
+        patch(
+            "backend.copilot.tools.skills.AsyncClusterLock",
+            return_value=fake_lock,
+        ),
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+    ):
+        # New slug at-cap → must be rejected.
+        new_result = await tool._execute(
+            user_id="user-1",
+            session=_make_session(),
+            name="brand_new",
+            description="ok",
+            body="ok",
+        )
+        # Upsert at-cap → also rejected in unlocked branch (cannot prove
+        # atomicity, so refuse defensively).
+        upsert_result = await tool._execute(
+            user_id="user-1",
+            session=_make_session(),
+            name="skill_0",
+            description="ok",
+            body="ok",
+        )
+    assert isinstance(new_result, ErrorResponse)
+    assert "limit" in new_result.message.lower()
+    assert isinstance(upsert_result, ErrorResponse)
+    assert "limit" in upsert_result.message.lower()
+
+
+@pytest.mark.asyncio
 async def test_store_skill_upsert_does_not_trip_cap():
     """Overwriting an existing skill must NOT count toward the cap —
     re-storing the same name when already at MAX_USER_SKILLS is fine."""
