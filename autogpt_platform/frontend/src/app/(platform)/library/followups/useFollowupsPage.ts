@@ -12,6 +12,5 @@ export function useFollowupsPage() {
     followups: query.data ?? [],
     isLoading: query.isLoading,
     error: query.error,
-    refetchFollowups: query.refetch,
   };
 }

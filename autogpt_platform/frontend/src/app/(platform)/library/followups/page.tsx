@@ -52,10 +52,7 @@ export default function FollowupsPage() {
         >
           {followups.map((followup) => (
             <li key={followup.id}>
-              <FollowupListItem
-                followup={followup}
-                onDeleted={refetchFollowups}
-              />
+              <FollowupListItem followup={followup} />
             </li>
           ))}
         </ul>
