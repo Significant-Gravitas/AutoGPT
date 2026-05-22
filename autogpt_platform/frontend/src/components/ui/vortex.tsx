@@ -40,6 +40,8 @@ export function Vortex(props: VortexProps) {
   const zOff = 0.0005;
   const backgroundColor = props.backgroundColor || "#000000";
   let tick = 0;
+  let lastTime = 0;
+  let dtFrames = 1;
   const noise3D = createNoise3D();
   let particleProps = new Float32Array(particlePropsLength);
   const center: [number, number] = [0, 0];
@@ -72,6 +74,7 @@ export function Vortex(props: VortexProps) {
       if (ctx) {
         resize(canvas);
         initParticles();
+        lastTime = performance.now();
         draw(canvas, ctx);
       }
     }
@@ -104,7 +107,11 @@ export function Vortex(props: VortexProps) {
   }
 
   function draw(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
-    tick++;
+    const now = performance.now();
+    const dt = Math.min((now - lastTime) / 1000, 1 / 30);
+    lastTime = now;
+    dtFrames = dt * 60;
+    tick += dtFrames;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -142,19 +149,20 @@ export function Vortex(props: VortexProps) {
     const x = particleProps[i];
     const y = particleProps[i2];
     const n = noise3D(x * xOff, y * yOff, tick * zOff) * noiseSteps * TAU;
-    const vx = lerp(particleProps[i3], Math.cos(n), 0.5);
-    const vy = lerp(particleProps[i4], Math.sin(n), 0.5);
+    const smoothing = 1 - Math.pow(0.5, dtFrames);
+    const vx = lerp(particleProps[i3], Math.cos(n), smoothing);
+    const vy = lerp(particleProps[i4], Math.sin(n), smoothing);
     let life = particleProps[i5];
     const ttl = particleProps[i6];
     const speed = particleProps[i7];
-    const x2 = x + vx * speed;
-    const y2 = y + vy * speed;
+    const x2 = x + vx * speed * dtFrames;
+    const y2 = y + vy * speed * dtFrames;
     const radius = particleProps[i8];
     const hue = particleProps[i9];
 
     drawParticle(x, y, x2, y2, life, ttl, radius, hue, ctx);
 
-    life++;
+    life += dtFrames;
 
     particleProps[i] = x2;
     particleProps[i2] = y2;
