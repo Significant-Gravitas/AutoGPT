@@ -2645,6 +2645,12 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "403": {
+            "description": "Chat sharing is not enabled for this user"
+          },
+          "404": {
+            "description": "Chat session not found for user"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7875,6 +7881,9 @@
               }
             }
           },
+          "404": {
+            "description": "Shared chat not found"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7918,6 +7927,9 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "404": {
+            "description": "Uniform 404 for every failure mode (unknown token, wrong file id, file no longer present) — prevents enumeration."
           },
           "422": {
             "description": "Validation Error",
@@ -7972,6 +7984,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid limit (must be 1..200)"
+          },
+          "404": {
+            "description": "Shared chat not found"
           },
           "422": {
             "description": "Validation Error",
@@ -16568,6 +16586,14 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "shared_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Shared At",
+            "description": "When the owner enabled sharing on this chat.  Surfaced so the\npublic viewer can render \"Shared {date}\" against the share-enable\nmoment instead of the chat creation date (which can be months\nolder for long-lived chats)."
+          },
           "linked_executions": {
             "items": {
               "$ref": "#/components/schemas/SharedChatLinkedExecution"
@@ -16582,6 +16608,7 @@
           "title",
           "created_at",
           "updated_at",
+          "shared_at",
           "linked_executions"
         ],
         "title": "SharedChatSession",

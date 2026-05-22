@@ -737,6 +737,14 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share the failed run too — share-modal users may
+                # want public viewers to drill into the failure.  Without
+                # this hook, ``_collect_execution_ids_from_messages`` can't
+                # backfill failed runs either (ErrorResponse payload type
+                # isn't in the scanned set).
+                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution failed. "
@@ -747,6 +755,12 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share terminated runs (cancelled / killed) for the
+                # same reason as the FAILED branch — backfill at re-share
+                # time won't pick them up.
+                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution was terminated. "

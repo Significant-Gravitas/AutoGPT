@@ -83,7 +83,13 @@ async def get_chat_share_state(
     )
 
 
-@owner_router.post("/sessions/{session_id}/share")
+@owner_router.post(
+    "/sessions/{session_id}/share",
+    responses={
+        403: {"description": "Chat sharing is not enabled for this user"},
+        404: {"description": "Chat session not found for user"},
+    },
+)
 async def enable_chat_sharing(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
@@ -154,7 +160,10 @@ async def disable_chat_sharing(
 public_router = APIRouter(tags=["chat", "share", "public"])
 
 
-@public_router.get("/{share_token}")
+@public_router.get(
+    "/{share_token}",
+    responses={404: {"description": "Shared chat not found"}},
+)
 async def get_shared_chat(
     share_token: Annotated[str, Path(pattern=SHARE_TOKEN_PATTERN)],
 ) -> SharedChatSession:
@@ -164,7 +173,13 @@ async def get_shared_chat(
     return session
 
 
-@public_router.get("/{share_token}/messages")
+@public_router.get(
+    "/{share_token}/messages",
+    responses={
+        400: {"description": "Invalid limit (must be 1..200)"},
+        404: {"description": "Shared chat not found"},
+    },
+)
 async def get_shared_chat_messages(
     share_token: Annotated[str, Path(pattern=SHARE_TOKEN_PATTERN)],
     limit: int = 50,
@@ -184,6 +199,14 @@ async def get_shared_chat_messages(
     "/{share_token}/files/{file_id}/download",
     summary="Download a file from a shared chat",
     operation_id="download_shared_chat_file",
+    responses={
+        404: {
+            "description": (
+                "Uniform 404 for every failure mode (unknown token, wrong "
+                "file id, file no longer present) — prevents enumeration."
+            )
+        },
+    },
 )
 async def download_shared_chat_file(
     share_token: Annotated[str, Path(pattern=SHARE_TOKEN_PATTERN)],

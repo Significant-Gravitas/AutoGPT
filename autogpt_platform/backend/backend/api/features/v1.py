@@ -2114,14 +2114,20 @@ async def enable_execution_sharing(
     # window where old records + new token could coexist.
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Update the execution with share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=True,
-        share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
-    )
+    # Update the execution with share info — the underlying update_many
+    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
+    # between the pre-check above and this write surfaces as 404 rather
+    # than a silent no-op.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=True,
+            share_token=share_token,
+            shared_at=datetime.now(timezone.utc),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
@@ -2159,14 +2165,18 @@ async def disable_execution_sharing(
     # Remove shared file allowlist records
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Remove share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    # Remove share info — owner-gated at the DB layer; TOCTOU delete
+    # after the pre-check surfaces as 404.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=False,
+            share_token=None,
+            shared_at=None,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")

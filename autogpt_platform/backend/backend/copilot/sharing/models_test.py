@@ -156,3 +156,48 @@ class TestSanitizeChatMessage:
         msg = _msg(role="assistant", content="hi")
         sanitized = sanitize_chat_message(msg)
         assert sanitized.tool_calls is None
+
+    def test_redacts_secret_keys_in_tool_role_json_content(self):
+        # Tool messages (``role=tool``) persist tool responses as
+        # JSON-serialised strings.  A response payload with a secret-
+        # shaped key MUST get redacted on the public share path — without
+        # this, ``{"api_key": "sk-…"}`` in a tool output leaks verbatim.
+        msg = _msg(
+            role="tool",
+            content=(
+                '{"type":"agent_output",'
+                '"execution":{"outputs":{"api_key":"sk-leaked",'
+                '"public":"ok"}}}'
+            ),
+        )
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.content is not None
+        import json as _json
+
+        payload = _json.loads(sanitized.content)
+        outputs = payload["execution"]["outputs"]
+        assert outputs["api_key"] == "[redacted]"
+        assert outputs["public"] == "ok"
+
+    def test_tool_content_passes_through_when_not_json(self):
+        # Non-JSON tool content (older / hand-rolled tool returns) must
+        # pass through untouched — same posture as plain assistant text.
+        msg = _msg(role="tool", content="completed without output")
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.content == "completed without output"
+
+    def test_tool_content_redacts_secret_under_nested_list(self):
+        # The recursive walk must redact secret-shaped subtrees inside
+        # tool JSON arrays too.  Failure here would leak when a tool
+        # returns ``{"api_keys": ["sk-1", "sk-2"]}``.
+        msg = _msg(
+            role="tool",
+            content='{"api_keys":["sk-1","sk-2"],"count":2}',
+        )
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.content is not None
+        import json as _json
+
+        payload = _json.loads(sanitized.content)
+        assert payload["api_keys"] == "[redacted]"
+        assert payload["count"] == 2

@@ -17,6 +17,7 @@ messages (memory_context / env_context / user_context) via the existing
 by the user and would confuse a public reader.
 """
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -76,6 +77,11 @@ class SharedChatSession(BaseModel):
     title: str | None
     created_at: datetime
     updated_at: datetime
+    shared_at: datetime | None
+    """When the owner enabled sharing on this chat.  Surfaced so the
+    public viewer can render "Shared {date}" against the share-enable
+    moment instead of the chat creation date (which can be months
+    older for long-lived chats)."""
     linked_executions: list[SharedChatLinkedExecution]
 
 
@@ -91,6 +97,7 @@ def sanitize_chat_session(
     session: ChatSessionInfo,
     *,
     linked_executions: list[SharedChatLinkedExecution],
+    shared_at: datetime | None = None,
 ) -> SharedChatSession:
     """Project a session for public consumption.
 
@@ -101,6 +108,7 @@ def sanitize_chat_session(
         title=session.title,
         created_at=session.started_at,
         updated_at=session.updated_at,
+        shared_at=shared_at,
         linked_executions=linked_executions,
     )
 
@@ -110,21 +118,29 @@ def sanitize_chat_message(message: ChatMessageDomain) -> SharedChatMessage:
 
     - Strips injected context blocks from ``role=user`` string content.
     - Redacts secret-shaped keys inside ``tool_calls`` and ``function_call``.
+    - Redacts secret-shaped keys inside ``role=tool`` JSON content when it
+      parses as JSON (tool responses carry structured payloads like
+      ``agent_output``, ``view_agent_output``, dry-run ``node_executions``
+      with block I/O — any of which may contain a secret-shaped field).
+      Non-JSON tool content (free-form strings) passes through unchanged,
+      same posture as ``role=assistant``.
     - Drops the per-row dispatcher metadata entirely.
     - Drops ``refusal`` (model-internal signal, not user content).
 
-    Plain ``content`` is intentionally **not** key-redacted.  Tool-call
-    arguments are structured data with stable secret-shaped keys
-    (``api_key``, ``auth_token``) that we can pattern-match safely, but
-    free-form chat content has no such structure -- any regex pass would
-    either miss most real cases or false-positive on legitimate text.
-    The share modal's warning banner ("don't share if it contains
-    secrets you pasted") makes plain-content exposure an explicit
-    user-opt-in decision.
+    Plain ``content`` on ``role=user`` / ``role=assistant`` is intentionally
+    **not** key-redacted.  Tool-call arguments are structured data with
+    stable secret-shaped keys (``api_key``, ``auth_token``) that we can
+    pattern-match safely, but free-form chat content has no such structure
+    -- any regex pass would either miss most real cases or false-positive
+    on legitimate text.  The share modal's warning banner ("don't share
+    if it contains secrets you pasted") makes plain-content exposure an
+    explicit user-opt-in decision.
     """
     content = message.content
     if message.role == "user" and isinstance(content, str) and content:
         content = strip_injected_context_for_display(content)
+    elif message.role == "tool" and isinstance(content, str) and content:
+        content = _redact_secret_keys_in_json_string(content)
 
     return SharedChatMessage(
         id=message.id or "",
@@ -172,3 +188,23 @@ def _redact_secret_keys(value: Any) -> Any:
 def _is_secret_key(key: str) -> bool:
     lower = key.lower()
     return any(hint in lower for hint in _SECRET_KEY_HINTS)
+
+
+def _redact_secret_keys_in_json_string(value: str) -> str:
+    """Parse *value* as JSON, walk it through :func:`_redact_secret_keys`,
+    and re-serialise.  Returns *value* unchanged when it isn't valid JSON.
+
+    Tool messages (``role=tool``) persist structured tool responses
+    (``agent_output``, ``view_agent_output``, dry-run ``node_executions``
+    with block I/O, MCP tool returns) as JSON-serialised strings.  The
+    public viewer reads these verbatim, so a tool response payload
+    containing ``{"api_key": "sk-..."}`` would leak the key.  Non-JSON
+    content passes through untouched to preserve the posture documented
+    on :func:`sanitize_chat_message`.
+    """
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return value
+    redacted = _redact_secret_keys(parsed)
+    return json.dumps(redacted)

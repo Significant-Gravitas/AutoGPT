@@ -52,9 +52,12 @@ export function isReasoningToolPart(part: MessagePart): boolean {
 // ``filePartToArtifactRef`` rather than loosen this one — keeping the
 // match anchored to a known prefix per surface prevents an unrelated
 // future ``FileUIPart`` source from accidentally rendering as an
-// artifact.
+// artifact.  ``^`` and ``$`` are required — without them, the pattern
+// matches as a substring inside longer URLs (e.g. an attacker-controlled
+// file URL prefixed with the proxy path) and surfaces the embedded UUID
+// as a renderable artifact id.
 export const WORKSPACE_FILE_PATTERN =
-  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download/;
+  /^\/api\/proxy\/api\/workspace\/files\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/download$/;
 const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([

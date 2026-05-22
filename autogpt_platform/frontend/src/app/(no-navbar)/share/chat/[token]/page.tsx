@@ -71,7 +71,15 @@ export default function SharedChatPage() {
   }
 
   const title = session.title || "Shared chat";
-  const sharedOn = new Date(session.created_at).toLocaleDateString();
+  // ``shared_at`` is when the owner enabled sharing — that's what
+  // belongs in the "Shared {date}" subtitle.  Falling back to
+  // ``created_at`` only when ``shared_at`` is missing keeps already-
+  // shared chats rendering until the backfill lands, but
+  // ``SharedChatSession`` ships ``shared_at`` for every share so the
+  // fallback should never fire in practice.
+  const sharedOn = new Date(
+    session.shared_at || session.created_at,
+  ).toLocaleDateString();
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#f8f8f9]">

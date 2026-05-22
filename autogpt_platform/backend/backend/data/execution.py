@@ -46,7 +46,7 @@ from pydantic.fields import Field
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -1633,8 +1633,8 @@ async def update_graph_execution_share_status(
     if is_shared and shared_via is None:
         shared_via = SharedVia.USER
 
-    await AgentGraphExecution.prisma().update(
-        where={"id": execution_id},
+    updated = await AgentGraphExecution.prisma().update_many(
+        where={"id": execution_id, "userId": user_id},
         data={
             "isShared": is_shared,
             "shareToken": share_token,
@@ -1642,6 +1642,13 @@ async def update_graph_execution_share_status(
             "sharedVia": shared_via if is_shared else None,
         },
     )
+    if updated != 1:
+        # The (id, userId) filter narrows the update to the owner — a
+        # zero-row result means either the execution doesn't exist or
+        # belongs to another user.  Surface as NotFoundError so the
+        # route turns it into a uniform 404, matching the rest of the
+        # share API's anti-enumeration posture.
+        raise NotFoundError(f"Execution {execution_id} not found for user {user_id}")
 
 
 async def get_graph_execution_by_share_token(

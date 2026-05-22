@@ -11,11 +11,16 @@ import { classifyArtifact } from "../ArtifactPanel/helpers";
 
 interface Props {
   artifact: ArtifactRef;
-  /** Read-only mode: clicking the card downloads the file instead of
-   *  opening the artifact panel.  The public share viewer doesn't
-   *  mount ``ArtifactPanel``, so the default ``openArtifact`` store
-   *  action would set state with no visible effect — download is the
-   *  only meaningful action available to anonymous readers. */
+  /** Read-only mode: opt out of the side-effects that only make sense
+   *  for the owner (auto-registering with the artifact panel so a
+   *  newly arriving file can pop the panel open).
+   *
+   *  Click behaviour is unchanged from the owner case: an openable
+   *  artifact still calls ``openArtifact`` and renders inside
+   *  ``ArtifactPanel`` (the public share viewer mounts the panel too),
+   *  while a non-openable asset falls back to a direct download.  In
+   *  other words, ``readOnly`` does NOT force every click to download
+   *  — that's only true for non-openable assets, regardless of mode. */
   readOnly?: boolean;
 }
 

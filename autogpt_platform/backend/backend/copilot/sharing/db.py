@@ -287,7 +287,9 @@ async def get_chat_session_by_share_token(
 
     linked = await _resolve_linked_executions(session_id=session.id)
     return sanitize_chat_session(
-        ChatSessionInfo.from_db(session), linked_executions=linked
+        ChatSessionInfo.from_db(session),
+        linked_executions=linked,
+        shared_at=session.sharedAt,
     )
 
 
@@ -454,11 +456,17 @@ async def _link_executions_to_share(
                 execution.id,
             )
             continue
-        if execution.isShared:
-            # Already independently shared — keep its token and provenance.
-            continue
-        await AgentGraphExecution.prisma(tx).update(
-            where={"id": execution.id},
+        # Conditional update: only flip the execution to ``CHAT_LINK`` when
+        # the DB still reports it unshared.  Branching on the pre-fetched
+        # ``execution.isShared`` in-memory value can race a concurrent
+        # transaction that has just shared (or revoked) it — see the
+        # disable_chat_session_share cascade for the inverse race.  When
+        # ``update_many`` matches zero rows we leave the execution's
+        # existing share state alone; the ChatLinkedShare row above still
+        # records the linkage, so the public viewer keeps drilling into
+        # the user-shared token.
+        await AgentGraphExecution.prisma(tx).update_many(
+            where={"id": execution.id, "isShared": False},
             data={
                 "isShared": True,
                 "shareToken": generate_share_token(),

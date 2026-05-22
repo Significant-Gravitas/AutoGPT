@@ -527,6 +527,13 @@ class TestLinkNewExecutionToChatShare:
         )
         link_create = AsyncMock()
         mock_prisma_calls["linked"].return_value.create = link_create
+        # ``_link_executions_to_share`` uses ``update_many`` with an
+        # ``isShared: False`` guard.  Mock its return as 0 because the
+        # fixture execution is already shared — pinning the DB-conditional
+        # behaviour.  See ``test_link_skips_already_shared_execution``
+        # below for the inverse.
+        update_many = AsyncMock(return_value=0)
+        mock_prisma_calls["execution"].return_value.update_many = update_many
 
         await link_new_execution_to_chat_share(
             session_id=SESSION_ID, execution_id=EXECUTION_ID
@@ -536,3 +543,51 @@ class TestLinkNewExecutionToChatShare:
         call_data = link_create.call_args.kwargs["data"]
         assert call_data["sessionId"] == SESSION_ID
         assert call_data["executionId"] == EXECUTION_ID
+        # Conditional update guards against stale in-memory ``isShared``
+        # — the where clause must include ``isShared: False`` so the
+        # update is a no-op when the execution was independently shared.
+        update_many.assert_called_once()
+        where = update_many.call_args.kwargs["where"]
+        assert where["id"] == EXECUTION_ID
+        assert where["isShared"] is False
+
+    @pytest.mark.asyncio
+    async def test_link_flips_unshared_execution_to_chat_link_provenance(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """Brand-new execution (isShared=False at insert) → conditional
+        update flips it to CHAT_LINK with a freshly minted token.  The
+        DB-level conditional (``isShared: False`` in the where clause)
+        protects against the race where another transaction has just
+        shared the execution between the prefetch and the update."""
+        unshared_exec = _mock_execution()
+        unshared_exec.isShared = False
+        unshared_exec.shareToken = None
+        unshared_exec.sharedAt = None
+        unshared_exec.sharedVia = None
+
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            return_value=_mock_session(auto_share_executions=True)
+        )
+        mock_prisma_calls["execution"].return_value.find_first = AsyncMock(
+            return_value=unshared_exec
+        )
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
+            return_value=None
+        )
+        mock_prisma_calls["linked"].return_value.create = AsyncMock()
+        # Conditional update succeeds — the DB still reports isShared=False.
+        update_many = AsyncMock(return_value=1)
+        mock_prisma_calls["execution"].return_value.update_many = update_many
+
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
+
+        update_many.assert_called_once()
+        call = update_many.call_args.kwargs
+        assert call["where"] == {"id": EXECUTION_ID, "isShared": False}
+        assert call["data"]["isShared"] is True
+        assert call["data"]["sharedVia"] == SharedVia.CHAT_LINK
+        assert call["data"]["shareToken"] is not None
+        assert call["data"]["sharedAt"] is not None

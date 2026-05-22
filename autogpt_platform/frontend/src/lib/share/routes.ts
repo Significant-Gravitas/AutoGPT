@@ -55,7 +55,13 @@ export function sharedChatFilePattern(shareToken: string): RegExp {
   // URLs we constructed for this specific share match.  Per-token
   // patterns prevent cross-share contamination when multiple viewers
   // are mounted side-by-side (storybook / tests).
+  //
+  // ``^`` and ``$`` enforce full-string match — without them the regex
+  // could pull a file UUID out of a longer/malformed URL (e.g.
+  // ``https://attacker.example/api/proxy/.../files/<id>/download?x=…``)
+  // and surface it as an artifact for this share token even though we
+  // never constructed that URL.
   return new RegExp(
-    `/api/proxy/api/public/shared/chats/${escapeRegex(shareToken)}/files/${FILE_UUID_GROUP}/download`,
+    `^/api/proxy/api/public/shared/chats/${escapeRegex(shareToken)}/files/${FILE_UUID_GROUP}/download$`,
   );
 }

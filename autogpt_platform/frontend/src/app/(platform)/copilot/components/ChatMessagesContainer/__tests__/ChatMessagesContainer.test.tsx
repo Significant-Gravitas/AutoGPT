@@ -556,7 +556,9 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       {
         id: userId,
         role: "user" as const,
-        parts: [{ type: "text" as const, text: "queue me", state: "done" }],
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
       },
     ];
     render(
@@ -699,15 +701,16 @@ describe("ChatMessagesContainer — readOnly mode", () => {
       {
         id: userId,
         role: "user" as const,
-        parts: [{ type: "text" as const, text: "queue me", state: "done" }],
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
         sessionChatStatus="queued"
         readOnly
       />,
