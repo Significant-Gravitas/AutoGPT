@@ -379,3 +379,48 @@ The fixed port `41899` may be in use by another app. The OAuth flow doc
 (OAUTH_FLOW.md) specifies a scan range of `41899–41910`. The platform's
 OAuth client registration must accept ALL ports in that range as valid
 `redirect_uri`s for `client_id=autogpt-local-executor`, not just `41899`.
+
+### 10.9 Computer-use routing (deferred from MVP)
+
+`config.allow_computer_use` exists and the shim daemon ships a
+`ComputerUseHandler` (SCREENSHOT_REQUEST / INPUT_ACTION), but the
+platform side is **not yet wired**. Enabling computer-use end-to-end
+requires changes the team should make in a dedicated session because
+they touch Claude Code CLI subprocess plumbing rather than the API
+directly. Sketch:
+
+1. **CLI beta flag pass-through.** This codebase invokes the Claude
+   Code CLI (`backend/copilot/sdk/env.py`), not the Anthropic API.
+   Computer-use beta enabling flows through Claude Code's own surface
+   — env vars or `--beta computer-use-2025-11-24` style flag.
+   `env.py` already toggles
+   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` for OpenRouter
+   compatibility; adding computer-use selectively must NOT regress
+   the existing OpenRouter strip path.
+2. **Tool-call interception.** Claude's `computer_use` tool calls
+   (screenshot/left_click/type/key/scroll/mouse_move) come back as
+   MCP-style tool invocations once the beta is enabled. A new
+   `ComputerUseRouter` in `copilot/tools/` should:
+   - Validate the active sandbox is a `LocalPCShim` and the shim's
+     HELLO advertised `"computer_use"` in `capabilities`.
+   - Forward screenshot calls as wire `SCREENSHOT_REQUEST` and inline
+     the returned `image_base64` into the tool result as an `image`
+     content block (Anthropic content block format).
+   - Forward action calls as wire `INPUT_ACTION` and return
+     `{"ok": true}` to Claude.
+   - Refuse with a structured error if `allow_computer_use=false` or
+     the shim lacks the capability — never silently drop.
+3. **UI consent gate.** Per [SECURITY.md](SECURITY.md) Layer 5, the
+   first computer-use call in a session must show an explicit
+   "Claude is requesting screen access" confirmation in the platform
+   UI before the request goes to the shim. Computer use bypassing
+   consent is a release blocker.
+4. **Tests.** Loopback-style: TestClient acts as shim, platform
+   issues SCREENSHOT_REQUEST, asserts image block shape; same for
+   INPUT_ACTION. The shim daemon's `ComputerUseHandler` is unit-
+   tested on the shim side.
+
+Until those four ship, `config.allow_computer_use` is a no-op flag.
+Setting it true does NOT route screenshots — it's a placeholder for
+the eventual gate. Document this explicitly in any UI that exposes
+the toggle.
