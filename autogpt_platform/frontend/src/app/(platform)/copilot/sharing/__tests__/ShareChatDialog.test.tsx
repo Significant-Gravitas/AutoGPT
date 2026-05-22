@@ -31,8 +31,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Clipboard isn't available in jsdom by default; defineProperty so
-// the copyShareUrl plumbing can be exercised without crashing.
-const clipboardWrite = vi.fn(() => Promise.resolve());
+// the copyShareUrl plumbing can be exercised without crashing.  The
+// explicit (text: string) typing keeps mock.calls[0][0] usable in
+// assertions without TS complaining about tuple length.
+const clipboardWrite = vi.fn(async (_text: string) => {});
 beforeEach(() => {
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
