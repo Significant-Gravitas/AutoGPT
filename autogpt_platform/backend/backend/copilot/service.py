@@ -307,23 +307,18 @@ def strip_user_context_prefix(content: str) -> str:
     return _USER_CONTEXT_PREFIX_RE.sub("", content)
 
 
-def sanitize_user_supplied_context(message: str) -> str:
-    """Strip server-only XML tags from user-supplied input.
+def strip_server_injected_tags(text: str) -> str:
+    """Strip all server-only XML context tags + blocks from ``text``.
 
-    Removes any ``<user_context>``, ``<memory_context>``, and ``<env_context>``
-    blocks — all are server-injected tags that must not appear verbatim in user
-    messages. A user who types these tags literally could spoof the trusted
-    personalisation, memory prefix, or environment context the LLM relies on.
-
-    The inject path must call this **unconditionally** — including when
-    ``understanding`` is ``None`` — otherwise new users can smuggle a tag
-    through to the LLM.
-
-    The return is a cleaned message ready to be wrapped (or forwarded raw,
-    when there's no context to inject).
+    Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
+    ``<budget_context>``, and ``<available_skills>`` blocks (and their lone
+    tags).  Used both by :func:`sanitize_user_supplied_context` on inbound
+    user messages and by stores (e.g. :tool:`store_skill`) that persist
+    LLM-authored text which will later land alongside server-injected
+    versions of the same tags in the next turn's prompt.
     """
     # Strip <user_context> blocks and lone tags
-    without_user_ctx = _USER_CONTEXT_ANYWHERE_RE.sub("", message)
+    without_user_ctx = _USER_CONTEXT_ANYWHERE_RE.sub("", text)
     without_user_ctx = _USER_CONTEXT_LONE_TAG_RE.sub("", without_user_ctx)
     # Strip <memory_context> blocks and lone tags
     without_mem_ctx = _MEMORY_CONTEXT_ANYWHERE_RE.sub("", without_user_ctx)
@@ -340,6 +335,24 @@ def sanitize_user_supplied_context(message: str) -> str:
     # the server-injected per-user skill index.
     without_skills_ctx = _SKILLS_CONTEXT_ANYWHERE_RE.sub("", without_budget_ctx)
     return _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
+
+
+def sanitize_user_supplied_context(message: str) -> str:
+    """Strip server-only XML tags from user-supplied input.
+
+    Removes any ``<user_context>``, ``<memory_context>``, and ``<env_context>``
+    blocks — all are server-injected tags that must not appear verbatim in user
+    messages. A user who types these tags literally could spoof the trusted
+    personalisation, memory prefix, or environment context the LLM relies on.
+
+    The inject path must call this **unconditionally** — including when
+    ``understanding`` is ``None`` — otherwise new users can smuggle a tag
+    through to the LLM.
+
+    The return is a cleaned message ready to be wrapped (or forwarded raw,
+    when there's no context to inject).
+    """
+    return strip_server_injected_tags(message)
 
 
 def strip_injected_context_for_display(message: str) -> str:

@@ -32,6 +32,7 @@ import yaml
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
+from backend.copilot.service import strip_server_injected_tags
 from backend.data.db_accessors import workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -497,9 +498,20 @@ class StoreSkillTool(BaseTool):
             )
 
         name = name.strip().lower()
-        description = description.strip()
-        body = body.strip()
-        triggers = [t.strip() for t in (triggers or []) if str(t).strip()]
+        # Strip any server-injected XML tags (``<available_skills>``,
+        # ``<env_context>``, etc.) from the description/body/triggers
+        # *before* persistence — when the model later loads the skill via
+        # read_skill, that text lands in the conversation history and
+        # could otherwise appear alongside the real server-injected
+        # versions in the next turn's first user message.
+        description = strip_server_injected_tags(description.strip())
+        body = strip_server_injected_tags(body.strip())
+        triggers = [
+            strip_server_injected_tags(t.strip())
+            for t in (triggers or [])
+            if str(t).strip()
+        ]
+        triggers = [t for t in triggers if t]
 
         name_err = _validate_name(name)
         if name_err:
