@@ -114,8 +114,8 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` or per-user service via NSSM | `autogpt-shim install` writes the file. |
-| Start at login | LoadIfPresent + RunAtLoad keys | `systemctl --user enable autogpt-shim.service` + `loginctl enable-linger` | Trigger: `AT_LOGON` | All require user opt-in. |
+| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` reverses it. |
+| Start at login | `RunAtLoad` + `KeepAlive` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
