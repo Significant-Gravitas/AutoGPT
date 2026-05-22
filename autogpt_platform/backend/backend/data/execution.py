@@ -1611,6 +1611,7 @@ async def get_block_error_stats(
             WHEN ne."executionStatus" = 'FAILED'
                 AND ne."executionData"->>'credentials' IS NOT NULL
                 AND ne."stats"->>'error' LIKE '%invalid_api_key%'
+                AND (ne."executionData"->'credentials'->>'is_managed')::boolean IS NOT TRUE
             THEN 1 ELSE 0
         END) as user_api_key_error_executions
     FROM {schema_prefix}"AgentNodeExecution" ne
