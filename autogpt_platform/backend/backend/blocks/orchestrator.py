@@ -364,6 +364,33 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
             func["description"] = f"{original_desc} [Pre-configured: {summary}]"
 
 
+def _select_final_answer_parts(
+    text_parts: list[str],
+    has_tool_calls: bool,
+    current: list[str],
+) -> list[str]:
+    """Pick the text parts that should be treated as the agent's final
+    answer for the ``finished`` output pin in EXTENDED_THINKING SDK mode.
+
+    Contract: an assistant message contributes only when it carries text
+    AND no tool calls.  That means the model has stopped calling tools
+    and is composing a response — which is what ``finished`` is supposed
+    to surface to ``AgentOutputBlock``.  Messages with tool calls
+    (regardless of whether they also carry text) are intermediate
+    narration that belongs in ``conversations``, not the final answer.
+    Empty messages don't contribute.
+
+    The caller threads ``current`` across the SDK stream; the last
+    text-only message wins.  If no message in the run qualifies, the
+    returned list is empty and ``finished`` surfaces as ``""`` — useful
+    diagnostic signal that the agent's prompt didn't compose a final
+    answer.
+    """
+    if text_parts and not has_tool_calls:
+        return list(text_parts)
+    return current
+
+
 class OrchestratorBlock(Block):
     """A block that uses a language model to orchestrate tool calls.
 
@@ -1817,10 +1844,13 @@ class OrchestratorBlock(Block):
                                     )
                             # Capture the final answer: the last assistant
                             # message that has only text (no tool calls)
-                            # wins.  See ``final_response_parts`` declaration
-                            # for the rationale.
-                            if text_parts and not tool_use_parts:
-                                final_response_parts = list(text_parts)
+                            # wins.  See ``_select_final_answer_parts`` for
+                            # the contract + diagnostic-signal rationale.
+                            final_response_parts = _select_final_answer_parts(
+                                text_parts=text_parts,
+                                has_tool_calls=bool(tool_use_parts),
+                                current=final_response_parts,
+                            )
 
                             if text_parts or tool_use_parts:
                                 msg_content = "".join(text_parts)
