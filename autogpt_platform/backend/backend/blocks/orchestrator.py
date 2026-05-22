@@ -1656,8 +1656,26 @@ class OrchestratorBlock(Block):
             return
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
-            # Route through OpenRouter proxy: set base URL + auth token,
-            # clear API key so the SDK uses AUTH_TOKEN instead.
+            # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
+            # OpenRouter's Anthropic-compat endpoint and set BOTH auth env
+            # vars to the OpenRouter key.  OpenRouter accepts either
+            # ``x-api-key`` (set by ``ANTHROPIC_API_KEY``) or
+            # ``Authorization: Bearer`` (set by ``ANTHROPIC_AUTH_TOKEN``);
+            # whichever the Claude Code CLI happens to send on the wire is
+            # a valid OR credential.
+            #
+            # We MUST explicitly set ``ANTHROPIC_API_KEY`` here rather than
+            # omit it or set it to an empty string.  The Claude Agent SDK
+            # merges ``options.env`` on top of ``os.environ``, so omitting
+            # the key lets any inherited platform ``ANTHROPIC_API_KEY``
+            # (e.g. a deployment's direct-Anthropic key) leak through to
+            # OpenRouter and 401.  Setting it to ``""`` was the previous
+            # approach to "force AUTH_TOKEN usage", but the CLI's HTTP
+            # layer treats the empty string as set and emits
+            # ``x-api-key:`` (empty value), which OpenRouter rejects with
+            # ``invalid x-api-key``.  Using the OR key for both vars
+            # avoids both failure modes.
+            #
             # NOTE: We use the platform's global OpenRouter base URL from
             # ChatConfig.  Per-credential base URLs are not yet supported;
             # if the user's credential targets a custom proxy, the SDK will
@@ -1670,7 +1688,7 @@ class OrchestratorBlock(Block):
             sdk_env = {
                 "ANTHROPIC_BASE_URL": or_base,
                 "ANTHROPIC_AUTH_TOKEN": api_key,
-                "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+                "ANTHROPIC_API_KEY": api_key,
             }
         else:
             # Direct Anthropic key
