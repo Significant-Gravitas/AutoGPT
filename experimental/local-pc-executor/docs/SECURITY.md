@@ -64,9 +64,17 @@ Recommended: create a dedicated workspace directory, not your home dir.
 | All | Long-path attacks (`a/../a/../a/...` repeated) to exhaust normalization | Cap path length at OS-appropriate max (4096 Linux, 1024 macOS, 32767 Windows with `\\?\`) before normalization. |
 
 ### Layer 3: Command Auditing
-Every `EXECUTE_COMMAND` is logged to `~/.autogpt/shim-audit.log` with timestamp,
-session_id, command, cwd, exit_code. Log is append-only from shim's perspective.
-User can review what ran on their machine.
+Every wire operation (`EXECUTE_COMMAND`, `FILE_*`, `INPUT_ACTION`,
+`SCREENSHOT_REQUEST`) plus shim-internal events (start/stop, WS
+connect/disconnect, `JAIL_VIOLATION`, `TOKEN_REFRESHED`) is appended to
+a JSONL audit log in the per-OS state directory (see
+[CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-location)).
+Each record carries an HMAC-SHA256 chain so truncation, record
+deletion, or field tampering breaks verification at the first
+modification. Full format, per-op fields, the tamper-evidence
+algorithm, and the `autogpt-shim audit` CLI are spec'd in
+[AUDIT_LOG.md](AUDIT_LOG.md). The audit key never leaves the machine;
+the user provides it out-of-band when uploading a log for support.
 
 ### Layer 4: Rate Limiting (Shim-Side)
 Shim enforces:
@@ -145,7 +153,7 @@ If you believe your shim was compromised:
 
 1. `autogpt-shim stop` — immediately stops the daemon
 2. `autogpt-shim revoke` — revokes all OAuth tokens
-3. Review `~/.autogpt/shim-audit.log` to see what ran
+3. Review the audit log at the per-OS location (see [AUDIT_LOG.md](AUDIT_LOG.md)) with `autogpt-shim audit tail` / `verify`
 4. Change your AutoGPT account password and re-enable 2FA
 5. Report to security@autogpt.net with the audit log
 
@@ -156,7 +164,7 @@ If you believe your shim was compromised:
 - No command allow/deny lists yet (all shell commands permitted within allowed_root)
 - No local confirmation prompts yet
 - No network isolation
-- Audit log is not tamper-evident (no HMAC chain)
+- Audit log tamper-evidence is spec'd ([AUDIT_LOG.md](AUDIT_LOG.md)) but not yet implemented in the shim daemon
 - Computer use has no "sensitive region" masking (entire screen captured)
 - Shim crash does not guarantee in-flight commands are cancelled
 
