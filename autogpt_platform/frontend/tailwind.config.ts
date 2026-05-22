@@ -182,6 +182,10 @@ const config = {
           "60%": { transform: "translateX(-3px)" },
           "80%": { transform: "translateX(3px)" },
         },
+        aurora: {
+          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
+          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -190,6 +194,7 @@ const config = {
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
+        aurora: "aurora 60s linear infinite",
       },
       transitionDuration: {
         "2000": "2000ms",
