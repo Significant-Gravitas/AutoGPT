@@ -55,7 +55,6 @@ Each platform deployment registers the app once via the existing
 poetry run oauth-tool generate-app \
     --name "AutoGPT Local Executor" \
     --description "Local PC shim for the AutoGPT hosted platform" \
-    --client-id "autogpt-local-executor" \
     --redirect-uris \
       "http://localhost:41899/callback,http://localhost:41900/callback,\
 http://localhost:41901/callback,http://localhost:41902/callback,\
@@ -66,9 +65,14 @@ http://localhost:41909/callback,http://localhost:41910/callback" \
     --scopes "EXECUTE_GRAPH"
 ```
 
-The tool prints the generated client secret — paste it into the shim's
-build config under `AUTOGPT_LOCAL_EXECUTOR_CLIENT_SECRET` (or the
-distribution-specific equivalent) so end-user installs can use it.
+The tool prints a generated `client_id` (format `agpt_client_<token>`)
+and `client_secret`. Until `oauth-tool` learns a `--client-id` flag,
+the "well-known `autogpt-local-executor`" id is aspirational — each
+platform deployment will have its own random client_id. The shim's
+distribution config (`AUTOGPT_LOCAL_EXECUTOR_CLIENT_ID` +
+`_CLIENT_SECRET`) is baked at build time from the operator's chosen
+deployment. End-users installing the official shim get the canonical
+agpt.co client_id; self-hosters bake in their own.
 
 ### Future: true public-client support
 
