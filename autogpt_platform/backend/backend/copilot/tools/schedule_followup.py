@@ -111,9 +111,9 @@ class ScheduleFollowupTool(BaseTool):
                     "type": "string",
                     "description": (
                         "Target session for the follow-up. Defaults to "
-                        "the current conversation. Must be a session "
-                        "owned by the calling user — others are "
-                        "rejected as 'session_not_found'."
+                        "the current conversation (see <session_context>). "
+                        "Must be a session owned by the calling user — "
+                        "others are rejected as 'session_not_found'."
                     ),
                 },
                 "name": {
