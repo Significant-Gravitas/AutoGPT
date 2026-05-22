@@ -3,19 +3,7 @@ import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
-const mockUseGetV2GetCopilotUsage = vi.fn();
 const mockUseGetV1UserCostSummary = vi.fn();
-vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetCopilotUsage: (opts: {
-    query?: { select?: (r: { data: unknown }) => unknown };
-  }) => {
-    const ret = mockUseGetV2GetCopilotUsage(opts) as { data?: unknown };
-    if (ret?.data !== undefined && typeof opts?.query?.select === "function") {
-      opts.query.select({ data: ret.data });
-    }
-    return ret;
-  },
-}));
 vi.mock(
   "@/app/api/__generated__/endpoints/graphs/graphs",
   async (importOriginal) => {
@@ -42,45 +30,9 @@ vi.mock(
   },
 );
 
-const mockUseGetFlag = vi.fn();
-vi.mock("@/services/feature-flags/use-get-flag", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/services/feature-flags/use-get-flag")
-  >("@/services/feature-flags/use-get-flag");
-  return {
-    ...actual,
-    useGetFlag: (flag: unknown) => mockUseGetFlag(flag),
-  };
-});
-
 afterEach(() => {
-  mockUseGetV2GetCopilotUsage.mockReset();
   mockUseGetV1UserCostSummary.mockReset();
-  mockUseGetFlag.mockReset();
 });
-
-function makeUsage({
-  dailyPercent = 5,
-  weeklyPercent = 4,
-  tier = "BASIC",
-}: {
-  dailyPercent?: number | null;
-  weeklyPercent?: number | null;
-  tier?: string;
-} = {}) {
-  const future = new Date(Date.now() + 3600 * 1000).toISOString();
-  return {
-    daily:
-      dailyPercent === null
-        ? null
-        : { percent_used: dailyPercent, resets_at: future },
-    weekly:
-      weeklyPercent === null
-        ? null
-        : { percent_used: weeklyPercent, resets_at: future },
-    tier,
-  };
-}
 
 function emptyCostSummary() {
   return {
@@ -120,87 +72,22 @@ function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
   } as unknown as LibraryAgent;
 }
 
-describe("BriefingTabContent — UsageSection", () => {
-  it("renders no usage block when usage fetch has not succeeded", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
+describe("BriefingTabContent — dispatching", () => {
+  it("renders the costs breakdown toggle on the 'all' tab and no AutoPilot usage limits", () => {
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
+    expect(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    ).toBeDefined();
+    // AutoPilot rate-limit meters live in the Copilot section, not here.
     expect(screen.queryByText("Usage limits")).toBeNull();
-  });
-
-  it("renders no usage block when both windows are null", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: null, weeklyPercent: null }),
-      isSuccess: true,
-    });
-    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.queryByText("Usage limits")).toBeNull();
-  });
-
-  it("renders tier badge + daily+weekly meters at normal usage", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 12, weeklyPercent: 4, tier: "PRO" }),
-      isSuccess: true,
-    });
-    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(true);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
-
-    expect(screen.getByText("Usage limits")).toBeDefined();
-    expect(screen.getByText("Pro plan")).toBeDefined();
-    expect(screen.getByText("12% used")).toBeDefined();
-    expect(screen.getByText("4% used")).toBeDefined();
-    expect(screen.getByText("Today")).toBeDefined();
-    expect(screen.getByText("This week")).toBeDefined();
-    expect(screen.getByText("Manage billing")).toBeDefined();
-  });
-
-  it("shows 'Manage billing' when billing flag is on", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
-      isSuccess: true,
-    });
-    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(true);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.getByText("Manage billing")).toBeDefined();
-  });
-
-  it("hides 'Manage billing' when billing flag is off", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
-      isSuccess: true,
-    });
-    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
+    expect(screen.queryByText("Today")).toBeNull();
+    expect(screen.queryByText("This week")).toBeNull();
     expect(screen.queryByText("Manage billing")).toBeNull();
   });
 
-  it("renders <1% used when percent is >0 but rounds to 0", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 0.4, weeklyPercent: 0 }),
-      isSuccess: true,
-    });
-    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
-    render(<BriefingTabContent activeTab="all" agents={[]} />);
-    expect(screen.getByText("<1% used")).toBeDefined();
-  });
-
   it("dispatches to ExecutionListSection for running/attention/completed tabs", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
 
     for (const tab of ["running", "attention", "completed"] as const) {
       const { unmount } = render(
@@ -214,12 +101,7 @@ describe("BriefingTabContent — UsageSection", () => {
   });
 
   it("dispatches to AgentListSection for listening/scheduled/idle tabs", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
 
     for (const tab of ["listening", "scheduled", "idle"] as const) {
       const { unmount } = render(
@@ -233,12 +115,7 @@ describe("BriefingTabContent — UsageSection", () => {
 
 describe("BriefingTabContent — CostsBreakdown", () => {
   it("shows 'No spend this month yet' when total is zero", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
-    mockUseGetFlag.mockReturnValue(false);
     render(<BriefingTabContent activeTab="all" agents={[]} />);
     fireEvent.click(
       screen.getByRole("button", { name: /see costs breakdown/i }),
@@ -247,10 +124,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
   });
 
   it("renders headline stats, top runs, and by-agent sections when spend > 0", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue({
       data: {
         total_cents: 4250,
@@ -289,7 +162,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       isLoading: false,
       isError: false,
     });
-    mockUseGetFlag.mockReturnValue(false);
 
     render(
       <BriefingTabContent
@@ -321,16 +193,11 @@ describe("BriefingTabContent — CostsBreakdown", () => {
   });
 
   it("surfaces an inline error when the cost-summary endpoint fails", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
     });
-    mockUseGetFlag.mockReturnValue(false);
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
     fireEvent.click(
@@ -340,10 +207,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
   });
 
   it("falls back to short graph_id label when agent isn't in the library", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     mockUseGetV1UserCostSummary.mockReturnValue({
       data: {
         total_cents: 500,
@@ -359,7 +222,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       isLoading: false,
       isError: false,
     });
-    mockUseGetFlag.mockReturnValue(false);
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
     fireEvent.click(
@@ -369,10 +231,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
   });
 
   it("computes Avg / run from billable_run_count, not run_count", () => {
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: undefined,
-      isSuccess: false,
-    });
     // 6 total runs but only 2 with cost > 0 — avg must be $5.00 (1000/2),
     // not $1.67 (1000/6) which is what dividing by run_count would yield.
     mockUseGetV1UserCostSummary.mockReturnValue({
@@ -388,7 +246,6 @@ describe("BriefingTabContent — CostsBreakdown", () => {
       isLoading: false,
       isError: false,
     });
-    mockUseGetFlag.mockReturnValue(false);
 
     render(
       <BriefingTabContent
@@ -402,5 +259,98 @@ describe("BriefingTabContent — CostsBreakdown", () => {
 
     expect(screen.getByText("$5.00")).toBeDefined();
     expect(screen.queryByText("$1.67")).toBeNull();
+  });
+
+  it("scales spend-by-agent bars as share of total monthly spend and hides zero-cost rollups", () => {
+    // Alpha: 75% of total, Beta: 25% of total, Gamma: $0.00 — should be hidden.
+    mockUseGetV1UserCostSummary.mockReturnValue({
+      data: {
+        total_cents: 4000,
+        run_count: 12,
+        billable_run_count: 10,
+        failed_cost_cents: 0,
+        by_agent: [
+          { graph_id: "g-1", cost_cents: 3000, run_count: 6 },
+          { graph_id: "g-2", cost_cents: 1000, run_count: 4 },
+          { graph_id: "g-3", cost_cents: 0, run_count: 2 },
+        ],
+        top_runs: [],
+        daily: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(
+      <BriefingTabContent
+        activeTab="all"
+        agents={[
+          makeAgent({ id: "lib-1", graph_id: "g-1", name: "Alpha" }),
+          makeAgent({ id: "lib-2", graph_id: "g-2", name: "Beta" }),
+          makeAgent({ id: "lib-3", graph_id: "g-3", name: "Gamma" }),
+        ]}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
+
+    expect(screen.getByText("% of monthly spend")).toBeDefined();
+    expect(screen.getByText("75%")).toBeDefined();
+    expect(screen.getByText("25%")).toBeDefined();
+    // Zero-cost agent omitted entirely.
+    expect(screen.queryByText("Gamma")).toBeNull();
+  });
+
+  it("renders an avg-per-run pill next to each agent's run count", () => {
+    mockUseGetV1UserCostSummary.mockReturnValue({
+      data: {
+        total_cents: 2000,
+        run_count: 4,
+        billable_run_count: 4,
+        failed_cost_cents: 0,
+        by_agent: [{ graph_id: "g-1", cost_cents: 2000, run_count: 4 }],
+        top_runs: [],
+        daily: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(
+      <BriefingTabContent
+        activeTab="all"
+        agents={[makeAgent({ id: "lib-1", graph_id: "g-1", name: "Alpha" })]}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
+
+    // 2000c / 4 runs = $5.00 per run, shown inline with the run count.
+    expect(screen.getByText(/4 runs · avg \$5\.00/)).toBeDefined();
+  });
+
+  it("renders the calendar-month range subtitle when expanded", () => {
+    mockUseGetV1UserCostSummary.mockReturnValue({
+      data: {
+        total_cents: 100,
+        run_count: 1,
+        billable_run_count: 1,
+        failed_cost_cents: 0,
+        by_agent: [{ graph_id: "g-1", cost_cents: 100, run_count: 1 }],
+        top_runs: [],
+        daily: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /see costs breakdown/i }),
+    );
+    expect(screen.getByText(/Calendar month so far/)).toBeDefined();
+    expect(screen.getByText(/today \(UTC\)/)).toBeDefined();
   });
 });
