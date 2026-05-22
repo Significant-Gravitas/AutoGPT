@@ -185,6 +185,32 @@ def is_sdk_tool_path(path: str) -> bool:
     )
 
 
+def resolve_executor_path(path: str, sandbox: "AsyncSandbox | None") -> str:
+    """Normalise *path* against the active executor's workdir + allowed dirs.
+
+    For LocalPCShim: resolves relative paths against `shim.allowed_root` and
+    validates against `(shim.allowed_root,)`. Note this is the platform-side
+    lexical check only — the shim itself enforces the real path jail per
+    CROSS_PLATFORM.md (realpath + case-fold per FS + reserved-name + ADS
+    rejection). Platform-side validation here is best-effort and catches
+    obvious-bad inputs before a wire roundtrip.
+
+    For E2B: equivalent to :func:`resolve_sandbox_path`.
+
+    Raises :class:`ValueError` on a lexical jail-escape.
+    """
+    workdir = get_workdir(sandbox)
+    allowed = get_allowed_dirs(sandbox)
+    candidate = path if os.path.isabs(path) else os.path.join(workdir, path)
+    normalized = os.path.normpath(candidate)
+    for root in allowed:
+        if normalized == root or normalized.startswith(root + os.sep):
+            return normalized
+    raise ValueError(
+        f"Path must be within {' or '.join(allowed)}: {os.path.basename(path)}"
+    )
+
+
 def resolve_sandbox_path(path: str) -> str:
     """Normalise *path* to an absolute sandbox path under an allowed directory.
 
