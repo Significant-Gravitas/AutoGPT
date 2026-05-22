@@ -44,7 +44,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
 # of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
 # explicit "ends your turn" caveat, and an example wake-up message.
-_CHAR_BUDGET = 36_500
+# Bumped 36500 -> 37000 for the schedule_followup `session_id` override
+# parameter — lets the model target a different conversation owned by
+# the same user (parent autopilot → sub-session followups). The parameter
+# description spends ~170 chars on the ownership-rejection semantics so
+# the model doesn't try to wake up other users' sessions.
+_CHAR_BUDGET = 37_000
 
 
 @pytest.fixture(scope="module")
