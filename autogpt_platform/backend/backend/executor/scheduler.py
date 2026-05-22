@@ -288,6 +288,9 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             run_at=new_run_at,
             name=f"{args.schedule_id or 'copilot'}-cap-retry",
             cap_retry_count=args.cap_retry_count + 1,
+            # Preserve the user's timezone across the reschedule so the new
+            # one-shot job's trigger/timezone matches the original request.
+            user_timezone=args.user_timezone,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -575,6 +578,13 @@ class CopilotTurnJobArgs(BaseModel):
     # schedule after a concurrency-cap miss. Bounds the retry depth so a
     # persistently-capped user can't loop forever.
     cap_retry_count: int = 0
+    # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
+    # timezone when re-creating a one-shot job after a concurrency-cap miss —
+    # otherwise the rescheduled job's trigger defaults to UTC and the timezone
+    # surfaced in ``CopilotTurnJobInfo`` / logs / UI no longer matches what
+    # the user originally requested. Optional for backward compat with rows
+    # persisted before this field was added.
+    user_timezone: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1045,6 +1055,7 @@ class Scheduler(AppService):
             cron=cron,
             run_at=run_at,
             cap_retry_count=cap_retry_count,
+            user_timezone=user_timezone,
         )
         job = self._persist_schedule(
             dispatch_func=execute_copilot_turn,

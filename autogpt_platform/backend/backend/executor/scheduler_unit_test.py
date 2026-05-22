@@ -324,6 +324,19 @@ async def test_reschedule_after_cap_creates_new_schedule_and_bumps_counter():
 
 
 @pytest.mark.asyncio
+async def test_reschedule_after_cap_preserves_user_timezone():
+    """The reschedule path must forward the original user_timezone, otherwise
+    the new one-shot job's trigger defaults to UTC and the timezone surfaced
+    in the job info / logs no longer matches what the user requested."""
+    args = _args(cap_retry_count=0, user_timezone="America/New_York")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["user_timezone"] == "America/New_York"
+
+
+@pytest.mark.asyncio
 async def test_reschedule_after_cap_drops_when_max_retries_reached():
     args = _args(cap_retry_count=_MAX_CAP_RETRIES)
     mock_client = AsyncMock()
