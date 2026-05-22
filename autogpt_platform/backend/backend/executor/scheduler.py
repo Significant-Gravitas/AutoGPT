@@ -90,6 +90,11 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+# Dream / nightly / community-rebuild operations call into OpenRouter
+# with 50K-token prompts and FalkorDB-backed Leiden passes that
+# legitimately take >5 min. Match the dream lock's 30 min TTL so the
+# future resolves before the lock expires under the dream pass.
+SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 
 
 def job_listener(event):
@@ -271,7 +276,10 @@ def execute_community_rebuild(user_id: str):
         )
         return
 
-    result = run_async(rebuild_communities_for_user(user_id))
+    result = run_async(
+        rebuild_communities_for_user(user_id),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
     if result.get("error"):
         logger.warning(
             "Community rebuild errored for user %s: %s",
@@ -315,7 +323,10 @@ def execute_nightly_batch_sync(user_id: str):
         )
         return
 
-    result = run_async(run_nightly_batch_submit(user_id))
+    result = run_async(
+        run_nightly_batch_submit(user_id),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
     if result.error:
         logger.warning(
             "Nightly batch errored for user %s (nightly %s): %s",
@@ -1022,7 +1033,10 @@ class Scheduler(AppService):
         ``rebuild_communities_for_user`` — useful for admin debugging
         when you want to rebuild even on an unchanged graph.
         """
-        return run_async(rebuild_communities_for_user(user_id, force=force))
+        return run_async(
+            rebuild_communities_for_user(user_id, force=force),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
 
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
@@ -1126,7 +1140,10 @@ class Scheduler(AppService):
         """
         from backend.copilot.dream.nightly_batch import run_nightly_batch_submit
 
-        result = run_async(run_nightly_batch_submit(user_id))
+        result = run_async(
+            run_nightly_batch_submit(user_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
         return result.model_dump(mode="json")
 
     @expose
@@ -1139,7 +1156,10 @@ class Scheduler(AppService):
         """
         from backend.copilot.dream.orchestrator import execute_dream_pass
 
-        result = run_async(execute_dream_pass(user_id))
+        result = run_async(
+            execute_dream_pass(user_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
         return result.model_dump(mode="json")
 
     @expose
