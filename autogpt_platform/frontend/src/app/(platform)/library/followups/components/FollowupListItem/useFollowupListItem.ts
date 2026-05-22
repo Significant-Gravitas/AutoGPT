@@ -12,10 +12,9 @@ import { describeFollowup } from "./helpers";
 
 interface Args {
   followup: CopilotTurnJobInfo;
-  onDeleted?: () => void;
 }
 
-export function useFollowupListItem({ followup, onDeleted }: Args) {
+export function useFollowupListItem({ followup }: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -49,15 +48,17 @@ export function useFollowupListItem({ followup, onDeleted }: Args) {
   async function handleDelete() {
     try {
       await deleteSchedule({ scheduleId: followup.id });
-      toast({ title: "Follow-up cancelled" });
+      toast({ title: "Follow-up deleted" });
       setIsDeleteOpen(false);
-      onDeleted?.();
+      // Invalidation is the single source of truth — React Query will
+      // refetch the list automatically. No need for a parent-supplied
+      // `onDeleted` callback that would race the toast.
       queryClient.invalidateQueries({
         queryKey: getListCopilotFollowupSchedulesQueryKey(),
       });
     } catch (error) {
       toast({
-        title: "Failed to cancel follow-up",
+        title: "Failed to delete follow-up",
         description:
           error instanceof Error
             ? error.message

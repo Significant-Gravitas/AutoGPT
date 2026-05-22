@@ -118,7 +118,7 @@ describe("FollowupsPage", () => {
 
     await vi.waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Follow-up cancelled" }),
+        expect.objectContaining({ title: "Follow-up deleted" }),
       );
     });
   });
@@ -140,7 +140,7 @@ describe("FollowupsPage", () => {
     await vi.waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Failed to cancel follow-up",
+          title: "Failed to delete follow-up",
           variant: "destructive",
         }),
       );

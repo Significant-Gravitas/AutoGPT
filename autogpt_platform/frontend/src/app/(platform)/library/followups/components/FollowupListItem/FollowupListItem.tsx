@@ -10,10 +10,9 @@ import { useFollowupListItem } from "./useFollowupListItem";
 
 interface Props {
   followup: CopilotTurnJobInfo;
-  onDeleted?: () => void;
 }
 
-export function FollowupListItem({ followup, onDeleted }: Props) {
+export function FollowupListItem({ followup }: Props) {
   const {
     sessionHref,
     nextRunLabel,
@@ -25,7 +24,7 @@ export function FollowupListItem({ followup, onDeleted }: Props) {
     closeDelete,
     isDeleting,
     handleDelete,
-  } = useFollowupListItem({ followup, onDeleted });
+  } = useFollowupListItem({ followup });
 
   return (
     <div
@@ -78,22 +77,22 @@ export function FollowupListItem({ followup, onDeleted }: Props) {
           size="small"
           onClick={openDelete}
           data-testid="followup-cancel-button"
-          aria-label="Cancel follow-up"
+          aria-label="Delete follow-up"
         >
           <TrashIcon className="mr-1 h-4 w-4" />
-          Cancel
+          Delete
         </Button>
       </div>
 
       <Dialog
         controlled={{ isOpen: isDeleteOpen, set: closeDelete }}
         styling={{ maxWidth: "32rem" }}
-        title="Cancel follow-up"
+        title="Delete follow-up"
       >
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Cancel this scheduled follow-up? The copilot will not send the
+              Delete this scheduled follow-up? The copilot will not send the
               message and you can recreate it from chat if needed.
             </Text>
             <Dialog.Footer>
@@ -102,7 +101,7 @@ export function FollowupListItem({ followup, onDeleted }: Props) {
                 disabled={isDeleting}
                 onClick={() => closeDelete(false)}
               >
-                Keep follow-up
+                Keep it
               </Button>
               <Button
                 variant="destructive"
@@ -110,7 +109,7 @@ export function FollowupListItem({ followup, onDeleted }: Props) {
                 loading={isDeleting}
                 data-testid="followup-confirm-cancel"
               >
-                Cancel follow-up
+                Yes, delete
               </Button>
             </Dialog.Footer>
           </div>

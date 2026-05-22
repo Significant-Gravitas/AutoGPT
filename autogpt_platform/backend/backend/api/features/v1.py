@@ -2336,7 +2336,12 @@ async def list_copilot_turn_schedules(
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=user_id, kind="copilot_turn"
     )
-    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
+    # The ``kind="copilot_turn"`` filter is the source of truth — every row in
+    # the result IS a ``CopilotTurnJobInfo``. The cast narrows the static type
+    # from the polymorphic ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]``
+    # without an at-runtime second filter that would silently drop rows if the
+    # discriminator ever drifted.
+    return cast(list[scheduler.CopilotTurnJobInfo], schedules)
 
 
 @v1_router.delete(

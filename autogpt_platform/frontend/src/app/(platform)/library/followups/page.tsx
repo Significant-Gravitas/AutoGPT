@@ -9,7 +9,7 @@ import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem
 import { useFollowupsPage } from "./useFollowupsPage";
 
 export default function FollowupsPage() {
-  const { followups, isLoading, error, refetchFollowups } = useFollowupsPage();
+  const { followups, isLoading, error } = useFollowupsPage();
 
   useEffect(() => {
     document.title = "Copilot follow-ups – AutoGPT Platform";
