@@ -202,11 +202,11 @@ async def _execute_copilot_turn(**kwargs):
     try:
         # Local imports: copilot.* imports from backend.executor, so a
         # top-level import here would create a cycle at module-load time.
-        from backend.copilot.executor.utils import enqueue_copilot_turn
+        from backend.copilot.executor.utils import schedule_turn
         from backend.copilot.model import get_chat_session
 
         # Verify the session still exists — if the user deleted their
-        # conversation between scheduling and now, enqueueing would create
+        # conversation between scheduling and now, dispatching would create
         # an orphan turn that no UI ever surfaces. Self-clean the dead
         # schedule instead.
         session = await get_chat_session(args.session_id, args.user_id)
@@ -218,21 +218,28 @@ async def _execute_copilot_turn(**kwargs):
             await _self_delete_copilot_turn_schedule(args)
             return
 
-        await enqueue_copilot_turn(
+        # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
+        # point: it acquires a per-user concurrency slot AND registers the
+        # session in the stream registry before queue-publishing, so the
+        # executor's streamed output reaches a known consumer instead of
+        # being orphaned.
+        await schedule_turn(
             session_id=args.session_id,
             user_id=args.user_id,
-            message=args.message,
             turn_id=str(uuid.uuid4()),
+            message=args.message,
+            tool_call_id="scheduled_followup",
+            tool_name="schedule_followup",
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
-            f"Enqueued scheduled copilot turn for session "
+            f"Dispatched scheduled copilot turn for session "
             f"{args.session_id[:12]} (took {elapsed:.2f}s)"
         )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
-            f"Error enqueuing copilot turn for session "
+            f"Error dispatching copilot turn for session "
             f"{args.session_id[:12]} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
