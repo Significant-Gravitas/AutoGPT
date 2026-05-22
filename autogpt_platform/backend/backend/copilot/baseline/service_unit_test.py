@@ -2696,3 +2696,31 @@ class TestApplySkillsCacheBreakpoint:
         ]
         out = _apply_skills_cache_breakpoint(msgs)
         assert out[0]["content"] == [{"type": "text", "text": "pre-blocked"}]
+
+    def test_no_skills_block_preserves_dict_identity(self):
+        """When no user message carries an ``<available_skills>`` block,
+        every input dict must be returned by-reference so the memoised
+        ``cached_system_message`` reference in ``_baseline_llm_caller``
+        keeps its identity across rounds."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr_msg = {"role": "user", "content": "hi"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr_msg])
+        assert out[0] is sys_msg
+        assert out[1] is usr_msg
+
+    def test_skills_block_only_modifies_target_message(self):
+        """Only the one user message that needs the breakpoint is
+        shallow-copied; siblings (system, assistant, later user turns)
+        keep their original dict identity."""
+        sys_msg = {"role": "system", "content": "sys"}
+        usr1 = {
+            "role": "user",
+            "content": "<available_skills>\n- a\n</available_skills>\n\nhi",
+        }
+        ast = {"role": "assistant", "content": "ok"}
+        usr2 = {"role": "user", "content": "follow-up"}
+        out = _apply_skills_cache_breakpoint([sys_msg, usr1, ast, usr2])
+        assert out[0] is sys_msg
+        assert out[1] is not usr1  # target — gets shallow-copied
+        assert out[2] is ast
+        assert out[3] is usr2
