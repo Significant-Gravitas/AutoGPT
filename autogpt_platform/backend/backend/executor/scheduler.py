@@ -258,23 +258,26 @@ async def _execute_copilot_turn(**kwargs):
 
 
 # One-shot schedules that hit the per-user concurrency cap are pushed out
-# this many seconds and retried once. If the cap is still hit on the
-# retry, the schedule is dropped (logged as an error). We don't loop
-# indefinitely because the original use case ("check CI in 20 min") is
-# time-sensitive — a multi-hour delay defeats the purpose.
+# this many seconds and retried at most _MAX_CAP_RETRIES times. We don't
+# loop indefinitely because the original use case ("check CI in 20 min")
+# is time-sensitive — a multi-hour delay defeats the purpose.
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
+_MAX_CAP_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
     """Re-create a one-shot copilot-turn schedule a few minutes in the future.
 
-    Best-effort: failures are logged. Already-retried schedules (detected
-    via a sentinel suffix on ``schedule_id``) are dropped to avoid loops.
+    Best-effort: failures are logged. Schedules that have already been
+    retried ``_MAX_CAP_RETRIES`` times are dropped to avoid loops. The
+    retry depth is tracked in ``CopilotTurnJobArgs.cap_retry_count``
+    (which round-trips through APScheduler's persisted kwargs).
     """
-    if args.schedule_id and args.schedule_id.endswith("-cap-retry"):
+    if args.cap_retry_count >= _MAX_CAP_RETRIES:
         logger.error(
             f"Dropping one-shot copilot turn for session "
-            f"{args.session_id[:12]} — second concurrency-cap miss"
+            f"{args.session_id[:12]} — exhausted {_MAX_CAP_RETRIES} "
+            f"concurrency-cap retry/retries"
         )
         return
     try:
@@ -290,11 +293,13 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             message=args.message,
             run_at=new_run_at,
             name=f"{args.schedule_id or 'copilot'}-cap-retry",
+            cap_retry_count=args.cap_retry_count + 1,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
             f"{args.session_id[:12]} to {new_run_at.isoformat()} after "
-            f"concurrency cap"
+            f"concurrency cap (retry {args.cap_retry_count + 1}/"
+            f"{_MAX_CAP_RETRIES})"
         )
     except Exception:
         logger.warning(
@@ -562,6 +567,10 @@ class CopilotTurnJobArgs(BaseModel):
     message: str
     cron: str | None = None
     run_at: datetime | None = None
+    # Set by ``_reschedule_one_shot_after_cap`` when re-creating a one-shot
+    # schedule after a concurrency-cap miss. Bounds the retry depth so a
+    # persistently-capped user can't loop forever.
+    cap_retry_count: int = 0
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -989,12 +998,17 @@ class Scheduler(AppService):
         run_at: datetime | None = None,
         name: Optional[str] = None,
         user_timezone: str | None = None,
+        cap_retry_count: int = 0,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn to resume *session_id* at a future time.
 
         At fire time, the scheduler enqueues a copilot turn carrying
         *message* against the existing session, so the copilot resumes
         with the conversation history intact.
+
+        *cap_retry_count* is set internally by
+        ``_reschedule_one_shot_after_cap`` to bound the retry depth on
+        concurrency-cap misses; normal callers should leave it at 0.
         """
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
@@ -1007,6 +1021,7 @@ class Scheduler(AppService):
             message=message,
             cron=cron,
             run_at=run_at,
+            cap_retry_count=cap_retry_count,
         )
         display_name = name or f"copilot turn (session {session_id[:8]})"
         job = self.scheduler.add_job(
