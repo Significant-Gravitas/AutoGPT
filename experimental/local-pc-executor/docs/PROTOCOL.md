@@ -71,10 +71,15 @@ All messages are JSON with this envelope:
     "session_id": "session-uuid",
     "granted_capabilities": ["shell", "files"],  // subset platform approved
     "max_file_size_bytes": 10485760,
-    "command_timeout_seconds": 30
+    "command_timeout_seconds": 30,
+    "max_concurrent": 4                          // shim caps in-flight requests
   }
 }
 ```
+
+`max_concurrent` sizes the shim-side request semaphore. The shim must
+refuse (with `SHIM_OVERLOADED`) any request that arrives while the
+semaphore is at its cap. Default 4 if platform omits the field.
 
 #### `HELLO.platform` enum
 
@@ -246,6 +251,19 @@ hides the on-disk truth from the platform and breaks reproducibility.
 }
 ```
 
+**`create_parents` jail semantics**: when `create_parents: true` and the
+target's parents don't exist yet, the shim jail-checks the **nearest
+existing ancestor** plus the lexical parent. Both must be inside
+`allowed_root`. This catches:
+
+- `path="/etc/foo/bar", create_parents=true` → lexical parent `/etc/foo`
+  is outside `allowed_root` → reject.
+- `path="/workspace/sym-to-etc/bar", create_parents=true` → realpath of
+  the nearest existing ancestor (`/workspace/sym-to-etc` → `/etc`)
+  resolves outside → reject.
+
+The shim creates parents only after both checks pass.
+
 #### `ACK` (shim → platform, for writes and fire-and-forget ops)
 ```json
 {
@@ -291,14 +309,23 @@ Used in place of shell `ls -la` / `stat` / `test -e`. Cross-OS by design.
                                    // FILE_ATTRIBUTE_READONLY + ACLs
     "owner_uid": 501,              // null on Windows
     "owner_gid": 20,               // null on Windows
-    "mime_type": "text/csv"        // best-effort; null if unknown
+    "mime_type": "text/csv",       // best-effort; null if unknown
+    "path": "/Users/alice/autogpt-workspace/data.csv"   // canonical path
+                                   // (realpath-resolved when follow_symlinks=true)
   }
 }
 ```
 
-If `exists: false`, all other fields are null. Path-jail violation returns
-`ERROR` with `PATH_OUTSIDE_ALLOWED_ROOT` (not `FILE_STAT_RESPONSE` with
-`exists: false`) — the two cases must be distinguishable.
+`path` is the canonical resolved path — what `readlink -f` would return
+on POSIX, or the equivalent on Windows after junction/reparse-point
+resolution. Platform-side adapter code uses this in place of the
+`readlink -f` shellout (see PLATFORM_HOOKS.md §10.2).
+
+If `exists: false`, the other fields are null EXCEPT `path` may still
+be set to the resolved-but-nonexistent target (lets the caller distinguish
+"file gone" from "path is in a different tree"). Path-jail violation
+returns `ERROR` with `PATH_OUTSIDE_ALLOWED_ROOT` (not `FILE_STAT_RESPONSE`
+with `exists: false`) — the two cases must be distinguishable.
 
 #### `FILE_LIST` (platform → shim)
 
@@ -467,12 +494,15 @@ Error codes:
 - `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`)
 - `PATH_NOT_EMPTY` — FILE_DELETE on a non-empty dir with `recursive: false`
 - `PATH_EXISTS` — FILE_MOVE with `overwrite: false` and dst exists
-- `COMMAND_TIMEOUT` — command exceeded timeout
+- `COMMAND_TIMEOUT` — reserved for future strict-timeout transport; today
+  EXECUTE_COMMAND on timeout returns `COMMAND_RESULT` with `timed_out: true`
+  and `exit_code = -1` rather than an ERROR. Callers should branch on the
+  `timed_out` flag.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
 - `AUTH_FAILED` — token invalid or expired
-- `SHIM_OVERLOADED` — too many concurrent requests
+- `SHIM_OVERLOADED` — too many concurrent requests (exceeded `max_concurrent`)
 - `INTERNAL_ERROR` — unexpected shim error
 
 ---
