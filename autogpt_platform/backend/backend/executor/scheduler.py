@@ -585,6 +585,19 @@ def _next_run_time_iso(job_obj: JobObj) -> str:
     return job_obj.next_run_time.isoformat() if job_obj.next_run_time else ""
 
 
+def _job_info_fields(job_obj: JobObj) -> dict[str, str]:
+    """The id/name/next_run_time/timezone block both JobInfo classes need.
+
+    Extracted so the per-kind ``from_db`` factories don't duplicate it.
+    """
+    return {
+        "id": job_obj.id,
+        "name": job_obj.name,
+        "next_run_time": _next_run_time_iso(job_obj),
+        "timezone": _timezone_from_job(job_obj),
+    }
+
+
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
     id: str
     name: str
@@ -596,11 +609,7 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
         job_args: GraphExecutionJobArgs, job_obj: JobObj
     ) -> "GraphExecutionJobInfo":
         return GraphExecutionJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=_next_run_time_iso(job_obj),
-            timezone=_timezone_from_job(job_obj),
-            **job_args.model_dump(),
+            **_job_info_fields(job_obj), **job_args.model_dump()
         )
 
 
@@ -612,13 +621,7 @@ class CopilotTurnJobInfo(CopilotTurnJobArgs):
 
     @staticmethod
     def from_db(job_args: CopilotTurnJobArgs, job_obj: JobObj) -> "CopilotTurnJobInfo":
-        return CopilotTurnJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=_next_run_time_iso(job_obj),
-            timezone=_timezone_from_job(job_obj),
-            **job_args.model_dump(),
-        )
+        return CopilotTurnJobInfo(**_job_info_fields(job_obj), **job_args.model_dump())
 
 
 # Polymorphic schedule info — the kind discriminator picks the right shape
@@ -933,6 +936,32 @@ class Scheduler(AppService):
 
         super().cleanup()
 
+    def _persist_schedule(
+        self,
+        *,
+        dispatch_func,
+        job_args: Union[GraphExecutionJobArgs, CopilotTurnJobArgs],
+        trigger,
+        name: str | None,
+    ) -> JobObj:
+        """Register *job_args* with APScheduler.
+
+        Centralizes the ``add_job`` call shape so all scheduled jobs use the
+        same persistence flags (jobstore, ``replace_existing``, JSON-mode
+        kwargs serialization that round-trips datetimes correctly, and
+        ``id=schedule_id`` so the row is addressable by our generated UUID).
+        """
+        assert job_args.schedule_id is not None
+        return self.scheduler.add_job(
+            dispatch_func,
+            kwargs=job_args.model_dump(mode="json"),
+            name=name,
+            trigger=trigger,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            id=job_args.schedule_id,
+        )
+
     @expose
     def add_graph_execution_schedule(
         self,
@@ -958,13 +987,8 @@ class Scheduler(AppService):
         )
 
         user_timezone = _resolve_timezone(user_timezone, user_id)
-        logger.info(
-            f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
-        )
-        schedule_id = str(uuid.uuid4())
-
         job_args = GraphExecutionJobArgs(
-            schedule_id=schedule_id,
+            schedule_id=str(uuid.uuid4()),
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
@@ -973,14 +997,11 @@ class Scheduler(AppService):
             input_data=input_data,
             input_credentials=input_credentials,
         )
-        job = self.scheduler.add_job(
-            execute_graph,
-            kwargs=job_args.model_dump(mode="json"),
-            name=name,
+        job = self._persist_schedule(
+            dispatch_func=execute_graph,
+            job_args=job_args,
             trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            id=schedule_id,
+            name=name,
         )
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
@@ -1012,10 +1033,8 @@ class Scheduler(AppService):
         """
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
-        schedule_id = str(uuid.uuid4())
-
         job_args = CopilotTurnJobArgs(
-            schedule_id=schedule_id,
+            schedule_id=str(uuid.uuid4()),
             user_id=user_id,
             session_id=session_id,
             message=message,
@@ -1023,15 +1042,11 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
         )
-        display_name = name or f"copilot turn (session {session_id[:8]})"
-        job = self.scheduler.add_job(
-            execute_copilot_turn,
-            kwargs=job_args.model_dump(mode="json"),
-            name=display_name,
+        job = self._persist_schedule(
+            dispatch_func=execute_copilot_turn,
+            job_args=job_args,
             trigger=trigger,
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
-            id=schedule_id,
+            name=name or f"copilot turn (session {session_id[:8]})",
         )
         logger.info(
             f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "

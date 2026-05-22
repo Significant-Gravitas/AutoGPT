@@ -123,6 +123,87 @@ async def test_one_shot_delay_schedules(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_session_id_override_targets_a_different_owned_session(tool, session):
+    """Passing session_id targets that session instead of the current one."""
+    other_session_id = "session-other-owned-by-same-user"
+    mock_user_db = MagicMock()
+    mock_user = MagicMock(timezone="UTC")
+    mock_user_db().get_user_by_id = AsyncMock(return_value=mock_user)
+
+    mock_get_session = AsyncMock(return_value=MagicMock())  # session exists + owned
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=mock_get_session),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="check on the long job",
+            delay_seconds=600,
+            session_id=other_session_id,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    mock_get_session.assert_awaited_once_with(other_session_id, _USER)
+    call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert call_kwargs["session_id"] == other_session_id
+
+
+@pytest.mark.asyncio
+async def test_session_id_override_rejects_session_not_owned(tool, session):
+    """get_chat_session returns None when not found OR not owned — both 'session_not_found'."""
+    other_session_id = "session-someone-elses"
+    mock_get_session = AsyncMock(return_value=None)
+    mock_client = AsyncMock()
+
+    with (
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=mock_get_session),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="x",
+            delay_seconds=600,
+            session_id=other_session_id,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "session_not_found"
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_id_override_to_current_session_skips_lookup(tool, session):
+    """Passing session_id equal to the current session avoids the get_chat_session round-trip."""
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone=None))
+    mock_get_session = AsyncMock()  # should NOT be called
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=mock_get_session),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="x",
+            delay_seconds=600,
+            session_id=session.session_id,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    mock_get_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cron_schedules_recurring(tool, session):
     mock_user_db = MagicMock()
     mock_user = MagicMock(timezone=None)
