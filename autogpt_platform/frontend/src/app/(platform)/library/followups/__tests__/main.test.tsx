@@ -110,10 +110,10 @@ describe("FollowupsPage", () => {
 
     render(<FollowupsPage />);
 
-    const cancelButton = await screen.findByTestId("followup-cancel-button");
+    const cancelButton = await screen.findByTestId("followup-delete-button");
     fireEvent.click(cancelButton);
 
-    const confirmButton = await screen.findByTestId("followup-confirm-cancel");
+    const confirmButton = await screen.findByTestId("followup-confirm-delete");
     fireEvent.click(confirmButton);
 
     await vi.waitFor(() => {
@@ -131,10 +131,10 @@ describe("FollowupsPage", () => {
 
     render(<FollowupsPage />);
 
-    const cancelButton = await screen.findByTestId("followup-cancel-button");
+    const cancelButton = await screen.findByTestId("followup-delete-button");
     fireEvent.click(cancelButton);
 
-    const confirmButton = await screen.findByTestId("followup-confirm-cancel");
+    const confirmButton = await screen.findByTestId("followup-confirm-delete");
     fireEvent.click(confirmButton);
 
     await vi.waitFor(() => {

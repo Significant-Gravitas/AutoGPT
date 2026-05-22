@@ -76,7 +76,7 @@ export function FollowupListItem({ followup }: Props) {
           variant="secondary"
           size="small"
           onClick={openDelete}
-          data-testid="followup-cancel-button"
+          data-testid="followup-delete-button"
           aria-label="Delete follow-up"
         >
           <TrashIcon className="mr-1 h-4 w-4" />
@@ -107,7 +107,7 @@ export function FollowupListItem({ followup }: Props) {
                 variant="destructive"
                 onClick={handleDelete}
                 loading={isDeleting}
-                data-testid="followup-confirm-cancel"
+                data-testid="followup-confirm-delete"
               >
                 Yes, delete
               </Button>
