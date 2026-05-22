@@ -11142,6 +11142,10 @@
             "title": "Cap Retry Count",
             "default": 0
           },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
