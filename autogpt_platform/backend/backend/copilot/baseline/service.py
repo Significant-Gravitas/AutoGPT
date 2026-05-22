@@ -616,6 +616,80 @@ def _build_cached_system_message(
     return sys_copy
 
 
+_AVAILABLE_SKILLS_BOUNDARY_RE = re.compile(
+    r"^(.*?</available_skills>\n\n)(.*)$", re.DOTALL
+)
+
+
+def _split_user_message_after_skills_block(
+    content: str,
+) -> list[dict[str, Any]] | None:
+    """Split *content* into a cacheable prefix + variable suffix at the
+    ``</available_skills>\\n\\n`` boundary.
+
+    Returns a two-block content array suitable for an Anthropic-style
+    user message — the first block carries the static skill index (any
+    server-injected blocks that precede it land in the same prefix) and
+    is tagged with ``cache_control: ephemeral`` so the prefix bytes are
+    cached PER-USER across that user's turns.  The skill index is stable
+    per-user-per-skill-version, so hits stay high until the user
+    adds/deletes a skill.
+
+    Returns ``None`` when there is no ``</available_skills>`` boundary
+    to split on (no skills configured for this user, or the block was
+    not injected) — callers then fall back to passing the message
+    string through unchanged.
+    """
+    match = _AVAILABLE_SKILLS_BOUNDARY_RE.match(content)
+    if not match:
+        return None
+    prefix, suffix = match.group(1), match.group(2)
+    # Always emit at least one block — when the suffix is empty (rare:
+    # the user typed nothing after the auto-injected skill index) drop
+    # the empty trailing block since Anthropic 400s on zero-length text.
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": prefix,
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    ]
+    if suffix:
+        blocks.append({"type": "text", "text": suffix})
+    return blocks
+
+
+def _apply_skills_cache_breakpoint(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with a ``cache_control`` breakpoint
+    placed AFTER the ``<available_skills>`` block in the first user
+    message that carries one.
+
+    Per-user-stable bytes — the skill index + any other server-injected
+    prefix blocks — sit in their own cached prefix.  Only call this when
+    the model accepts ``cache_control`` (``_supports_prompt_cache_markers``).
+    """
+    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
+    for msg in cached_messages:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str):
+            # Already a content-block list, or a non-string payload —
+            # leave alone so we don't double-mark.
+            continue
+        blocks = _split_user_message_after_skills_block(content)
+        if blocks is None:
+            continue
+        msg["content"] = blocks
+        # Only the first user message carrying ``<available_skills>``
+        # is split — that's where ``inject_user_context`` writes it
+        # (first turn).  Later user turns won't have the block.
+        break
+    return cached_messages
+
+
 def _mark_system_message_with_cache_control(
     messages: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -664,6 +738,16 @@ async def _baseline_llm_caller(
                 final_messages = [state.cached_system_message, *messages[1:]]
             else:
                 final_messages = messages
+            # Apply a per-user cache breakpoint AFTER the
+            # ``<available_skills>`` block in the first user message
+            # carrying one.  The skill index is stable per-user across
+            # turns (until the user adds/deletes a skill), so caching
+            # those bytes separately lifts hit rate on a prefix that
+            # the message-level boundary would otherwise re-tokenise
+            # every turn.  Anthropic caches use prefix-match with up to
+            # four explicit breakpoints; the system + tool markers
+            # already use two, leaving room for this one.
+            final_messages = _apply_skills_cache_breakpoint(final_messages)
             extra_headers = (
                 _fresh_anthropic_caching_headers()
                 if _is_anthropic_model(state.model)
