@@ -2317,6 +2317,28 @@ async def list_all_graphs_execution_schedules(
     return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
 
 
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
+
+
 @v1_router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",

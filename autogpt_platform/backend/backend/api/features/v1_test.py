@@ -1037,3 +1037,60 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
 
         # Verify cloud storage methods were NOT called
         mock_handler.store_file.assert_not_called()
+
+
+def test_list_copilot_turn_schedules_filters_to_copilot_kind(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """GET /schedules/followups returns only CopilotTurnJobInfo items for the user.
+
+    The route delegates to ``Scheduler.get_execution_schedules(kind="copilot_turn")``;
+    we mock the client to make sure (a) the kind filter is forwarded and
+    (b) any non-copilot rows are dropped from the response.
+    """
+    from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+
+    copilot_info = CopilotTurnJobInfo(
+        id="sched-1",
+        name="copilot followup",
+        next_run_time="2026-05-22T10:00:00+00:00",
+        timezone="UTC",
+        user_id=test_user_id,
+        session_id="sess-1",
+        message="check status",
+        cron="0 9 * * *",
+    )
+    graph_info = GraphExecutionJobInfo(
+        id="sched-2",
+        name="graph run",
+        next_run_time="2026-05-22T11:00:00+00:00",
+        timezone="UTC",
+        user_id=test_user_id,
+        graph_id="g-1",
+        graph_version=1,
+        cron="0 10 * * *",
+        input_data={},
+    )
+
+    mock_client = Mock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[copilot_info, graph_info]
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_scheduler_client",
+        return_value=mock_client,
+    )
+
+    response = client.get("/schedules/followups")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == "sched-1"
+    assert body[0]["kind"] == "copilot_turn"
+    assert body[0]["session_id"] == "sess-1"
+
+    mock_client.get_execution_schedules.assert_awaited_once_with(
+        user_id=test_user_id, kind="copilot_turn"
+    )
