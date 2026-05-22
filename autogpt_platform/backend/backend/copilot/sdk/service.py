@@ -4293,6 +4293,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             env_ctx_content = ""
             if not use_e2b and sdk_cwd:
                 env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Build the per-user skill index so the model sees what's
+            # available without an extra round-trip.  Failures here MUST
+            # NOT block the turn — log and continue with an empty index.
+            skills_ctx_content = ""
+            try:
+                from backend.copilot.tools.skills import build_skills_context
+
+                skills_ctx_content = await build_skills_context(user_id)
+            except Exception:
+                logger.exception(
+                    "[skills] failed to build skills_ctx — proceeding without it"
+                )
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -4304,6 +4316,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.messages,
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
+                skills_ctx=skills_ctx_content,
                 user_id=user_id,
             )
             if prefixed_message is not None:

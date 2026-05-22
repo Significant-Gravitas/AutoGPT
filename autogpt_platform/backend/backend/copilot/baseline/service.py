@@ -1650,12 +1650,24 @@ async def stream_chat_completion_baseline(
             default_daily_cost_limit=config.daily_cost_limit_microdollars,
             default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
         )
+        # Skill index — same content/contract as the SDK path.  Failures
+        # here MUST NOT block the turn; log and proceed with empty index.
+        skills_ctx = ""
+        try:
+            from backend.copilot.tools.skills import build_skills_context
+
+            skills_ctx = await build_skills_context(user_id)
+        except Exception:
+            logger.exception(
+                "[skills] failed to build skills_ctx — proceeding without it"
+            )
         prefixed = await inject_user_context(
             understanding,
             message or "",
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
+            skills_ctx=skills_ctx,
             user_id=user_id,
         )
         if prefixed is not None:

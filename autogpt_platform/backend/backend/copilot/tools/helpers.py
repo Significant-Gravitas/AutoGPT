@@ -894,10 +894,56 @@ def _resolve_discriminated_credentials(
 
 
 _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+# Mirrors :data:`backend.copilot.tools.skills.DEFAULT_SKILLS` — the
+# agent-building guide now also ships as the canonical default skill,
+# so calling ``read_skill("agent_building_guide")`` satisfies the gate.
+_AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
+
+
+def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
+    """Return True iff the model has called ``read_skill(name=skill_name)``
+    in this session (durable history or current-turn in-flight calls).
+
+    Scans tool-call arguments — :meth:`ChatSession.has_tool_been_called`
+    only checks tool names, but the skill registry path discriminates by
+    argument.  Defensive against malformed JSON / missing args so a
+    badly-formed historical row does not crash the guard.
+    """
+    import json  # noqa: PLC0415 — local import keeps helpers light
+
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            name = tc.get("function", {}).get("name") or tc.get("name")
+            if name != "read_skill":
+                continue
+            raw_args = (
+                tc.get("function", {}).get("arguments")
+                if "function" in tc
+                else tc.get("arguments")
+            )
+            if isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(raw_args, dict):
+                parsed = raw_args
+            else:
+                continue
+            if str(parsed.get("name") or "").strip().lower() == skill_name:
+                return True
+    return False
 
 
 def require_guide_read(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Accepts either the legacy ``get_agent_building_guide`` tool call OR
+    a ``read_skill(name="agent_building_guide")`` call — the skill
+    registry now seeds the same content as the canonical default skill,
+    so either path satisfies the contract.
 
     Import inline to keep ``helpers.py`` free of tool-response imports.
     Uses :meth:`ChatSession.has_tool_been_called` which checks both the
@@ -919,12 +965,14 @@ def require_guide_read(session: ChatSession, tool_name: str):
         return None
     if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
         return None
+    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+        return None
     return ErrorResponse(
         message=(
-            f"Call get_agent_building_guide first, then retry {tool_name}. "
-            "The guide documents required block ids, input/output schemas, "
-            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
-            "generating agent JSON without it produces schema mismatches."
+            f"Call get_agent_building_guide (or read_skill(name=\"agent_building_guide\")) "
+            f"first, then retry {tool_name}. The guide documents required block ids, "
+            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
+            "usage — generating agent JSON without it produces schema mismatches."
         ),
         session_id=session.session_id,
     )

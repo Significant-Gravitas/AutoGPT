@@ -41,7 +41,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
 # AutoPilot can inspect/manage them).
-_CHAR_BUDGET = 35_500
+# Bumped 35500 -> 36800 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop.  Descriptions are already trimmed to the minimum
+# viable copy; the bump absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+_CHAR_BUDGET = 36_800
 
 
 @pytest.fixture(scope="module")
