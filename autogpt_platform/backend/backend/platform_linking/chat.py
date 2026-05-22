@@ -56,7 +56,11 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         if not session:
             raise NotFoundError("Session not found.")
     else:
-        session = await create_chat_session(owner_user_id, dry_run=False)
+        session = await create_chat_session(
+            owner_user_id,
+            dry_run=False,
+            source_platform=request.platform.value.lower(),
+        )
         session_id = session.session_id
 
     # Persist the user message before enqueueing, mirroring the REST chat

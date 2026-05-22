@@ -625,6 +625,36 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     assert base64.b64decode(result.content_base64) == fake_content
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_redirects_sdk_tool_result_shorthand(
+    setup_test_data,
+):
+    """A shorthand SDK path (``tool-outputs/<id>.json``) that doesn't
+    resolve in cloud workspace and doesn't exist on disk must return the
+    redirect hint pointing at ``read_tool_result`` / ``@@agptfile``
+    rather than the generic ``Path not allowed``."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    mock_resolve = AsyncMock(
+        return_value=ErrorResponse(
+            message="Path not allowed",
+            session_id=session.session_id,
+        )
+    )
+    with patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve):
+        read_tool = ReadWorkspaceFileTool()
+        result = await read_tool._execute(
+            user_id=user.id,
+            session=session,
+            path="tool-outputs/toolu_abc.json",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert "read_tool_result" in result.message
+    assert "@@agptfile" in result.message
+
+
 # ---------------------------------------------------------------------------
 # WriteWorkspaceFileTool exception handling (quota, virus, scan errors)
 # ---------------------------------------------------------------------------
@@ -697,3 +727,132 @@ class TestWriteWorkspaceFileToolErrorHandling:
         )
         assert isinstance(result, ErrorResponse)
         assert "already exists" in result.message
+
+
+class TestReadWorkspaceFileSdkToolResultRedirect:
+    """The model sometimes calls read_workspace_file with an SDK
+    tool-result shorthand path (e.g. ``tool-outputs/<id>.json``).
+    That path is neither in workspace storage nor a resolvable local
+    file, so without the redirect branch the model gets a generic
+    "Path not allowed" with no pointer to the right tool. This mirrors
+    the bash_exec redirect coverage.
+
+    Mocks ``_resolve_file`` and ``get_workspace_manager`` so the unit
+    test stays scoped to the redirect branch without touching Prisma /
+    workspace storage.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_sdk_cwd(self):
+        """Sibling test classes set ``sdk_cwd`` via the shared ContextVar.
+        Clear it so ``is_allowed_local_path`` doesn't claim our relative
+        shorthand paths as legitimate sdk_cwd children and short-circuit
+        the redirect branch we're testing."""
+        from backend.copilot.context import set_execution_context
+
+        set_execution_context(user_id="test", session=None, sandbox=None, sdk_cwd=None)
+
+    @staticmethod
+    async def _call_read_with_resolve_failure(path: str):
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+        ):
+            return await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path=path,
+            )
+
+    @pytest.mark.asyncio
+    async def test_relative_tool_outputs_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-outputs/toolu_nonexistent.json"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "@@agptfile" in result.message
+
+    @pytest.mark.asyncio
+    async def test_relative_tool_results_shorthand_returns_redirect_hint(self):
+        result = await self._call_read_with_resolve_failure(
+            "tool-results/toolu_nonexistent.json"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+
+    @pytest.mark.asyncio
+    async def test_unrelated_missing_path_does_not_redirect(self):
+        """Regression: paths that don't look like SDK tool-results must
+        still surface the original resolve error, not the redirect hint."""
+        result = await self._call_read_with_resolve_failure(
+            "some/random/missing-file.txt"
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" not in result.message
+        assert "@@agptfile" not in result.message
+
+    @pytest.mark.asyncio
+    async def test_redirect_wins_over_sdk_cwd_local_fallback(self):
+        """When ``sdk_cwd`` is set, the relative shorthand
+        ``tool-outputs/<id>.json`` resolves under it and would otherwise
+        pass the ``is_allowed_local_path`` check, dispatching to
+        ``_read_local_tool_result`` which fails with a generic "Path not
+        allowed" — defeating the whole point of the redirect.
+
+        Regression coverage: with ``sdk_cwd`` set, the relative-shorthand
+        redirect must still fire before the local-read fallback runs.
+        """
+        from backend.copilot.context import set_execution_context
+
+        # Override the autouse fixture that cleared sdk_cwd — we
+        # specifically want sdk_cwd set here to exercise the bug.
+        set_execution_context(
+            user_id="user-redirect-test",
+            session=None,
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-redirect-test",
+        )
+
+        read_tool = ReadWorkspaceFileTool()
+        session = make_session("user-redirect-test")
+        with (
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._resolve_file",
+                new=AsyncMock(
+                    return_value=ErrorResponse(
+                        message="not found", session_id=session.session_id
+                    )
+                ),
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files._read_local_tool_result",
+            ) as mock_local_read,
+        ):
+            result = await read_tool._execute(
+                user_id="user-redirect-test",
+                session=session,
+                path="tool-outputs/toolu_x.json",
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "@@agptfile" in result.message
+        # The local-read fallback must NOT have run — that's the bug
+        # this test guards against.
+        mock_local_read.assert_not_called()
