@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
@@ -12,6 +12,33 @@ import { ShareHeader } from "../../components/ShareHeader/ShareHeader";
 import { useSharedChatPage } from "./useSharedChatPage";
 import { SharedChatErrorState } from "./components/SharedChatErrorState";
 import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
+
+// Wraps every chat-share state — loading, error, success — in the
+// branded shell so a viewer never sees a raw card without the logo
+// + CTAs.  Matches ``ExecutionShareChrome`` on the execution share
+// page so the two routes feel like the same surface.
+function SharedChatChrome({
+  title,
+  subtitle,
+  children,
+}: {
+  title?: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex h-screen w-full flex-col bg-[#f8f8f9]">
+      <ShareHeader
+        title={title}
+        subtitle={subtitle}
+        actions={<ShareActions />}
+      />
+      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-[#f8f8f9]">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 // Dynamic import keeps the artifact panel + its viewer dependencies
 // out of the initial bundle for public viewers who may never open
@@ -64,11 +91,19 @@ export default function SharedChatPage() {
   );
 
   if (isLoading) {
-    return <SharedChatLoadingState />;
+    return (
+      <SharedChatChrome>
+        <SharedChatLoadingState />
+      </SharedChatChrome>
+    );
   }
 
   if (isError || !session) {
-    return <SharedChatErrorState reason={error} onRetry={retry} />;
+    return (
+      <SharedChatChrome>
+        <SharedChatErrorState reason={error} onRetry={retry} />
+      </SharedChatChrome>
+    );
   }
 
   const title = session.title || "Shared chat";
@@ -83,41 +118,34 @@ export default function SharedChatPage() {
   ).toLocaleDateString();
 
   return (
-    <div className="flex h-screen w-full flex-col bg-[#f8f8f9]">
-      <ShareHeader
-        title={title}
-        subtitle={`Shared ${sharedOn}`}
-        actions={<ShareActions />}
-      />
-      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-[#f8f8f9]">
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
-          {hasMore && (
-            <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-600">
-              Showing the most recent {uiMessages.length} messages — older
-              history is not visible in this shared view.
-            </div>
-          )}
-          <div className="flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0">
-            <CopilotChatActionsProvider
-              onSend={noopSend}
-              chatSurface="share"
-              getExecutionShareToken={getExecutionShareToken}
-            >
-              <ChatMessagesContainer
-                messages={uiMessages}
-                status="idle"
-                error={undefined}
-                isLoading={false}
-                turnStats={turnStats}
-                readOnly
-                filePattern={filePattern}
-                fileUrlBuilder={fileUrlBuilder}
-              />
-            </CopilotChatActionsProvider>
+    <SharedChatChrome title={title} subtitle={`Shared ${sharedOn}`}>
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+        {hasMore && (
+          <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-600">
+            Showing the most recent {uiMessages.length} messages — older history
+            is not visible in this shared view.
           </div>
+        )}
+        <div className="flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0">
+          <CopilotChatActionsProvider
+            onSend={noopSend}
+            chatSurface="share"
+            getExecutionShareToken={getExecutionShareToken}
+          >
+            <ChatMessagesContainer
+              messages={uiMessages}
+              status="idle"
+              error={undefined}
+              isLoading={false}
+              turnStats={turnStats}
+              readOnly
+              filePattern={filePattern}
+              fileUrlBuilder={fileUrlBuilder}
+            />
+          </CopilotChatActionsProvider>
         </div>
-        {isMobile ? <ArtifactPanel mobile /> : <ArtifactPanel />}
       </div>
-    </div>
+      {isMobile ? <ArtifactPanel mobile /> : <ArtifactPanel />}
+    </SharedChatChrome>
   );
 }

@@ -150,6 +150,28 @@ describe("SharedChatPage", () => {
     ).toBeDefined();
   });
 
+  test("wraps the error state in the branded share header", async () => {
+    // Cursor regression: previously the error state returned without
+    // ShareHeader, so a revoked link showed a raw card with no logo
+    // / no Copy-link / Sign-up CTAs — inconsistent with the execution
+    // share viewer.  All states (loading, error, success) must share
+    // the branded chrome.
+    server.use(
+      http.get(
+        "*/api/public/shared/chats/:token",
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+
+    render(<SharedChatPage />);
+
+    await screen.findByText(/share link not found/i);
+    // Logo image always present in ShareHeader.
+    expect(screen.getAllByAltText("AutoGPT").length).toBeGreaterThan(0);
+    // Copy-link CTA wired through ShareActions in the chrome.
+    expect(screen.getByRole("button", { name: /copy link/i })).toBeDefined();
+  });
+
   test("uses split layout (flex-row) so ArtifactPanel can dock alongside messages", async () => {
     // Owner-side copilot renders messages + ArtifactPanel side-by-side
     // via ``flex-row``.  The viewer must match — otherwise opening an
