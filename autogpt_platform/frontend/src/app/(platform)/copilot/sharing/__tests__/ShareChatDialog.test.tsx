@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getDeleteV2DisableChatSharingMockHandler204,
+  getGetV2GetChatShareStateMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { ShareChatDialog } from "../ShareChatDialog";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -127,5 +136,76 @@ describe("ShareChatDialog", () => {
       screen.queryByRole("button", { name: /enable sharing/i }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: /stop sharing/i })).toBeNull();
+  });
+
+  test("clicking Stop sharing transitions the dialog back to unshared state", async () => {
+    const TOKEN = "33333333-dddd-eeee-ffff-444444444444";
+    mockShareState({
+      is_shared: true,
+      share_token: TOKEN,
+      auto_share_executions: true,
+    });
+    server.use(getDeleteV2DisableChatSharingMockHandler204());
+
+    render(
+      <ShareChatDialog sessionId={SESSION_ID} open onOpenChange={vi.fn()} />,
+    );
+
+    const stopButton = await screen.findByRole("button", {
+      name: /stop sharing/i,
+    });
+    fireEvent.click(stopButton);
+
+    // The Enable button re-appears once the disable mutation resolves
+    // — pinning the post-revoke state reset in useShareChatDialog's
+    // onSuccess handler.
+    await screen.findByRole("button", { name: /enable sharing/i });
+  });
+
+  test("clicking Copy writes the share URL to the clipboard", async () => {
+    const TOKEN = "55555555-aaaa-bbbb-cccc-666666666666";
+    mockShareState({
+      is_shared: true,
+      share_token: TOKEN,
+      auto_share_executions: true,
+    });
+
+    render(
+      <ShareChatDialog sessionId={SESSION_ID} open onOpenChange={vi.fn()} />,
+    );
+
+    const copyButton = await screen.findByRole("button", { name: /copy/i });
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0][0]).toMatch(
+      new RegExp(`/share/chat/${TOKEN}$`),
+    );
+    // Button briefly flips to the "Copied" affordance — pinning the
+    // setCopied / setTimeout(2000) loop in useShareChatDialog.
+    await screen.findByRole("button", { name: /copied/i });
+  });
+
+  test("auto-share toggle is locked once the chat is shared", async () => {
+    // The share-state drives what viewers see, so flipping the toggle
+    // mid-share would lie.  Production guards this with
+    // ``disabled={state.isShared || state.isLoadingState}``.
+    mockShareState({
+      is_shared: true,
+      share_token: "77777777-aaaa-bbbb-cccc-888888888888",
+      auto_share_executions: true,
+    });
+    render(
+      <ShareChatDialog sessionId={SESSION_ID} open onOpenChange={vi.fn()} />,
+    );
+
+    // Wait for the share-state query to hydrate (the Stop sharing button
+    // only appears once isLoadingState flips false), then assert the
+    // toggle is in Radix's data-disabled state.
+    await screen.findByRole("button", { name: /stop sharing/i });
+    const toggle = screen.getByLabelText(/share agent runs from this chat/i);
+    expect(toggle.getAttribute("data-disabled")).not.toBeNull();
   });
 });
