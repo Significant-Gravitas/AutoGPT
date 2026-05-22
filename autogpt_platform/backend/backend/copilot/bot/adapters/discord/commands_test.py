@@ -141,6 +141,11 @@ class TestHandleUnlink:
         sent = interaction.response.send_message.await_args
         assert sent.kwargs["view"] is not None
         assert sent.kwargs["ephemeral"] is True
+        view = sent.kwargs["view"]
+        assert any(
+            getattr(child, "url", "").endswith("/settings/integrations")
+            for child in view.children
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_platform_base_url(self):
@@ -175,4 +180,4 @@ class TestHandleUnlink:
 
         sent = interaction.response.send_message.await_args
         assert "view" not in sent.kwargs or sent.kwargs.get("view") is None
-        assert "Profile" in sent.args[0]
+        assert "Integrations" in sent.args[0]

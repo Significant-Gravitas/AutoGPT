@@ -126,8 +126,8 @@ async def _handle_unlink(interaction: discord.Interaction) -> None:
 
     if not base_url:
         await interaction.response.send_message(
-            f"{message}\n\nOpen your AutoGPT settings and visit "
-            "Profile → Linked accounts.",
+            f"{message}\n\nOpen AutoGPT on the web and go to "
+            "Settings → Integrations.",
             ephemeral=True,
         )
         return
@@ -137,7 +137,7 @@ async def _handle_unlink(interaction: discord.Interaction) -> None:
         discord.ui.Button(
             style=discord.ButtonStyle.link,
             label="Open Settings",
-            url=f"{base_url}/profile/settings",
+            url=f"{base_url}/settings/integrations",
         )
     )
     await interaction.response.send_message(message, ephemeral=True, view=view)
