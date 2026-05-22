@@ -47,8 +47,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Limits — keep the per-turn <available_skills> index small enough that it
 # does not strain Anthropic prompt caches and does not crowd out the user's
-# turn budget.  At ~80 chars per index line, 50 entries ≈ 1.2k tokens; the
-# default seeded skills are tiny so users effectively see ~50 slots.
+# turn budget.  A typical user skill line lands around 150-200 chars
+# (~50 tok), so 50 entries ≈ 2.5k tokens.  The hard worst case — every
+# description and every trigger filled to the per-field caps below — is
+# ~12k tokens, used as the upper bound when sizing the prefix cache.
+# Built-in seeded skills are tiny so first-touch users see well under
+# 200 tokens of overhead.
 # ---------------------------------------------------------------------------
 MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
@@ -365,16 +369,19 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
     """Render skills as a compact one-line-each index for the
     ``<available_skills>`` injection block.
 
-    The line format intentionally mirrors how Anthropic surfaces skills
-    in Claude Code — ``name — description (triggers: …)`` — so the model
-    treats user-distilled skills with the same affordance as built-ins.
+    Format: ``- name: <slug> — <description> — triggers: t1, t2``
+    The ``name:`` prefix anchors the slug visually so the model picks
+    the right slug to pass into ``read_skill(name=...)``; the ``triggers:``
+    suffix surfaces the matchable hints inline (no parenthetical) so a
+    plain substring scan of the directive line covers both the slug and
+    its triggers.
     """
     if not skills:
         return ""
     lines = []
     for s in skills:
-        trigger_hint = f" (triggers: {', '.join(s.triggers)})" if s.triggers else ""
-        lines.append(f"- {s.name} — {s.description}{trigger_hint}")
+        trigger_hint = f" — triggers: {', '.join(s.triggers)}" if s.triggers else ""
+        lines.append(f"- name: {s.name} — {s.description}{trigger_hint}")
     return "\n".join(lines)
 
 
@@ -390,9 +397,10 @@ async def build_skills_context(user_id: str | None) -> str:
         return ""
     return (
         "Skills are reusable procedures available via `read_skill(name)`. "
-        "Load one before acting on a task it covers; distill a new one "
-        "with `store_skill` after you complete a non-trivial procedure "
-        "worth reusing.\n"
+        "Match the user's request to a skill's triggers (substring or "
+        "close paraphrase) and call `read_skill(name=...)` to load the "
+        "full body before acting; distill a new one with `store_skill` "
+        "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
     )
 

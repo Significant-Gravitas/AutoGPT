@@ -157,9 +157,13 @@ def test_render_skills_index_includes_name_and_description():
         ParsedSkill(name="b", description="beta desc", body="", triggers=("x", "y")),
     ]
     index = render_skills_index(skills)
-    assert "a — alpha desc" in index
-    assert "b — beta desc" in index
-    assert "triggers: x, y" in index
+    # ``name:`` prefix anchors the slug for the model to round-trip into
+    # ``read_skill(name=...)``.
+    assert "- name: a — alpha desc" in index
+    assert "- name: b — beta desc" in index
+    # Triggers must appear inline so a plain substring scan over the
+    # directive line picks them up alongside the slug + description.
+    assert "— triggers: x, y" in index
 
 
 def test_render_skills_index_empty_returns_empty_string():
