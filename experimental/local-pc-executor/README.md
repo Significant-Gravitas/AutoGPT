@@ -1,8 +1,9 @@
 # ⚠️ EXPERIMENTAL — AutoGPT Local PC Executor
 
-> **DANGER: Untested, pre-alpha, experimental software.**
-> Do not run on any machine you care about. Do not run as root.
-> This *maybe* gives the AutoGPT hosted platform the ability to execute commands on your computer.
+> **DANGER: experimental software that can read, write, and execute on
+> your machine on instruction from a cloud LLM.** Do not run on any
+> machine you care about. Do not run as root. Run with `--allowed-root`
+> pointed at a fresh empty directory you don't mind losing.
 
 ---
 
@@ -12,33 +13,38 @@ A daemon you install on your local machine that connects it to the [AutoGPT host
 
 Once connected, AutoGPT can:
 - Read and write files on your filesystem (jailed to a configurable root)
-- Execute shell commands
+- Execute shell commands (per-OS shell selection — bash/zsh/pwsh/cmd)
 - *(Optional)* Take screenshots and control mouse/keyboard via Claude's computer use API
 - *(Optional)* Access local hardware (serial, USB, GPIO)
 - *(Optional)* Route LLM inference to a local Ollama instance
+
+Cross-platform: macOS, Windows, Linux (Tier 1); WSL2 + Windows-on-ARM
+(Tier 2). See [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) for the
+support matrix.
 
 ## Platform Binding Layer
 
 The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, config hooks) lives in the AutoGPT monorepo:
 👉 https://github.com/Significant-Gravitas/AutoGPT/pull/13050
 
-## Current Status
-
-| Component | Status |
-|-----------|--------|
-| Protocol spec | 🟡 Draft |
-| Shim daemon | 🔴 Skeleton / stubs only |
-| OAuth flow | 🔴 Spec only |
-| Computer use | 🔴 Spec only |
-| Hardware access | 🔴 Spec only |
-
-## Future Install (not working yet)
+## Install (alpha)
 
 ```bash
-pip install autogpt-local-executor
-autogpt-shim auth    # OAuth flow → AutoGPT platform
-autogpt-shim start   # Connect and run
+pipx install autogpt-local-executor
+
+# One-time: OAuth to your platform deployment.
+autogpt-shim auth
+
+# Start the daemon. Foregrounded by default; use `autogpt-shim install`
+# to register a launchd / systemd / Task Scheduler entry for autostart.
+autogpt-shim start --allowed-root ~/autogpt-workspace
 ```
+
+Then on the platform: ask an operator to flip the `local-pc-executor`
+LaunchDarkly flag for your user. Once on, copilot turns route through
+your shim instead of E2B. Audit log lives at the per-OS path documented
+in [AUDIT_LOG.md](docs/AUDIT_LOG.md); review it with
+`autogpt-shim audit tail` / `verify`.
 
 ## Docs
 
