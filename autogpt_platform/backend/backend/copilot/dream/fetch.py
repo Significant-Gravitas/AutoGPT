@@ -227,22 +227,24 @@ async def _fetch_recent_sessions(
 
     out: list[SessionRow] = []
     for s in sessions:
-        # ``ChatSessionInfo`` doesn't carry messages (it's a summary).
-        # Fetch the body lazily per-session via the paginated reader
-        # so the prompt has actual content. One round-trip per session
-        # is acceptable at limit=10; a bulk variant can replace this
-        # when chat_db gains one.
+        # ``ChatSessionInfo`` exposes ``session_id`` (not ``id``) and
+        # carries no messages (it's a summary). Fetch the body lazily
+        # per-session via the paginated reader so the prompt has
+        # actual content. One round-trip per session is acceptable at
+        # limit=10; a bulk variant can replace this when chat_db
+        # gains one.
+        sid = s.session_id
         messages: list = []
         try:
             paginated = await chat_db().get_chat_messages_paginated(
-                session_id=s.id, limit=20, user_id=user_id
+                session_id=sid, limit=20, user_id=user_id
             )
             if paginated is not None:
                 messages = list(getattr(paginated, "messages", []) or [])
         except Exception:
             logger.debug(
                 "Failed to fetch messages for session %s — body left empty",
-                s.id[:12],
+                sid[:12],
                 exc_info=True,
             )
         body_parts: list[str] = []
@@ -256,7 +258,7 @@ async def _fetch_recent_sessions(
         body = "\n".join(body_parts)[:MAX_SESSION_BODY_BYTES]
         out.append(
             SessionRow(
-                session_id=s.id,
+                session_id=sid,
                 title=s.title,
                 created_at=getattr(s, "createdAt", None) or getattr(s, "created_at", None),
                 body=body,
