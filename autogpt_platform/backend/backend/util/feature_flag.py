@@ -47,6 +47,12 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    # Local PC Executor — route copilot execution to a user's local machine
+    # via the autogpt-local-executor shim. EXPERIMENTAL; gated as
+    # `config.use_local_pc_executor AND ld(LOCAL_PC_EXECUTOR, user)` so the
+    # config controls deploy-level kill-switch and the LD flag controls
+    # per-user opt-in / staged rollout. Default off.
+    LOCAL_PC_EXECUTOR = "local-pc-executor"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
     # per Checkout). When set to a real Stripe Product ID, line items reference

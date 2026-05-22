@@ -3812,20 +3812,46 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # saves ~200-500ms compared to sequential execution.
 
         async def _setup_e2b():
-            """Set up E2B sandbox if configured, return sandbox or None."""
+            """Set up the per-turn executor (E2B sandbox or LocalPCShim).
+
+            LocalPC route is gated by BOTH the deploy-level config bool AND
+            per-user LaunchDarkly opt-in. Both must be true to route a user's
+            turn through their local machine. The config is the deploy
+            kill-switch; the LD flag controls staged rollout.
+            """
             if config.use_local_pc_executor:
-                try:
-                    shim = await LocalPCShim.for_session(
-                        session_id, manager=get_shim_manager(), connect_timeout=30.0
-                    )
-                    return shim
-                except Exception as shim_err:
-                    logger.error(
-                        "[LocalPC] [%s] Shim connection failed: %s",
+                from backend.util.feature_flag import Flag, is_feature_enabled
+
+                local_pc_enabled = await is_feature_enabled(
+                    Flag.LOCAL_PC_EXECUTOR,
+                    user_id or "anonymous",
+                    default=False,
+                )
+                if local_pc_enabled:
+                    try:
+                        shim = await LocalPCShim.for_session(
+                            session_id, manager=get_shim_manager(), connect_timeout=30.0
+                        )
+                        logger.info(
+                            "[LocalPC] [%s] routed to shim (platform=%s arch=%s)",
+                            session_id[:12],
+                            shim.platform or "?",
+                            shim.arch or "?",
+                        )
+                        return shim
+                    except Exception as shim_err:
+                        logger.error(
+                            "[LocalPC] [%s] Shim connection failed: %s",
+                            session_id[:12],
+                            shim_err,
+                        )
+                        return None
+                else:
+                    logger.debug(
+                        "[LocalPC] [%s] config enabled but LD flag off for user %s",
                         session_id[:12],
-                        shim_err,
+                        (user_id or "anonymous")[:12],
                     )
-                    return None
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
