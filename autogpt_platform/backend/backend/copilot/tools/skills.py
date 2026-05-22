@@ -356,8 +356,31 @@ async def list_user_skills(user_id: str) -> list[ParsedSkill]:
     return skills
 
 
+def get_default_skills_for_index() -> list[ParsedSkill]:
+    """Return the default seeded skills with **empty bodies** — suitable
+    for rendering the per-turn ``<available_skills>`` index, which only
+    uses ``name`` / ``description`` / ``triggers``.  Skips the per-turn
+    disk read of the (~20KB) default-skill bodies.
+    """
+    return [
+        ParsedSkill(
+            name=default.name,
+            description=default.description,
+            body="",
+            triggers=default.triggers,
+        )
+        for default in DEFAULT_SKILLS
+    ]
+
+
 def get_default_skills() -> list[ParsedSkill]:
-    """Return the default seeded skills as :class:`ParsedSkill` records."""
+    """Return the default seeded skills with bodies populated from disk.
+
+    Used by callers that actually need the body text (e.g. :tool:`read_skill`
+    on a default skill).  Index-only callers should use
+    :func:`get_default_skills_for_index` instead so the per-turn skill
+    index build does not incur a body-sized disk read for every default.
+    """
     result: list[ParsedSkill] = []
     for default in DEFAULT_SKILLS:
         try:
@@ -384,9 +407,11 @@ async def list_all_skills(user_id: str | None) -> list[ParsedSkill]:
     """Default seeded skills first, then user-distilled skills.
 
     Defaults always lead so the model sees the built-in agent-building
-    guide before any user customisation.
+    guide before any user customisation.  Index-only — default bodies
+    are NOT loaded; :tool:`read_skill` re-reads them on demand via
+    :func:`get_default_skills`.
     """
-    skills = get_default_skills()
+    skills = get_default_skills_for_index()
     if user_id:
         skills.extend(await list_user_skills(user_id))
     return skills
