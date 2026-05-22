@@ -2645,12 +2645,8 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "403": {
-            "description": "Chat sharing is not enabled for this user"
-          },
-          "404": {
-            "description": "Chat session not found for user"
-          },
+          "403": { "description": "Chat sharing is not enabled for this user" },
+          "404": { "description": "Chat session not found for user" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7881,9 +7877,7 @@
               }
             }
           },
-          "404": {
-            "description": "Shared chat not found"
-          },
+          "404": { "description": "Shared chat not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7985,12 +7979,8 @@
               }
             }
           },
-          "400": {
-            "description": "Invalid limit (must be 1..200)"
-          },
-          "404": {
-            "description": "Shared chat not found"
-          },
+          "400": { "description": "Invalid limit (must be 1..200)" },
+          "404": { "description": "Shared chat not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16591,8 +16581,7 @@
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Shared At",
-            "description": "When the owner enabled sharing on this chat.  Surfaced so the\npublic viewer can render \"Shared {date}\" against the share-enable\nmoment instead of the chat creation date (which can be months\nolder for long-lived chats)."
+            "title": "Shared At"
           },
           "linked_executions": {
             "items": {

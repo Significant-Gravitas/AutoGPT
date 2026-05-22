@@ -241,6 +241,7 @@ class TestPublicChatRead:
             title="hello",
             created_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
             updated_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
+            shared_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
             linked_executions=[],
         )
         with patch(
