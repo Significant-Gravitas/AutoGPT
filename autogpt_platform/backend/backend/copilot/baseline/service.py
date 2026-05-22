@@ -697,17 +697,19 @@ def _apply_skills_cache_breakpoint(
         target_blocks = blocks
         break
     if target_index is None or target_blocks is None:
-        # Nothing to mark — preserve caller's list identity so a
-        # memoised system dict at messages[0] keeps its reference.
-        # Cast each Mapping to dict so the declared return type
-        # ``list[dict]`` holds; existing entries are already dicts in
-        # practice (constructed by ``_build_messages_for_llm``), this
-        # is a type-narrowing no-op.
-        return [dict(m) for m in messages]
+        # Nothing to mark — preserve caller's list identity AND inner
+        # dict references so a memoised system dict at messages[0]
+        # keeps its `is` identity (test_baseline_llm_caller_memoises_
+        # cached_system_message relies on this).  ``cast`` narrows
+        # Mapping → dict for Pyright without runtime conversion;
+        # entries are already dicts at runtime
+        # (built by ``_build_messages_for_llm``).
+        return cast(list[dict[str, Any]], list(messages))
     # Targeted shallow copy: only the message that needs the breakpoint
     # is replaced.  Other entries (including a memoised system dict)
-    # keep their original identity.
-    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
+    # keep their original identity — same identity-preservation rule
+    # as the no-target branch above.
+    cached_messages: list[dict[str, Any]] = cast(list[dict[str, Any]], list(messages))
     new_msg = dict(messages[target_index])
     new_msg["content"] = target_blocks
     cached_messages[target_index] = new_msg
