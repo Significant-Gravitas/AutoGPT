@@ -309,41 +309,51 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         )
 
 
-async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
-    """Best-effort: delete an orphaned copilot-turn schedule whose session is gone.
+async def _best_effort_unschedule(
+    schedule_id: str | None, user_id: str, *, reason: str
+) -> None:
+    """Self-delete a schedule whose firing condition is no longer satisfiable
+    (graph deleted, session deleted, validation failure, etc.).
 
-    Failures are logged and swallowed — the schedule will fire again on
-    its next cron tick and re-attempt cleanup. For one-shot ``run_at``
-    schedules, APScheduler removes the job after the fire anyway.
+    Best-effort: failures are logged and swallowed. For recurring schedules
+    the next cron tick will re-attempt the cleanup; for one-shot schedules
+    APScheduler removes the job after fire anyway, so a missed delete
+    here doesn't accumulate orphans indefinitely.
     """
-    if not args.schedule_id:
+    if not schedule_id:
+        logger.warning(
+            f"Cannot unschedule (reason: {reason}) — no schedule_id "
+            f"available; this is an old job, remove manually"
+        )
         return
     try:
         await get_scheduler_client().delete_schedule(
-            schedule_id=args.schedule_id, user_id=args.user_id
+            schedule_id=schedule_id, user_id=user_id
         )
+        logger.info(f"Unscheduled job {schedule_id} (reason: {reason})")
     except Exception:
         logger.warning(
-            f"Failed to self-delete dead copilot-turn schedule {args.schedule_id}",
+            f"Failed to unschedule job {schedule_id} (reason: {reason})",
             exc_info=True,
         )
+
+
+async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
+    """Convenience wrapper for copilot-turn schedules whose target session is gone."""
+    await _best_effort_unschedule(
+        args.schedule_id, args.user_id, reason="session deleted"
+    )
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
     logger.warning(
         f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
     )
-    if args.schedule_id:
-        scheduler_client = get_scheduler_client()
-        await scheduler_client.delete_schedule(
-            schedule_id=args.schedule_id,
-            user_id=args.user_id,
-        )
-    else:
-        logger.warning(
-            f"Unable to unschedule graph: {args.graph_id} as this is an old job "
-            f"with no associated schedule_id please remove manually"
-        )
+    await _best_effort_unschedule(
+        args.schedule_id,
+        args.user_id,
+        reason=f"graph {args.graph_id} validation failed",
+    )
 
 
 async def _handle_graph_not_available(
@@ -1000,7 +1010,7 @@ class Scheduler(AppService):
         job = self._persist_schedule(
             dispatch_func=execute_graph,
             job_args=job_args,
-            trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
+            trigger=_build_trigger(cron=cron, run_at=None, user_timezone=user_timezone),
             name=name,
         )
         logger.info(
@@ -1092,23 +1102,20 @@ class Scheduler(AppService):
     def get_graph_execution_schedules(
         self, graph_id: str | None = None, user_id: str | None = None
     ) -> list[GraphExecutionJobInfo]:
-        """Return graph-kind schedules only (typed for legacy callers)."""
-        jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-        schedules: list[GraphExecutionJobInfo] = []
-        for job in jobs:
-            if job.next_run_time is None:
-                continue
-            if job.kwargs.get("kind", "graph") != "graph":
-                continue
-            try:
-                job_args = GraphExecutionJobArgs.model_validate(job.kwargs)
-            except ValidationError:
-                continue
-            if (graph_id is None or job_args.graph_id == graph_id) and (
-                user_id is None or job_args.user_id == user_id
-            ):
-                schedules.append(GraphExecutionJobInfo.from_db(job_args, job))
-        return schedules
+        """Return graph-kind schedules only (typed for legacy callers).
+
+        Thin wrapper over :meth:`get_execution_schedules` with
+        ``kind="graph"``. We cast the result list because the polymorphic
+        path returns ``GraphExecutionJobInfo | CopilotTurnJobInfo`` but
+        the ``kind`` filter guarantees only the graph branch lands here.
+        """
+        return [
+            info
+            for info in self.get_execution_schedules(
+                graph_id=graph_id, user_id=user_id, kind="graph"
+            )
+            if isinstance(info, GraphExecutionJobInfo)
+        ]
 
     @expose
     def get_execution_schedules(
@@ -1127,26 +1134,22 @@ class Scheduler(AppService):
         jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            if job.next_run_time is None:
-                continue
-            job_kind = job.kwargs.get("kind", "graph")
-            if kind is not None and job_kind != kind:
-                continue
-            if graph_id is not None and job_kind != "graph":
-                continue
-            if session_id is not None and job_kind != "copilot_turn":
-                continue
-            info = _job_to_info(job)
+            info = _job_to_info(job) if job.next_run_time is not None else None
             if info is None:
+                continue
+            if kind is not None and info.kind != kind:
                 continue
             if user_id is not None and info.user_id != user_id:
                 continue
-            if isinstance(info, GraphExecutionJobInfo) and graph_id is not None:
-                if info.graph_id != graph_id:
-                    continue
-            if isinstance(info, CopilotTurnJobInfo) and session_id is not None:
-                if info.session_id != session_id:
-                    continue
+            if graph_id is not None and (
+                not isinstance(info, GraphExecutionJobInfo) or info.graph_id != graph_id
+            ):
+                continue
+            if session_id is not None and (
+                not isinstance(info, CopilotTurnJobInfo)
+                or info.session_id != session_id
+            ):
+                continue
             results.append(info)
         return results
 
