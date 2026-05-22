@@ -12,6 +12,7 @@ import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
 from backend.data.graph import (
@@ -19,6 +20,7 @@ from backend.data.graph import (
     GraphModel,
     Link,
     Node,
+    NodeModel,
     get_graph,
     migrate_llm_models,
     validate_graph_execution_permissions,
@@ -242,12 +244,14 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_clean_graph(server: SpinTestServer):
     """
-    Test the stripped_for_export function that:
-    1. Removes sensitive/secret fields from node inputs
-    2. Removes webhook information
-    3. Preserves non-sensitive data including input block values
+    `stripped_for_export`:
+    1. Drops the entire value of any field the block schema declares as a
+       `CredentialsMetaInput` (importers must wire up their own credentials).
+    2. Drops the value of any field the schema marks `secret: true` via
+       `SchemaField(secret=True)`.
+    3. Nulls out `webhook_id`.
+    4. Leaves every other field in `input_default` untouched.
     """
-    # Create a graph with input blocks containing both sensitive and normal data
     graph = Graph(
         id="test_clean_graph",
         name="Test Clean Graph",
@@ -258,36 +262,20 @@ async def test_clean_graph(server: SpinTestServer):
                 input_default={
                     "_test_id": "input_node",
                     "name": "test_input",
-                    "value": "test value",  # This should be preserved
+                    "value": "test value",
                     "description": "Test input description",
-                },
-            ),
-            Node(
-                block_id=AgentInputBlock().id,
-                input_default={
-                    "_test_id": "input_node_secret",
-                    "name": "secret_input",
-                    "value": "another value",
-                    "secret": True,  # This makes the input secret
                 },
             ),
             Node(
                 block_id=StoreValueBlock().id,
                 input_default={
-                    "_test_id": "node_with_secrets",
+                    "_test_id": "non_credentials_node",
                     "input": "normal_value",
                     "control_test_input": "should be preserved",
-                    "api_key": "secret_api_key_123",  # Should be filtered # pragma: allowlist secret # noqa
-                    "password": "secret_password_456",  # Should be filtered # pragma: allowlist secret # noqa
-                    "token": "secret_token_789",  # Should be filtered
-                    "credentials": {  # Should be filtered
+                    "api_key": "left_alone_now",  # pragma: allowlist secret
+                    "credentials": {
                         "id": "fake-github-credentials-id",
                         "provider": "github",
-                        "type": "api_key",
-                    },
-                    "anthropic_credentials": {  # Should be filtered
-                        "id": "fake-anthropic-credentials-id",
-                        "provider": "anthropic",
                         "type": "api_key",
                     },
                 },
@@ -296,60 +284,68 @@ async def test_clean_graph(server: SpinTestServer):
         links=[],
     )
 
-    # Create graph and get model
     create_graph = CreateGraph(graph=graph)
     created_graph = await server.agent_server.test_create_graph(
         create_graph, DEFAULT_USER_ID
     )
 
-    # Clean the graph
     cleaned_graph = await server.agent_server.test_get_graph(
         created_graph.id, created_graph.version, DEFAULT_USER_ID, for_export=True
     )
 
-    # Verify sensitive fields are removed but normal fields are preserved
     input_node = next(
         n for n in cleaned_graph.nodes if n.input_default["_test_id"] == "input_node"
     )
-
-    # Non-sensitive fields should be preserved
     assert input_node.input_default["name"] == "test_input"
-    assert input_node.input_default["value"] == "test value"  # Should be preserved now
+    assert input_node.input_default["value"] == "test value"
     assert input_node.input_default["description"] == "Test input description"
+    assert "secret" not in input_node.input_default
 
-    # Sensitive fields should be filtered out
-    assert "api_key" not in input_node.input_default
-    assert "password" not in input_node.input_default
-
-    # Verify secret input node preserves non-sensitive fields but removes secret value
-    secret_node = next(
+    non_credentials_node = next(
         n
         for n in cleaned_graph.nodes
-        if n.input_default["_test_id"] == "input_node_secret"
+        if n.input_default["_test_id"] == "non_credentials_node"
     )
-    assert secret_node.input_default["name"] == "secret_input"
-    assert "value" not in secret_node.input_default  # Secret default should be removed
-    assert secret_node.input_default["secret"] is True
-
-    # Verify sensitive fields are filtered from nodes with secrets
-    secrets_node = next(
-        n
-        for n in cleaned_graph.nodes
-        if n.input_default["_test_id"] == "node_with_secrets"
+    assert non_credentials_node.input_default["input"] == "normal_value"
+    assert (
+        non_credentials_node.input_default["control_test_input"]
+        == "should be preserved"
     )
-    # Normal fields should be preserved
-    assert secrets_node.input_default["input"] == "normal_value"
-    assert secrets_node.input_default["control_test_input"] == "should be preserved"
-    # Sensitive fields should be filtered out
-    assert "api_key" not in secrets_node.input_default
-    assert "password" not in secrets_node.input_default
-    assert "token" not in secrets_node.input_default
-    assert "credentials" not in secrets_node.input_default
-    assert "anthropic_credentials" not in secrets_node.input_default
+    assert non_credentials_node.input_default["api_key"] == "left_alone_now"
+    assert non_credentials_node.input_default["credentials"] == {
+        "id": "fake-github-credentials-id",
+        "provider": "github",
+        "type": "api_key",
+    }
 
-    # Verify webhook info is removed (if any nodes had it)
     for node in cleaned_graph.nodes:
         assert node.webhook_id is None
+
+
+def test_stripped_for_export_drops_declared_credentials_field():
+    """A field the block schema declares as `CredentialsMetaInput` is dropped
+    entirely on export, even when the rest of `input_default` is left alone."""
+    node = NodeModel(
+        id="n1",
+        block_id=ExecuteCodeBlock().id,
+        input_default={
+            "credentials": {
+                "id": "fake-e2b-credentials-id",
+                "provider": "e2b",
+                "type": "api_key",
+            },
+            "code": "print('hi')",
+        },
+        graph_id="g1",
+        graph_version=1,
+        webhook_id="wh-1",
+    )
+
+    stripped = node.stripped_for_export()
+
+    assert "credentials" not in stripped.input_default
+    assert stripped.input_default["code"] == "print('hi')"
+    assert stripped.webhook_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
