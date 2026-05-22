@@ -26,7 +26,13 @@ class BlockStatsWithSamples(BaseModel):
     block_name: str
     total_executions: int
     failed_executions: int
+    user_api_key_error_executions: int = 0
     error_samples: list[str] = []
+
+    @property
+    def platform_failed_executions(self) -> int:
+        """Failures not attributable to user-supplied API key errors."""
+        return self.failed_executions - self.user_api_key_error_executions
 
     @property
     def error_rate(self) -> float:
@@ -34,6 +40,13 @@ class BlockStatsWithSamples(BaseModel):
         if self.total_executions == 0:
             return 0.0
         return (self.failed_executions / self.total_executions) * 100
+
+    @property
+    def platform_error_rate(self) -> float:
+        """Error rate excluding failures caused by user-supplied invalid API keys."""
+        if self.total_executions == 0:
+            return 0.0
+        return (self.platform_failed_executions / self.total_executions) * 100
 
 
 class BlockErrorMonitor:
@@ -63,7 +76,7 @@ class BlockErrorMonitor:
             # For blocks with high error rates, fetch error samples
             threshold = self.config.block_error_rate_threshold
             for block_name, stats in block_stats.items():
-                if stats.total_executions >= 10 and stats.error_rate >= threshold * 100:
+                if stats.total_executions >= 10 and stats.platform_error_rate >= threshold * 100:
                     # Only fetch error samples for blocks that exceed threshold
                     error_samples = self._get_error_samples_for_block(
                         stats.block_id, start_time, end_time, limit=3
@@ -121,6 +134,7 @@ class BlockErrorMonitor:
                 block_name=block_name,
                 total_executions=stats.total_executions,
                 failed_executions=stats.failed_executions,
+                user_api_key_error_executions=stats.user_api_key_error_executions,
                 error_samples=[],
             )
 
@@ -133,13 +147,19 @@ class BlockErrorMonitor:
         alerts = []
 
         for block_name, stats in block_stats.items():
-            if stats.total_executions >= 10 and stats.error_rate >= threshold * 100:
+            if stats.total_executions >= 10 and stats.platform_error_rate >= threshold * 100:
                 error_groups = self._group_similar_errors(stats.error_samples)
 
                 alert_msg = (
-                    f"🚨 Block '{block_name}' has {stats.error_rate:.1f}% error rate "
-                    f"({stats.failed_executions}/{stats.total_executions}) in the last 24 hours"
+                    f"🚨 Block '{block_name}' has {stats.platform_error_rate:.1f}% error rate "
+                    f"({stats.platform_failed_executions}/{stats.total_executions}) in the last 24 hours"
                 )
+
+                if stats.user_api_key_error_executions > 0:
+                    alert_msg += (
+                        f"\n⚠️ {stats.user_api_key_error_executions} additional failure(s) "
+                        f"excluded — caused by user-supplied invalid API keys (not a platform issue)"
+                    )
 
                 if error_groups:
                     alert_msg += "\n\n📊 Error Types:"

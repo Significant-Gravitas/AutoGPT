@@ -118,6 +118,12 @@ class BlockErrorStats(BaseModel):
     block_id: str
     total_executions: int
     failed_executions: int
+    user_api_key_error_executions: int = 0
+
+    @property
+    def platform_failed_executions(self) -> int:
+        """Failures not attributable to user-supplied API key errors."""
+        return self.failed_executions - self.user_api_key_error_executions
 
     @property
     def error_rate(self) -> float:
@@ -125,6 +131,13 @@ class BlockErrorStats(BaseModel):
         if self.total_executions == 0:
             return 0.0
         return (self.failed_executions / self.total_executions) * 100
+
+    @property
+    def platform_error_rate(self) -> float:
+        """Error rate excluding failures caused by user-supplied invalid API keys."""
+        if self.total_executions == 0:
+            return 0.0
+        return (self.platform_failed_executions / self.total_executions) * 100
 
 
 ExecutionStatus = AgentExecutionStatus
@@ -1593,7 +1606,13 @@ async def get_block_error_stats(
     SELECT 
         n."agentBlockId" as block_id,
         COUNT(*) as total_executions,
-        SUM(CASE WHEN ne."executionStatus" = 'FAILED' THEN 1 ELSE 0 END) as failed_executions
+        SUM(CASE WHEN ne."executionStatus" = 'FAILED' THEN 1 ELSE 0 END) as failed_executions,
+        SUM(CASE
+            WHEN ne."executionStatus" = 'FAILED'
+                AND ne."executionData"->>'credentials' IS NOT NULL
+                AND ne."stats"->>'error' LIKE '%invalid_api_key%'
+            THEN 1 ELSE 0
+        END) as user_api_key_error_executions
     FROM {schema_prefix}"AgentNodeExecution" ne
     JOIN {schema_prefix}"AgentNode" n ON ne."agentNodeId" = n.id
     WHERE ne."addedTime" >= $1::timestamp AND ne."addedTime" <= $2::timestamp
@@ -1609,6 +1628,9 @@ async def get_block_error_stats(
             block_id=row["block_id"],
             total_executions=int(row["total_executions"]),
             failed_executions=int(row["failed_executions"]),
+            user_api_key_error_executions=int(
+                row["user_api_key_error_executions"] or 0
+            ),
         )
         for row in result
     ]
