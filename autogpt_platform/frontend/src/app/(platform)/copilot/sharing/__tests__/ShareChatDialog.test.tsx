@@ -188,6 +188,35 @@ describe("ShareChatDialog", () => {
     await screen.findByRole("button", { name: /copied/i });
   });
 
+  test("clipboard failure surfaces a destructive toast and skips the copied flash", async () => {
+    // navigator.clipboard.writeText can reject when the browser refuses
+    // (insecure context, missing permission).  Production must surface a
+    // toast and NOT flip the button to "Copied".
+    const TOKEN = "99999999-aaaa-bbbb-cccc-aaaaaaaaaaaa";
+    mockShareState({
+      is_shared: true,
+      share_token: TOKEN,
+      auto_share_executions: true,
+    });
+    clipboardWrite.mockRejectedValueOnce(new Error("nope"));
+
+    render(
+      <ShareChatDialog sessionId={SESSION_ID} open onOpenChange={vi.fn()} />,
+    );
+
+    const copyButton = await screen.findByRole("button", { name: /copy/i });
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalled();
+    });
+    // After the rejection settles, the button must stay on "Copy" and
+    // never flip to "Copied" (the setCopied(true) branch is skipped
+    // inside the catch).
+    expect(screen.queryByRole("button", { name: /copied/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /copy/i })).toBeDefined();
+  });
+
   test("auto-share toggle is locked once the chat is shared", async () => {
     // The share-state drives what viewers see, so flipping the toggle
     // mid-share would lie.  Production guards this with
