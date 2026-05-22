@@ -18,6 +18,7 @@ import type { AgentStatusFilter } from "../../types";
 import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 import { useState } from "react";
+import { CostsBreakdown } from "./CostsBreakdown/CostsBreakdown";
 
 interface Props {
   activeTab: AgentStatusFilter;
@@ -26,7 +27,7 @@ interface Props {
 
 export function BriefingTabContent({ activeTab, agents }: Props) {
   if (activeTab === "all") {
-    return <UsageSection />;
+    return <UsageSection agents={agents} />;
   }
 
   if (
@@ -40,7 +41,7 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
   return <AgentListSection activeTab={activeTab} agents={agents} />;
 }
 
-function UsageSection() {
+function UsageSection({ agents }: { agents: LibraryAgent[] }) {
   const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
@@ -51,48 +52,55 @@ function UsageSection() {
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
-  if (!isSuccess || !usage) return null;
-  if (!usage.daily && !usage.weekly) return null;
-
-  const tierLabel = formatTierLabel(usage.tier);
+  const hasUsageMeters = isSuccess && usage && (usage.daily || usage.weekly);
+  const tierLabel = hasUsageMeters ? formatTierLabel(usage.tier) : null;
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2">
-        <Text variant="h5" className="text-neutral-800">
-          Usage limits
-        </Text>
-        {tierLabel && (
-          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
-            {tierLabel} plan
-          </Badge>
-        )}
-        <div className="flex-1" />
-        {isBillingEnabled && (
-          <Link
-            href="/settings/billing"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Manage billing
-          </Link>
-        )}
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {usage.daily && (
-          <UsageMeter
-            label="Today"
-            percentUsed={usage.daily.percent_used}
-            resetsAt={usage.daily.resets_at}
-          />
-        )}
-        {usage.weekly && (
-          <UsageMeter
-            label="This week"
-            percentUsed={usage.weekly.percent_used}
-            resetsAt={usage.weekly.resets_at}
-          />
-        )}
-      </div>
+      {hasUsageMeters && (
+        <>
+          <div className="flex items-center gap-2">
+            <Text variant="h5" className="text-neutral-800">
+              Usage limits
+            </Text>
+            {tierLabel && (
+              <Badge
+                variant="info"
+                size="small"
+                className={TIER_BADGE_CLASS_NAME}
+              >
+                {tierLabel} plan
+              </Badge>
+            )}
+            <div className="flex-1" />
+            {isBillingEnabled && (
+              <Link
+                href="/settings/billing"
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Manage billing
+              </Link>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {usage.daily && (
+              <UsageMeter
+                label="Today"
+                percentUsed={usage.daily.percent_used}
+                resetsAt={usage.daily.resets_at}
+              />
+            )}
+            {usage.weekly && (
+              <UsageMeter
+                label="This week"
+                percentUsed={usage.weekly.percent_used}
+                resetsAt={usage.weekly.resets_at}
+              />
+            )}
+          </div>
+        </>
+      )}
+      <CostsBreakdown agents={agents} />
     </div>
   );
 }

@@ -2,13 +2,17 @@
 
 import asyncio
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mcp.types import ToolAnnotations
+from mcp.types import ListToolsRequest, ToolAnnotations
 
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tools import TOOL_REGISTRY
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -18,6 +22,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    create_copilot_mcp_server,
     create_tool_handler,
     pop_pending_tool_output,
     reset_stash_event,
@@ -77,7 +82,7 @@ class TestGetSdkCwd:
     def test_returns_empty_string_by_default(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
         )
         assert get_sdk_cwd() == ""
@@ -85,7 +90,7 @@ class TestGetSdkCwd:
     def test_returns_set_value(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/copilot-test-123",
         )
@@ -103,7 +108,7 @@ class TestToolOutputStash:
         """Initialise the context vars that stash_pending_tool_output needs."""
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/test",
         )
@@ -145,7 +150,7 @@ class TestResetStashEvent:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
         )
 
@@ -208,7 +213,7 @@ class TestTruncationAndStashIntegration:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/test",
         )
@@ -270,15 +275,15 @@ def _make_mock_tool(
     return tool
 
 
-def _make_mock_session() -> MagicMock:
-    """Return a minimal ChatSession mock."""
-    return MagicMock()
+def _make_test_session(*, dry_run: bool = False) -> ChatSession:
+    """Return a minimal real ``ChatSession`` for tool-context tests."""
+    return ChatSession.new(user_id="test-user", dry_run=dry_run)
 
 
-def _init_ctx(session=None):
+def _init_ctx(session: ChatSession | None = None):
     set_execution_context(
         user_id="user-1",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         sandbox=None,
     )
 
@@ -288,7 +293,7 @@ class TestCreateToolHandler:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.asyncio
     async def test_handler_executes_tool_directly(self):
@@ -307,7 +312,7 @@ class TestCreateToolHandler:
     async def test_handler_returns_error_on_no_session(self):
         """When session is None, handler returns MCP error."""
         mock_tool = _make_mock_tool("run_block")
-        set_execution_context(user_id="u", session=None, sandbox=None)  # type: ignore[arg-type]
+        set_execution_context(user_id="u", session=None, sandbox=None)
 
         handler = create_tool_handler(mock_tool)
         result = await handler({"block_id": "b1"})
@@ -344,7 +349,7 @@ class TestToolInlineExecution:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.asyncio
     async def test_tool_runs_to_completion_regardless_of_duration(self):
@@ -407,7 +412,7 @@ async def _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args):
     """
     from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 
-    user_id, session = "user-1", _make_mock_session()
+    user_id, session = "user-1", _make_test_session()
 
     # Step 1: pre-launch fires immediately (speculative)
     task = asyncio.create_task(
@@ -439,7 +444,7 @@ class TestBug1DuplicateExecution:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old pre-launch code causes duplicate execution")
     @pytest.mark.asyncio
@@ -484,7 +489,7 @@ class TestBug2FIFODesync:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old FIFO queue returns wrong result on denial")
     @pytest.mark.asyncio
@@ -506,7 +511,7 @@ class TestBug2FIFODesync:
 
         mock_tool = _make_mock_tool("run_block")
         mock_tool.execute = AsyncMock(side_effect=tagged_execute)
-        user_id, session = "user-1", _make_mock_session()
+        user_id, session = "user-1", _make_test_session()
 
         # Simulate old FIFO queue
         queue: asyncio.Queue = asyncio.Queue()
@@ -571,7 +576,7 @@ class TestBug3CancelRace:
 
     @pytest.fixture(autouse=True)
     def _init(self):
-        _init_ctx(session=_make_mock_session())
+        _init_ctx(session=_make_test_session())
 
     @pytest.mark.xfail(reason="Old code: cancel arrives after task completes")
     @pytest.mark.asyncio
@@ -658,6 +663,9 @@ class TestSDKDisallowedTools:
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
 
+    def test_schedule_wakeup_tool_is_disallowed(self):
+        assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
 
 # ---------------------------------------------------------------------------
 # _read_file_handler — bridge_and_annotate integration
@@ -671,7 +679,7 @@ class TestReadFileHandlerBridge:
     def _init_context(self):
         set_execution_context(
             user_id="test",
-            session=None,  # type: ignore[arg-type]
+            session=None,
             sandbox=None,
             sdk_cwd="/tmp/copilot-bridge-test",
         )
@@ -692,8 +700,8 @@ class TestReadFileHandlerBridge:
             lambda path: True,
         )
 
-        fake_sandbox = object()
-        token = _current_sandbox.set(fake_sandbox)  # type: ignore[arg-type]
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
         try:
             bridge_calls: list[tuple] = []
 
@@ -714,6 +722,113 @@ class TestReadFileHandlerBridge:
             assert len(bridge_calls) == 1
             assert bridge_calls[0][0] is fake_sandbox
             assert "/tmp/abc-data.json" in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_skipped_when_envelope_pretty_printed(
+        self, tmp_path, monkeypatch
+    ):
+        """Pretty-printing the MCP envelope transforms the content the
+        model reads. The on-disk bytes are the raw envelope, so bridging
+        them to the sandbox would point the model at content that
+        doesn't match what ``read_tool_result`` just returned. Skip the
+        bridge in that case — the model can re-read or pipe via
+        ``@@agptfile:`` if it needs bash access."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # MCP envelope with JSON inner payload — _navigable_tool_result_text
+        # will pretty-print this, so navigable != raw.
+        test_file = tmp_path / "tool-results" / "envelope.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"execution": {"node_executions": [{"status": "OK"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        test_file.write_text(envelope)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-envelope.json]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {"file_path": str(test_file), "offset": 0, "limit": 2000}
+            )
+
+            assert result["isError"] is False
+            # The bridge MUST NOT be called: model sees pretty-printed
+            # JSON but the on-disk file holds the raw envelope.
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
+            # And the returned text is the pretty-printed payload, not
+            # the envelope wrapper, so the slicing is useful.
+            assert '"status": "OK"' in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_skipped_when_char_offset_used(self, tmp_path, monkeypatch):
+        """``char_offset`` slices the navigable content; the on-disk
+        bytes don't carry that slice, so bridging would mislead bash
+        operations into reading a different range than the model just
+        saw. Skip the bridge regardless of whether pretty-printing
+        kicked in for this file."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # File whose content is NOT an envelope — navigable == raw.
+        # The bridge would normally fire here; char_offset must still
+        # suppress it.
+        test_file = tmp_path / "tool-results" / "plain.txt"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("the quick brown fox " * 100)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-plain.txt]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {
+                    "file_path": str(test_file),
+                    "char_offset": 100,
+                    "char_limit": 50,
+                }
+            )
+
+            assert result["isError"] is False
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
         finally:
             _current_sandbox.reset(token)
 
@@ -826,7 +941,7 @@ class TestStripLlmFields:
 
     def test_strip_after_stash_ordering(self):
         """Stash receives full payload (with is_dry_run); LLM result does not."""
-        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+        set_execution_context(user_id="test", session=None, sandbox=None)
 
         full_text = '{"message": "ok", "is_dry_run": true}'
         result = {
@@ -906,11 +1021,10 @@ class TestStripLlmFields:
         the stash/strip lines in production code causes this test to fail.
         Uses a session with dry_run=True so that stripping is active.
         """
-        dry_run_session = MagicMock()
-        dry_run_session.dry_run = True
+        dry_run_session = _make_test_session(dry_run=True)
         set_execution_context(
             user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -941,11 +1055,10 @@ class TestStripLlmFields:
         dry_run mode, the LLM should see is_dry_run=True so it knows that
         specific tool result was simulated.
         """
-        normal_session = MagicMock()
-        normal_session.dry_run = False
+        normal_session = _make_test_session(dry_run=False)
         set_execution_context(
             user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
-        )  # type: ignore[arg-type]
+        )
 
         full_payload = '{"message": "simulated", "is_dry_run": true}'
 
@@ -977,10 +1090,10 @@ class TestTruncatingWrapperLeavesOutputUntouched:
 
     @pytest.mark.asyncio
     async def test_wrapper_does_not_inject_followup(self):
-        session = MagicMock()
-        session.dry_run = False
-        session.session_id = "sess-no-inject"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        session = _make_test_session(dry_run=False)
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )
 
         async def fake_tool_fn(_args: dict) -> dict:
             return {
@@ -999,10 +1112,10 @@ class TestTruncatingWrapperLeavesOutputUntouched:
     async def test_stash_stays_clean(self):
         """The frontend-facing stash must be a byte-for-byte copy of the
         raw tool output (needed for JSON.parse in the bash widget)."""
-        session = MagicMock()
-        session.dry_run = False
-        session.session_id = "sess-stash"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        session = _make_test_session(dry_run=False)
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )
 
         clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
 
@@ -1018,3 +1131,108 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         stashed = pop_pending_tool_output("fake_tool_stash_pure")
         assert stashed == clean_json
         assert "<user_follow_up>" not in (stashed or "")
+
+
+class TestCreateCopilotMcpServerHidden:
+    """``hidden_tool_names`` removes tools from MCP registration entirely
+    so the model never sees them — guards against the production bug
+    where builder-blocked tools were still advertised, the model called
+    them anyway, and the CLI returned its canned "Permission to use ...
+    has been denied" string that the model then narrated as a fake
+    Allow/Deny UI."""
+
+    @pytest.mark.asyncio
+    async def test_hidden_tools_not_registered(self):
+        # Use a named tool (find_block is stable + load-bearing in the
+        # builder flow) so the test reads as a real scenario instead of
+        # "the first key in dict insertion order".
+        hidden_name = "find_block"
+        assert hidden_name in TOOL_REGISTRY, "fixture relies on find_block"
+        server = create_copilot_mcp_server(hidden_tool_names=[hidden_name])
+        registered = await self._registered_tool_names(server)
+        assert hidden_name not in registered
+        # Other tools still register.
+        assert len(registered) >= len(TOOL_REGISTRY) - 1
+
+    @pytest.mark.asyncio
+    async def test_no_hidden_tools_registers_all(self):
+        server = create_copilot_mcp_server()
+        registered = await self._registered_tool_names(server)
+        for short in TOOL_REGISTRY:
+            assert short in registered
+
+    @pytest.mark.asyncio
+    async def test_builder_blocked_tools_hidden(self):
+        server = create_copilot_mcp_server(hidden_tool_names=BUILDER_BLOCKED_TOOLS)
+        registered = await self._registered_tool_names(server)
+        for blocked in BUILDER_BLOCKED_TOOLS:
+            assert blocked not in registered
+        # edit_agent must remain so the model can populate the bound graph.
+        assert "edit_agent" in registered
+
+    @pytest.mark.asyncio
+    async def test_unknown_hidden_name_is_silently_ignored(self):
+        """A typo in ``hidden_tool_names`` must not phantom-hide a real
+        tool or raise — the registration loop intersects with
+        TOOL_REGISTRY keys, so unknown names are a no-op."""
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["this_tool_does_not_exist"]
+        )
+        registered = await self._registered_tool_names(server)
+        # All real tools still register.
+        for short in TOOL_REGISTRY:
+            assert short in registered
+
+    @staticmethod
+    async def _registered_tool_names(server) -> set[str]:
+        instance = server["instance"]
+        handler = instance.request_handlers[ListToolsRequest]
+        result = await handler(ListToolsRequest(method="tools/list"))
+        return {t.name for t in result.root.tools}
+
+
+class TestNavigableToolResultText:
+    """``_navigable_tool_result_text`` unwraps the CLI's MCP envelope and
+    pretty-prints inner JSON so line-based offset/limit slice into the
+    actual payload, not the envelope wrapper. Regression coverage for
+    the bug where the model bounced off ``bash_exec | python3 -c`` to
+    parse a tool result it could have read directly."""
+
+    def test_envelope_with_json_payload_is_pretty_printed(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        payload = {"execution": {"node_executions": [{"status": "FAILED"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        out = _navigable_tool_result_text(envelope)
+        # The output should be pretty-printed JSON with multiple lines,
+        # not the single minified blob that was inside the envelope.
+        assert "\n" in out
+        assert '"status": "FAILED"' in out
+        assert json.loads(out) == payload
+
+    def test_envelope_with_non_json_text_returns_unwrapped(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        envelope = json.dumps(
+            [{"type": "text", "text": "plain shell output\nwith newlines\n"}]
+        )
+        out = _navigable_tool_result_text(envelope)
+        assert out == "plain shell output\nwith newlines\n"
+
+    def test_non_envelope_input_is_returned_unchanged(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        # Files that don't match the envelope shape stay as-is.
+        assert _navigable_tool_result_text("not even json") == "not even json"
+        assert (
+            _navigable_tool_result_text('{"single": "object"}')
+            == '{"single": "object"}'
+        )
+        # Multi-block envelope: don't unwrap (lossy).
+        multi = json.dumps(
+            [
+                {"type": "text", "text": "a"},
+                {"type": "image", "data": "..."},
+            ]
+        )
+        assert _navigable_tool_result_text(multi) == multi
