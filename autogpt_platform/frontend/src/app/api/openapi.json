@@ -15547,7 +15547,11 @@
           "memory_forget_candidates",
           "memory_forget_confirm",
           "todo_write",
-          "platform_info"
+          "platform_info",
+          "skill_stored",
+          "skill_loaded",
+          "skill_deleted",
+          "skill_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
