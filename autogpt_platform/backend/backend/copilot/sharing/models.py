@@ -18,6 +18,7 @@ by the user and would confuse a public reader.
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -27,20 +28,47 @@ from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.service import strip_injected_context_for_display
 
-# Substrings that mark a tool-call argument key as secret-shaped.  We
-# redact rather than drop so the schema stays stable for the viewer.
+# Secret-shaped key hints.  Each entry is a whole "word" — boundary
+# matching is enforced by :data:`_SECRET_KEY_RE` so that ``token`` does
+# not false-positive against ``prompt_tokens`` (LLM usage metadata) and
+# ``auth`` does not false-positive against ``author`` (attribution).
 _SECRET_KEY_HINTS = (
     "api_key",
+    "api_keys",
+    "api_token",
     "apikey",
     "auth",
-    "token",
-    "secret",
-    "credential",
+    "authorization",
+    "bearer",
     "cookie",
-    "password",
+    "credential",
+    "credentials",
+    "oauth",
     "passwd",
+    "password",
+    "secret",
+    "secrets",
+    "token",
 )
 _REDACTED = "[redacted]"
+
+# Boundary-aware matcher.  ``(?<![a-z0-9])`` and ``(?![a-z0-9])`` reject
+# matches where a letter/digit sits on either side of the hint, so:
+#
+#   - ``access_token``  matches ``token``   (``_`` boundary, end)
+#   - ``total_tokens``  does NOT match      (``s`` letter follows)
+#   - ``author``        does NOT match      (``o`` letter follows ``auth``)
+#   - ``Authorization`` matches ``authorization`` whole, case-insensitive
+#
+# Using these lookarounds rather than ``\b`` is deliberate: ``\b`` treats
+# underscore as a word character, which would mis-classify the ``_`` →
+# letter transition in ``total_tokens`` as a non-boundary and leak.
+_SECRET_KEY_RE = re.compile(
+    r"(?<![a-z0-9])(?:"
+    + "|".join(re.escape(h) for h in _SECRET_KEY_HINTS)
+    + r")(?![a-z0-9])",
+    re.IGNORECASE,
+)
 
 
 class SharedChatLinkedExecution(BaseModel):
@@ -186,8 +214,7 @@ def _redact_secret_keys(value: Any) -> Any:
 
 
 def _is_secret_key(key: str) -> bool:
-    lower = key.lower()
-    return any(hint in lower for hint in _SECRET_KEY_HINTS)
+    return _SECRET_KEY_RE.search(key) is not None
 
 
 def _redact_secret_keys_in_json_string(value: str) -> str:

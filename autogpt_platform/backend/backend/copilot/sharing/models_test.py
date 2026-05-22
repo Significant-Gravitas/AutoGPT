@@ -93,6 +93,52 @@ class TestRedactSecretKeys:
         _redact_secret_keys(original)
         assert original == {"api_key": "sk-1"}
 
+    def test_does_not_redact_llm_usage_token_counts(self):
+        # Cursor regression: substring matching mis-flagged
+        # ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens`` as
+        # secret-shaped because they contain ``token``.  These are
+        # legitimate usage-metadata fields and must survive sanitization.
+        result = _redact_secret_keys(
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "input_tokens": 80,
+            }
+        )
+        assert result == {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "input_tokens": 80,
+        }
+
+    def test_does_not_redact_author_field(self):
+        # Cursor regression: ``auth`` substring used to match ``author``
+        # — attribution fields would silently turn into ``[redacted]``.
+        result = _redact_secret_keys({"author": "alice", "title": "post"})
+        assert result == {"author": "alice", "title": "post"}
+
+    def test_redacts_authorization_header_whole_word(self):
+        # ``Authorization`` is a whole word in the hint list — case-
+        # insensitive boundary match still catches the HTTP-header form
+        # that anything with substring matching used to catch via
+        # ``auth``.
+        result = _redact_secret_keys({"Authorization": "Bearer xyz"})
+        assert result == {"Authorization": "[redacted]"}
+
+    def test_redacts_token_at_underscore_boundaries(self):
+        # Tightening the matcher must NOT regress the common
+        # ``access_token`` / ``refresh_token`` shapes.
+        result = _redact_secret_keys(
+            {"access_token": "x", "refresh_token": "y", "id_token": "z"}
+        )
+        assert result == {
+            "access_token": "[redacted]",
+            "refresh_token": "[redacted]",
+            "id_token": "[redacted]",
+        }
+
 
 class TestSanitizeChatMessage:
     def test_drops_refusal_and_metadata(self):
