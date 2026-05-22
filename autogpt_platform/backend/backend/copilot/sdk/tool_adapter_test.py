@@ -706,6 +706,9 @@ class TestSDKDisallowedTools:
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
 
+    def test_schedule_wakeup_tool_is_disallowed(self):
+        assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
 
 # ---------------------------------------------------------------------------
 # _read_file_handler — bridge_and_annotate integration

@@ -959,6 +959,8 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   — our MCP read_file handles tool-results paths via
 #   is_allowed_local_path() and has been the only Read available in
 #   prod without issues.
+# ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
+#   {"scheduledFor": 0} and nothing is scheduled.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -967,6 +969,7 @@ SDK_DISALLOWED_TOOLS = [
     "Write",
     "Edit",
     "Read",
+    "ScheduleWakeup",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
