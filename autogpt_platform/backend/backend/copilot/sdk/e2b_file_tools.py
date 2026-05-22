@@ -854,14 +854,16 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the cloud sandbox (/home/user or /tmp). "
-        "Use offset and limit for large files.",
+        "Read a file from the execution workspace. "
+        "Use offset and limit for large files. "
+        "Paths may be relative (resolved against the workspace root) or "
+        "absolute under an allowed directory.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to read. Relative paths resolve against the workspace root.",
                 },
                 "offset": {
                     "type": "integer",
@@ -877,16 +879,16 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "write_file",
-        "Write or create a file in the cloud sandbox (/home/user or /tmp). "
+        "Write or create a file in the execution workspace. "
         "Parent directories are created automatically. "
-        "To copy a workspace file into the sandbox, use "
+        "To copy a user workspace file into the executor, use "
         "read_workspace_file with save_to_path instead.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to write. Relative paths resolve against the workspace root.",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -895,14 +897,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "edit_file",
-        "Targeted text replacement in a sandbox file. "
+        "Targeted text replacement in a workspace file. "
         "old_string must appear in the file and is replaced with new_string.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path to edit. Relative paths resolve against the workspace root.",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},
@@ -916,7 +918,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "glob",
-        "Search for files by name pattern in the cloud sandbox.",
+        "Search for files by name pattern in the execution workspace.",
         {
             "type": "object",
             "properties": {
@@ -926,7 +928,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory to search. Default: /home/user.",
+                    "description": "Directory to search. Defaults to the workspace root.",
                 },
             },
         },
@@ -934,14 +936,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "grep",
-        "Search file contents by regex in the cloud sandbox.",
+        "Search file contents by regex in the execution workspace.",
         {
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "Regex pattern."},
                 "path": {
                     "type": "string",
-                    "description": "File or directory. Default: /home/user.",
+                    "description": "File or directory. Defaults to the workspace root.",
                 },
                 "include": {
                     "type": "string",
