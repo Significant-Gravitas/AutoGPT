@@ -53,6 +53,12 @@ MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 200
 MAX_BODY_CHARS = 20_000
+# Triggers appear inline in the per-turn ``<available_skills>`` index,
+# so an unbounded list (or one huge trigger) would balloon the prefix
+# the model parses every turn.  Cap both the count and the per-entry
+# length so a misbehaving caller cannot blow the token budget.
+MAX_TRIGGERS = 10
+MAX_TRIGGER_CHARS = 64
 SKILL_FOLDER = "/skills"
 
 # Skill names are slug-like — lowercase letters, digits, dashes, underscores.
@@ -457,21 +463,51 @@ class StoreSkillTool(BaseTool):
                 message=f"body must be ≤{MAX_BODY_CHARS} chars",
                 session_id=session_id,
             )
+        if len(triggers) > MAX_TRIGGERS:
+            return ErrorResponse(
+                message=(
+                    f"triggers must be ≤{MAX_TRIGGERS} entries "
+                    "(they are inlined in <available_skills> every turn)"
+                ),
+                session_id=session_id,
+            )
+        oversized_trigger = next(
+            (t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None
+        )
+        if oversized_trigger is not None:
+            return ErrorResponse(
+                message=(
+                    f"trigger '{oversized_trigger[:32]}…' exceeds "
+                    f"{MAX_TRIGGER_CHARS} chars"
+                ),
+                session_id=session_id,
+            )
 
         # Serialise the count-then-write critical section per-user so two
         # concurrent ``store_skill`` calls cannot both pass the MAX
         # check.  Lock failure (Redis unavailable, already held) falls
         # back to a best-effort write without the cap — better than
         # blocking the user's distillation entirely, and the cap is a
-        # soft per-turn budget cue, not a hard quota.
-        lock = AsyncClusterLock(
-            redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
-            owner_id=uuid.uuid4().hex,
-            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-        )
-        lock_owner = await lock.try_acquire()
-        lock_held = lock_owner == lock.owner_id
+        # soft per-turn budget cue, not a hard quota.  Wrap acquisition
+        # in its own try/except so any transient Redis issue stays
+        # contained — the rest of the path must still run unlocked.
+        lock: AsyncClusterLock | None = None
+        lock_held = False
+        try:
+            lock = AsyncClusterLock(
+                redis=await get_redis_async(),
+                key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
+                owner_id=uuid.uuid4().hex,
+                timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+            )
+            lock_held = (await lock.try_acquire()) == lock.owner_id
+        except Exception:
+            logger.warning(
+                "[skills] failed to acquire write lock for user %s — "
+                "falling back to unlocked best-effort write",
+                user_id,
+                exc_info=True,
+            )
         try:
             manager = await _get_user_skill_manager(user_id)
             # Enforce the per-user cap *before* we write — counting only
@@ -521,7 +557,7 @@ class StoreSkillTool(BaseTool):
                 session_id=session_id,
             )
         finally:
-            if lock_held:
+            if lock is not None and lock_held:
                 try:
                     await lock.release()
                 except Exception:

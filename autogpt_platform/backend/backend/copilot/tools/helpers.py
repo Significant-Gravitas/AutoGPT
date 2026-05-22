@@ -909,7 +909,18 @@ def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
     only checks tool names, but the skill registry path discriminates by
     argument.  Defensive against malformed JSON / missing args so a
     badly-formed historical row does not crash the guard.
+
+    Same-turn safety: also inspects in-flight calls (captured via
+    :meth:`ChatSession.get_inflight_tool_call_args`) so a ``read_skill``
+    dispatched earlier in the *current* turn is recognised before its
+    row lands in ``session.messages``.
     """
+    # In-flight first — newest calls live here and the dispatcher
+    # records argument dicts (not strings) so no JSON parsing needed.
+    for args in session.get_inflight_tool_call_args("read_skill"):
+        if str(args.get("name") or "").strip().lower() == skill_name:
+            return True
+    # Durable scan of past turns + already-flushed current turn.
     for msg in reversed(session.messages):
         if msg.role != "assistant" or not msg.tool_calls:
             continue

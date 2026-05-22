@@ -916,7 +916,7 @@ async def _baseline_tool_executor(
     # end; we deliberately don't touch ``session.messages`` here to avoid
     # duplicating the assistant row that ``_baseline_conversation_updater``
     # will append at round end.
-    session.announce_inflight_tool_call(tool_name)
+    session.announce_inflight_tool_call(tool_name, tool_args)
 
     try:
         result: StreamToolOutputAvailable = await execute_tool(

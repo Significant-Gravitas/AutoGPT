@@ -7,6 +7,8 @@ from backend.copilot.tools.skills import (
     DEFAULT_SKILLS,
     MAX_DESCRIPTION_CHARS,
     MAX_NAME_CHARS,
+    MAX_TRIGGER_CHARS,
+    MAX_TRIGGERS,
     ParsedSkill,
     _validate_name,
     get_default_skills,
@@ -153,3 +155,12 @@ def test_description_length_cap_enforced_by_validate_path():
     the dataclass), so this test just locks in the constant — bumping
     it requires conscious thought about per-turn token cost."""
     assert MAX_DESCRIPTION_CHARS == 200
+
+
+def test_trigger_caps_are_bounded():
+    """Triggers are inlined into ``<available_skills>`` every turn, so
+    both the count and per-entry length must be bounded.  Lock in the
+    constants — raising either invites a per-turn token-budget
+    regression."""
+    assert MAX_TRIGGERS == 10
+    assert MAX_TRIGGER_CHARS == 64

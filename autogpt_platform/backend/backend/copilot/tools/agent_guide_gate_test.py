@@ -195,3 +195,101 @@ def test_builder_bound_session_bypasses_gate_for_all_tools():
         "fix_agent_graph",
     ]:
         assert require_guide_read(session, tool) is None
+
+
+def test_read_skill_default_guide_in_messages_satisfies_gate():
+    """The skill registry seeds ``agent_building_guide`` as a default
+    skill — calling ``read_skill(name="agent_building_guide")`` must
+    satisfy the gate the same way ``get_agent_building_guide`` does so
+    the legacy and new paths converge on one mechanism."""
+    session = _session_with_messages(
+        [
+            ChatMessage(role="user", content="build it"),
+            ChatMessage(
+                role="assistant",
+                content="loading guide",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "read_skill",
+                            "arguments": '{"name": "agent_building_guide"}',
+                        },
+                    }
+                ],
+            ),
+        ]
+    )
+    assert require_guide_read(session, "create_agent") is None
+
+
+def test_read_skill_wrong_skill_does_not_satisfy_gate():
+    """A ``read_skill`` call for a *different* skill must NOT satisfy
+    the agent-building gate — argument discrimination is the whole
+    point of the helper."""
+    session = _session_with_messages(
+        [
+            ChatMessage(role="user", content="build it"),
+            ChatMessage(
+                role="assistant",
+                content="loading something else",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "read_skill",
+                            "arguments": '{"name": "mcp_tool_guide"}',
+                        },
+                    }
+                ],
+            ),
+        ]
+    )
+    assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)
+
+
+def test_inflight_read_skill_with_args_satisfies_gate():
+    """Same-turn safety for the skill-registry path: a ``read_skill``
+    dispatched earlier in the current turn (in-flight, args captured)
+    must satisfy the gate before the call lands in ``session.messages``.
+    Mirrors the existing ``get_agent_building_guide`` in-flight test."""
+    session = _session_with_messages([ChatMessage(role="user", content="build it")])
+    session.announce_inflight_tool_call("read_skill", {"name": "agent_building_guide"})
+    assert require_guide_read(session, "create_agent") is None
+
+
+def test_inflight_read_skill_with_wrong_args_does_not_satisfy_gate():
+    """In-flight ``read_skill`` for a different skill must NOT satisfy
+    the gate — argument discrimination applies to in-flight calls too."""
+    session = _session_with_messages([ChatMessage(role="user", content="build it")])
+    session.announce_inflight_tool_call("read_skill", {"name": "mcp_tool_guide"})
+    assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)
+
+
+def test_read_skill_malformed_json_args_does_not_crash():
+    """A malformed ``arguments`` string from a hypothetical historical
+    row must not crash the gate scan — fall through to the next
+    candidate instead."""
+    session = _session_with_messages(
+        [
+            ChatMessage(role="user", content="build it"),
+            ChatMessage(
+                role="assistant",
+                content="oops",
+                tool_calls=[
+                    {
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {
+                            "name": "read_skill",
+                            "arguments": "{not-valid-json",
+                        },
+                    }
+                ],
+            ),
+        ]
+    )
+    # No valid read_skill row → gate must still fire.
+    assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)
