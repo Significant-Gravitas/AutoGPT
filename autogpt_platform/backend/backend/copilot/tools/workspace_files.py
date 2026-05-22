@@ -15,7 +15,9 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
@@ -598,9 +600,40 @@ class ReadWorkspaceFileTool(BaseTool):
                 # read it directly instead of failing.  The model sometimes
                 # calls read_workspace_file for these paths by mistake.
                 sdk_cwd = get_sdk_cwd()
+                # Relative SDK-tool-result shorthand must short-circuit
+                # *before* the ``is_allowed_local_path`` fallback: when
+                # ``sdk_cwd`` is set, the shorthand resolves under it and
+                # passes the allow check, but the file doesn't actually
+                # exist at that resolved path → ``_read_local_tool_result``
+                # returns a generic "Path not allowed" and the redirect
+                # branch below never runs. Catch relative shorthands here
+                # so the model sees the helpful redirect on the first try.
+                # Absolute SDK paths still take the local-read path below
+                # (legit fallback for ``read_workspace_file`` with an
+                # absolute SDK tool-results path).
+                if (
+                    path
+                    and not os.path.isabs(path)
+                    and not path.startswith("~")
+                    and looks_like_sdk_tool_result_path(path)
+                ):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
+                    )
                 if path and is_allowed_local_path(path, sdk_cwd):
                     return _read_local_tool_result(
                         path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
+                # Path looks like SDK tool-results but isn't reachable
+                # via the local-read path either (e.g. absolute SDK path
+                # not under sdk_cwd) — redirect to read_tool_result /
+                # @@agptfile rather than returning a generic
+                # "Path not allowed".
+                if path and looks_like_sdk_tool_result_path(path):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
                     )
                 return resolved
             target_file_id, file_info = resolved
