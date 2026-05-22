@@ -173,8 +173,8 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
     mock_self_delete = AsyncMock()
 
     with (
-        patch("backend.copilot.executor.utils.schedule_turn", new=mock_schedule_turn),
-        patch("backend.copilot.model.get_chat_session", new=mock_get_session),
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
         patch(
             f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
             new=mock_self_delete,
@@ -194,8 +194,8 @@ async def test_execute_copilot_turn_dispatches_when_session_exists():
     mock_get_session = AsyncMock(return_value=MagicMock())
 
     with (
-        patch("backend.copilot.executor.utils.schedule_turn", new=mock_schedule_turn),
-        patch("backend.copilot.model.get_chat_session", new=mock_get_session),
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
@@ -218,8 +218,8 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
     mock_reschedule = AsyncMock()
 
     with (
-        patch("backend.copilot.executor.utils.schedule_turn", new=mock_schedule_turn),
-        patch("backend.copilot.model.get_chat_session", new=mock_get_session),
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
         patch(f"{_SCHEDULER_PATH}._reschedule_one_shot_after_cap", new=mock_reschedule),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
@@ -239,8 +239,8 @@ async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
     mock_reschedule = AsyncMock()
 
     with (
-        patch("backend.copilot.executor.utils.schedule_turn", new=mock_schedule_turn),
-        patch("backend.copilot.model.get_chat_session", new=mock_get_session),
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
         patch(f"{_SCHEDULER_PATH}._reschedule_one_shot_after_cap", new=mock_reschedule),
     ):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
@@ -256,8 +256,8 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     mock_get_session = AsyncMock(return_value=MagicMock())
 
     with (
-        patch("backend.copilot.executor.utils.schedule_turn", new=mock_schedule_turn),
-        patch("backend.copilot.model.get_chat_session", new=mock_get_session),
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
     ):
         # Must not raise — scheduler can't propagate exceptions out of jobs.
         await _execute_copilot_turn(**args.model_dump(mode="json"))

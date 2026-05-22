@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -26,6 +26,9 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.model import get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -199,12 +202,6 @@ def execute_copilot_turn(**kwargs):
 async def _execute_copilot_turn(**kwargs):
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
-    # Local imports: copilot.* imports from backend.executor, so a top-level
-    # import here would create a cycle at module-load time.
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-    from backend.copilot.executor.utils import schedule_turn
-    from backend.copilot.model import get_chat_session
-
     try:
         # Verify the session still exists — if the user deleted their
         # conversation between scheduling and now, dispatching would create
@@ -281,10 +278,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         )
         return
     try:
-        from datetime import timedelta as _td
-        from datetime import timezone as _tz
-
-        new_run_at = datetime.now(tz=_tz.utc) + _td(
+        new_run_at = datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
         await get_scheduler_client().add_copilot_turn_schedule(
