@@ -12,6 +12,7 @@ import {
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "next/navigation";
+import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
 
 // Wraps the page in the shared header + a scrollable container.
@@ -26,7 +27,7 @@ function ExecutionShareChrome({
 }) {
   return (
     <div className="flex h-screen w-full flex-col bg-background">
-      <ShareHeader title={title} />
+      <ShareHeader title={title} actions={<ShareActions />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
       </div>

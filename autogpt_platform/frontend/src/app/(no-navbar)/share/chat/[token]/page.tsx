@@ -7,6 +7,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
+import { ShareActions } from "../../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../../components/ShareHeader/ShareHeader";
 import { useSharedChatPage } from "./useSharedChatPage";
 import { SharedChatErrorState } from "./components/SharedChatErrorState";
@@ -83,7 +84,11 @@ export default function SharedChatPage() {
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#f8f8f9]">
-      <ShareHeader title={title} subtitle={`Shared ${sharedOn}`} />
+      <ShareHeader
+        title={title}
+        subtitle={`Shared ${sharedOn}`}
+        actions={<ShareActions />}
+      />
       <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-[#f8f8f9]">
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
           {hasMore && (
