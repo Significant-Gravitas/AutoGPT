@@ -669,12 +669,22 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _make_truncating_wrapper(
-    fn, tool_name: str, input_schema: dict[str, Any] | None = None
+    fn,
+    tool_name: str,
+    input_schema: dict[str, Any] | None = None,
+    required_args: list[str] | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
 
     Extracted from ``create_copilot_mcp_server`` so it can be tested directly.
+
+    ``required_args`` is the tool's original list of required parameter names
+    (before ``_build_input_schema`` stripped ``required`` from the SDK-visible
+    schema). It's used to distinguish a truncated empty call from a legitimate
+    no-arg invocation on a tool whose params are all optional (e.g.
+    ``list_schedules``). When the list is empty/None the empty-args truncation
+    guard is skipped — the model is free to call the tool with no arguments.
 
     WARNING: ``stash_pending_tool_output`` must be called BEFORE
     ``_strip_llm_fields`` so the frontend SSE stream receives the full payload
@@ -683,13 +693,15 @@ def _make_truncating_wrapper(
     """
 
     async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        # Detect empty-args truncation: args is empty AND the schema declares
-        # at least one property (so a non-empty call was expected).
-        # NOTE: _build_input_schema intentionally omits "required" to avoid
-        # SDK-side validation rejecting truncated calls before reaching this
-        # handler.  We detect truncation via "properties" instead.
-        schema_has_params = bool(input_schema and input_schema.get("properties"))
-        if not args and schema_has_params:
+        # Detect empty-args truncation: args is empty AND the original tool
+        # declared at least one *required* property. Tools whose params are all
+        # optional (filters-only tools like list_schedules) legitimately accept
+        # no args, so we skip the guard for them.
+        # NOTE: _build_input_schema intentionally omits "required" from the
+        # SDK-visible schema to avoid SDK-side validation rejecting truncated
+        # calls before reaching this handler. We carry required_args through
+        # the wrapper instead.
+        if not args and required_args:
             logger.warning(
                 "[MCP] %s called with empty args (likely output "
                 "token truncation) — returning guidance",
@@ -794,6 +806,7 @@ def create_copilot_mcp_server(
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
+        required = list(base_tool.parameters.get("required", []))
         # All tools annotated readOnlyHint=True to enable parallel dispatch.
         # The SDK CLI uses this hint to dispatch concurrent tool calls in
         # parallel rather than sequentially.  Side-effect safety is ensured
@@ -803,10 +816,17 @@ def create_copilot_mcp_server(
             base_tool.description,
             schema,
             annotations=_PARALLEL_ANNOTATION,
-        )(_make_truncating_wrapper(handler, tool_name, input_schema=schema))
+        )(
+            _make_truncating_wrapper(
+                handler, tool_name, input_schema=schema, required_args=required
+            )
+        )
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
+    # All E2B file tools have at least one required arg (the path), so empty
+    # args is always truncation — passing a sentinel non-empty required_args
+    # list keeps the truncation guard active for them.
     _MUTATING_E2B_TOOLS = {"write_file", "edit_file"}
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
@@ -822,7 +842,7 @@ def create_copilot_mcp_server(
                 desc,
                 schema,
                 annotations=ann,
-            )(_make_truncating_wrapper(handler, name))
+            )(_make_truncating_wrapper(handler, name, required_args=["path"]))
             sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
@@ -840,7 +860,10 @@ def create_copilot_mcp_server(
                 annotations=_MUTATING_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    write_handler, WRITE_TOOL_NAME, input_schema=WRITE_TOOL_SCHEMA
+                    write_handler,
+                    WRITE_TOOL_NAME,
+                    input_schema=WRITE_TOOL_SCHEMA,
+                    required_args=["file_path", "content"],
                 )
             )
             sdk_tools.append(write_tool)
@@ -854,7 +877,10 @@ def create_copilot_mcp_server(
                 annotations=_PARALLEL_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    read_file_handler, READ_TOOL_NAME, input_schema=READ_TOOL_SCHEMA
+                    read_file_handler,
+                    READ_TOOL_NAME,
+                    input_schema=READ_TOOL_SCHEMA,
+                    required_args=["file_path"],
                 )
             )
             sdk_tools.append(read_file_tool)
@@ -868,7 +894,10 @@ def create_copilot_mcp_server(
                 annotations=_MUTATING_ANNOTATION,
             )(
                 _make_truncating_wrapper(
-                    edit_handler, EDIT_TOOL_NAME, input_schema=EDIT_TOOL_SCHEMA
+                    edit_handler,
+                    EDIT_TOOL_NAME,
+                    input_schema=EDIT_TOOL_SCHEMA,
+                    required_args=["file_path", "old_string", "new_string"],
                 )
             )
             sdk_tools.append(edit_tool)
@@ -880,7 +909,11 @@ def create_copilot_mcp_server(
             _READ_TOOL_DESCRIPTION,
             _READ_TOOL_SCHEMA,
             annotations=_PARALLEL_ANNOTATION,
-        )(_make_truncating_wrapper(_read_file_handler, _READ_TOOL_NAME))
+        )(
+            _make_truncating_wrapper(
+                _read_file_handler, _READ_TOOL_NAME, required_args=["file_path"]
+            )
+        )
         sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(

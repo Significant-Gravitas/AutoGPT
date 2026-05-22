@@ -109,6 +109,7 @@ ToolName = Literal[
     "run_block",
     "run_mcp_tool",
     "run_sub_session",
+    "schedule_followup",
     "search_docs",
     "search_feature_requests",
     "update_folder",
