@@ -175,20 +175,43 @@ async def link_new_execution_to_chat_share(
         if not session or not session.isShared or not session.autoShareExecutions:
             return
 
-        execution = await AgentGraphExecution.prisma().find_first(
-            where={"id": execution_id, "userId": session.userId, "isDeleted": False},
-        )
-        if execution is None:
-            return
-
-        existing = await ChatLinkedShare.prisma().find_first(
-            where={"sessionId": session_id, "executionId": execution_id},
-        )
-        if existing is not None:
-            return
-
         now = datetime.now(UTC)
         async with transaction() as tx:
+            # Re-check share state inside the transaction.  A concurrent
+            # ``disable_chat_session_share`` could have flipped
+            # ``isShared`` between the outer check above and the tx
+            # start; without this guard we'd create a ChatLinkedShare
+            # row pointing at a no-longer-shared session and possibly
+            # flip the execution to ``CHAT_LINK`` shared — orphan
+            # public state.  The pre-fetched ``session`` snapshot is
+            # only used for the early-return fast path; the
+            # transactional read is the authoritative one.
+            session_tx = await PrismaChatSession.prisma(tx).find_unique(
+                where={"id": session_id}
+            )
+            if (
+                not session_tx
+                or not session_tx.isShared
+                or not session_tx.autoShareExecutions
+            ):
+                return
+
+            execution = await AgentGraphExecution.prisma(tx).find_first(
+                where={
+                    "id": execution_id,
+                    "userId": session_tx.userId,
+                    "isDeleted": False,
+                },
+            )
+            if execution is None:
+                return
+
+            existing = await ChatLinkedShare.prisma(tx).find_first(
+                where={"sessionId": session_id, "executionId": execution_id},
+            )
+            if existing is not None:
+                return
+
             await _link_executions_to_share(
                 session_id=session_id,
                 executions=[execution],
@@ -228,14 +251,38 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
 
-    # Walk the linkage table and disable only the chat-derived shares
-    # that aren't still referenced by another chat session's linkage.
-    linked = await ChatLinkedShare.prisma().find_many(
-        where={"sessionId": session_id},
-        include={"Execution": True},
-    )
-
     async with transaction() as tx:
+        # Flip the session to ``isShared=False`` FIRST so any concurrent
+        # ``link_new_execution_to_chat_share`` racing this transaction
+        # sees the new state on its own in-tx re-read and bails before
+        # creating an orphan ``ChatLinkedShare`` row.  The cascade
+        # bookkeeping (read linkages → revoke executions → delete
+        # rows) all runs inside the same transaction so the window for
+        # a phantom row is reduced to the gap between two committed
+        # transactions — which the hook's in-tx re-check covers.
+        await PrismaChatSession.prisma(tx).update(
+            where={"id": session_id},
+            data={
+                "isShared": False,
+                "shareToken": None,
+                "sharedAt": None,
+                # Reset the auto-share preference so the next time the
+                # owner re-shares this chat the modal opens in its
+                # default state (toggle off until they flip it).
+                "autoShareExecutions": False,
+            },
+        )
+
+        # Walk the linkage table and disable only the chat-derived shares
+        # that aren't still referenced by another chat session's linkage.
+        # Reading INSIDE the tx ensures the pre-flip session update is
+        # visible and any concurrent linkage commit lands either fully
+        # before this read (and gets cascaded) or fully after (and is
+        # blocked by the in-tx session re-check).
+        linked = await ChatLinkedShare.prisma(tx).find_many(
+            where={"sessionId": session_id},
+            include={"Execution": True},
+        )
         for row in linked:
             execution = row.Execution
             if execution is None or execution.sharedVia != SharedVia.CHAT_LINK:
@@ -270,19 +317,6 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
 
         await ChatLinkedShare.prisma(tx).delete_many(where={"sessionId": session_id})
         await SharedChatFile.prisma(tx).delete_many(where={"sessionId": session_id})
-
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
-            data={
-                "isShared": False,
-                "shareToken": None,
-                "sharedAt": None,
-                # Reset the auto-share preference so the next time the
-                # owner re-shares this chat the modal opens in its
-                # default state (toggle off until they flip it).
-                "autoShareExecutions": False,
-            },
-        )
 
 
 # ---------- Public read path -------------------------------------------------

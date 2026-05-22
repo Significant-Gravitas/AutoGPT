@@ -631,6 +631,40 @@ class TestLinkNewExecutionToChatShare:
         assert where["isShared"] is False
 
     @pytest.mark.asyncio
+    async def test_in_tx_recheck_aborts_when_concurrent_disable_unshared_session(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """Race defense: outside-tx ``session.find_unique`` saw
+        ``isShared=True``, but by the time we open the cascade transaction
+        a concurrent ``disable_chat_session_share`` has flipped it to
+        ``isShared=False``.  The in-tx re-read must catch that and bail
+        BEFORE we create a ``ChatLinkedShare`` row that would point at a
+        no-longer-shared parent.
+        """
+        shared_outside = _mock_session(auto_share_executions=True)
+        unshared_in_tx = _mock_session(auto_share_executions=True)
+        unshared_in_tx.isShared = False
+
+        # First call (outside the tx) returns the shared snapshot;
+        # second call (inside the tx) returns the unshared snapshot.
+        mock_prisma_calls["session"].return_value.find_unique = AsyncMock(
+            side_effect=[shared_outside, unshared_in_tx]
+        )
+        link_create = AsyncMock()
+        mock_prisma_calls["linked"].return_value.create = link_create
+        update_many = AsyncMock(return_value=0)
+        mock_prisma_calls["execution"].return_value.update_many = update_many
+
+        await link_new_execution_to_chat_share(
+            session_id=SESSION_ID, execution_id=EXECUTION_ID
+        )
+
+        # Critical: no linkage row was created because the in-tx
+        # re-check fired the early-return branch.
+        link_create.assert_not_called()
+        update_many.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_link_flips_unshared_execution_to_chat_link_provenance(
         self, mock_prisma_calls, mock_transaction
     ):
