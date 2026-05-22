@@ -132,6 +132,7 @@ from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
+from ..tools.skills import build_skills_context
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -4306,6 +4307,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session_ctx_content = await build_session_context(
                     session_id=session_id, user_id=user_id
                 )
+            # Build the per-user skill index so the model sees what's
+            # available without an extra round-trip.  Failures here MUST
+            # NOT block the turn — log and continue with an empty index.
+            skills_ctx_content = ""
+            try:
+                skills_ctx_content = await build_skills_context(user_id)
+            except Exception:
+                logger.exception(
+                    "[skills] failed to build skills_ctx — proceeding without it"
+                )
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -4318,6 +4329,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
                 session_ctx=session_ctx_content,
+                skills_ctx=skills_ctx_content,
                 user_id=user_id,
             )
             if prefixed_message is not None:

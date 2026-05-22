@@ -95,6 +95,7 @@ from backend.copilot.token_tracking import (
 )
 from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
 from backend.copilot.tools.session_context import build_session_context
+from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -616,6 +617,106 @@ def _build_cached_system_message(
     return sys_copy
 
 
+_AVAILABLE_SKILLS_BOUNDARY_RE = re.compile(
+    r"^(.*?</available_skills>\n\n)(.*)$", re.DOTALL
+)
+
+
+def _split_user_message_after_skills_block(
+    content: str,
+) -> list[dict[str, Any]] | None:
+    """Split *content* into a cacheable prefix + variable suffix at the
+    ``</available_skills>\\n\\n`` boundary.
+
+    Returns a two-block content array suitable for an Anthropic-style
+    user message — the first block carries the static skill index (any
+    server-injected blocks that precede it land in the same prefix) and
+    is tagged with ``cache_control: ephemeral`` so the prefix bytes are
+    cached PER-USER across that user's turns.  The skill index is stable
+    per-user-per-skill-version, so hits stay high until the user
+    adds/deletes a skill.
+
+    Returns ``None`` when there is no ``</available_skills>`` boundary
+    to split on (no skills configured for this user, or the block was
+    not injected) — callers then fall back to passing the message
+    string through unchanged.
+    """
+    match = _AVAILABLE_SKILLS_BOUNDARY_RE.match(content)
+    if not match:
+        return None
+    prefix, suffix = match.group(1), match.group(2)
+    # Always emit at least one block — when the suffix is empty (rare:
+    # the user typed nothing after the auto-injected skill index) drop
+    # the empty trailing block since Anthropic 400s on zero-length text.
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": prefix,
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    ]
+    if suffix:
+        blocks.append({"type": "text", "text": suffix})
+    return blocks
+
+
+def _apply_skills_cache_breakpoint(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return *messages* with a ``cache_control`` breakpoint placed
+    AFTER the ``<available_skills>`` block in the first user message
+    that carries one.
+
+    Per-user-stable bytes — the skill index + any other server-injected
+    prefix blocks — sit in their own cached prefix.  Only call this when
+    the model accepts ``cache_control`` (``_supports_prompt_cache_markers``).
+
+    When no user message carries a ``</available_skills>`` boundary the
+    list is returned as-is (with identity-preserved entries — the system
+    memoisation in :func:`_baseline_llm_caller` depends on the first
+    entry being the cached dict reference).  Only the one message that
+    needs the breakpoint is replaced with a shallow copy that carries
+    the split content blocks; siblings keep their original identity.
+    """
+    target_index: int | None = None
+    target_blocks: list[dict[str, Any]] | None = None
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str):
+            # Already a content-block list, or a non-string payload —
+            # leave alone so we don't double-mark.
+            continue
+        blocks = _split_user_message_after_skills_block(content)
+        if blocks is None:
+            continue
+        # Only the first user message carrying ``<available_skills>``
+        # is split — that's where ``inject_user_context`` writes it
+        # (first turn).  Later user turns won't have the block.
+        target_index = idx
+        target_blocks = blocks
+        break
+    if target_index is None or target_blocks is None:
+        # Nothing to mark — preserve caller's list identity AND inner
+        # dict references so a memoised system dict at messages[0]
+        # keeps its `is` identity (test_baseline_llm_caller_memoises_
+        # cached_system_message relies on this).  ``cast`` narrows
+        # Mapping → dict for Pyright without runtime conversion;
+        # entries are already dicts at runtime
+        # (built by ``_build_messages_for_llm``).
+        return cast(list[dict[str, Any]], list(messages))
+    # Targeted shallow copy: only the message that needs the breakpoint
+    # is replaced.  Other entries (including a memoised system dict)
+    # keep their original identity — same identity-preservation rule
+    # as the no-target branch above.
+    cached_messages: list[dict[str, Any]] = cast(list[dict[str, Any]], list(messages))
+    new_msg = dict(messages[target_index])
+    new_msg["content"] = target_blocks
+    cached_messages[target_index] = new_msg
+    return cached_messages
+
+
 def _mark_system_message_with_cache_control(
     messages: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -664,6 +765,16 @@ async def _baseline_llm_caller(
                 final_messages = [state.cached_system_message, *messages[1:]]
             else:
                 final_messages = messages
+            # Apply a per-user cache breakpoint AFTER the
+            # ``<available_skills>`` block in the first user message
+            # carrying one.  The skill index is stable per-user across
+            # turns (until the user adds/deletes a skill), so caching
+            # those bytes separately lifts hit rate on a prefix that
+            # the message-level boundary would otherwise re-tokenise
+            # every turn.  Anthropic caches use prefix-match with up to
+            # four explicit breakpoints; the system + tool markers
+            # already use two, leaving room for this one.
+            final_messages = _apply_skills_cache_breakpoint(final_messages)
             extra_headers = (
                 _fresh_anthropic_caching_headers()
                 if _is_anthropic_model(state.model)
@@ -916,7 +1027,7 @@ async def _baseline_tool_executor(
     # end; we deliberately don't touch ``session.messages`` here to avoid
     # duplicating the assistant row that ``_baseline_conversation_updater``
     # will append at round end.
-    session.announce_inflight_tool_call(tool_name)
+    session.announce_inflight_tool_call(tool_name, tool_args)
 
     try:
         result: StreamToolOutputAvailable = await execute_tool(
@@ -1662,6 +1773,15 @@ async def stream_chat_completion_baseline(
             session_ctx_content = await build_session_context(
                 session_id=session_id, user_id=user_id
             )
+        # Skill index — same content/contract as the SDK path.  Failures
+        # here MUST NOT block the turn; log and proceed with empty index.
+        skills_ctx = ""
+        try:
+            skills_ctx = await build_skills_context(user_id)
+        except Exception:
+            logger.exception(
+                "[skills] failed to build skills_ctx — proceeding without it"
+            )
         prefixed = await inject_user_context(
             understanding,
             message or "",
@@ -1669,6 +1789,7 @@ async def stream_chat_completion_baseline(
             session.messages,
             budget_ctx=budget_ctx,
             session_ctx=session_ctx_content,
+            skills_ctx=skills_ctx,
             user_id=user_id,
         )
         if prefixed is not None:
