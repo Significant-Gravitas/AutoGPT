@@ -15,6 +15,7 @@ from backend.copilot.tools.skills import (
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
     MAX_USER_SKILLS,
+    BuiltInSkillError,
     DeleteSkillResponse,
     DeleteSkillTool,
     ListSkillsResponse,
@@ -22,10 +23,12 @@ from backend.copilot.tools.skills import (
     ParsedSkill,
     ReadSkillResponse,
     ReadSkillTool,
+    SkillNotFoundError,
     StoreSkillResponse,
     StoreSkillTool,
     _validate_name,
     build_skills_context,
+    delete_user_skill,
     get_default_skills,
     list_all_skills,
     parse_skill_markdown,
@@ -757,7 +760,7 @@ async def test_delete_skill_lookup_failure_returns_error():
             user_id="user-1", session=_make_session(), name="my_skill"
         )
     assert isinstance(result, ErrorResponse)
-    assert "look up" in result.message
+    assert "Failed to delete" in result.message
 
 
 @pytest.mark.asyncio
@@ -854,3 +857,41 @@ async def test_build_skills_context_authed_includes_user_skills():
         ctx = await build_skills_context(user_id="user-1")
     assert "mine" in ctx
     assert "agent_building_guide" in ctx  # defaults still present
+
+
+# ---------------------------------------------------------------------------
+# delete_user_skill helper (consumed by the REST endpoint as well as the
+# delete_skill tool)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_returns_slug_and_removes_files():
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/my_skill/SKILL.md"] = b"skill"
+    fake_manager.files["/skills/my_skill/refs/a.md"] = b"sibling"
+    with _patch_skills_path(fake_manager):
+        slug = await delete_user_skill("user-1", "  MY_SKILL  ")
+    assert slug == "my_skill"
+    assert "/skills/my_skill/SKILL.md" not in fake_manager.files
+    assert "/skills/my_skill/refs/a.md" not in fake_manager.files
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_rejects_blank():
+    with pytest.raises(ValueError):
+        await delete_user_skill("user-1", "   ")
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_rejects_builtin():
+    with pytest.raises(BuiltInSkillError):
+        await delete_user_skill("user-1", "agent_building_guide")
+
+
+@pytest.mark.asyncio
+async def test_delete_user_skill_raises_not_found_when_missing():
+    fake_manager = _FakeWorkspaceManager()
+    with _patch_skills_path(fake_manager):
+        with pytest.raises(SkillNotFoundError):
+            await delete_user_skill("user-1", "missing")

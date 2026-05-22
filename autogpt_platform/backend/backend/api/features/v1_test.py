@@ -1037,3 +1037,82 @@ async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
 
         # Verify cloud storage methods were NOT called
         mock_handler.store_file.assert_not_called()
+
+
+def test_list_copilot_skills_returns_user_skills(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """GET /skills returns user-distilled skills (defaults are excluded
+    because the UI hides them).
+    """
+    from backend.copilot.tools.skills import ParsedSkill
+
+    mocker.patch(
+        "backend.api.features.v1.list_user_skills",
+        AsyncMock(
+            return_value=[
+                ParsedSkill(
+                    name="oauth_flow",
+                    description="OAuth handshake recipe",
+                    body="...",
+                    triggers=("auth", "oauth"),
+                ),
+                ParsedSkill(
+                    name="zzz_cleanup",
+                    description="Cleanup recipe",
+                    body="...",
+                ),
+            ]
+        ),
+    )
+
+    response = client.get("/skills")
+    assert response.status_code == 200
+    body = response.json()
+    assert [s["name"] for s in body] == ["oauth_flow", "zzz_cleanup"]
+    assert body[0]["triggers"] == ["auth", "oauth"]
+    assert body[1]["triggers"] == []
+
+
+def test_delete_copilot_skill_returns_name_on_success(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DELETE /skills/{name} returns the slug and forwards the user_id."""
+    delete_mock = AsyncMock(return_value="my_skill")
+    mocker.patch("backend.api.features.v1.delete_user_skill", delete_mock)
+
+    response = client.delete("/skills/my_skill")
+    assert response.status_code == 200
+    assert response.json() == {"name": "my_skill"}
+    delete_mock.assert_awaited_once()
+
+
+def test_delete_copilot_skill_rejects_builtin(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Built-in defaults must not be user-deletable via the REST endpoint."""
+    from backend.copilot.tools.skills import BuiltInSkillError
+
+    mocker.patch(
+        "backend.api.features.v1.delete_user_skill",
+        AsyncMock(side_effect=BuiltInSkillError("built-in")),
+    )
+
+    response = client.delete("/skills/agent_building_guide")
+    assert response.status_code == 400
+
+
+def test_delete_copilot_skill_returns_404_when_missing(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Missing skills surface as 404 so the UI can reconcile its list."""
+    from backend.copilot.tools.skills import SkillNotFoundError
+
+    mocker.patch(
+        "backend.api.features.v1.delete_user_skill",
+        AsyncMock(side_effect=SkillNotFoundError("gone")),
+    )
+
+    response = client.delete("/skills/missing")
+    assert response.status_code == 404

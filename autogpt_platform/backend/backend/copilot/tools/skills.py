@@ -233,6 +233,59 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     return skill.body_path.read_text(encoding="utf-8")
 
 
+class SkillNotFoundError(Exception):
+    """Raised by :func:`delete_user_skill` when the skill is missing."""
+
+
+class BuiltInSkillError(Exception):
+    """Raised by :func:`delete_user_skill` for default seeded skills."""
+
+
+async def delete_user_skill(user_id: str, name: str) -> str:
+    """Delete a user-distilled skill folder by slug.
+
+    Returns the normalised slug on success so callers can echo it back.
+    Raises :class:`BuiltInSkillError` for default skills,
+    :class:`SkillNotFoundError` if the skill does not exist, and
+    ``ValueError`` if ``name`` is blank.  Sibling-file cleanup is
+    best-effort — a transient delete failure on a non-SKILL.md file logs
+    but does not abort the overall delete (the SKILL.md removal is what
+    makes the skill disappear from ``<available_skills>``).
+    """
+    slug = name.strip().lower()
+    if not slug:
+        raise ValueError("name is required")
+    if slug in _DEFAULT_SKILLS_BY_NAME:
+        raise BuiltInSkillError(f"'{slug}' is a built-in skill and cannot be deleted")
+
+    manager = await _get_user_skill_manager(user_id)
+    info = await manager.get_file_info_by_path(_skill_md_path(slug))
+    if info is None:
+        raise SkillNotFoundError(f"Skill '{slug}' not found")
+
+    try:
+        siblings = await manager.list_files(
+            path=f"{SKILL_FOLDER}/{slug}/",
+            limit=50,
+            include_all_sessions=True,
+        )
+    except Exception:
+        siblings = []
+    await manager.delete_file(info.id)
+    for sibling in siblings:
+        if sibling.id == info.id:
+            continue
+        try:
+            await manager.delete_file(sibling.id)
+        except Exception:
+            logger.warning(
+                "[skills] failed to delete sibling %s",
+                sibling.path,
+                exc_info=True,
+            )
+    return slug
+
+
 async def list_user_skills(user_id: str) -> list[ParsedSkill]:
     """Return all skills the user has stored in workspace.
 
@@ -760,58 +813,23 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
-        name = name.strip().lower()
-        if not name:
-            return ErrorResponse(message="name is required", session_id=session_id)
-        if name in _DEFAULT_SKILLS_BY_NAME:
-            return ErrorResponse(
-                message=f"'{name}' is a built-in skill and cannot be deleted",
-                session_id=session_id,
-            )
-
-        manager = await _get_user_skill_manager(user_id)
         try:
-            info = await manager.get_file_info_by_path(_skill_md_path(name))
-        except Exception as exc:
-            logger.exception("[skills] lookup failed for %s", name)
-            return ErrorResponse(
-                message=f"Failed to look up skill: {exc}", session_id=session_id
-            )
-        if info is None:
-            return ErrorResponse(
-                message=f"Skill '{name}' not found", session_id=session_id
-            )
-
-        # Best-effort delete of sibling files so the folder is fully
-        # cleaned up; one failure does not block the overall delete.
-        try:
-            siblings = await manager.list_files(
-                path=f"{SKILL_FOLDER}/{name}/",
-                limit=50,
-                include_all_sessions=True,
-            )
-        except Exception:
-            siblings = []
-        try:
-            await manager.delete_file(info.id)
+            slug = await delete_user_skill(user_id, name)
+        except ValueError as exc:
+            return ErrorResponse(message=str(exc), session_id=session_id)
+        except BuiltInSkillError as exc:
+            return ErrorResponse(message=str(exc), session_id=session_id)
+        except SkillNotFoundError as exc:
+            return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] delete failed for %s", name)
             return ErrorResponse(
                 message=f"Failed to delete skill: {exc}", session_id=session_id
             )
-        for sibling in siblings:
-            if sibling.id == info.id:
-                continue
-            try:
-                await manager.delete_file(sibling.id)
-            except Exception:
-                logger.warning(
-                    "[skills] failed to delete sibling %s", sibling.path, exc_info=True
-                )
 
         return DeleteSkillResponse(
-            name=name,
-            message=f"Skill '{name}' deleted.",
+            name=slug,
+            message=f"Skill '{slug}' deleted.",
             session_id=session_id,
         )
 
