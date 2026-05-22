@@ -17,6 +17,12 @@ import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
 // branded shell so a viewer never sees a raw card without the logo
 // + CTAs.  Matches ``ExecutionShareChrome`` on the execution share
 // page so the two routes feel like the same surface.
+//
+// Uses ``bg-background`` (theme-aware) on the chrome wrappers so dark
+// mode renders correctly.  Inner success-state wrappers still use the
+// owner-side copilot's hardcoded ``#f8f8f9`` so the in-chat surface
+// matches the owner experience pixel-for-pixel — see the
+// ``CopilotPage`` / ``ChatContainer`` styling.
 function SharedChatChrome({
   title,
   subtitle,
@@ -27,13 +33,13 @@ function SharedChatChrome({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-[#f8f8f9]">
+    <div className="flex h-screen w-full flex-col bg-background">
       <ShareHeader
         title={title}
         subtitle={subtitle}
         actions={<ShareActions />}
       />
-      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-[#f8f8f9]">
+      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-background">
         {children}
       </div>
     </div>
