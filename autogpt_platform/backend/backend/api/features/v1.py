@@ -2336,12 +2336,15 @@ async def list_copilot_turn_schedules(
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=user_id, kind="copilot_turn"
     )
-    # The ``kind="copilot_turn"`` filter is the source of truth — every row in
-    # the result IS a ``CopilotTurnJobInfo``. The cast narrows the static type
-    # from the polymorphic ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]``
-    # without an at-runtime second filter that would silently drop rows if the
-    # discriminator ever drifted.
-    return cast(list[scheduler.CopilotTurnJobInfo], schedules)
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(
