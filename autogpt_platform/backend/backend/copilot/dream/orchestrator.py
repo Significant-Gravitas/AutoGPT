@@ -69,8 +69,13 @@ CONSOLIDATE_TEMP = 0.2
 RECOMBINE_TEMP = 0.9
 SANITIZE_TEMP = 0.0
 CONSOLIDATE_MAX_TOKENS = 4096
-RECOMBINE_MAX_TOKENS = 8192
-SANITIZE_MAX_TOKENS = 8192
+# Recombine + sanitize emit list-heavy JSON (up to 30 writes + 20
+# proposals + 10 demotions, each with uuid arrays). At 8192 the
+# response truncates mid-array and the JSON-balanced-brace extractor
+# returns None, failing the whole phase. 16384 covers worst-case +
+# headroom; cost impact is bounded by the per-phase caps anyway.
+RECOMBINE_MAX_TOKENS = 16384
+SANITIZE_MAX_TOKENS = 16384
 
 
 def _resolve_lock_ttl(transport_is_local: bool) -> int:
