@@ -1,14 +1,21 @@
 """Tests for BlockStatsWithSamples and BlockErrorStats user API key error filtering."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from backend.data.execution import BlockErrorStats
-from backend.monitoring.block_error_monitor import BlockMonitorConfig, BlockStatsWithSamples
+from backend.monitoring.block_error_monitor import (
+    BlockErrorMonitor,
+    BlockStatsWithSamples,
+)
 
 
 class TestBlockErrorStats:
     def test_error_rate_all_failed(self):
-        stats = BlockErrorStats(block_id="b1", total_executions=10, failed_executions=10)
+        stats = BlockErrorStats(
+            block_id="b1", total_executions=10, failed_executions=10
+        )
         assert stats.error_rate == 100.0
 
     def test_error_rate_none_failed(self):
@@ -103,11 +110,15 @@ class TestBlockStatsWithSamples:
 
 class TestGenerateCriticalAlerts:
     def _make_monitor(self, threshold: float = 0.5):
-        config = BlockMonitorConfig(block_error_rate_threshold=threshold)
-        from backend.monitoring.block_error_monitor import BlockErrorMonitor
-
-        monitor = BlockErrorMonitor.__new__(BlockErrorMonitor)
-        monitor.config = config
+        mock_config = MagicMock()
+        mock_config.block_error_rate_threshold = threshold
+        mock_config.block_error_include_top_blocks = 5
+        with patch("backend.monitoring.block_error_monitor.config", mock_config):
+            with patch(
+                "backend.monitoring.block_error_monitor.get_notification_manager_client"
+            ):
+                monitor = BlockErrorMonitor()
+        monitor.config = mock_config
         return monitor
 
     def test_no_alert_when_platform_error_rate_below_threshold(self):
