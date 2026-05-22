@@ -21,6 +21,7 @@ and user-distilled knowledge.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
@@ -618,12 +619,14 @@ class StoreSkillTool(BaseTool):
 
         # Serialise the count-then-write critical section per-user so two
         # concurrent ``store_skill`` calls cannot both pass the MAX
-        # check.  Lock failure (Redis unavailable, already held) falls
-        # back to a best-effort write without the cap — better than
-        # blocking the user's distillation entirely, and the cap is a
-        # soft per-turn budget cue, not a hard quota.  Wrap acquisition
-        # in its own try/except so any transient Redis issue stays
-        # contained — the rest of the path must still run unlocked.
+        # check.  ``AsyncClusterLock.try_acquire`` is non-blocking, so
+        # poll for up to ~1s before falling back to the strict-cap
+        # unlocked path below — without the wait, two near-simultaneous
+        # calls at MAX-1 both proceed unlocked, both see N<MAX, and
+        # both write (cap overruns by 1).  Lock failure (Redis
+        # unavailable) still falls back to the unlocked write but the
+        # cap-enforcement branch below refuses any at-cap write in
+        # that case.
         lock: AsyncClusterLock | None = None
         lock_held = False
         try:
@@ -633,7 +636,11 @@ class StoreSkillTool(BaseTool):
                 owner_id=uuid.uuid4().hex,
                 timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
             )
-            lock_held = (await lock.try_acquire()) == lock.owner_id
+            for _ in range(10):
+                if (await lock.try_acquire()) == lock.owner_id:
+                    lock_held = True
+                    break
+                await asyncio.sleep(0.1)
         except Exception:
             logger.warning(
                 "[skills] failed to acquire write lock for user %s — "
