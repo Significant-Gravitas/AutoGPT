@@ -299,7 +299,7 @@ class ChatSession(ChatSessionInfo):
         )
 
     def announce_inflight_tool_call(
-        self, tool_name: str, arguments: dict | None = None
+        self, tool_name: str, arguments: Any = None
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
@@ -320,13 +320,16 @@ class ChatSession(ChatSessionInfo):
         this path much more than Sonnet does).  The buffer is cleared by
         :meth:`clear_inflight_tool_calls` at turn end.
 
-        *arguments* — optional dict snapshot of the call args.  Guards
-        that discriminate by argument (e.g. ``read_skill(name=...)``)
-        look these up via :meth:`get_inflight_tool_call_args`; gates
-        that only care about tool names ignore the dict.
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
         """
         self._inflight_tool_calls.add(tool_name)
-        if arguments is not None:
+        if isinstance(arguments, dict):
             self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
 
     def clear_inflight_tool_calls(self) -> None:

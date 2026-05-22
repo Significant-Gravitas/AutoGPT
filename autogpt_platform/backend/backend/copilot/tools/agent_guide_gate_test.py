@@ -293,3 +293,29 @@ def test_read_skill_malformed_json_args_does_not_crash():
     )
     # No valid read_skill row → gate must still fire.
     assert isinstance(require_guide_read(session, "create_agent"), ErrorResponse)
+
+
+def test_announce_inflight_drops_non_dict_arguments():
+    """JSON-shaped tool arguments can in principle be a list or scalar
+    (``orjson.loads("[1,2]")`` → ``[1, 2]``).  Argument-discriminating
+    guards do ``.get("name")`` on the captured args, which would crash
+    on a list.  Drop non-dict shapes silently so guards stay safe."""
+    session = _session_with_messages([])
+    session.announce_inflight_tool_call("read_skill", [1, 2])
+    session.announce_inflight_tool_call("read_skill", "not-a-dict")
+    session.announce_inflight_tool_call("read_skill", 42)
+    # None of those landed in the args buffer, so a gate looking for
+    # read_skill(name="agent_building_guide") still sees nothing.
+    assert session.get_inflight_tool_call_args("read_skill") == []
+    # The name buffer still got hit (tools still ran), so a name-only
+    # gate (``has_tool_been_called``) reports True.
+    assert session.has_tool_been_called("read_skill") is True
+
+
+def test_announce_inflight_captures_dict_arguments():
+    """The intentional path: a proper dict arg is captured so
+    argument-discriminating guards can find it."""
+    session = _session_with_messages([])
+    session.announce_inflight_tool_call("read_skill", {"name": "mcp_tool_guide"})
+    args = session.get_inflight_tool_call_args("read_skill")
+    assert args == [{"name": "mcp_tool_guide"}]
