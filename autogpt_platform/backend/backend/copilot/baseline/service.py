@@ -662,16 +662,24 @@ def _split_user_message_after_skills_block(
 def _apply_skills_cache_breakpoint(
     messages: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with a ``cache_control`` breakpoint
-    placed AFTER the ``<available_skills>`` block in the first user
-    message that carries one.
+    """Return *messages* with a ``cache_control`` breakpoint placed
+    AFTER the ``<available_skills>`` block in the first user message
+    that carries one.
 
     Per-user-stable bytes — the skill index + any other server-injected
     prefix blocks — sit in their own cached prefix.  Only call this when
     the model accepts ``cache_control`` (``_supports_prompt_cache_markers``).
+
+    When no user message carries a ``</available_skills>`` boundary the
+    list is returned as-is (with identity-preserved entries — the system
+    memoisation in :func:`_baseline_llm_caller` depends on the first
+    entry being the cached dict reference).  Only the one message that
+    needs the breakpoint is replaced with a shallow copy that carries
+    the split content blocks; siblings keep their original identity.
     """
-    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
-    for msg in cached_messages:
+    target_index: int | None = None
+    target_blocks: list[dict[str, Any]] | None = None
+    for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
             continue
         content = msg.get("content")
@@ -682,11 +690,23 @@ def _apply_skills_cache_breakpoint(
         blocks = _split_user_message_after_skills_block(content)
         if blocks is None:
             continue
-        msg["content"] = blocks
         # Only the first user message carrying ``<available_skills>``
         # is split — that's where ``inject_user_context`` writes it
         # (first turn).  Later user turns won't have the block.
+        target_index = idx
+        target_blocks = blocks
         break
+    if target_index is None or target_blocks is None:
+        # Nothing to mark — preserve caller's list identity so a
+        # memoised system dict at messages[0] keeps its reference.
+        return list(messages)
+    # Targeted shallow copy: only the message that needs the breakpoint
+    # is replaced.  Other entries (including a memoised system dict)
+    # keep their original identity.
+    cached_messages: list[dict[str, Any]] = list(messages)
+    new_msg = dict(messages[target_index])
+    new_msg["content"] = target_blocks
+    cached_messages[target_index] = new_msg
     return cached_messages
 
 
