@@ -132,7 +132,11 @@ async def test_tentative_edge_with_hits_is_ratified_to_active(
         if "ratified_at" in call.args[0]
     ]
     assert len(promote_calls) == 1
-    assert promote_calls[0].kwargs == {"uuid": "edge-hot"}
+    # ``now`` is bound from Python because FalkorDB doesn't implement
+    # Cypher's no-arg ``datetime()``; assert it's present without
+    # pinning the actual timestamp value.
+    assert promote_calls[0].kwargs["uuid"] == "edge-hot"
+    assert "now" in promote_calls[0].kwargs
     # And demotion was NOT called
     stub_mark_superseded.assert_not_awaited()
 

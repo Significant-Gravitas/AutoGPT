@@ -5,12 +5,26 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
 from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import ChatSession
+
+
+def _now_iso() -> str:
+    """Current UTC time as an ISO-8601 string for Cypher parameter binding.
+
+    FalkorDB does not implement Cypher's no-arg ``datetime()`` function
+    (the error is ``Unknown function 'datetime'``), so timestamp values
+    have to be generated in Python and passed as a parameter.  ISO
+    strings work for the comparison + ordering we use (lexical sort on
+    ISO-8601 matches chronological sort) and round-trip cleanly through
+    ``toString(...)`` reads we already do.
+    """
+    return datetime.now(timezone.utc).isoformat()
 
 from .base import BaseTool
 from .models import (
@@ -279,10 +293,11 @@ async def _retract_edges(
             records, _, _ = await driver.execute_query(
                 """
                 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                SET e.expired_at = datetime()
+                SET e.expired_at = $now
                 RETURN e.uuid AS uuid
                 """,
                 uuid=uuid,
+                now=_now_iso(),
             )
             if records:
                 deleted.append(uuid)
@@ -319,11 +334,12 @@ async def _soft_delete_edges(
             records, _, _ = await driver.execute_query(
                 """
                 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                SET e.invalid_at = datetime(),
-                    e.expired_at = datetime()
+                SET e.invalid_at = $now,
+                    e.expired_at = $now
                 RETURN e.uuid AS uuid
                 """,
                 uuid=uuid,
+                now=_now_iso(),
             )
             if records:
                 deleted.append(uuid)
@@ -365,7 +381,7 @@ async def mark_edges_superseded(
             records, _, _ = await driver.execute_query(
                 """
                 MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
-                SET e.expired_at = datetime(),
+                SET e.expired_at = $now,
                     e.status = $new_status,
                     e.expiration_reason = $reason
                 RETURN e.uuid AS uuid
@@ -373,6 +389,7 @@ async def mark_edges_superseded(
                 uuid=uuid,
                 new_status=new_status,
                 reason=reason,
+                now=_now_iso(),
             )
             if records:
                 deleted.append(uuid)
@@ -408,7 +425,7 @@ async def invalidate_entity_direct_neighbors(
     query = """
     MATCH (e:Entity {uuid: $entity_uuid, group_id: $group_id})
     MATCH (e)-[r:RELATES_TO]-(other)
-    SET r.expired_at = datetime(),
+    SET r.expired_at = $now,
         r.status = 'superseded',
         r.expiration_reason = $reason
     RETURN r.uuid AS edge_uuid
@@ -419,6 +436,7 @@ async def invalidate_entity_direct_neighbors(
             entity_uuid=entity_uuid,
             group_id=group_id,
             reason=reason,
+            now=_now_iso(),
         )
         return [r["edge_uuid"] for r in records]
     except Exception:

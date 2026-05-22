@@ -236,13 +236,18 @@ async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     """Flip a tentative edge to ``status='active'`` with a ratified_at stamp.
 
     Returns True iff Cypher actually touched a row. Sub-10ms per spec §5.
+
+    The ratified_at timestamp is generated in Python because FalkorDB
+    does not implement Cypher's no-arg ``datetime()`` function.
     """
     query = """
     MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
-    SET e.status = 'active', e.ratified_at = datetime()
+    SET e.status = 'active', e.ratified_at = $now
     RETURN e.uuid AS uuid
     """
-    result = await driver.execute_query(query, uuid=edge_uuid)
+    result = await driver.execute_query(
+        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
+    )
     records = result[0] if result else []
     return bool(records)
 
@@ -344,10 +349,12 @@ async def _promote_if_tentative(
     query = """
     MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
     WHERE e.status = 'tentative' AND e.expired_at IS NULL
-    SET e.status = 'active', e.ratified_at = datetime()
+    SET e.status = 'active', e.ratified_at = $now
     RETURN e.uuid AS uuid
     """
-    result = await driver.execute_query(query, uuid=edge_uuid)
+    result = await driver.execute_query(
+        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
+    )
     records = result[0] if result else []
     return bool(records)
 

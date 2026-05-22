@@ -96,7 +96,10 @@ class TestRetractEdgesSnodgrass:
         await _retract_edges(driver, ["u1"], "test-user")
 
         query = driver.execute_query.call_args.args[0]
-        assert "e.expired_at = datetime()" in query
+        assert "e.expired_at = $now" in query
+        # ``now`` parameter is bound from Python (FalkorDB doesn't
+        # implement Cypher's no-arg ``datetime()``).
+        assert "now" in driver.execute_query.call_args.kwargs
         # Critical contract: must NOT touch invalid_at
         assert "invalid_at" not in query
 
@@ -122,8 +125,11 @@ class TestSoftDeleteContradictionPath:
         await _soft_delete_edges(driver, ["u1"], "test-user")
 
         query = driver.execute_query.call_args.args[0]
-        assert "e.invalid_at = datetime()" in query
-        assert "e.expired_at = datetime()" in query
+        assert "e.invalid_at = $now" in query
+        assert "e.expired_at = $now" in query
+        # ``now`` parameter is bound from Python (FalkorDB doesn't
+        # implement Cypher's no-arg ``datetime()``).
+        assert "now" in driver.execute_query.call_args.kwargs
 
 
 class TestMarkEdgesSuperseded:
@@ -148,7 +154,10 @@ class TestMarkEdgesSuperseded:
         query = driver.execute_query.call_args.args[0]
         assert "e.status = $new_status" in query
         assert "e.expiration_reason = $reason" in query
-        assert "e.expired_at = datetime()" in query
+        assert "e.expired_at = $now" in query
+        # ``now`` parameter is bound from Python (FalkorDB doesn't
+        # implement Cypher's no-arg ``datetime()``).
+        assert "now" in driver.execute_query.call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_default_status_is_superseded(self) -> None:
