@@ -27,7 +27,8 @@ export function AuthMarketingPanel({
       backgroundColor="transparent"
       particleCount={350}
       baseHue={260}
-      rangeSpeed={1.2}
+      baseSpeed={0.08}
+      rangeSpeed={0.22}
       baseRadius={1}
       rangeRadius={2}
     >
