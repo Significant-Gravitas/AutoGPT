@@ -14,9 +14,9 @@ export function EmptyFollowups() {
         Nothing scheduled
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
-        Ask your copilot to schedule a follow-up, or add a recurring schedule
-        to an agent from the builder — both will show up here so you can
-        review or cancel them.
+        Ask your copilot to schedule a follow-up, or add a recurring schedule to
+        an agent from the builder — both will show up here so you can review or
+        cancel them.
       </Text>
     </div>
   );

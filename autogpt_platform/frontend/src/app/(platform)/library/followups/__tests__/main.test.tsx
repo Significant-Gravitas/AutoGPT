@@ -1,9 +1,11 @@
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getDeleteV1DeleteExecutionScheduleMockHandler422,
+  getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -46,6 +48,32 @@ function makeFollowup(
   };
 }
 
+function makeGraphSchedule(
+  overrides: Partial<GraphExecutionJobInfo>,
+): GraphExecutionJobInfo {
+  return {
+    id: "graph-sched-1",
+    name: "Daily summary",
+    user_id: "user-1",
+    graph_id: "graph-abc",
+    graph_version: 1,
+    agent_name: "Daily summary agent",
+    cron: "0 9 * * *",
+    input_data: {},
+    next_run_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    kind: "graph",
+    timezone: "UTC",
+    ...overrides,
+  };
+}
+
+// Default zero-graph-schedules handler so tests that only care about
+// followups don't have to mock the graph-schedules endpoint too.  The
+// page now fetches BOTH on mount (unified Scheduled view).
+function defaultGraphSchedulesHandler() {
+  return getGetV1ListExecutionSchedulesForAUserMockHandler([]);
+}
+
 describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
@@ -56,7 +84,10 @@ describe("FollowupsPage", () => {
   });
 
   test("renders empty state when no follow-ups exist", async () => {
-    server.use(getListCopilotFollowupSchedulesMockHandler([]));
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+    );
 
     render(<FollowupsPage />);
 
@@ -74,6 +105,7 @@ describe("FollowupsPage", () => {
           session_id: "session-zzzzzzzzzz",
         }),
       ]),
+      defaultGraphSchedulesHandler(),
     );
 
     render(<FollowupsPage />);
@@ -91,6 +123,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([
         makeFollowup({ id: "f1", session_id: "session-abcdef0123" }),
       ]),
+      defaultGraphSchedulesHandler(),
     );
 
     render(<FollowupsPage />);
@@ -107,6 +140,7 @@ describe("FollowupsPage", () => {
       getListCopilotFollowupSchedulesMockHandler([
         makeFollowup({ id: "f1", session_id: null as unknown as string }),
       ]),
+      defaultGraphSchedulesHandler(),
     );
 
     render(<FollowupsPage />);
@@ -124,6 +158,7 @@ describe("FollowupsPage", () => {
   test("Cancel button opens the confirmation dialog and calls the delete API", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([makeFollowup({ id: "f1" })]),
+      defaultGraphSchedulesHandler(),
       getDeleteV1DeleteExecutionScheduleMockHandler(),
     );
 
@@ -142,9 +177,33 @@ describe("FollowupsPage", () => {
     });
   });
 
+  test("unified page renders graph schedule rows alongside copilot followups", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "First follow-up message" }),
+      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g1", agent_name: "Nightly cleanup" }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    // Followup row still renders.
+    expect(await screen.findByText("First follow-up message")).toBeDefined();
+    // Graph-kind row renders with its agent name + the "Agent run" badge.
+    expect(screen.getByText("Nightly cleanup")).toBeDefined();
+    const graphRow = screen.getByTestId("schedule-row");
+    expect(graphRow.getAttribute("data-schedule-kind")).toBe("graph");
+    expect(within(graphRow).getByTestId("schedule-kind-badge").textContent).toBe(
+      "Agent run",
+    );
+  });
+
   test("shows a destructive toast when the delete API fails", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([makeFollowup({ id: "f1" })]),
+      defaultGraphSchedulesHandler(),
       getDeleteV1DeleteExecutionScheduleMockHandler422(),
     );
 

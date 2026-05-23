@@ -141,8 +141,7 @@ export function GraphScheduleListItem({ schedule }: Props) {
           <div className="flex flex-col gap-4">
             <Text variant="large">
               Delete this scheduled agent run? The agent will stop running on
-              this schedule and you can recreate it from the builder if
-              needed.
+              this schedule and you can recreate it from the builder if needed.
             </Text>
             <Dialog.Footer>
               <Button
