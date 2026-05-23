@@ -38,7 +38,14 @@ export function useSharedChatPage(token: string) {
   );
 
   const isLoading = sessionQuery.isLoading || messagesQuery.isLoading;
-  const isError = sessionQuery.isError || messagesQuery.isError;
+  // Distinguish "session not found / revoked" from "messages 5xx'd
+  // mid-deploy".  The former is permanent (the share link is dead);
+  // the latter is transient and should render the chrome + an
+  // in-place retry affordance rather than the not-found card.  Bucket
+  // both errors but expose them separately so the page can switch on
+  // intent.
+  const sessionError = sessionQuery.isError;
+  const messagesError = messagesQuery.isError;
   const rawError = sessionQuery.error || messagesQuery.error;
   const error = rawError instanceof Error ? rawError.message : undefined;
 
@@ -80,7 +87,8 @@ export function useSharedChatPage(token: string) {
     turnStats: ui.turnStats,
     hasMore: messagesQuery.data?.has_more ?? false,
     isLoading,
-    isError,
+    sessionError,
+    messagesError,
     error,
     retry: () => {
       sessionQuery.refetch();

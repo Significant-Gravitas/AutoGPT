@@ -24,7 +24,18 @@ All three forms are handled by a single recursive walker.
 import re
 from typing import Any
 
-_WORKSPACE_PREFIX = "workspace://"
+# Match ``workspace://<id>`` anywhere in a string.  Assistant messages
+# embed these URIs inside markdown (``![chart](workspace://uuid#mime)``)
+# so a whole-string ``startswith`` check used to miss them — the file
+# would render in the chat but 404 in the public viewer because no
+# allowlist row existed.  ``re.finditer`` over the full content catches
+# both the standalone-URI shape AND the embedded-in-markdown shape.
+#
+# Char class is lowercase alphanumeric + hyphen (the UUID alphabet).
+# Stops at ``/`` so ``workspace:///path/to/file`` cannot escape into a
+# path reference, and stops at ``#`` so the optional MIME hint fragment
+# is excluded from the captured ID.
+_WORKSPACE_URI_RE = re.compile(r"workspace://([a-z0-9-]+)")
 
 # Match ``file_id`` followed by either ``=`` (Attached-files block) or
 # ``":"`` / ``": "`` (JSON serialised tool output).  Anchored on the
@@ -52,17 +63,13 @@ def extract_workspace_file_ids(value: Any) -> set[str]:
 
 def _scan(value: Any, sink: set[str]) -> None:
     if isinstance(value, str):
-        if value.startswith(_WORKSPACE_PREFIX):
-            raw = value.removeprefix(_WORKSPACE_PREFIX)
-            file_ref = raw.split("#", 1)[0] if "#" in raw else raw
-            # Reject leading slashes — those would denote a path under
-            # the workspace, not a file ID, and our allowlist keys on
-            # file ID only.
-            if file_ref and not file_ref.startswith("/"):
-                sink.add(file_ref)
-        # Also pick up ``file_id=<uuid>`` tokens from [Attached files]
-        # blocks — these show up inside arbitrary message content, not
-        # as standalone leaves, so the substring scan is required.
+        # ``workspace://<uuid>`` anywhere in the string — handles both
+        # standalone leaves (``["workspace://abc"]``) and URIs embedded
+        # in markdown (``![chart](workspace://abc#image/png)``).
+        for match in _WORKSPACE_URI_RE.finditer(value):
+            sink.add(match.group(1))
+        # ``file_id=<uuid>`` tokens from [Attached files] blocks AND
+        # ``"file_id":"<uuid>"`` tokens from JSON-serialised tool output.
         for match in _FILE_ID_RE.finditer(value):
             sink.add(match.group(1))
         return

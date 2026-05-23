@@ -114,6 +114,14 @@ async def enable_chat_session_share(
     now = datetime.now(UTC)
 
     async with transaction() as tx:
+        # Cascade-revoke previously-linked CHAT_LINK executions BEFORE
+        # wiping the join table.  Otherwise a re-share with a different
+        # ``autoShareExecutions`` value (or just a re-share to mint a
+        # fresh token) leaves the old per-execution tokens publicly
+        # active with no linkage row to reach them via — orphan public
+        # shares.  Same guard ``disable_chat_session_share`` runs.
+        await _cascade_revoke_chat_linked_executions(session_id=session_id, tx=tx)
+
         # Clear stale allowlist + linkage rows before re-keying the token,
         # so an old token + new linkage never coexist.
         await SharedChatFile.prisma(tx).delete_many(where={"sessionId": session_id})
@@ -279,41 +287,7 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
         # visible and any concurrent linkage commit lands either fully
         # before this read (and gets cascaded) or fully after (and is
         # blocked by the in-tx session re-check).
-        linked = await ChatLinkedShare.prisma(tx).find_many(
-            where={"sessionId": session_id},
-            include={"Execution": True},
-        )
-        for row in linked:
-            execution = row.Execution
-            if execution is None or execution.sharedVia != SharedVia.CHAT_LINK:
-                continue
-            other_link = await ChatLinkedShare.prisma(tx).find_first(
-                where={
-                    "executionId": execution.id,
-                    "NOT": {"sessionId": session_id},
-                },
-            )
-            if other_link is not None:
-                # Another chat share still depends on this execution —
-                # leave it shared.
-                continue
-            # Drop the execution's file allowlist before clearing the share
-            # token.  Orphan ``SharedExecutionFile`` rows would still
-            # authorise downloads if anyone bookmarked the pre-revoke URL,
-            # mirroring the cleanup ``disable_execution_sharing`` does on
-            # the user-initiated path.
-            await SharedExecutionFile.prisma(tx).delete_many(
-                where={"executionId": execution.id}
-            )
-            await AgentGraphExecution.prisma(tx).update(
-                where={"id": execution.id},
-                data={
-                    "isShared": False,
-                    "shareToken": None,
-                    "sharedAt": None,
-                    "sharedVia": None,
-                },
-            )
+        await _cascade_revoke_chat_linked_executions(session_id=session_id, tx=tx)
 
         await ChatLinkedShare.prisma(tx).delete_many(where={"sessionId": session_id})
         await SharedChatFile.prisma(tx).delete_many(where={"sessionId": session_id})
@@ -473,6 +447,57 @@ async def _build_shared_chat_files(
         except ForeignKeyViolationError:
             logger.debug("SharedChatFile FK violation for file %s", file.id)
     return created
+
+
+async def _cascade_revoke_chat_linked_executions(
+    *,
+    session_id: str,
+    tx: Any | None = None,
+) -> None:
+    """Revoke each CHAT_LINK execution previously linked to *session_id*
+    that isn't still referenced by another chat session's linkage.
+
+    Used by both ``disable_chat_session_share`` and the
+    ``enable_chat_session_share`` re-share path — the latter calls this
+    BEFORE wiping the join table so the previous generation of linkages
+    doesn't strand orphan public per-execution shares.
+
+    User-initiated execution shares (``sharedVia=USER``) are left
+    untouched.  An execution still referenced by another chat session's
+    linkage is left shared so revoking chat A doesn't break chat B's
+    drill-in.
+    """
+    linked = await ChatLinkedShare.prisma(tx).find_many(
+        where={"sessionId": session_id},
+        include={"Execution": True},
+    )
+    for row in linked:
+        execution = row.Execution
+        if execution is None or execution.sharedVia != SharedVia.CHAT_LINK:
+            continue
+        other_link = await ChatLinkedShare.prisma(tx).find_first(
+            where={
+                "executionId": execution.id,
+                "NOT": {"sessionId": session_id},
+            },
+        )
+        if other_link is not None:
+            continue
+        # Drop the execution's file allowlist before clearing the share
+        # token.  Orphan ``SharedExecutionFile`` rows would still
+        # authorise downloads if anyone bookmarked the pre-revoke URL.
+        await SharedExecutionFile.prisma(tx).delete_many(
+            where={"executionId": execution.id}
+        )
+        await AgentGraphExecution.prisma(tx).update(
+            where={"id": execution.id},
+            data={
+                "isShared": False,
+                "shareToken": None,
+                "sharedAt": None,
+                "sharedVia": None,
+            },
+        )
 
 
 async def _link_executions_to_share(

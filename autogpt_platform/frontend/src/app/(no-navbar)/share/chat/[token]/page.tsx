@@ -77,7 +77,8 @@ export default function SharedChatPage() {
     turnStats,
     hasMore,
     isLoading,
-    isError,
+    sessionError,
+    messagesError,
     error,
     retry,
   } = useSharedChatPage(token);
@@ -104,7 +105,16 @@ export default function SharedChatPage() {
     );
   }
 
-  if (isError || !session) {
+  // ``sessionError`` (or a missing session payload) means the share
+  // link is dead — render the not-found card.  ``messagesError`` is
+  // transient (mid-deploy 5xx, network blip after retry exhaustion)
+  // and should NOT advertise the link as revoked.  We still surface
+  // the same error card with a Try-again button, but only when the
+  // session itself didn't load — otherwise we let the page fall
+  // through to render the chrome with an empty message list (an
+  // in-place retry would be ideal future work but the current
+  // ErrorState card carries the right affordance).
+  if (sessionError || !session) {
     return (
       <SharedChatChrome>
         <SharedChatErrorState reason={error} onRetry={retry} />
@@ -126,6 +136,21 @@ export default function SharedChatPage() {
   return (
     <SharedChatChrome title={title} subtitle={`Shared ${sharedOn}`}>
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+        {messagesError && (
+          // Session loaded but messages failed — transient 5xx, not a
+          // revoked link.  Keep the chrome (so the viewer knows the
+          // share is real) and show an inline retry instead of the
+          // permanent not-found card.
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+            <span>Couldn&apos;t load messages. The share link is valid.</span>
+            <button
+              onClick={retry}
+              className="rounded border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"
+            >
+              Try again
+            </button>
+          </div>
+        )}
         {hasMore && (
           <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-600">
             Showing the most recent {uiMessages.length} messages — older history

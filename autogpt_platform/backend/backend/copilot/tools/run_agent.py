@@ -50,6 +50,36 @@ from .utils import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+
+async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
+    """Best-effort client-side wrapper around the chat-share auto-link hook.
+
+    The server-side function ``link_new_execution_to_chat_share`` has its
+    own try/except (db.py) so server-raised exceptions never bubble.  But
+    the call goes over the DatabaseManager RPC boundary, and transport-
+    layer failures (``ClientNotConnectedError``, RabbitMQ flap, retry
+    exhaustion) raise CLIENT-side — before the wrapped function runs.
+
+    Six callsites in this file dispatch the hook from inside ``run_agent``,
+    which must never crash because the wrapper SDK turns an orphan
+    ``tool_use`` into "The model returned an empty response."  So catch
+    everything here and log; the owner can recover by re-toggling share
+    (``_collect_execution_ids_from_messages`` backfills at re-enable time).
+    """
+    try:
+        await get_database_manager_async_client().link_new_execution_to_chat_share(
+            session_id=session_id, execution_id=execution_id
+        )
+    except Exception:
+        logger.warning(
+            "link_new_execution_to_chat_share RPC failed for session=%s "
+            "execution=%s; owner can re-share to recover",
+            session_id,
+            execution_id,
+            exc_info=True,
+        )
+
+
 # Constants for response messages
 MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
 MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
@@ -713,7 +743,7 @@ class RunAgentTool(BaseTool):
                             execution.id,
                             exc_info=True,
                         )
-                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return AgentOutputResponse(
@@ -742,7 +772,7 @@ class RunAgentTool(BaseTool):
                 # this hook, ``_collect_execution_ids_from_messages`` can't
                 # backfill failed runs either (ErrorResponse payload type
                 # isn't in the scanned set).
-                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ErrorResponse(
@@ -758,7 +788,7 @@ class RunAgentTool(BaseTool):
                 # Auto-share terminated runs (cancelled / killed) for the
                 # same reason as the FAILED branch — backfill at re-share
                 # time won't pick them up.
-                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ErrorResponse(
@@ -770,7 +800,7 @@ class RunAgentTool(BaseTool):
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
-                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ExecutionStartedResponse(
@@ -790,7 +820,7 @@ class RunAgentTool(BaseTool):
                 )
             else:
                 status = completed.status.value if completed else "unknown"
-                await get_database_manager_async_client().link_new_execution_to_chat_share(
+                await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
                 return ExecutionStartedResponse(
@@ -809,9 +839,7 @@ class RunAgentTool(BaseTool):
                     status=status,
                 )
 
-        await get_database_manager_async_client().link_new_execution_to_chat_share(
-            session_id=session_id, execution_id=execution.id
-        )
+        await _safe_link_to_chat_share(session_id=session_id, execution_id=execution.id)
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "

@@ -130,6 +130,11 @@ def mock_prisma_calls():
         # workspace-file scan.  Default to None so the helper short-
         # circuits unless a test explicitly sets up node-execution data.
         exec_prisma.return_value.find_unique = AsyncMock(return_value=None)
+        # The re-share path calls ``_cascade_revoke_chat_linked_executions``
+        # which reads ChatLinkedShare.find_many before any other linked
+        # ops fire.  Default to empty so the cascade is a no-op for
+        # tests that don't exercise the previous-generation cleanup.
+        linked_prisma.return_value.find_many = AsyncMock(return_value=[])
         yield {
             "session": session_prisma,
             "linked": linked_prisma,
@@ -343,6 +348,56 @@ class TestEnableChatShareState:
             await enable_chat_session_share(
                 SESSION_ID, "other-user", auto_share_executions=False
             )
+
+    @pytest.mark.asyncio
+    async def test_reshare_cascades_old_chat_link_executions_before_rekey(
+        self, mock_prisma_calls, mock_transaction
+    ):
+        """Re-sharing a chat (e.g. toggling auto-share off without
+        Stop-sharing first) must cascade-revoke the previous generation
+        of CHAT_LINK execution shares.  Without this, the old per-exec
+        tokens stay publicly active with no linkage row to reach them,
+        leaving orphan public shares.
+        """
+        prev_link = _mock_linked_share()  # CHAT_LINK execution with token-exec
+        mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+            return_value=_mock_session()
+        )
+        # First find_many is the cascade pre-cleanup → return the
+        # previous generation's linkage.  Subsequent calls (none in
+        # this enable path) would default to the fixture empty.
+        mock_prisma_calls["linked"].return_value.find_many = AsyncMock(
+            return_value=[prev_link]
+        )
+        # No other chat still references the execution.
+        mock_prisma_calls["linked"].return_value.find_first = AsyncMock(
+            return_value=None
+        )
+        mock_prisma_calls["linked"].return_value.delete_many = AsyncMock(return_value=1)
+        exec_update = AsyncMock()
+        mock_prisma_calls["execution"].return_value.update = exec_update
+        mock_prisma_calls["execution"].return_value.find_many = AsyncMock(
+            return_value=[]
+        )
+        mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[])
+            mock_prisma_calls["session"].return_value.update = AsyncMock()
+            await enable_chat_session_share(
+                SESSION_ID, USER_ID, auto_share_executions=False
+            )
+
+        # Critical: the previous-generation CHAT_LINK execution was
+        # revoked BEFORE the join-table delete that would have orphaned
+        # it.  Without the cascade the token stays live forever.
+        exec_update.assert_called_once()
+        update_data = exec_update.call_args.kwargs["data"]
+        assert update_data == {
+            "isShared": False,
+            "shareToken": None,
+            "sharedAt": None,
+            "sharedVia": None,
+        }
 
     @pytest.mark.asyncio
     async def test_enable_session_update_is_last_inside_transaction(

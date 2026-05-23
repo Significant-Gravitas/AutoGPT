@@ -56,12 +56,24 @@ class TestExtractWorkspaceFileIds:
         }
         assert extract_workspace_file_ids(outputs) == {"same-file"}
 
-    def test_does_not_match_workspace_substring_in_text(self):
-        """Plain text that contains workspace:// as a substring should NOT be extracted
-        because the value itself must start with workspace://."""
+    def test_extracts_workspace_uri_embedded_in_text(self):
+        """Assistant messages embed ``workspace://<id>`` URIs inline —
+        e.g. ``Here's the chart: ![chart](workspace://abc#image/png)``.
+
+        Previously the prefix-only match missed these, so the public
+        viewer's allowlist lookup 404'd on files that the chat clearly
+        referenced.  The extractor now picks up any embedded URI.
+        """
         outputs = {"text": ["check out workspace://fake-id for details"]}
-        # The string starts with "check out", not "workspace://", so no match
-        assert extract_workspace_file_ids(outputs) == set()
+        assert extract_workspace_file_ids(outputs) == {"fake-id"}
+
+    def test_extracts_workspace_uri_from_markdown_image_syntax(self):
+        """The motivating case for the embedded-URI extraction:
+        markdown image syntax wrapping a workspace:// URI."""
+        outputs = {
+            "content": "Here's the chart: ![chart](workspace://chart-id#image/png)"
+        }
+        assert extract_workspace_file_ids(outputs) == {"chart-id"}
 
     def test_mixed_workspace_and_non_workspace_outputs(self):
         outputs = {
