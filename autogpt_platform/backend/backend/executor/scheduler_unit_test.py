@@ -12,7 +12,6 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     CopilotTurnJobArgs,
@@ -244,6 +243,8 @@ async def test_execute_copilot_turn_dispatches_when_session_exists():
 async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
     """When schedule_turn raises ConcurrentTurnLimitError on a one-shot
     schedule, the dispatcher reschedules instead of silently dropping."""
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
     mock_get_session = AsyncMock(return_value=MagicMock())
@@ -263,6 +264,8 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
 async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
     """Cron schedules don't need an explicit reschedule — APScheduler will
     re-fire on the next cron tick."""
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
     args = _args(run_at=None, cron="* * * * *")  # recurring
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
     mock_get_session = AsyncMock(return_value=MagicMock())

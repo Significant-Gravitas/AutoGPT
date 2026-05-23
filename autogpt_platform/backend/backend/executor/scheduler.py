@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -677,13 +678,74 @@ def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     return "UTC"
 
 
+_DOW_DIGIT_RE = re.compile(r"\d")
+
+
+def _unix_dow_to_apscheduler(n: int) -> int:
+    """Map Unix-cron day-of-week (0=Sun..6=Sat, 7=Sun) to APScheduler's
+    (0=Mon..6=Sun). APScheduler's ``CronTrigger.from_crontab`` does NOT
+    perform this translation despite the docstring implying Unix semantics,
+    so numeric day-of-week fields silently fire one day late.
+    """
+    return (n - 1) % 7
+
+
+def _convert_dow_token(token: str) -> str:
+    """Convert a single comma-separated token of a day-of-week field from
+    Unix-cron numbering to APScheduler numbering. Handles ``*``, plain
+    numbers, ranges (including wrap-around like ``5-2``), step modifiers,
+    and lets named tokens (``mon-fri``) pass through unchanged."""
+    if "/" in token:
+        body, step = token.split("/", 1)
+    else:
+        body, step = token, None
+
+    if body in ("*", "?"):
+        result = body
+    elif "-" in body:
+        start, end = body.split("-", 1)
+        if start.isdigit() and end.isdigit():
+            start_aps = _unix_dow_to_apscheduler(int(start))
+            end_aps = _unix_dow_to_apscheduler(int(end))
+            if start_aps > end_aps:
+                # Unix wrap-around (e.g. Sat→Tue = 6-2) → split into two
+                # APS-valid ranges joined by a comma.
+                tail = f"/{step}" if step else ""
+                return f"{start_aps}-6{tail},0-{end_aps}{tail}"
+            result = f"{start_aps}-{end_aps}"
+        else:
+            result = f"{start}-{end}"
+    elif body.isdigit():
+        result = str(_unix_dow_to_apscheduler(int(body)))
+    else:
+        result = body
+
+    return f"{result}/{step}" if step else result
+
+
+def _normalize_cron_day_of_week(cron: str) -> str:
+    """Rewrite the day-of-week field of a 5-field Unix cron string into the
+    numbering APScheduler expects. Leaves the field untouched if it contains
+    no digits (``mon-fri``), is ``*``/``?``, or the cron is malformed."""
+    parts = cron.split()
+    if len(parts) != 5:
+        return cron
+    dow = parts[4]
+    if dow in ("*", "?") or not _DOW_DIGIT_RE.search(dow):
+        return cron
+    parts[4] = ",".join(_convert_dow_token(t) for t in dow.split(","))
+    return " ".join(parts)
+
+
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
 ) -> Union[CronTrigger, DateTrigger]:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     if cron is not None:
-        return CronTrigger.from_crontab(cron, timezone=user_timezone)
+        return CronTrigger.from_crontab(
+            _normalize_cron_day_of_week(cron), timezone=user_timezone
+        )
     return DateTrigger(run_date=run_at, timezone=user_timezone)
 
 
@@ -1170,8 +1232,6 @@ class Scheduler(AppService):
     _jobs_cache_expires_at: float = 0.0
 
     def _get_jobs_cached(self) -> list[JobObj]:
-        import time
-
         now = time.monotonic()
         if self._jobs_cache is not None and now < self._jobs_cache_expires_at:
             return self._jobs_cache

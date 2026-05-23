@@ -220,8 +220,9 @@ def track_followup_scheduled(
 
     Args:
         user_id: The user's ID
-        session_id: Chat session being followed up — ``None`` for the
-            "fire into a fresh chat" sentinel.
+        session_id: The chat session ID being followed up. ``None`` for
+            the fresh-chat sentinel (the destination session doesn't
+            exist yet — it will be created when the schedule fires).
         schedule_id: ID of the created schedule
         is_recurring: True if cron, False if one-shot
     """
