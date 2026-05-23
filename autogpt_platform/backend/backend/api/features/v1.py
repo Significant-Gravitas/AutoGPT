@@ -51,10 +51,13 @@ from backend.api.model import (
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
+    DEFAULT_SKILLS,
     BuiltInSkillError,
     SkillNotFoundError,
+    _load_default_body,
     delete_user_skill,
     list_user_skills,
+    read_user_skill_with_body,
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -2391,6 +2394,17 @@ class CopilotSkillInfo(BaseModel):
     triggers: list[str] = []
 
 
+class CopilotSkillDetail(BaseModel):
+    """Full SKILL.md content surfaced to the library expand-to-view UI."""
+
+    name: str
+    description: str
+    triggers: list[str] = []
+    body: str
+    version: str | None = None
+    is_default: bool = False
+
+
 @v1_router.get(
     path="/skills",
     summary="List user-distilled copilot skills",
@@ -2417,6 +2431,59 @@ async def list_copilot_skills(
         )
         for s in skills
     ]
+
+
+_DEFAULTS_BY_NAME = {d.name: d for d in DEFAULT_SKILLS}
+
+
+@v1_router.get(
+    path="/skills/{name}",
+    summary="Read a single copilot skill with its full SKILL.md body",
+    operation_id="readCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def read_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to read"),
+) -> CopilotSkillDetail:
+    """Return full SKILL.md content (name, description, triggers, body)
+    for the library UI's expand-to-view dialog.
+
+    Built-in default skills are returned with ``is_default=True`` so the
+    UI can hide destructive affordances; missing user skills return 404.
+    """
+    slug = name.strip().lower()
+    default = _DEFAULTS_BY_NAME.get(slug)
+    if default is not None:
+        try:
+            body = _load_default_body(default)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load default skill body: {exc}",
+            )
+        return CopilotSkillDetail(
+            name=default.name,
+            description=default.description,
+            triggers=list(default.triggers),
+            body=body,
+            is_default=True,
+        )
+
+    parsed = await read_user_skill_with_body(user_id, slug)
+    if parsed is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    return CopilotSkillDetail(
+        name=parsed.name,
+        description=parsed.description,
+        triggers=list(parsed.triggers),
+        body=parsed.body,
+        version=parsed.version,
+        is_default=False,
+    )
 
 
 @v1_router.delete(

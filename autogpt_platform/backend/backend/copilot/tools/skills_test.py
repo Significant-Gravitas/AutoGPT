@@ -1,6 +1,7 @@
 """Tests for the skill registry (frontmatter parsing + rendering + the
 ``<available_skills>`` index builder)."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -207,9 +208,13 @@ class _FakeWorkspaceManager:
 
     def __init__(self):
         self.files: dict[str, bytes] = {}
+        self.metadata: dict[str, dict] = {}
 
-    async def write_file(self, *, content, filename, path, mime_type, overwrite):
+    async def write_file(
+        self, *, content, filename, path, mime_type, overwrite, metadata=None
+    ):
         self.files[path] = content
+        self.metadata[path] = metadata or {}
 
     async def read_file(self, path: str) -> bytes:
         if path not in self.files:
@@ -223,6 +228,7 @@ class _FakeWorkspaceManager:
                 info = MagicMock()
                 info.path = p
                 info.id = f"id-{p}"
+                info.metadata = self.metadata.get(p, {})
                 result.append(info)
         return result
 
@@ -1041,3 +1047,113 @@ async def test_delete_user_skill_raises_not_found_when_missing():
     with _patch_skills_path(fake_manager):
         with pytest.raises(SkillNotFoundError):
             await delete_user_skill("user-1", "missing")
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_uses_metadata_fast_path(mocker):
+    """When ``WorkspaceFile.metadata`` carries the kind+description tag,
+    the index must not issue any storage reads — that is the whole point
+    of the fast path."""
+    from backend.copilot.tools.skills import list_user_skills
+
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/oauth_flow/SKILL.md"] = b"unused"
+    fake_manager.metadata["/skills/oauth_flow/SKILL.md"] = {
+        "kind": "copilot_skill",
+        "description": "OAuth handshake recipe",
+        "triggers": ["auth", "oauth"],
+    }
+    # Spy on read_file so the test asserts the fast path skipped it.
+    read_spy = AsyncMock(side_effect=AssertionError("metadata path must skip read"))
+    fake_manager.read_file = read_spy  # type: ignore[method-assign]
+
+    with _patch_skills_path(fake_manager):
+        # Disable cache for this test so we exercise the workspace path.
+        with patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "backend.copilot.tools.skills._write_skills_cache",
+            new=AsyncMock(),
+        ):
+            skills = await list_user_skills("user-1")
+
+    assert [s.name for s in skills] == ["oauth_flow"]
+    assert skills[0].triggers == ("auth", "oauth")
+    assert skills[0].description == "OAuth handshake recipe"
+    read_spy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_falls_back_to_read_without_metadata(mocker):
+    """Legacy SKILL.md without the metadata tag must still resolve via
+    a (parallel) body read so old skills don't vanish from the index."""
+    from backend.copilot.tools.skills import list_user_skills
+
+    fake_manager = _FakeWorkspaceManager()
+    # No metadata → must read the body to parse the frontmatter.
+    fake_manager.files["/skills/legacy/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="legacy", description="old skill", body="ok")
+    ).encode()
+    # metadata dict left empty → triggers the fallback path.
+
+    with _patch_skills_path(fake_manager):
+        with patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "backend.copilot.tools.skills._write_skills_cache",
+            new=AsyncMock(),
+        ):
+            skills = await list_user_skills("user-1")
+
+    assert [s.name for s in skills] == ["legacy"]
+    assert skills[0].description == "old skill"
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_returns_redis_cache_when_warm():
+    """A warm Redis cache short-circuits the workspace path entirely —
+    that's what keeps per-turn latency near zero."""
+    from backend.copilot.tools.skills import list_user_skills
+
+    cached_payload = [
+        {
+            "name": "cached_skill",
+            "description": "from cache",
+            "triggers": ["t1"],
+            "version": None,
+        }
+    ]
+    fake_redis = MagicMock()
+    fake_redis.get = AsyncMock(return_value=json.dumps(cached_payload))
+    fake_redis.set = AsyncMock()
+    with patch(
+        "backend.copilot.tools.skills.get_redis_async",
+        new=AsyncMock(return_value=fake_redis),
+    ), patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(side_effect=AssertionError("cache hit must skip workspace")),
+    ):
+        skills = await list_user_skills("user-1")
+
+    assert [s.name for s in skills] == ["cached_skill"]
+    assert skills[0].triggers == ("t1",)
+
+
+@pytest.mark.asyncio
+async def test_read_user_skill_with_body_returns_full_text():
+    """``read_user_skill_with_body`` is what the new GET /skills/{name}
+    REST endpoint uses to surface the full SKILL.md to the library UI."""
+    from backend.copilot.tools.skills import read_user_skill_with_body
+
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/myskill/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="myskill", description="d", body="# Body\nhi")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        result = await read_user_skill_with_body("user-1", "myskill")
+
+    assert result is not None
+    assert result.name == "myskill"
+    assert "# Body" in result.body

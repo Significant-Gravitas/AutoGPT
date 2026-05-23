@@ -8224,6 +8224,47 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Read a single copilot skill with its full SKILL.md body",
+        "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
+        "operationId": "readCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to read",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to read"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/store/admin/listings": {
@@ -11183,6 +11224,32 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotSkillDetail": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          },
+          "body": { "type": "string", "title": "Body" },
+          "version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "body"],
+        "title": "CopilotSkillDetail",
+        "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
       },
       "CopilotSkillInfo": {
         "properties": {

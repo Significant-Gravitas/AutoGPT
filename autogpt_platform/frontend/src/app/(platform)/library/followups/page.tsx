@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
+import { notFound } from "next/navigation";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { useFollowupsPage } from "./useFollowupsPage";
 
 export default function FollowupsPage() {
+  const isEnabled = useGetFlag(Flag.COPILOT_SKILLS_FOLLOWUPS);
   const { followups, isLoading, error } = useFollowupsPage();
+
+  if (!isEnabled) {
+    notFound();
+  }
 
   useEffect(() => {
     document.title = "Copilot follow-ups – AutoGPT Platform";

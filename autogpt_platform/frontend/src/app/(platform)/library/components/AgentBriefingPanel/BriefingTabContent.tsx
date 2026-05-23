@@ -3,6 +3,8 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
+import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   formatResetTime,
   formatTierLabel,
@@ -101,6 +103,50 @@ function UsageSection({ agents }: { agents: LibraryAgent[] }) {
         </>
       )}
       <CostsBreakdown agents={agents} />
+      <CopilotLibrarySummary />
+    </div>
+  );
+}
+
+function CopilotLibrarySummary() {
+  const isEnabled = useGetFlag(Flag.COPILOT_SKILLS_FOLLOWUPS);
+  const { data: skillsRes } = useListCopilotSkills({
+    query: { enabled: isEnabled, staleTime: 30_000 },
+  });
+  const { data: followupsRes } = useListCopilotFollowupSchedules({
+    query: { enabled: isEnabled, staleTime: 30_000 },
+  });
+
+  if (!isEnabled) return null;
+
+  const skillsCount =
+    skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
+  const followupsCount =
+    followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
+
+  return (
+    <div
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      data-testid="copilot-library-summary"
+    >
+      <Text variant="small" className="!text-zinc-500">
+        Copilot library
+      </Text>
+      <Link
+        href="/library/skills"
+        className="text-sm text-violet-700 hover:underline"
+        data-testid="copilot-library-skills-link"
+      >
+        {skillsCount} skill{skillsCount === 1 ? "" : "s"}
+      </Link>
+      <span className="text-zinc-300">•</span>
+      <Link
+        href="/library/followups"
+        className="text-sm text-yellow-700 hover:underline"
+        data-testid="copilot-library-followups-link"
+      >
+        {followupsCount} follow-up{followupsCount === 1 ? "" : "s"}
+      </Link>
     </div>
   );
 }

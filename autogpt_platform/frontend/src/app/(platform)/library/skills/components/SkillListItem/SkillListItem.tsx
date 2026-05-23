@@ -4,7 +4,8 @@ import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSki
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { BookOpenIcon, TrashIcon } from "@phosphor-icons/react";
+import { BookOpenIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useSkillListItem } from "./useSkillListItem";
 
 interface Props {
@@ -20,6 +21,11 @@ export function SkillListItem({ skill }: Props) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isViewOpen,
+    openView,
+    closeView,
+    isDetailLoading,
+    detail,
   } = useSkillListItem({ skill });
 
   return (
@@ -61,6 +67,16 @@ export function SkillListItem({ skill }: Props) {
         <Button
           variant="secondary"
           size="small"
+          onClick={openView}
+          data-testid="skill-view-button"
+          aria-label="View skill"
+        >
+          <EyeIcon className="mr-1 h-4 w-4" />
+          View
+        </Button>
+        <Button
+          variant="secondary"
+          size="small"
           onClick={openDelete}
           data-testid="skill-delete-button"
           aria-label="Delete skill"
@@ -69,6 +85,45 @@ export function SkillListItem({ skill }: Props) {
           Delete
         </Button>
       </div>
+
+      <Dialog
+        controlled={{ isOpen: isViewOpen, set: closeView }}
+        styling={{ maxWidth: "48rem" }}
+        title={skill.name}
+      >
+        <Dialog.Content>
+          <div className="flex flex-col gap-3">
+            <Text variant="small" className="!text-zinc-500">
+              {detail?.description ?? descriptionPreview}
+            </Text>
+            {triggers.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {triggers.map((trigger) => (
+                  <span
+                    key={trigger}
+                    className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                  >
+                    {trigger}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {isDetailLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <LoadingSpinner />
+              </div>
+            ) : (
+              <pre
+                className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+                style={{ whiteSpace: "pre-wrap" }}
+                data-testid="skill-view-body"
+              >
+                {detail?.body || "(no body)"}
+              </pre>
+            )}
+          </div>
+        </Dialog.Content>
+      </Dialog>
 
       <Dialog
         controlled={{ isOpen: isDeleteOpen, set: closeDelete }}

@@ -1,8 +1,10 @@
 import {
   getListCopilotSkillsQueryKey,
   useDeleteCopilotSkill,
+  useReadCopilotSkill,
 } from "@/app/api/__generated__/endpoints/skills/skills";
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
+import type { CopilotSkillDetail } from "@/app/api/__generated__/models/copilotSkillDetail";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -16,11 +18,26 @@ export function useSkillListItem({ skill }: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
 
   const { mutateAsync: deleteSkill, isPending: isDeleting } =
     useDeleteCopilotSkill();
 
   const { descriptionPreview, triggers } = describeSkill(skill);
+
+  const { data: detailRes, isLoading: isDetailLoading } = useReadCopilotSkill(
+    skill.name,
+    {
+      query: {
+        enabled: isViewOpen,
+        staleTime: 60_000,
+      },
+    },
+  );
+  const detail =
+    detailRes && detailRes.status === 200
+      ? (detailRes.data as CopilotSkillDetail)
+      : null;
 
   function openDelete() {
     setIsDeleteOpen(true);
@@ -28,6 +45,14 @@ export function useSkillListItem({ skill }: Args) {
 
   function closeDelete(open: boolean) {
     setIsDeleteOpen(open);
+  }
+
+  function openView() {
+    setIsViewOpen(true);
+  }
+
+  function closeView(open: boolean) {
+    setIsViewOpen(open);
   }
 
   async function handleDelete() {
@@ -58,5 +83,10 @@ export function useSkillListItem({ skill }: Args) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isViewOpen,
+    openView,
+    closeView,
+    isDetailLoading,
+    detail,
   };
 }

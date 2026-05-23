@@ -67,6 +67,22 @@ MAX_TRIGGERS = 10
 MAX_TRIGGER_CHARS = 64
 SKILL_FOLDER = "/skills"
 
+# Redis-cached index TTL.  Skill content changes only on store/delete so a
+# 60s TTL with explicit invalidation gives near-zero index latency on warm
+# turns without unbounded staleness for cross-instance edits.
+SKILLS_INDEX_CACHE_TTL_S = 60
+SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:{user_id}"
+
+# WorkspaceFile.metadata keys for the skill index fast path — avoids the
+# storage read when the metadata was written at store time (anything
+# pre-dating this change falls back to read+parse, see
+# ``_list_user_skills_from_workspace``).
+_META_KIND = "kind"
+_META_KIND_VALUE = "copilot_skill"
+_META_DESCRIPTION = "description"
+_META_TRIGGERS = "triggers"
+_META_VERSION = "version"
+
 # Skill names are slug-like — lowercase letters, digits, dashes, underscores.
 # Must start and end with [a-z0-9] (no trailing/leading punctuation) so the
 # folder name is clean and the on-screen index never has dangling dashes.
@@ -316,14 +332,65 @@ async def delete_user_skill(user_id: str, name: str) -> str:
                 sibling.path,
                 exc_info=True,
             )
+    await invalidate_skills_index_cache(user_id)
     return slug
 
 
-async def list_user_skills(user_id: str) -> list[ParsedSkill]:
-    """Return all skills the user has stored in workspace.
+async def _parse_skill_from_workspace(
+    manager: WorkspaceManager, file_path: str
+) -> ParsedSkill | None:
+    """Read + parse a single SKILL.md.  Returns ``None`` on read failure,
+    decode failure, or malformed frontmatter — callers treat that as
+    "skip this file", matching the old serial loop's contract.
+    """
+    slug = file_path.rsplit("/", 2)[-2] if "/" in file_path else ""
+    try:
+        raw = await manager.read_file(file_path)
+    except Exception:
+        logger.warning("[skills] failed to read %s", file_path, exc_info=True)
+        return None
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.warning("[skills] non-UTF-8 contents at %s — skipping", file_path)
+        return None
+    return parse_skill_markdown(text, fallback_name=slug)
 
-    Skips files whose contents do not parse as valid SKILL.md — a stray
-    file should not break the index.
+
+def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
+    """Build a body-less :class:`ParsedSkill` from ``WorkspaceFile.metadata``
+    written at store time.  Returns ``None`` when the metadata is missing
+    a description (older SKILL.md predating the metadata-cache change) so
+    the caller falls back to reading the file.
+    """
+    if meta.get(_META_KIND) != _META_KIND_VALUE:
+        return None
+    description = meta.get(_META_DESCRIPTION)
+    if not isinstance(description, str) or not description:
+        return None
+    raw_triggers = meta.get(_META_TRIGGERS) or ()
+    if not isinstance(raw_triggers, (list, tuple)):
+        raw_triggers = ()
+    triggers = tuple(str(t) for t in raw_triggers if isinstance(t, str) and t)
+    version = meta.get(_META_VERSION)
+    return ParsedSkill(
+        name=slug,
+        description=description,
+        body="",
+        triggers=triggers,
+        version=str(version) if version else None,
+    )
+
+
+async def _list_user_skills_from_workspace(user_id: str) -> list[ParsedSkill]:
+    """Workspace-side listing — no caching.  Body fields are always empty
+    because the index never needs them; :func:`read_user_skill_with_body`
+    is the path for retrieving full content.
+
+    Uses ``WorkspaceFile.metadata`` (written at store time) for the fast
+    path and falls back to a parallelised read of the SKILL.md body for
+    any file missing the metadata (older skills, or skills written by a
+    deployment before the metadata-cache change shipped).
     """
     manager = await _get_user_skill_manager(user_id)
     files = await manager.list_files(
@@ -331,30 +398,149 @@ async def list_user_skills(user_id: str) -> list[ParsedSkill]:
         limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
         include_all_sessions=True,
     )
+    md_files = [f for f in files if f.path.endswith("/SKILL.md")]
+
     skills: list[ParsedSkill] = []
-    for f in files:
-        # Only consider SKILL.md manifests — sibling files in the same
-        # folder are accessed by the model via read_workspace_file.
-        if not f.path.endswith("/SKILL.md"):
-            continue
-        try:
-            raw = await manager.read_file(f.path)
-        except Exception:
-            logger.warning("[skills] failed to read %s", f.path, exc_info=True)
-            continue
+    needs_read: list[Any] = []
+    for f in md_files:
         slug = f.path.rsplit("/", 2)[-2] if "/" in f.path else ""
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            # A stray binary file should not break the per-turn index —
-            # log and skip, same contract as the read-failure branch.
-            logger.warning("[skills] non-UTF-8 contents at %s — skipping", f.path)
-            continue
-        parsed = parse_skill_markdown(text, fallback_name=slug)
-        if parsed is not None:
-            skills.append(parsed)
+        meta = f.metadata if isinstance(f.metadata, dict) else {}
+        entry = _index_entry_from_metadata(slug, meta)
+        if entry is not None:
+            skills.append(entry)
+        else:
+            needs_read.append(f)
+
+    if needs_read:
+        parsed = await asyncio.gather(
+            *(_parse_skill_from_workspace(manager, f.path) for f in needs_read),
+        )
+        for p in parsed:
+            if p is None:
+                continue
+            # Index never needs the body — drop it so the cache payload
+            # stays small (defaults are already body-less, fast-path
+            # entries are body-less, keep the contract uniform).
+            skills.append(
+                ParsedSkill(
+                    name=p.name,
+                    description=p.description,
+                    body="",
+                    triggers=p.triggers,
+                    version=p.version,
+                )
+            )
+
     skills.sort(key=lambda s: s.name)
     return skills
+
+
+def _skills_cache_key(user_id: str) -> str:
+    return SKILLS_INDEX_CACHE_KEY.format(user_id=user_id)
+
+
+async def _read_skills_cache(user_id: str) -> list[ParsedSkill] | None:
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_skills_cache_key(user_id))
+    except Exception:
+        # Cache is best-effort — a redis blip must not break the turn.
+        return None
+    if not raw:
+        return None
+    try:
+        import json
+
+        payload = json.loads(raw)
+        if not isinstance(payload, list):
+            return None
+        return [
+            ParsedSkill(
+                name=str(item["name"]),
+                description=str(item["description"]),
+                body="",
+                triggers=tuple(str(t) for t in item.get("triggers", [])),
+                version=item.get("version"),
+            )
+            for item in payload
+            if isinstance(item, dict) and "name" in item and "description" in item
+        ]
+    except Exception:
+        # Malformed cache entry → ignore and rebuild.
+        return None
+
+
+async def _write_skills_cache(user_id: str, skills: list[ParsedSkill]) -> None:
+    try:
+        import json
+
+        redis = await get_redis_async()
+        payload = json.dumps(
+            [
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "triggers": list(s.triggers),
+                    "version": s.version,
+                }
+                for s in skills
+            ]
+        )
+        await redis.set(
+            _skills_cache_key(user_id),
+            payload,
+            ex=SKILLS_INDEX_CACHE_TTL_S,
+        )
+    except Exception:
+        # Cache write is best-effort.
+        pass
+
+
+async def invalidate_skills_index_cache(user_id: str) -> None:
+    """Drop the cached per-user skill index so the next turn rebuilds it.
+    Called by ``store_skill`` / ``delete_user_skill`` so an edit shows up
+    immediately rather than after the 60s TTL.
+    """
+    try:
+        redis = await get_redis_async()
+        await redis.delete(_skills_cache_key(user_id))
+    except Exception:
+        # Cache invalidate is best-effort — at worst the user sees stale
+        # state for up to ``SKILLS_INDEX_CACHE_TTL_S`` seconds.
+        pass
+
+
+async def list_user_skills(user_id: str) -> list[ParsedSkill]:
+    """Return all skills the user has stored in workspace.
+
+    Two-level fast path: a 60s Redis cache covers warm turns, the
+    ``WorkspaceFile.metadata`` index covers cold turns without any storage
+    reads, and a parallelised body parse covers any skills written before
+    the metadata-cache change shipped.  Skips files whose contents do not
+    parse as valid SKILL.md so a stray file in ``/skills/`` cannot break
+    the index.
+    """
+    cached = await _read_skills_cache(user_id)
+    if cached is not None:
+        return cached
+    skills = await _list_user_skills_from_workspace(user_id)
+    await _write_skills_cache(user_id, skills)
+    return skills
+
+
+async def read_user_skill_with_body(user_id: str, name: str) -> ParsedSkill | None:
+    """Return a single user-stored skill with its body populated.
+
+    Used by the ``read_skill`` MCP tool and the REST GET ``/skills/{name}``
+    endpoint that powers the library UI's expand-to-view dialog.  Returns
+    ``None`` when no SKILL.md exists at the slug — callers translate that
+    into a 404 / structured error response.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id)
+    return await _parse_skill_from_workspace(manager, _skill_md_path(slug))
 
 
 def get_default_skills_for_index() -> list[ParsedSkill]:
@@ -696,7 +882,13 @@ class StoreSkillTool(BaseTool):
                 path=_skill_md_path(name),
                 mime_type="text/markdown",
                 overwrite=True,
+                metadata={
+                    _META_KIND: _META_KIND_VALUE,
+                    _META_DESCRIPTION: description,
+                    _META_TRIGGERS: list(triggers),
+                },
             )
+            await invalidate_skills_index_cache(user_id)
         except (VirusDetectedError, VirusScanError) as exc:
             logger.warning("[skills] virus scan failed for %s: %s", name, exc)
             return ErrorResponse(

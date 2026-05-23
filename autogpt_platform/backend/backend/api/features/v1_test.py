@@ -1173,3 +1173,62 @@ def test_delete_copilot_skill_returns_404_when_missing(
 
     response = client.delete("/skills/missing")
     assert response.status_code == 404
+
+
+def test_read_copilot_skill_returns_user_body(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /skills/{name} returns the full SKILL.md body for a user skill."""
+    from backend.copilot.tools.skills import ParsedSkill
+
+    mocker.patch(
+        "backend.api.features.v1.read_user_skill_with_body",
+        AsyncMock(
+            return_value=ParsedSkill(
+                name="oauth_flow",
+                description="OAuth handshake recipe",
+                body="# OAuth flow\n\nStep 1: ...",
+                triggers=("auth",),
+                version="1",
+            )
+        ),
+    )
+
+    response = client.get("/skills/oauth_flow")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "oauth_flow"
+    assert body["body"].startswith("# OAuth flow")
+    assert body["triggers"] == ["auth"]
+    assert body["version"] == "1"
+    assert body["is_default"] is False
+
+
+def test_read_copilot_skill_returns_default_with_body(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A built-in default name returns is_default=True and a non-empty body."""
+    mocker.patch(
+        "backend.api.features.v1._load_default_body",
+        return_value="# Default body\n",
+    )
+
+    response = client.get("/skills/agent_building_guide")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "agent_building_guide"
+    assert body["is_default"] is True
+    assert body["body"].startswith("# Default body")
+
+
+def test_read_copilot_skill_returns_404_when_missing(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A user-skill slug that has no SKILL.md surfaces as 404."""
+    mocker.patch(
+        "backend.api.features.v1.read_user_skill_with_body",
+        AsyncMock(return_value=None),
+    )
+
+    response = client.get("/skills/missing")
+    assert response.status_code == 404

@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
+import { notFound } from "next/navigation";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
 import { useSkillsPage } from "./useSkillsPage";
 
 export default function SkillsPage() {
+  const isEnabled = useGetFlag(Flag.COPILOT_SKILLS_FOLLOWUPS);
   const { skills, isLoading, error } = useSkillsPage();
+
+  if (!isEnabled) {
+    notFound();
+  }
 
   useEffect(() => {
     document.title = "Copilot skills – AutoGPT Platform";
