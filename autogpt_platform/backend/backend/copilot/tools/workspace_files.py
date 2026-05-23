@@ -1049,7 +1049,13 @@ class DeleteWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
-            if _path_under_skills_registry(getattr(file_info, "path", None)):
+            # Fail closed: if the resolved file has no ``path`` attribute the
+            # workspace shape has drifted and we cannot verify the ACL, so
+            # refuse to delete rather than fall through with ``None``.
+            resolved_path = getattr(file_info, "path", None)
+            if not isinstance(resolved_path, str) or _path_under_skills_registry(
+                resolved_path
+            ):
                 return ErrorResponse(
                     message=_SKILLS_REGISTRY_ERROR, session_id=session_id
                 )

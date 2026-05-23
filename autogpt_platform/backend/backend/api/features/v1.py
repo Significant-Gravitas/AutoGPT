@@ -51,11 +51,10 @@ from backend.api.model import (
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
-    DEFAULT_SKILLS,
     BuiltInSkillError,
     SkillNotFoundError,
-    _load_default_body,
     delete_user_skill,
+    get_default_skill_with_body,
     list_user_skills,
     read_user_skill_with_body,
 )
@@ -2433,14 +2432,12 @@ async def list_copilot_skills(
     ]
 
 
-_DEFAULTS_BY_NAME = {d.name: d for d in DEFAULT_SKILLS}
-
-
 @v1_router.get(
     path="/skills/{name}",
     summary="Read a single copilot skill with its full SKILL.md body",
     operation_id="readCopilotSkill",
     tags=["skills"],
+    responses={404: {"description": "Skill not found"}},
     dependencies=[Security(requires_user)],
 )
 async def read_copilot_skill(
@@ -2454,20 +2451,21 @@ async def read_copilot_skill(
     UI can hide destructive affordances; missing user skills return 404.
     """
     slug = name.strip().lower()
-    default = _DEFAULTS_BY_NAME.get(slug)
+    try:
+        default = get_default_skill_with_body(slug)
+    except OSError:
+        # Don't leak the on-disk path; operators trace via server logs.
+        logger.exception("[skills] failed to load default skill body for %s", slug)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load default skill body",
+        )
     if default is not None:
-        try:
-            body = _load_default_body(default)
-        except OSError as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to load default skill body: {exc}",
-            )
         return CopilotSkillDetail(
             name=default.name,
             description=default.description,
             triggers=list(default.triggers),
-            body=body,
+            body=default.body,
             is_default=True,
         )
 

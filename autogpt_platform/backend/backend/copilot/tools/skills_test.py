@@ -1065,7 +1065,7 @@ async def test_list_user_skills_uses_metadata_fast_path(mocker):
     }
     # Spy on read_file so the test asserts the fast path skipped it.
     read_spy = AsyncMock(side_effect=AssertionError("metadata path must skip read"))
-    fake_manager.read_file = read_spy  # type: ignore[method-assign]
+    setattr(fake_manager, "read_file", read_spy)
 
     with _patch_skills_path(fake_manager):
         # Disable cache for this test so we exercise the workspace path.

@@ -22,6 +22,7 @@ and user-distilled knowledge.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -255,6 +256,28 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     return skill.body_path.read_text(encoding="utf-8")
 
 
+def get_default_skill_with_body(name: str) -> ParsedSkill | None:
+    """Return a built-in default skill — name, description, triggers,
+    and body — or ``None`` if *name* is not a registered default.
+
+    Public counterpart to :func:`read_user_skill_with_body` so the REST
+    layer can resolve a skill slug (default or user-distilled) without
+    reaching into private helpers.  Raises ``OSError`` only when the
+    body file is unreadable, which the REST layer translates into a
+    500 response with a sanitised detail.
+    """
+    default = _DEFAULT_SKILLS_BY_NAME.get(name)
+    if default is None:
+        return None
+    body = _load_default_body(default)
+    return ParsedSkill(
+        name=default.name,
+        description=default.description,
+        body=body,
+        triggers=default.triggers,
+    )
+
+
 class SkillNotFoundError(Exception):
     """Raised by :func:`delete_user_skill` when the skill is missing."""
 
@@ -449,8 +472,6 @@ async def _read_skills_cache(user_id: str) -> list[ParsedSkill] | None:
     if not raw:
         return None
     try:
-        import json
-
         payload = json.loads(raw)
         if not isinstance(payload, list):
             return None
@@ -472,8 +493,6 @@ async def _read_skills_cache(user_id: str) -> list[ParsedSkill] | None:
 
 async def _write_skills_cache(user_id: str, skills: list[ParsedSkill]) -> None:
     try:
-        import json
-
         redis = await get_redis_async()
         payload = json.dumps(
             [

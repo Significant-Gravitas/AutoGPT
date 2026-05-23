@@ -925,14 +925,16 @@ def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
         if msg.role != "assistant" or not msg.tool_calls:
             continue
         for tc in msg.tool_calls:
-            name = tc.get("function", {}).get("name") or tc.get("name")
+            # Defensive: a persisted row may carry ``function`` as ``None`` or
+            # a non-dict if a past producer ever shipped a malformed payload —
+            # treat the flat ``name`` / ``arguments`` shape as the fallback so
+            # the gate path never raises on bad data.
+            fn_raw = tc.get("function")
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or tc.get("name")
             if name != "read_skill":
                 continue
-            raw_args = (
-                tc.get("function", {}).get("arguments")
-                if "function" in tc
-                else tc.get("arguments")
-            )
+            raw_args = fn.get("arguments") if fn else tc.get("arguments")
             if isinstance(raw_args, str):
                 try:
                     parsed = json.loads(raw_args) if raw_args else {}

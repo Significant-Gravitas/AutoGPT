@@ -26,6 +26,7 @@ export function SkillListItem({ skill }: Props) {
     closeView,
     isDetailLoading,
     detail,
+    detailErrorMessage,
   } = useSkillListItem({ skill });
 
   return (
@@ -111,6 +112,13 @@ export function SkillListItem({ skill }: Props) {
             {isDetailLoading ? (
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner />
+              </div>
+            ) : detailErrorMessage ? (
+              <div
+                className="rounded-medium border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                data-testid="skill-view-error"
+              >
+                {detailErrorMessage}
               </div>
             ) : (
               <pre

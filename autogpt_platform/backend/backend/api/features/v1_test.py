@@ -1208,9 +1208,16 @@ def test_read_copilot_skill_returns_default_with_body(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """A built-in default name returns is_default=True and a non-empty body."""
+    from backend.copilot.tools.skills import ParsedSkill
+
     mocker.patch(
-        "backend.api.features.v1._load_default_body",
-        return_value="# Default body\n",
+        "backend.api.features.v1.get_default_skill_with_body",
+        return_value=ParsedSkill(
+            name="agent_building_guide",
+            description="default desc",
+            body="# Default body\n",
+            triggers=("create_agent",),
+        ),
     )
 
     response = client.get("/skills/agent_building_guide")

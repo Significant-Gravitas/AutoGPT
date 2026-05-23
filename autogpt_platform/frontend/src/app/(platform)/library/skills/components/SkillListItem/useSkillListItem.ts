@@ -25,19 +25,30 @@ export function useSkillListItem({ skill }: Args) {
 
   const { descriptionPreview, triggers } = describeSkill(skill);
 
-  const { data: detailRes, isLoading: isDetailLoading } = useReadCopilotSkill(
-    skill.name,
-    {
-      query: {
-        enabled: isViewOpen,
-        staleTime: 60_000,
-      },
+  const {
+    data: detailRes,
+    isLoading: isDetailLoading,
+    error: detailError,
+  } = useReadCopilotSkill(skill.name, {
+    query: {
+      enabled: isViewOpen,
+      staleTime: 60_000,
     },
-  );
+  });
   const detail =
     detailRes && detailRes.status === 200
       ? (detailRes.data as CopilotSkillDetail)
       : null;
+  // Surface either a transport error (network down) or a non-200 response
+  // (404 / 500) so the View dialog can show "fetch failed" instead of
+  // ambiguously rendering "(no body)".
+  const detailErrorMessage = (() => {
+    if (detailError instanceof Error) return detailError.message;
+    if (detailRes && detailRes.status !== 200) {
+      return `Failed to load skill (HTTP ${detailRes.status})`;
+    }
+    return null;
+  })();
 
   function openDelete() {
     setIsDeleteOpen(true);
@@ -88,5 +99,6 @@ export function useSkillListItem({ skill }: Args) {
     closeView,
     isDetailLoading,
     detail,
+    detailErrorMessage,
   };
 }
