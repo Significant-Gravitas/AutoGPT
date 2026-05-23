@@ -224,4 +224,162 @@ describe("FollowupsPage", () => {
       );
     });
   });
+
+  test("graph row: cron is humanized when present, falls back to 'Runs once' when null", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({
+          id: "g-cron",
+          agent_name: "Daily summary",
+          cron: "0 9 * * *",
+        }),
+        makeGraphSchedule({
+          id: "g-once",
+          agent_name: "One shot",
+          cron: null,
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const rows = await screen.findAllByTestId("schedule-row");
+    expect(rows).toHaveLength(2);
+    // Recurring schedule humanizes the cron expression — the cron lib
+    // turns ``0 9 * * *`` into a phrase starting with "At 9:00 AM" or
+    // similar. We only assert the row does NOT render the raw cron
+    // string or "Runs once".
+    const cronRow = rows.find(
+      (r) => r.getAttribute("data-schedule-id") === "g-cron",
+    )!;
+    expect(within(cronRow).queryByText("Runs once")).toBeNull();
+    expect(within(cronRow).queryByText("0 9 * * *")).toBeNull();
+    // One-shot (cron=null) renders the "Runs once" label.
+    const onceRow = rows.find(
+      (r) => r.getAttribute("data-schedule-id") === "g-once",
+    )!;
+    expect(within(onceRow).getByText("Runs once")).toBeDefined();
+  });
+
+  test("graph row: agentLabel falls back to schedule name then 'Scheduled agent' when agent_name missing", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({
+          id: "g-fallback-name",
+          agent_name: "" as unknown as string,
+          name: "My schedule name",
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText("My schedule name")).toBeDefined();
+  });
+
+  test("graph row: clicking View opens the dialog with graph metadata", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({
+          id: "g-view",
+          agent_name: "Nightly cleanup",
+          graph_id: "graph-xyz",
+          graph_version: 7,
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("schedule-row");
+    fireEvent.click(within(row).getByTestId("schedule-view-button"));
+
+    // Dialog renders graph_id + version line.
+    expect(await screen.findByText(/graph-xyz/)).toBeDefined();
+    expect(screen.getByText(/v7/)).toBeDefined();
+  });
+
+  test("graph row: delete success path shows the success toast", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g-del" }),
+      ]),
+      getDeleteV1DeleteExecutionScheduleMockHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("schedule-row");
+    fireEvent.click(within(row).getByTestId("schedule-delete-button"));
+
+    const confirmButton = await screen.findByTestId("schedule-confirm-delete");
+    fireEvent.click(confirmButton);
+
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Schedule deleted" }),
+      );
+    });
+  });
+
+  test("graph row: delete error path shows the destructive toast", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g-del-err" }),
+      ]),
+      getDeleteV1DeleteExecutionScheduleMockHandler422(),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("schedule-row");
+    fireEvent.click(within(row).getByTestId("schedule-delete-button"));
+
+    const confirmButton = await screen.findByTestId("schedule-confirm-delete");
+    fireEvent.click(confirmButton);
+
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Failed to delete schedule",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
+  test("unified page sorts items by next_run_time ascending", async () => {
+    const soon = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
+    const later = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 h
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({
+          id: "f-later",
+          message: "Later followup",
+          next_run_time: later,
+        }),
+      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({
+          id: "g-soon",
+          agent_name: "Sooner agent",
+          next_run_time: soon,
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const list = await screen.findByTestId("followups-list");
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    // Sooner graph schedule comes first; later followup second.
+    expect(within(items[0]).getByText("Sooner agent")).toBeDefined();
+    expect(within(items[1]).getByText("Later followup")).toBeDefined();
+  });
 });
