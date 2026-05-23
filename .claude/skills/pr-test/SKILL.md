@@ -58,9 +58,9 @@ When testing features that depend on specific states (rate limits, credits, quot
    # Set a key with expiry
    docker exec $REDIS_CONTAINER redis-cli SET key value EX ttl
    # Example: Set rate limit counter to near-limit
-   docker exec $REDIS_CONTAINER redis-cli SET "rate_limit:user:test@test.com" 99 EX 3600
+   docker exec $REDIS_CONTAINER redis-cli SET "rate_limit:user:$PR_TEST_USER_EMAIL" 99 EX 3600
    # Example: Check current value
-   docker exec $REDIS_CONTAINER redis-cli GET "rate_limit:user:test@test.com"
+   docker exec $REDIS_CONTAINER redis-cli GET "rate_limit:user:$PR_TEST_USER_EMAIL"
    ```
 
 2. **Use API calls to check before/after state:**
@@ -126,9 +126,21 @@ RESULTS_DIR="$REPO_ROOT/test-results/PR-${PR_NUMBER}-${PR_TITLE}"
 mkdir -p $RESULTS_DIR
 ```
 
-**Test user credentials** (for logging into the UI or verifying results manually):
-- Email: `test@test.com`
-- Password: `testtest123`
+**Test user credentials** — required to log into the UI or call authenticated APIs.
+
+NEVER hardcode these in this SKILL, a PR comment, a screenshot, or any committed file. Sources, in priority order:
+
+1. **Env vars** (CI / preconfigured local shell): `$PR_TEST_USER_EMAIL` + `$PR_TEST_USER_PASSWORD`. If both are set, use them.
+2. **Interactive prompt** (everything else, including dev-preview runs): if the env vars are not set, ASK the user at the start of the run — e.g. "I need test-user credentials for this run; paste the email and password." Hold them in shell vars only for the duration of the run. Do not echo, log, or write them to disk.
+
+Lock the variables in for the rest of this SKILL:
+
+```bash
+: "${PR_TEST_USER_EMAIL:?Set PR_TEST_USER_EMAIL via env var or ask the user before running}"
+: "${PR_TEST_USER_PASSWORD:?Set PR_TEST_USER_PASSWORD via env var or ask the user before running}"
+```
+
+For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's Supabase — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default).
 
 ## Step 1: Understand the PR
 
@@ -478,10 +490,11 @@ done
 ANON_KEY=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | sed 's/.*NEXT_PUBLIC_SUPABASE_ANON_KEY=//' | tr -d '[:space:]')
 
 # Signup (idempotent — returns "User already registered" if exists)
+SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p}')
 RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"test@test.com","password":"testtest123"}')
+  -d "$SIGNUP_PAYLOAD")
 
 # If "Database error finding user", restart supabase-auth and retry
 if echo "$RESULT" | grep -q "Database error"; then
@@ -489,14 +502,14 @@ if echo "$RESULT" | grep -q "Database error"; then
   curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
     -H "apikey: $ANON_KEY" \
     -H 'Content-Type: application/json' \
-    -d '{"email":"test@test.com","password":"testtest123"}'
+    -d "$SIGNUP_PAYLOAD"
 fi
 
 # Get auth token
 TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"test@test.com","password":"testtest123"}' | jq -r '.access_token // ""')
+  -d "$SIGNUP_PAYLOAD" | jq -r '.access_token // ""')
 ```
 
 **Use this token for ALL API calls:**
@@ -601,9 +614,9 @@ agent-browser --session-name pr-test open 'http://localhost:3000/login' --timeou
 # Get interactive elements
 agent-browser --session-name pr-test snapshot | grep "textbox\|button"
 
-# Login
-agent-browser --session-name pr-test fill {email_ref} "test@test.com"
-agent-browser --session-name pr-test fill {password_ref} "testtest123"
+# Login (read creds from env — set PR_TEST_USER_EMAIL / PR_TEST_USER_PASSWORD or ask the user)
+agent-browser --session-name pr-test fill {email_ref} "$PR_TEST_USER_EMAIL"
+agent-browser --session-name pr-test fill {password_ref} "$PR_TEST_USER_PASSWORD"
 agent-browser --session-name pr-test click {login_button_ref}
 sleep 5
 
