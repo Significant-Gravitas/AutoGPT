@@ -1,9 +1,10 @@
 """
 Tests for OrchestratorBlock credential input mask forwarding.
 
-Verifies that _execute_single_tool_with_manager forwards
-execution_processor.nodes_input_masks to on_node_execution,
-so Library/AutoPilot credential overrides reach tool nodes.
+Verifies that _execute_single_tool_with_manager merges
+execution_processor.nodes_input_masks into node inputs AND forwards
+them to on_node_execution, so Library/AutoPilot credential overrides
+reach tool nodes.
 """
 
 import threading
@@ -95,45 +96,56 @@ def _make_node_exec_result(
     )
 
 
-@pytest.mark.asyncio
-async def test_execute_single_tool_forwards_input_masks():
-    """
-    When OrchestratorBlock._execute_single_tool_with_manager executes a tool
-    node, it must forward execution_processor.nodes_input_masks to
-    on_node_execution so that credential overrides from Library/AutoPilot
-    reach the tool node.
-    """
-    sink_node_id = _uid()
+def _setup_mocks(sink_node_id, params, masks):
+    """Set up common mock objects for tool execution tests."""
     block_id = _uid()
-    params = _make_execution_params()
     mock_node = _make_mock_node(sink_node_id, block_id)
     node_exec_result = _make_node_exec_result(sink_node_id, params.graph_exec_id)
 
-    # The credential masks that should be forwarded
+    mock_db = AsyncMock()
+    mock_db.get_node.return_value = mock_node
+    mock_db.upsert_execution_input.return_value = (
+        node_exec_result,
+        {"name": "result", "value": "hello"},
+    )
+
+    mock_processor = MagicMock()
+    mock_processor.nodes_input_masks = masks
+    mock_processor.running_node_execution = defaultdict(NodeExecutionProgress)
+    mock_processor.execution_stats = GraphExecutionStats()
+    mock_processor.execution_stats_lock = threading.Lock()
+    mock_processor.on_node_execution = AsyncMock(return_value=NodeExecutionStats())
+
+    return mock_db, mock_processor
+
+
+def _get_on_node_execution_args(mock_processor):
+    """Extract args from the on_node_execution call."""
+    call_kwargs = mock_processor.on_node_execution.call_args
+    node_exec = call_kwargs.kwargs.get(
+        "node_exec", call_kwargs.args[0] if len(call_kwargs.args) > 0 else None
+    )
+    masks = call_kwargs.kwargs.get(
+        "nodes_input_masks", call_kwargs.args[2] if len(call_kwargs.args) > 2 else None
+    )
+    return node_exec, masks
+
+
+@pytest.mark.asyncio
+async def test_execute_single_tool_merges_masks_into_inputs():
+    """
+    _execute_single_tool_with_manager must merge the sink node\'s mask
+    from execution_processor.nodes_input_masks into node_exec_entry.inputs
+    before calling on_node_execution -- mirroring the normal queue-based path.
+    """
+    sink_node_id = _uid()
+    params = _make_execution_params()
+
     expected_masks = {
         sink_node_id: {"credentials": {"api_key": "sk-test-secret"}},
     }
 
-    # Mock DB client
-    mock_db = AsyncMock()
-    mock_db.get_node.return_value = mock_node
-    mock_db.upsert_execution_input.return_value = (
-        node_exec_result,
-        {"name": "result", "value": "hello"},
-    )
-
-    # Mock execution processor
-    mock_processor = MagicMock()
-    mock_processor.nodes_input_masks = expected_masks
-    mock_processor.running_node_execution = defaultdict(NodeExecutionProgress)
-    mock_processor.execution_stats = GraphExecutionStats()
-    mock_processor.execution_stats_lock = threading.Lock()
-
-    # on_node_execution should return stats and capture the masks arg
-    mock_stats = NodeExecutionStats()
-    mock_processor.on_node_execution = AsyncMock(return_value=mock_stats)
-
-    tool_info = _make_tool_info(sink_node_id)
+    mock_db, mock_processor = _setup_mocks(sink_node_id, params, expected_masks)
     block = OrchestratorBlock()
 
     with patch(
@@ -141,52 +153,34 @@ async def test_execute_single_tool_forwards_input_masks():
         return_value=mock_db,
     ):
         await block._execute_single_tool_with_manager(
-            tool_info=tool_info,
+            tool_info=_make_tool_info(sink_node_id),
             execution_params=params,
             execution_processor=mock_processor,
         )
 
-    # Verify on_node_execution was called with the actual masks, not None
     mock_processor.on_node_execution.assert_called_once()
-    call_kwargs = mock_processor.on_node_execution.call_args
-    actual_masks = call_kwargs.kwargs.get(
-        "nodes_input_masks", call_kwargs.args[2] if len(call_kwargs.args) > 2 else None
+    node_exec, actual_masks = _get_on_node_execution_args(mock_processor)
+
+    # Masks forwarded to on_node_execution for downstream propagation
+    assert actual_masks is expected_masks
+
+    # Masks merged into node_exec_entry.inputs (the actual bug fix)
+    assert "credentials" in node_exec.inputs, (
+        f"Credential mask not merged into inputs: {node_exec.inputs!r}"
     )
-    assert actual_masks is expected_masks, (
-        f"Expected nodes_input_masks={expected_masks!r}, got {actual_masks!r}. "
-        "Credential overrides from Library/AutoPilot must be forwarded to tool nodes."
-    )
+    assert node_exec.inputs["credentials"] == {"api_key": "sk-test-secret"}
 
 
 @pytest.mark.asyncio
-async def test_execute_single_tool_forwards_none_masks_when_absent():
+async def test_execute_single_tool_no_masks_no_crash():
     """
-    When execution_processor.nodes_input_masks is None (no credential
-    overrides), on_node_execution should receive None -- not crash.
+    When nodes_input_masks is None, on_node_execution receives None
+    and inputs are unmodified.
     """
     sink_node_id = _uid()
-    block_id = _uid()
     params = _make_execution_params()
-    mock_node = _make_mock_node(sink_node_id, block_id)
-    node_exec_result = _make_node_exec_result(sink_node_id, params.graph_exec_id)
 
-    mock_db = AsyncMock()
-    mock_db.get_node.return_value = mock_node
-    mock_db.upsert_execution_input.return_value = (
-        node_exec_result,
-        {"name": "result", "value": "hello"},
-    )
-
-    mock_processor = MagicMock()
-    mock_processor.nodes_input_masks = None
-    mock_processor.running_node_execution = defaultdict(NodeExecutionProgress)
-    mock_processor.execution_stats = GraphExecutionStats()
-    mock_processor.execution_stats_lock = threading.Lock()
-
-    mock_stats = NodeExecutionStats()
-    mock_processor.on_node_execution = AsyncMock(return_value=mock_stats)
-
-    tool_info = _make_tool_info(sink_node_id)
+    mock_db, mock_processor = _setup_mocks(sink_node_id, params, masks=None)
     block = OrchestratorBlock()
 
     with patch(
@@ -194,32 +188,47 @@ async def test_execute_single_tool_forwards_none_masks_when_absent():
         return_value=mock_db,
     ):
         await block._execute_single_tool_with_manager(
-            tool_info=tool_info,
+            tool_info=_make_tool_info(sink_node_id),
             execution_params=params,
             execution_processor=mock_processor,
         )
 
     mock_processor.on_node_execution.assert_called_once()
-    call_kwargs = mock_processor.on_node_execution.call_args
-    actual_masks = call_kwargs.kwargs.get(
-        "nodes_input_masks", call_kwargs.args[2] if len(call_kwargs.args) > 2 else None
-    )
+    node_exec, actual_masks = _get_on_node_execution_args(mock_processor)
+
     assert actual_masks is None
+    assert "credentials" not in node_exec.inputs
 
 
 @pytest.mark.asyncio
-async def test_nodes_input_masks_stored_on_execution_processor():
+async def test_execute_single_tool_masks_for_different_node_not_merged():
     """
-    ExecutionProcessor must store graph_exec.nodes_input_masks on
-    self.nodes_input_masks so it's accessible during orchestrator
-    tool execution.
+    Masks for other nodes must not leak into the sink node\'s inputs.
+    The full masks dict is still forwarded for downstream propagation.
     """
-    from backend.executor.manager import ExecutionProcessor
+    sink_node_id = _uid()
+    other_node_id = _uid()
+    params = _make_execution_params()
 
-    expected_masks = {"node-1": {"credentials": {"key": "val"}}}
+    masks = {other_node_id: {"credentials": {"api_key": "sk-other"}}}
 
-    # Verify the attribute contract: ExecutionProcessor instances must
-    # support .nodes_input_masks assignment (set in _on_graph_execution).
-    processor = ExecutionProcessor.__new__(ExecutionProcessor)
-    processor.nodes_input_masks = expected_masks
-    assert processor.nodes_input_masks is expected_masks
+    mock_db, mock_processor = _setup_mocks(sink_node_id, params, masks)
+    block = OrchestratorBlock()
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        await block._execute_single_tool_with_manager(
+            tool_info=_make_tool_info(sink_node_id),
+            execution_params=params,
+            execution_processor=mock_processor,
+        )
+
+    mock_processor.on_node_execution.assert_called_once()
+    node_exec, actual_masks = _get_on_node_execution_args(mock_processor)
+
+    # Full masks forwarded for downstream nodes
+    assert actual_masks is masks
+    # Sink node inputs unmodified
+    assert "credentials" not in node_exec.inputs

@@ -1109,6 +1109,16 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
+        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Mirrors the normal queue-based path in _on_graph_execution, which
+        # merges nodes_input_masks[node_id] into queued_node_exec.inputs
+        # before execution so credential fields are present for the block run.
+        if (
+            execution_processor.nodes_input_masks
+            and (node_input_mask := execution_processor.nodes_input_masks.get(sink_node_id))
+        ):
+            node_exec_entry.inputs.update(node_input_mask)
+
         # Use the execution manager to execute the tool node
         try:
             # Get NodeExecutionProgress from the execution manager's running nodes
