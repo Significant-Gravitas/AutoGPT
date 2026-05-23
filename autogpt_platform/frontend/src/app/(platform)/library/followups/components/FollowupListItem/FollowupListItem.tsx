@@ -130,7 +130,7 @@ export function FollowupListItem({ followup }: Props) {
               </Text>
               <span className="text-zinc-300">•</span>
               <Text variant="small" className="!text-zinc-400">
-                Session {followup.session_id.slice(0, 8)}
+                {sessionLabel}
               </Text>
             </div>
             <pre
