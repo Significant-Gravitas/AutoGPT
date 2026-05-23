@@ -83,3 +83,45 @@ describe("BUILDER_CHAT_PANEL default", () => {
     expect(envFlagOverride(Flag.BUILDER_CHAT_PANEL)).toBe(false);
   });
 });
+
+describe("COPILOT_SKILLS_FOLLOWUPS default", () => {
+  beforeEach(() => {
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"];
+  });
+
+  it("is disabled by default so /library/skills + /library/followups stay hidden until LD enables them", () => {
+    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBeUndefined();
+  });
+
+  it("can be force-enabled via the env override for local dev", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "true";
+    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBe(true);
+  });
+
+  it("can be force-disabled via the env override for QA", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "false";
+    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBe(false);
+  });
+
+  it("ignores unrecognised string values", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "maybe";
+    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBeUndefined();
+  });
+});
+
+describe("readEnvOverride covers every Flag arm", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it("returns undefined for every flag when no override is configured", () => {
+    // Exercises every branch of the literal-key switch inside
+    // `readEnvOverride` so a new flag added without a matching case
+    // fails the coverage check.
+    for (const flag of Object.values(Flag)) {
+      expect(envFlagOverride(flag as Flag)).toBeUndefined();
+    }
+  });
+});
