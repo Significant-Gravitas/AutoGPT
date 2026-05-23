@@ -237,7 +237,10 @@ describe("FollowupsPage", () => {
         makeGraphSchedule({
           id: "g-once",
           agent_name: "One shot",
-          cron: null,
+          // Backend returns null for one-shot graph schedules; the
+          // generated type says ``string`` but we exercise the runtime
+          // null-guard in `useGraphScheduleListItem` so cast through.
+          cron: null as unknown as string,
         }),
       ]),
     );

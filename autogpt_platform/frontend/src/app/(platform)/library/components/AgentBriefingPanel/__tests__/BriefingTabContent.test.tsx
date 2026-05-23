@@ -3,6 +3,9 @@ import {
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
+import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
@@ -422,17 +425,17 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
     mockUseGetFlag.mockReturnValue(false);
   }
 
-  function makeSkill(overrides: { name?: string } = {}) {
+  function makeSkill(overrides: { name?: string } = {}): CopilotSkillInfo {
     return {
       name: overrides.name ?? "skill-1",
       description: "test skill",
       triggers: [],
       version: "1.0.0",
       updated_at: new Date().toISOString(),
-    };
+    } as unknown as CopilotSkillInfo;
   }
 
-  function makeFollowup(overrides: { id?: string } = {}) {
+  function makeFollowup(overrides: { id?: string } = {}): CopilotTurnJobInfo {
     const runAt = new Date(Date.now() + 60 * 60 * 1000);
     return {
       id: overrides.id ?? "f-1",
@@ -443,13 +446,15 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
       cron: null,
       run_at: runAt,
       next_run_time: runAt.toISOString(),
-      kind: "copilot_turn",
+      kind: "copilot_turn" as const,
       timezone: "UTC",
       cap_retry_count: 0,
     };
   }
 
-  function makeGraphSchedule(overrides: { id?: string } = {}) {
+  function makeGraphSchedule(
+    overrides: { id?: string } = {},
+  ): GraphExecutionJobInfo {
     return {
       id: overrides.id ?? "g-1",
       name: "daily",
@@ -460,7 +465,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
       cron: "0 9 * * *",
       input_data: {},
       next_run_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      kind: "graph",
+      kind: "graph" as const,
       timezone: "UTC",
     };
   }
