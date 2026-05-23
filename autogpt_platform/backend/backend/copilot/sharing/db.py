@@ -353,11 +353,83 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     Returns the owning ``session_id`` if the file is allowlisted,
     ``None`` otherwise.  Uniform None for every failure mode prevents
     timing-based enumeration of valid file IDs.
+
+    Falls back to a live re-scan of the chat's messages when the
+    static allowlist misses — files uploaded AFTER the share was
+    enabled (or referenced by later assistant messages) would
+    otherwise 404 forever, even though the file is clearly part of
+    the shared conversation.  The re-scan re-uses the same workspace-
+    ownership guard ``_build_shared_chat_files`` enforces at enable
+    time, so a malicious tool output trying to reference a foreign
+    workspace file still gets rejected.  On hit we backfill a
+    SharedChatFile row so subsequent downloads short-circuit.
     """
     record = await SharedChatFile.prisma().find_first(
         where={"shareToken": share_token, "fileId": file_id}
     )
-    return record.sessionId if record else None
+    if record is not None:
+        return record.sessionId
+
+    # Slow path: chat-share allowlists are built once at enable time,
+    # but the chat keeps accumulating messages.  Re-derive ownership
+    # from the live messages for this token before giving up.
+    session = await PrismaChatSession.prisma().find_first(
+        where={"shareToken": share_token, "isShared": True},
+    )
+    if session is None:
+        return None
+    if not await _file_referenced_in_session(session_id=session.id, file_id=file_id):
+        return None
+    workspace = await UserWorkspace.prisma().find_unique(
+        where={"userId": session.userId}
+    )
+    if workspace is None:
+        return None
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "workspaceId": workspace.id, "isDeleted": False}
+    )
+    if file is None:
+        return None
+    # Backfill the allowlist so repeat downloads skip the re-scan.
+    try:
+        await SharedChatFile.prisma().create(
+            data={
+                "sessionId": session.id,
+                "fileId": file_id,
+                "shareToken": share_token,
+            }
+        )
+    except (UniqueViolationError, ForeignKeyViolationError):
+        # Concurrent backfill or file deleted between checks — fall
+        # through; the file is still ownership-validated above so
+        # the download is safe to authorise this once.
+        pass
+    return session.id
+
+
+async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
+    """True iff *file_id* appears in any of *session_id*'s messages.
+
+    Scans ``content``, ``toolCalls``, and ``functionCall`` of every
+    message using :func:`extract_workspace_file_ids` — same shape the
+    enable-time allowlist build uses, so a message that references the
+    file via ``workspace://``, ``[Attached files] file_id=``, or JSON
+    tool output all qualify.
+    """
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={"sessionId": session_id},
+    )
+    for row in rows:
+        if row.content is not None:
+            if file_id in extract_workspace_file_ids(row.content):
+                return True
+        if row.toolCalls is not None:
+            if file_id in extract_workspace_file_ids(_json_or_none(row.toolCalls)):
+                return True
+        if row.functionCall is not None:
+            if file_id in extract_workspace_file_ids(_json_or_none(row.functionCall)):
+                return True
+    return False
 
 
 # ---------- Linked execution discovery (share-modal helper) ------------------
