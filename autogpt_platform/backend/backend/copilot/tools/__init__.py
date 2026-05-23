@@ -45,6 +45,7 @@ from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
+from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
@@ -88,6 +89,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Schedule management
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
+    "schedule_followup": ScheduleFollowupTool(),
     # Trigger discovery (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
     "run_block": RunBlockTool(),

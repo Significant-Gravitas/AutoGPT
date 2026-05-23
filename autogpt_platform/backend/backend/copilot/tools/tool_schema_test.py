@@ -41,7 +41,21 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
 # (returns trigger agents + webhook presets for a parent agent so
 # AutoPilot can inspect/manage them).
-_CHAR_BUDGET = 35_500
+# Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
+# of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
+# explicit "ends your turn" caveat, and an example wake-up message.
+# Bumped 36500 -> 37000 for the schedule_followup `session_id` override
+# parameter — lets the model target a different conversation owned by
+# the same user (parent autopilot → sub-session followups). The parameter
+# description spends ~170 chars on the ownership-rejection semantics so
+# the model doesn't try to wake up other users' sessions.
+# Bumped 37000 -> 37500 for the schedule_followup null-session sentinel
+# (omit `session_id` → create a fresh chat at fire-time). The
+# description + tool-level prose grew ~400 chars to spell out: which
+# value picks which destination (omit vs current vs other), what
+# "fresh chat" means for the model's expectations, and the
+# read-from-<session_context> handoff for same-chat reminders.
+_CHAR_BUDGET = 37_500
 
 
 @pytest.fixture(scope="module")

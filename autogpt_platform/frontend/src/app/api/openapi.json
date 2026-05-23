@@ -8079,6 +8079,34 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List copilot follow-up schedules for a user",
+        "description": "Return only copilot-turn schedules for the current user.\n\nSibling of :func:`list_all_graphs_execution_schedules`; one route per kind\nkeeps the generated frontend client typed to a single concrete return type\ninstead of a discriminated union.",
+        "operationId": "listCopilotFollowupSchedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CopilotTurnJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Listcopilotfollowupschedules"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -11083,6 +11111,58 @@
         ],
         "title": "ContentType"
       },
+      "CopilotTurnJobInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "copilot_turn",
+            "title": "Kind",
+            "default": "copilot_turn"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Run At"
+          },
+          "cap_retry_count": {
+            "type": "integer",
+            "title": "Cap Retry Count",
+            "default": 0
+          },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
+        "title": "CopilotTurnJobInfo"
+      },
       "CopilotUsageExportResponse": {
         "properties": {
           "rows": {
@@ -12320,6 +12400,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -15517,6 +15603,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_created",
           "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
@@ -15921,25 +16008,49 @@
       "ScheduleSummary": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
           "name": { "type": "string", "title": "Name" },
-          "cron": { "type": "string", "title": "Cron" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
         },
         "type": "object",
         "required": [
           "schedule_id",
+          "kind",
           "name",
-          "cron",
           "timezone",
-          "next_run_time",
-          "graph_id",
-          "graph_version"
+          "next_run_time"
         ],
         "title": "ScheduleSummary",
-        "description": "Summary of a single schedule."
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
       },
       "SchedulesListResponse": {
         "properties": {

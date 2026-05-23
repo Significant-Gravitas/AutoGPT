@@ -2299,7 +2299,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -2314,7 +2314,37 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+
+
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(

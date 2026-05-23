@@ -94,6 +94,7 @@ from backend.copilot.token_tracking import (
     persist_and_record_usage,
 )
 from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -1650,12 +1651,24 @@ async def stream_chat_completion_baseline(
             default_daily_cost_limit=config.daily_cost_limit_microdollars,
             default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
         )
+        # Per-session follow-up awareness — gives the baseline model the
+        # current session_id + pending follow-up summary on its first turn
+        # so "cancel that" / "what did I schedule" works without a
+        # round-trip to ``list_schedules``.  Lands in the per-turn user
+        # message (after the last cache breakpoint) so injection does NOT
+        # bust the prefix cache.
+        session_ctx_content = ""
+        if user_id:
+            session_ctx_content = await build_session_context(
+                session_id=session_id, user_id=user_id
+            )
         prefixed = await inject_user_context(
             understanding,
             message or "",
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
+            session_ctx=session_ctx_content,
             user_id=user_id,
         )
         if prefixed is not None:

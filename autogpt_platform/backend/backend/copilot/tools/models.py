@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
