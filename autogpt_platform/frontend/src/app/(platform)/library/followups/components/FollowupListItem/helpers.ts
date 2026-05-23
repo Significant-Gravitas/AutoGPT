@@ -11,7 +11,13 @@ export function describeFollowup(followup: CopilotTurnJobInfo) {
         ? `${message.slice(0, MESSAGE_PREVIEW_MAX_LEN).trimEnd()}…`
         : message;
 
-  const sessionHref = `/copilot?sessionId=${encodeURIComponent(followup.session_id)}`;
+  // ``session_id`` is null when the follow-up is the "fresh chat at fire
+  // time" sentinel — there is no destination session to link to until the
+  // schedule fires.  Surface that explicitly to the renderer so it can
+  // disable the link and show a "New chat" pill instead.
+  const sessionHref = followup.session_id
+    ? `/copilot?sessionId=${encodeURIComponent(followup.session_id)}`
+    : null;
 
   return { messagePreview, sessionHref };
 }

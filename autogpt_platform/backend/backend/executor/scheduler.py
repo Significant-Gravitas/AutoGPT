@@ -28,7 +28,7 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor.utils import schedule_turn
-from backend.copilot.model import get_chat_session
+from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -203,18 +203,30 @@ async def _execute_copilot_turn(**kwargs):
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     try:
-        # Verify the session still exists — if the user deleted their
-        # conversation between scheduling and now, dispatching would create
-        # an orphan turn that no UI ever surfaces. Self-clean the dead
-        # schedule instead.
-        session = await get_chat_session(args.session_id, args.user_id)
-        if session is None:
+        # Resolve the target session.  ``session_id=None`` means "fire into
+        # a fresh chat" — create one now so the user has somewhere visible
+        # for the scheduled message to land.  For an explicit session_id
+        # we still verify it exists (the user may have deleted the chat
+        # between scheduling and now) and self-clean the dead schedule
+        # otherwise — orphan turns into a missing session would never
+        # surface in any UI.
+        if args.session_id is None:
+            new_session = await create_chat_session(args.user_id, dry_run=False)
+            target_session_id = new_session.session_id
             logger.info(
-                f"Copilot turn schedule {args.schedule_id} skipped — session "
-                f"{args.session_id[:12]} no longer exists; removing schedule"
+                f"Copilot turn schedule {args.schedule_id} creating fresh "
+                f"session {target_session_id[:12]} (sentinel session_id=None)"
             )
-            await _self_delete_copilot_turn_schedule(args)
-            return
+        else:
+            session = await get_chat_session(args.session_id, args.user_id)
+            if session is None:
+                logger.info(
+                    f"Copilot turn schedule {args.schedule_id} skipped — session "
+                    f"{args.session_id[:12]} no longer exists; removing schedule"
+                )
+                await _self_delete_copilot_turn_schedule(args)
+                return
+            target_session_id = args.session_id
 
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
         # point: it acquires a per-user concurrency slot AND registers the
@@ -222,7 +234,7 @@ async def _execute_copilot_turn(**kwargs):
         # executor's streamed output reaches a known consumer instead of
         # being orphaned.
         await schedule_turn(
-            session_id=args.session_id,
+            session_id=target_session_id,
             user_id=args.user_id,
             turn_id=str(uuid.uuid4()),
             message=args.message,
@@ -232,7 +244,7 @@ async def _execute_copilot_turn(**kwargs):
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Dispatched scheduled copilot turn for session "
-            f"{args.session_id[:12]} (took {elapsed:.2f}s)"
+            f"{target_session_id[:12]} (took {elapsed:.2f}s)"
         )
     except ConcurrentTurnLimitError as e:
         # User is at their per-user concurrency cap. For cron schedules the
@@ -240,7 +252,7 @@ async def _execute_copilot_turn(**kwargs):
         # APScheduler removes the job after fire regardless of our error,
         # so re-schedule a copy 5 min out to give the slot time to free.
         logger.warning(
-            f"Scheduled copilot turn for session {args.session_id[:12]} "
+            f"Scheduled copilot turn for session {_session_id_label(args)} "
             f"hit concurrency cap; cron={args.cron is not None}: {e}"
         )
         if args.run_at is not None:
@@ -249,9 +261,14 @@ async def _execute_copilot_turn(**kwargs):
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error dispatching copilot turn for session "
-            f"{args.session_id[:12]} after {elapsed:.2f}s: "
+            f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+def _session_id_label(args: "CopilotTurnJobArgs") -> str:
+    """Log-safe short label for a (possibly None) session_id."""
+    return args.session_id[:12] if args.session_id else "<new>"
 
 
 # One-shot schedules that hit the per-user concurrency cap are pushed out
@@ -273,7 +290,7 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
     if args.cap_retry_count >= _MAX_CAP_RETRIES:
         logger.error(
             f"Dropping one-shot copilot turn for session "
-            f"{args.session_id[:12]} — exhausted {_MAX_CAP_RETRIES} "
+            f"{_session_id_label(args)} — exhausted {_MAX_CAP_RETRIES} "
             f"concurrency-cap retry/retries"
         )
         return
@@ -294,14 +311,14 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
-            f"{args.session_id[:12]} to {new_run_at.isoformat()} after "
+            f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
             f"concurrency cap (retry {args.cap_retry_count + 1}/"
             f"{_MAX_CAP_RETRIES})"
         )
     except Exception:
         logger.warning(
             f"Failed to reschedule capped one-shot copilot turn for "
-            f"session {args.session_id[:12]}",
+            f"session {_session_id_label(args)}",
             exc_info=True,
         )
 
@@ -570,7 +587,11 @@ class CopilotTurnJobArgs(BaseModel):
     kind: Literal["copilot_turn"] = "copilot_turn"
     schedule_id: str | None = None
     user_id: str
-    session_id: str
+    # ``None`` means "create a fresh chat at fire-time" — the executor calls
+    # ``create_chat_session`` and routes the turn into the newly-minted
+    # session. A non-null value pins the followup to an existing session
+    # owned by the same user (current chat, sub-session, etc).
+    session_id: str | None = None
     message: str
     cron: str | None = None
     run_at: datetime | None = None
@@ -1027,19 +1048,19 @@ class Scheduler(AppService):
     def add_copilot_turn_schedule(
         self,
         user_id: str,
-        session_id: str,
         message: str,
+        session_id: str | None = None,
         cron: str | None = None,
         run_at: datetime | None = None,
         name: Optional[str] = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
     ) -> CopilotTurnJobInfo:
-        """Schedule a copilot turn to resume *session_id* at a future time.
+        """Schedule a copilot turn at a future time.
 
-        At fire time, the scheduler enqueues a copilot turn carrying
-        *message* against the existing session, so the copilot resumes
-        with the conversation history intact.
+        When *session_id* is ``None`` the executor creates a fresh chat
+        at fire time and routes the turn into it.  Otherwise the turn
+        resumes the named (existing) session with its full history.
 
         *cap_retry_count* is set internally by
         ``_reschedule_one_shot_after_cap`` to bound the retry depth on
@@ -1057,15 +1078,21 @@ class Scheduler(AppService):
             cap_retry_count=cap_retry_count,
             user_timezone=user_timezone,
         )
+        default_name = (
+            f"copilot turn (session {session_id[:8]})"
+            if session_id
+            else "copilot turn (new chat)"
+        )
         job = self._persist_schedule(
             dispatch_func=execute_copilot_turn,
             job_args=job_args,
             trigger=trigger,
-            name=name or f"copilot turn (session {session_id[:8]})",
+            name=name or default_name,
         )
+        session_label = session_id[:12] if session_id else "<new>"
         logger.info(
             f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "
-            f"for session {session_id[:12]} in timezone {user_timezone}"
+            f"for session {session_label} in timezone {user_timezone}"
         )
         return CopilotTurnJobInfo.from_db(job_args, job)
 

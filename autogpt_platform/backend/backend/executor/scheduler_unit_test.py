@@ -170,11 +170,15 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
     args = _args()
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock(return_value=None)
+    mock_create_session = AsyncMock()
     mock_self_delete = AsyncMock()
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
         patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
         patch(
             f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
             new=mock_self_delete,
@@ -183,8 +187,37 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_get_session.assert_awaited_once_with("session-1", "user-1")
+    mock_create_session.assert_not_awaited()  # only fires when session_id is None
     mock_schedule_turn.assert_not_awaited()
     mock_self_delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_none():
+    """Sentinel: when ``session_id`` is ``None`` the executor creates a brand-
+    new chat at fire-time and routes the turn into it.  This is the path that
+    powers ``schedule_followup`` calls with no explicit session_id."""
+    args = _args(session_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock()  # should NOT be called
+    new_session = MagicMock(session_id="new-session-uuid")
+    mock_create_session = AsyncMock(return_value=new_session)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_awaited_once_with("user-1", dry_run=False)
+    mock_get_session.assert_not_awaited()  # we created a new one, no lookup
+    mock_schedule_turn.assert_awaited_once()
+    call_kwargs = mock_schedule_turn.call_args.kwargs
+    assert call_kwargs["session_id"] == "new-session-uuid"
+    assert call_kwargs["message"] == "check CI"
 
 
 @pytest.mark.asyncio
