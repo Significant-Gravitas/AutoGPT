@@ -187,8 +187,20 @@ class ScheduleFollowupTool(BaseTool):
                 )
             run_at = datetime.now(tz=timezone.utc) + timedelta(seconds=delay_seconds)
 
-        user = await user_db().get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+        # ``get_user_by_id`` raises ``ValueError`` when the row is gone
+        # (account deletion / replication lag between auth and this
+        # call); fall back to UTC so a missing row doesn't 500 the tool.
+        # The schedule still belongs to ``user_id`` and the dispatcher's
+        # own ownership check catches the deletion at fire time.
+        try:
+            user = await user_db().get_user_by_id(user_id)
+            user_timezone = get_user_timezone_or_utc(user.timezone)
+        except ValueError:
+            logger.warning(
+                "[schedule_followup] user %s… not found — defaulting to UTC",
+                user_id[:8],
+            )
+            user_timezone = get_user_timezone_or_utc(None)
 
         # Pre-validate cron locally — CronTrigger.from_crontab raises ValueError
         # on the scheduler service, which crosses the RPC boundary as a generic

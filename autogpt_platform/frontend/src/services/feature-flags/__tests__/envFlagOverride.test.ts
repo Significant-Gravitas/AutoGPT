@@ -109,6 +109,26 @@ describe("COPILOT_SKILLS_FOLLOWUPS default", () => {
   });
 });
 
+describe("array-typed flags refuse env overrides", () => {
+  beforeEach(() => {
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS"];
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS"];
+  });
+
+  it("ignores a boolean env override for BETA_BLOCKS (array type)", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS"] = "true";
+    // A boolean override on an array-typed flag would yield `true` where
+    // callers expect a list — guard with `undefined` so they fall through
+    // to LaunchDarkly / `defaultFlags`.
+    expect(envFlagOverride(Flag.BETA_BLOCKS)).toBeUndefined();
+  });
+
+  it("ignores a boolean env override for MARKETPLACE_SEARCH_TERMS (array type)", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS"] = "false";
+    expect(envFlagOverride(Flag.MARKETPLACE_SEARCH_TERMS)).toBeUndefined();
+  });
+});
+
 describe("readEnvOverride covers every Flag arm", () => {
   beforeEach(() => {
     Object.keys(process.env)

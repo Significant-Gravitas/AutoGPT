@@ -76,9 +76,20 @@ function readEnvOverride(flag: Flag): string | undefined {
   }
 }
 
+// Array-typed flags (e.g. ``BETA_BLOCKS``, ``MARKETPLACE_SEARCH_TERMS``)
+// cannot be meaningfully overridden through a single boolean string env
+// var — returning ``true`` / ``false`` would clash with the array type
+// callers expect.  These flags are still subject to LaunchDarkly + the
+// ``defaultFlags`` fallback; the env override path just skips them.
+const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
+  Flag.BETA_BLOCKS,
+  Flag.MARKETPLACE_SEARCH_TERMS,
+]);
+
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
+  if (ARRAY_TYPED_FLAGS.has(flag)) return undefined;
   const raw = readEnvOverride(flag);
   if (raw === undefined) return undefined;
   const normalized = raw.trim().toLowerCase();
