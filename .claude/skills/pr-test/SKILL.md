@@ -136,13 +136,18 @@ NEVER hardcode these in this SKILL, a PR comment, a screenshot, or any committed
 Acquire the variables — env first, prompt if missing — and only then lock them in:
 
 ```bash
-# 1. Prefer env vars (CI / preconfigured shell). If either is missing,
-#    ask the user — do NOT proceed silently with a default.
+# 1. Prefer env vars (CI / preconfigured shell). Prompt only for the
+#    specific var that is unset so an already-exported credential is
+#    not overwritten by the prompt when only the other one is missing.
 if [ -z "${PR_TEST_USER_EMAIL:-}" ] || [ -z "${PR_TEST_USER_PASSWORD:-}" ]; then
   echo "Test user credentials required for this run."
-  read -r -p   "Email:    " PR_TEST_USER_EMAIL
-  read -r -s -p "Password: " PR_TEST_USER_PASSWORD
-  echo
+  if [ -z "${PR_TEST_USER_EMAIL:-}" ]; then
+    read -r -p   "Email:    " PR_TEST_USER_EMAIL
+  fi
+  if [ -z "${PR_TEST_USER_PASSWORD:-}" ]; then
+    read -r -s -p "Password: " PR_TEST_USER_PASSWORD
+    echo
+  fi
   export PR_TEST_USER_EMAIL PR_TEST_USER_PASSWORD
 fi
 
