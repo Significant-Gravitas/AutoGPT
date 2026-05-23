@@ -342,8 +342,6 @@ def test_malformed_nested_session_context_fully_consumed():
 
 @pytest.mark.asyncio
 async def test_build_session_context_skips_scheduler_when_followups_disabled():
-    from backend.copilot.tools.session_context import build_session_context
-
     scheduler_spy = AsyncMock(
         side_effect=AssertionError("scheduler must not be called when flag off")
     )

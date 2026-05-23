@@ -1169,8 +1169,6 @@ async def test_read_user_skill_with_body_returns_full_text():
 
 @pytest.mark.asyncio
 async def test_build_skills_context_empty_when_flag_disabled():
-    from backend.copilot.tools.skills import build_skills_context
-
     with patch(
         "backend.copilot.tools.skills.is_skills_feature_enabled",
         new=AsyncMock(return_value=False),
@@ -1182,8 +1180,6 @@ async def test_build_skills_context_empty_when_flag_disabled():
 
 @pytest.mark.asyncio
 async def test_build_skills_context_normal_when_flag_enabled():
-    from backend.copilot.tools.skills import build_skills_context
-
     fake_manager = _FakeWorkspaceManager()
     fake_manager.files["/skills/x/SKILL.md"] = render_skill_markdown(
         ParsedSkill(name="x", description="ok", body="b")
@@ -1205,8 +1201,6 @@ async def test_build_skills_context_normal_when_flag_enabled():
 
 @pytest.mark.asyncio
 async def test_store_skill_returns_feature_disabled_when_flag_off():
-    from backend.copilot.tools.skills import StoreSkillTool
-
     tool = StoreSkillTool()
     session = _make_session()
     with patch(
@@ -1227,8 +1221,6 @@ async def test_store_skill_returns_feature_disabled_when_flag_off():
 
 @pytest.mark.asyncio
 async def test_list_skills_returns_feature_disabled_when_flag_off():
-    from backend.copilot.tools.skills import ListSkillsTool
-
     tool = ListSkillsTool()
     session = _make_session()
     with patch(
