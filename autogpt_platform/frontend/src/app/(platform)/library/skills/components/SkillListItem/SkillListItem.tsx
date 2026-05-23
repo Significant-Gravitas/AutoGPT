@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { BookOpenIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";
 
 interface Props {
@@ -114,11 +115,11 @@ export function SkillListItem({ skill }: Props) {
                 <LoadingSpinner />
               </div>
             ) : detailErrorMessage ? (
-              <div
-                className="rounded-medium border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-                data-testid="skill-view-error"
-              >
-                {detailErrorMessage}
+              <div data-testid="skill-view-error">
+                <ErrorCard
+                  responseError={{ message: detailErrorMessage }}
+                  context={`skill "${skill.name}"`}
+                />
               </div>
             ) : (
               <pre

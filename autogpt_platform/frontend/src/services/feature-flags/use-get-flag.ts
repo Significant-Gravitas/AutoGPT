@@ -44,13 +44,42 @@ type FlagValues = typeof defaultFlags;
  *
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
+ *
+ * Each flag is mapped via a literal ``process.env.NEXT_PUBLIC_FORCE_FLAG_X``
+ * lookup so Next.js / Turbopack can statically inline the value into the
+ * client bundle. A dynamic ``process.env[envName]`` lookup compiles to a
+ * runtime read of the browser-side polyfilled ``process.env`` object,
+ * which is always empty — so the override silently no-ops in dev.
  */
+function readEnvOverride(flag: Flag): string | undefined {
+  switch (flag) {
+    case Flag.BETA_BLOCKS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS;
+    case Flag.MARKETPLACE_SEARCH_TERMS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
+    case Flag.ENABLE_PLATFORM_PAYMENT:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
+    case Flag.ARTIFACTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
+    case Flag.CHAT_MODE_OPTION:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
+    case Flag.BUILDER_CHAT_PANEL:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
+    case Flag.AGENT_BRIEFING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
+    case Flag.GENERIC_TRIGGER_AGENTS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
+    case Flag.CHAT_SEARCH:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
+    case Flag.COPILOT_SKILLS_FOLLOWUPS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS;
+  }
+}
+
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
-  const envName =
-    "NEXT_PUBLIC_FORCE_FLAG_" + flag.toUpperCase().replace(/-/g, "_");
-  const raw = process.env[envName];
+  const raw = readEnvOverride(flag);
   if (raw === undefined) return undefined;
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {

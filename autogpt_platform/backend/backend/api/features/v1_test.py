@@ -11,6 +11,11 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    ParsedSkill,
+    SkillNotFoundError,
+)
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.util.exceptions import InsufficientBalanceError
@@ -1103,7 +1108,6 @@ def test_list_copilot_skills_returns_user_skills(
     """GET /skills returns user-distilled skills (defaults are excluded
     because the UI hides them).
     """
-    from backend.copilot.tools.skills import ParsedSkill
 
     mocker.patch(
         "backend.api.features.v1.list_user_skills",
@@ -1149,7 +1153,6 @@ def test_delete_copilot_skill_rejects_builtin(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """Built-in defaults must not be user-deletable via the REST endpoint."""
-    from backend.copilot.tools.skills import BuiltInSkillError
 
     mocker.patch(
         "backend.api.features.v1.delete_user_skill",
@@ -1164,7 +1167,6 @@ def test_delete_copilot_skill_returns_404_when_missing(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """Missing skills surface as 404 so the UI can reconcile its list."""
-    from backend.copilot.tools.skills import SkillNotFoundError
 
     mocker.patch(
         "backend.api.features.v1.delete_user_skill",
@@ -1179,7 +1181,6 @@ def test_read_copilot_skill_returns_user_body(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """GET /skills/{name} returns the full SKILL.md body for a user skill."""
-    from backend.copilot.tools.skills import ParsedSkill
 
     mocker.patch(
         "backend.api.features.v1.read_user_skill_with_body",
@@ -1208,7 +1209,6 @@ def test_read_copilot_skill_returns_default_with_body(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """A built-in default name returns is_default=True and a non-empty body."""
-    from backend.copilot.tools.skills import ParsedSkill
 
     mocker.patch(
         "backend.api.features.v1.get_default_skill_with_body",
