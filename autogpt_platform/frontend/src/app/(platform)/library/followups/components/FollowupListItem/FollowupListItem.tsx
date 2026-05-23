@@ -4,7 +4,7 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ChatCircleTextIcon, TrashIcon } from "@phosphor-icons/react";
+import { ChatCircleTextIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useFollowupListItem } from "./useFollowupListItem";
 
@@ -24,6 +24,10 @@ export function FollowupListItem({ followup }: Props) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isViewOpen,
+    openView,
+    closeView,
+    fullMessage,
   } = useFollowupListItem({ followup });
 
   const sessionLabel = followup.session_id
@@ -90,6 +94,16 @@ export function FollowupListItem({ followup }: Props) {
         <Button
           variant="secondary"
           size="small"
+          onClick={openView}
+          data-testid="followup-view-button"
+          aria-label="View follow-up"
+        >
+          <EyeIcon className="mr-1 h-4 w-4" />
+          View
+        </Button>
+        <Button
+          variant="secondary"
+          size="small"
           onClick={openDelete}
           data-testid="followup-delete-button"
           aria-label="Delete follow-up"
@@ -98,6 +112,37 @@ export function FollowupListItem({ followup }: Props) {
           Delete
         </Button>
       </div>
+
+      <Dialog
+        controlled={{ isOpen: isViewOpen, set: closeView }}
+        styling={{ maxWidth: "40rem" }}
+        title="Follow-up details"
+      >
+        <Dialog.Content>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Text variant="small" className="!text-zinc-500">
+                {nextRunLabel}
+              </Text>
+              <span className="text-zinc-300">•</span>
+              <Text variant="small" className="!text-zinc-500">
+                {recurrenceLabel}
+              </Text>
+              <span className="text-zinc-300">•</span>
+              <Text variant="small" className="!text-zinc-400">
+                {sessionLabel}
+              </Text>
+            </div>
+            <pre
+              className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+              style={{ whiteSpace: "pre-wrap" }}
+              data-testid="followup-view-body"
+            >
+              {fullMessage}
+            </pre>
+          </div>
+        </Dialog.Content>
+      </Dialog>
 
       <Dialog
         controlled={{ isOpen: isDeleteOpen, set: closeDelete }}

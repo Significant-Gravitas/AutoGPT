@@ -3,6 +3,8 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
+import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   formatResetTime,
   formatTierLabel,
@@ -101,6 +103,60 @@ function UsageSection({ agents }: { agents: LibraryAgent[] }) {
         </>
       )}
       <CostsBreakdown agents={agents} />
+      <CopilotLibrarySummary />
+    </div>
+  );
+}
+
+function CopilotLibrarySummary() {
+  // Discoverability is already gated by AGENT_BRIEFING at the parent
+  // panel — this pill renders only inside AgentBriefingPanel, which is
+  // itself flag-gated.  No second flag here so we don't end up with two
+  // flags we'd always toggle together.
+  const { data: skillsRes } = useListCopilotSkills({
+    query: { staleTime: 30_000 },
+  });
+  const { data: followupsRes } = useListCopilotFollowupSchedules({
+    query: { staleTime: 30_000 },
+  });
+
+  const skillsCount =
+    skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
+  const followupsCount =
+    followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
+
+  // Suppress the pill entirely when the user has no copilot library
+  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not
+  // discovery affordance.  The pill reappears the moment either count
+  // turns positive (e.g. on the next refetch after a store_skill /
+  // schedule_followup tool call).
+  if (skillsCount === 0 && followupsCount === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      data-testid="copilot-library-summary"
+    >
+      <Text variant="small" className="!text-zinc-500">
+        Copilot library
+      </Text>
+      <Link
+        href="/library/skills"
+        className="text-sm text-violet-700 hover:underline"
+        data-testid="copilot-library-skills-link"
+      >
+        {skillsCount} skill{skillsCount === 1 ? "" : "s"}
+      </Link>
+      <span className="text-zinc-300">•</span>
+      <Link
+        href="/library/followups"
+        className="text-sm text-yellow-700 hover:underline"
+        data-testid="copilot-library-followups-link"
+      >
+        {followupsCount} follow-up{followupsCount === 1 ? "" : "s"}
+      </Link>
     </div>
   );
 }

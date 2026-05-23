@@ -49,13 +49,17 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the same user (parent autopilot → sub-session followups). The parameter
 # description spends ~170 chars on the ownership-rejection semantics so
 # the model doesn't try to wake up other users' sessions.
-# Bumped 37000 -> 37500 for the schedule_followup null-session sentinel
-# (omit `session_id` → create a fresh chat at fire-time). The
-# description + tool-level prose grew ~400 chars to spell out: which
-# value picks which destination (omit vs current vs other), what
-# "fresh chat" means for the model's expectations, and the
-# read-from-<session_context> handoff for same-chat reminders.
-_CHAR_BUDGET = 37_500
+# Bumped 37000 -> 38500 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop.  Descriptions are already trimmed to the minimum
+# viable copy; the bump absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+# Bumped 38500 -> 39000 for the schedule_followup ``session_id=null``
+# sentinel — its description spends ~170 chars explaining the "fire
+# into a fresh chat" semantics so the model picks the right value
+# (null vs omit vs target_session_id) for autopilot-style flows.
+_CHAR_BUDGET = 39_000
 
 
 @pytest.fixture(scope="module")
@@ -99,9 +103,18 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
+            # ``anyOf`` is the JSON-Schema-compliant way to model a
+            # nullable / union-typed parameter (e.g. ``session_id`` may
+            # be ``string`` or ``null`` for the fresh-chat sentinel).
+            # Accept either a top-level ``type`` OR an ``anyOf`` whose
+            # branches each carry their own ``type``.
+            has_type = "type" in prop_def or (
+                isinstance(prop_def.get("anyOf"), list)
+                and all(isinstance(b, dict) and "type" in b for b in prop_def["anyOf"])
+            )
             assert (
-                "type" in prop_def
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+                has_type
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"

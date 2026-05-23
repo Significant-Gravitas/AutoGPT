@@ -18,6 +18,7 @@ export function useFollowupListItem({ followup }: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
 
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
     useDeleteV1DeleteExecutionSchedule();
@@ -46,6 +47,14 @@ export function useFollowupListItem({ followup }: Args) {
 
   function closeDelete(open: boolean) {
     setIsDeleteOpen(open);
+  }
+
+  function openView() {
+    setIsViewOpen(true);
+  }
+
+  function closeView(open: boolean) {
+    setIsViewOpen(open);
   }
 
   async function handleDelete() {
@@ -82,6 +91,10 @@ export function useFollowupListItem({ followup }: Args) {
     closeDelete,
     isDeleting,
     handleDelete,
+    isViewOpen,
+    openView,
+    closeView,
+    fullMessage: followup.message || "(no message)",
   };
 }
 

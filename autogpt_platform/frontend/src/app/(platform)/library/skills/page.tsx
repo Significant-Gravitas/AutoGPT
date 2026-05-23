@@ -6,15 +6,15 @@ import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
-import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
-import { useFollowupsPage } from "./useFollowupsPage";
+import { EmptySkills } from "./components/EmptySkills/EmptySkills";
+import { SkillListItem } from "./components/SkillListItem/SkillListItem";
+import { useSkillsPage } from "./useSkillsPage";
 
-export default function FollowupsPage() {
-  const { followups, isLoading, error } = useFollowupsPage();
+export default function SkillsPage() {
+  const { skills, isLoading, error } = useSkillsPage();
 
   useEffect(() => {
-    document.title = "Copilot follow-ups – AutoGPT Platform";
+    document.title = "Copilot skills – AutoGPT Platform";
   }, []);
 
   return (
@@ -22,16 +22,17 @@ export default function FollowupsPage() {
       <Link
         href="/library"
         className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
-        data-testid="followups-back-to-library"
+        data-testid="skills-back-to-library"
       >
         <ArrowLeftIcon size={14} weight="bold" />
         Back to Library
       </Link>
       <header className="flex flex-col gap-2">
-        <Text variant="h2">Copilot follow-ups</Text>
+        <Text variant="h2">Copilot skills</Text>
         <Text variant="body" className="!text-zinc-500">
-          Scheduled messages your copilot sessions will send themselves. Open a
-          row to jump into the session, or cancel one you no longer need.
+          Reusable procedures your copilot has distilled from past sessions.
+          Review what it remembers, or delete a skill you no longer want it to
+          reach for.
         </Text>
       </header>
 
@@ -39,30 +40,28 @@ export default function FollowupsPage() {
         <ErrorCard
           responseError={{
             message:
-              error instanceof Error
-                ? error.message
-                : "Failed to load follow-ups",
+              error instanceof Error ? error.message : "Failed to load skills",
           }}
-          context="copilot follow-ups"
+          context="copilot skills"
         />
       ) : isLoading ? (
         <div
           className="flex items-center justify-center py-16"
-          data-testid="followups-loading"
+          data-testid="skills-loading"
         >
           <LoadingSpinner />
         </div>
-      ) : followups.length === 0 ? (
-        <EmptyFollowups />
+      ) : skills.length === 0 ? (
+        <EmptySkills />
       ) : (
         <ul
           className="flex flex-col gap-3"
-          data-testid="followups-list"
-          aria-label="Copilot follow-ups"
+          data-testid="skills-list"
+          aria-label="Copilot skills"
         >
-          {followups.map((followup) => (
-            <li key={followup.id}>
-              <FollowupListItem followup={followup} />
+          {skills.map((skill) => (
+            <li key={skill.name}>
+              <SkillListItem skill={skill} />
             </li>
           ))}
         </ul>
