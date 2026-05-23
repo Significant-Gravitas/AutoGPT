@@ -1230,19 +1230,45 @@ class Scheduler(AppService):
     _JOBS_CACHE_TTL_S = 5.0
     _jobs_cache: list[JobObj] | None = None
     _jobs_cache_expires_at: float = 0.0
+    # Serialises (a) concurrent cache misses so the slow ``get_jobs``
+    # unpickle runs only once per TTL, and (b) the read/invalidate race
+    # where an invalidation between a thread's slow read and its
+    # cache-write would otherwise leave a just-invalidated cache holding
+    # the pre-mutation list.  Threading rather than asyncio because the
+    # APScheduler ``BackgroundScheduler`` thread + the Pyro RPC workers
+    # both call into this method.
+    _jobs_cache_lock = threading.Lock()
+    # Monotonically increasing version stamp; bumped by every
+    # invalidation.  A reader captures the version BEFORE it runs the
+    # slow query and only writes back if the version is unchanged on
+    # completion — this kills the race where invalidate fires while a
+    # slow read is in flight.
+    _jobs_cache_version: int = 0
 
     def _get_jobs_cached(self) -> list[JobObj]:
-        now = time.monotonic()
-        if self._jobs_cache is not None and now < self._jobs_cache_expires_at:
-            return self._jobs_cache
+        with self._jobs_cache_lock:
+            now = time.monotonic()
+            if self._jobs_cache is not None and now < self._jobs_cache_expires_at:
+                return self._jobs_cache
+            version_at_start = self._jobs_cache_version
+        # Drop the lock for the heavy I/O so unrelated writers (which
+        # only take the lock briefly inside ``_invalidate_jobs_cache``)
+        # don't queue behind a slow scheduler query.
         jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-        self._jobs_cache = jobs
-        self._jobs_cache_expires_at = now + self._JOBS_CACHE_TTL_S
+        with self._jobs_cache_lock:
+            # If an invalidation happened while we were querying, the
+            # list we just fetched might already be stale.  Skip the
+            # write-back; the next caller will re-query.
+            if self._jobs_cache_version == version_at_start:
+                self._jobs_cache = jobs
+                self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
         return jobs
 
     def _invalidate_jobs_cache(self) -> None:
-        self._jobs_cache = None
-        self._jobs_cache_expires_at = 0.0
+        with self._jobs_cache_lock:
+            self._jobs_cache = None
+            self._jobs_cache_expires_at = 0.0
+            self._jobs_cache_version += 1
 
     @expose
     def get_execution_schedules(
