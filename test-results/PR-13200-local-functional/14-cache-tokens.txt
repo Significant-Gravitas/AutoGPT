@@ -1,0 +1,13 @@
+=== Cache discipline evidence (scenario 14) ===
+Tail of backend log /tmp/backend_app_local.log:
+
+2026-05-23 16:15:56,144 [34mINFO[0m  [SDK][172ec9b6-fc3][T1] Token usage: uncached=3, cache_read=0, cache_create=38881, output=6
+2026-05-23 16:16:07,954 [34mINFO[0m  [SDK][fe4e86ba-783][T1] Token usage: uncached=3, cache_read=0, cache_create=38748, output=5
+2026-05-23 16:16:40,161 [34mINFO[0m  [SDK][fe4e86ba-783][T2] Token usage: uncached=6, cache_read=38748, cache_create=40305, output=152
+2026-05-23 16:17:15,557 [34mINFO[0m  [SDK][fe4e86ba-783][T3] Token usage: uncached=6, cache_read=79053, cache_create=843, output=175
+2026-05-23 16:17:50,063 [34mINFO[0m  [SDK][fe4e86ba-783][T4] Token usage: uncached=6, cache_read=79896, cache_create=729, output=155
+2026-05-23 16:22:22,983 [34mINFO[0m  [SDK][fe4e86ba-783][T5] Token usage: uncached=6, cache_read=80625, cache_create=632, output=163
+2026-05-23 16:24:46,723 [34mINFO[0m  [SDK][fe4e86ba-783][T6] Token usage: uncached=6, cache_read=81257, cache_create=915, output=217
+2026-05-23 16:26:48,935 [34mINFO[0m  [SDK][fe4e86ba-783][T7] Token usage: uncached=3, cache_read=40324, cache_create=539, output=35
+2026-05-23 16:28:56,037 [34mINFO[0m  [SDK][fe4e86ba-783][T8] Token usage: uncached=6, cache_read=82711, cache_create=443, output=129
+2026-05-23 16:29:38,500 [34mINFO[0m  [SDK][fe4e86ba-783][T9] Token usage: uncached=6, cache_read=83154, cache_create=787, output=180
