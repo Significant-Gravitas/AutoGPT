@@ -133,11 +133,24 @@ NEVER hardcode these in this SKILL, a PR comment, a screenshot, or any committed
 1. **Env vars** (CI / preconfigured local shell): `$PR_TEST_USER_EMAIL` + `$PR_TEST_USER_PASSWORD`. If both are set, use them.
 2. **Interactive prompt** (everything else, including dev-preview runs): if the env vars are not set, ASK the user at the start of the run — e.g. "I need test-user credentials for this run; paste the email and password." Hold them in shell vars only for the duration of the run. Do not echo, log, or write them to disk.
 
-Lock the variables in for the rest of this SKILL:
+Acquire the variables — env first, prompt if missing — and only then lock them in:
 
 ```bash
-: "${PR_TEST_USER_EMAIL:?Set PR_TEST_USER_EMAIL via env var or ask the user before running}"
-: "${PR_TEST_USER_PASSWORD:?Set PR_TEST_USER_PASSWORD via env var or ask the user before running}"
+# 1. Prefer env vars (CI / preconfigured shell). If either is missing,
+#    ask the user — do NOT proceed silently with a default.
+if [ -z "${PR_TEST_USER_EMAIL:-}" ] || [ -z "${PR_TEST_USER_PASSWORD:-}" ]; then
+  echo "Test user credentials required for this run."
+  read -r -p   "Email:    " PR_TEST_USER_EMAIL
+  read -r -s -p "Password: " PR_TEST_USER_PASSWORD
+  echo
+  export PR_TEST_USER_EMAIL PR_TEST_USER_PASSWORD
+fi
+
+# 2. Lock them in — fail loudly if either is STILL unset (e.g. the user
+#    pressed Enter on an empty prompt). The error message names the var so
+#    the agent / operator knows what to fix.
+: "${PR_TEST_USER_EMAIL:?PR_TEST_USER_EMAIL is empty after env+prompt — supply a value before re-running}"
+: "${PR_TEST_USER_PASSWORD:?PR_TEST_USER_PASSWORD is empty after env+prompt — supply a value before re-running}"
 ```
 
 For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's Supabase — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default).
@@ -496,13 +509,15 @@ RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
   -H 'Content-Type: application/json' \
   -d "$SIGNUP_PAYLOAD")
 
-# If "Database error finding user", restart supabase-auth and retry
+# If "Database error finding user", restart supabase-auth and retry —
+# capture the retry result back into $RESULT so the token step below
+# reads the post-retry state, not the original failure.
 if echo "$RESULT" | grep -q "Database error"; then
   docker restart supabase-auth && sleep 5
-  curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
+  RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
     -H "apikey: $ANON_KEY" \
     -H 'Content-Type: application/json' \
-    -d "$SIGNUP_PAYLOAD"
+    -d "$SIGNUP_PAYLOAD")
 fi
 
 # Get auth token
