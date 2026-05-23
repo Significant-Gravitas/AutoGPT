@@ -8,13 +8,14 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
+import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
 import { useFollowupsPage } from "./useFollowupsPage";
 
 export default function FollowupsPage() {
-  const { followups, isLoading, error } = useFollowupsPage();
+  const { schedules, isLoading, error } = useFollowupsPage();
 
   useEffect(() => {
-    document.title = "Copilot follow-ups – AutoGPT Platform";
+    document.title = "Scheduled – AutoGPT Platform";
   }, []);
 
   return (
@@ -28,10 +29,12 @@ export default function FollowupsPage() {
         Back to Library
       </Link>
       <header className="flex flex-col gap-2">
-        <Text variant="h2">Copilot follow-ups</Text>
+        <Text variant="h2">Scheduled</Text>
         <Text variant="body" className="!text-zinc-500">
-          Scheduled messages your copilot sessions will send themselves. Open a
-          row to jump into the session, or cancel one you no longer need.
+          Every automated job in one place — follow-up messages your copilot
+          will send itself AND recurring agent runs from the builder. Open a
+          row to jump into the session / agent, or cancel one you no longer
+          need.
         </Text>
       </header>
 
@@ -41,9 +44,9 @@ export default function FollowupsPage() {
             message:
               error instanceof Error
                 ? error.message
-                : "Failed to load follow-ups",
+                : "Failed to load schedules",
           }}
-          context="copilot follow-ups"
+          context="scheduled items"
         />
       ) : isLoading ? (
         <div
@@ -52,17 +55,21 @@ export default function FollowupsPage() {
         >
           <LoadingSpinner />
         </div>
-      ) : followups.length === 0 ? (
+      ) : schedules.length === 0 ? (
         <EmptyFollowups />
       ) : (
         <ul
           className="flex flex-col gap-3"
           data-testid="followups-list"
-          aria-label="Copilot follow-ups"
+          aria-label="Scheduled items"
         >
-          {followups.map((followup) => (
-            <li key={followup.id}>
-              <FollowupListItem followup={followup} />
+          {schedules.map((schedule) => (
+            <li key={`${schedule.kind}:${schedule.item.id}`}>
+              {schedule.kind === "copilot_turn" ? (
+                <FollowupListItem followup={schedule.item} />
+              ) : (
+                <GraphScheduleListItem schedule={schedule.item} />
+              )}
             </li>
           ))}
         </ul>

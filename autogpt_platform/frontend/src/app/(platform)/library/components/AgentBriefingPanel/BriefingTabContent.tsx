@@ -4,7 +4,10 @@ import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotU
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
-import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  useGetV1ListExecutionSchedulesForAUser,
+  useListCopilotFollowupSchedules,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   formatResetTime,
   formatTierLabel,
@@ -119,20 +122,35 @@ function CopilotLibrarySummary() {
   const { data: followupsRes } = useListCopilotFollowupSchedules({
     query: { staleTime: 30_000 },
   });
+  // Graph schedules (recurring agent runs) live alongside followups in
+  // the unified Scheduled page — count them together so the briefing
+  // pill mirrors what the user sees there.
+  const { data: graphsRes } = useGetV1ListExecutionSchedulesForAUser({
+    query: { staleTime: 30_000 },
+  });
 
   const skillsCount =
     skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
-  const followupsCount =
+  const copilotFollowupsCount =
     followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
+  const graphSchedulesCount =
+    graphsRes && graphsRes.status === 200 ? graphsRes.data.length : 0;
+  const scheduledCount = copilotFollowupsCount + graphSchedulesCount;
 
-  // Suppress the pill entirely when the user has no copilot library
-  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not
+  // Suppress the pill entirely when the user has no autopilot library
+  // content yet — surfacing "0 skills · 0 scheduled" is noise, not a
   // discovery affordance.  The pill reappears the moment either count
   // turns positive (e.g. on the next refetch after a store_skill /
-  // schedule_followup tool call).
-  if (skillsCount === 0 && followupsCount === 0) {
+  // schedule_followup / add_graph_execution_schedule tool call).
+  if (skillsCount === 0 && scheduledCount === 0) {
     return null;
   }
+
+  // Per-link hide: surface only the counts that are non-zero.  We
+  // already returned ``null`` above when both are zero, so at least
+  // one of these two branches always renders.
+  const showSkills = skillsCount > 0;
+  const showScheduled = scheduledCount > 0;
 
   return (
     <div
@@ -140,23 +158,29 @@ function CopilotLibrarySummary() {
       data-testid="copilot-library-summary"
     >
       <Text variant="small" className="!text-zinc-500">
-        Copilot library
+        Autopilot library
       </Text>
-      <Link
-        href="/library/skills"
-        className="text-sm text-violet-700 hover:underline"
-        data-testid="copilot-library-skills-link"
-      >
-        {skillsCount} skill{skillsCount === 1 ? "" : "s"}
-      </Link>
-      <span className="text-zinc-300">•</span>
-      <Link
-        href="/library/followups"
-        className="text-sm text-yellow-700 hover:underline"
-        data-testid="copilot-library-followups-link"
-      >
-        {followupsCount} follow-up{followupsCount === 1 ? "" : "s"}
-      </Link>
+      {showSkills ? (
+        <Link
+          href="/library/skills"
+          className="text-sm text-violet-700 hover:underline"
+          data-testid="copilot-library-skills-link"
+        >
+          {skillsCount} skill{skillsCount === 1 ? "" : "s"}
+        </Link>
+      ) : null}
+      {showSkills && showScheduled ? (
+        <span className="text-zinc-300">•</span>
+      ) : null}
+      {showScheduled ? (
+        <Link
+          href="/library/followups"
+          className="text-sm text-yellow-700 hover:underline"
+          data-testid="copilot-library-followups-link"
+        >
+          {scheduledCount} scheduled
+        </Link>
+      ) : null}
     </div>
   );
 }

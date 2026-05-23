@@ -149,6 +149,23 @@ class ScheduleFollowupTool(BaseTool):
                 error="auth_required",
                 session_id=current_session_id,
             )
+        # Per-user kill-switch — ``COPILOT_SCHEDULED_FOLLOWUPS`` LD
+        # flag.  Default-on; flip off in LaunchDarkly to disable the
+        # tool without a redeploy.
+        from backend.copilot.tools.session_context import (
+            is_followups_feature_enabled,
+        )
+
+        if not await is_followups_feature_enabled(user_id):
+            return ErrorResponse(
+                message=(
+                    "Scheduled followups are currently disabled for this "
+                    "user. Re-enable the ``copilot-scheduled-followups`` "
+                    "LaunchDarkly flag to use ``schedule_followup``."
+                ),
+                error="feature_disabled",
+                session_id=current_session_id,
+            )
 
         message: str | None = kwargs.get("message")
         if not message or not message.strip():

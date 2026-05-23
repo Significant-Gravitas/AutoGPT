@@ -70,6 +70,21 @@ def _format_followup_list(jobs: list[CopilotTurnJobInfo]) -> list[str]:
     return lines
 
 
+async def is_followups_feature_enabled(user_id: str | None) -> bool:
+    """Per-user kill-switch for the scheduled-followups feature
+    (``COPILOT_SCHEDULED_FOLLOWUPS`` LD flag).  Default-on.  Anonymous
+    calls (no ``user_id``) treat as enabled so unauthenticated paths
+    don't surprise-break.
+    """
+    if not user_id:
+        return True
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    return await is_feature_enabled(
+        Flag.COPILOT_SCHEDULED_FOLLOWUPS, user_id, default=True
+    )
+
+
 async def build_session_context(session_id: str, user_id: str) -> str:
     """Return the body of the ``<session_context>`` block for this turn.
 
@@ -86,7 +101,14 @@ async def build_session_context(session_id: str, user_id: str) -> str:
 
     The return value is the **body** of the block (no surrounding
     ``<session_context>`` tags); the caller wraps it.
+
+    When the ``COPILOT_SCHEDULED_FOLLOWUPS`` LD flag is off for this
+    user, the followup awareness collapses to just ``pending_followups:
+    0`` — we keep the ``session_id`` line so the model still knows
+    which session it is in, and we skip the scheduler RPC entirely.
     """
+    if not await is_followups_feature_enabled(user_id):
+        return f"session_id: {session_id}; pending_followups: 0"
     try:
         raw_jobs = await get_scheduler_client().get_execution_schedules(
             user_id=user_id,
