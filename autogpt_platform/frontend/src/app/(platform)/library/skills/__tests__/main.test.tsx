@@ -14,17 +14,6 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import SkillsPage from "../page";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: () => true,
-  };
-});
-
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =

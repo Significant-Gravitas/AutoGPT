@@ -84,31 +84,6 @@ describe("BUILDER_CHAT_PANEL default", () => {
   });
 });
 
-describe("COPILOT_SKILLS_FOLLOWUPS default", () => {
-  beforeEach(() => {
-    delete process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"];
-  });
-
-  it("is disabled by default so /library/skills + /library/followups stay hidden until LD enables them", () => {
-    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBeUndefined();
-  });
-
-  it("can be force-enabled via the env override for local dev", () => {
-    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "true";
-    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBe(true);
-  });
-
-  it("can be force-disabled via the env override for QA", () => {
-    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "false";
-    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBe(false);
-  });
-
-  it("ignores unrecognised string values", () => {
-    process.env["NEXT_PUBLIC_FORCE_FLAG_COPILOT_SKILLS_FOLLOWUPS"] = "maybe";
-    expect(envFlagOverride(Flag.COPILOT_SKILLS_FOLLOWUPS)).toBeUndefined();
-  });
-});
-
 describe("array-typed flags refuse env overrides", () => {
   beforeEach(() => {
     delete process.env["NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS"];

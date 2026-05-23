@@ -109,15 +109,16 @@ function UsageSection({ agents }: { agents: LibraryAgent[] }) {
 }
 
 function CopilotLibrarySummary() {
-  const isEnabled = useGetFlag(Flag.COPILOT_SKILLS_FOLLOWUPS);
+  // Discoverability is already gated by AGENT_BRIEFING at the parent
+  // panel — this pill renders only inside AgentBriefingPanel, which is
+  // itself flag-gated.  No second flag here so we don't end up with two
+  // flags we'd always toggle together.
   const { data: skillsRes } = useListCopilotSkills({
-    query: { enabled: isEnabled, staleTime: 30_000 },
+    query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({
-    query: { enabled: isEnabled, staleTime: 30_000 },
+    query: { staleTime: 30_000 },
   });
-
-  if (!isEnabled) return null;
 
   const skillsCount =
     skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
