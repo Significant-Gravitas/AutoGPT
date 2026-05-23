@@ -2,9 +2,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import pytz
+from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.data import db
+from backend.executor.scheduler import (
+    _build_trigger,
+    _normalize_cron_day_of_week,
+)
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.test import SpinTestServer
@@ -108,3 +114,71 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
     # ValueError from _build_trigger propagates as a RemoteError
     # through the AppService transport; just verify the call rejected.
     assert exc.value is not None
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("*", "*"),
+        ("?", "?"),
+        ("mon-fri", "mon-fri"),
+        ("1-5", "0-4"),
+        ("1,3,5", "0,2,4"),
+        ("0", "6"),
+        ("7", "6"),
+        ("0,6", "6,5"),
+        ("6-7", "5-6"),
+        ("0-4", "6-6,0-3"),
+        ("5-2", "4-6,0-1"),
+        ("*/2", "*/2"),
+        ("1-5/1", "0-4/1"),
+    ],
+)
+def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
+    raw: str, expected: str
+):
+    """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
+    The numbers must be translated, but named tokens and ``*``/``?`` pass
+    through unchanged. Wrap-around ranges split into two APS ranges."""
+    cron = f"0 9 * * {raw}"
+    assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
+
+
+def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():
+    """Regression: ``0 9 * * 1-5`` on a Saturday must fire next on Monday
+    (Unix-cron semantics), not Tuesday (APScheduler's untranslated numbering).
+    """
+    tz = pytz.timezone("Asia/Jakarta")
+    saturday = tz.localize(datetime(2026, 5, 23, 16, 0, 0))
+
+    trigger = _build_trigger(
+        cron="0 9 * * 1-5", run_at=None, user_timezone="Asia/Jakarta"
+    )
+    assert isinstance(trigger, CronTrigger)
+    nxt = trigger.get_next_fire_time(None, saturday)
+    assert nxt is not None
+    assert nxt.strftime("%A %Y-%m-%d %H:%M") == "Monday 2026-05-25 09:00"
+
+
+@pytest.mark.parametrize(
+    "cron,from_dt,expected_dow",
+    [
+        # Mon-only from Saturday -> Monday
+        ("0 9 * * 1", datetime(2026, 5, 23, 16, 0), "Monday"),
+        # Sun-only (unix 0) from Saturday -> Sunday
+        ("0 9 * * 0", datetime(2026, 5, 23, 16, 0), "Sunday"),
+        # Wrap range Sat-Mon (6-1) from Sunday -> Monday
+        ("0 9 * * 6-1", datetime(2026, 5, 24, 16, 0), "Monday"),
+        # Weekends only (Sat,Sun) from Friday -> Saturday
+        ("0 9 * * 0,6", datetime(2026, 5, 22, 16, 0), "Saturday"),
+    ],
+)
+def test_build_trigger_unix_dow_various_cases(
+    cron: str, from_dt: datetime, expected_dow: str
+):
+    tz = pytz.timezone("Asia/Jakarta")
+    start = tz.localize(from_dt)
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="Asia/Jakarta")
+    nxt = trigger.get_next_fire_time(None, start)
+    assert nxt is not None
+    assert nxt.strftime("%A") == expected_dow
