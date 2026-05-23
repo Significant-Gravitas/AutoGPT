@@ -15,3 +15,33 @@ export function describeFollowup(followup: CopilotTurnJobInfo) {
 
   return { messagePreview, sessionHref };
 }
+
+export function formatNextRunTitle(
+  nextRunIso: string | null | undefined,
+  scheduleTimezone: string | null | undefined,
+): string | undefined {
+  if (!nextRunIso) return undefined;
+  const date = new Date(nextRunIso);
+  if (Number.isNaN(date.valueOf())) return undefined;
+
+  const tz =
+    scheduleTimezone && scheduleTimezone.trim().length > 0
+      ? scheduleTimezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  try {
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      timeZone: tz,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+    return `Next run: ${formatted} (${tz})`;
+  } catch {
+    return `Next run: ${date.toISOString()} (UTC)`;
+  }
+}

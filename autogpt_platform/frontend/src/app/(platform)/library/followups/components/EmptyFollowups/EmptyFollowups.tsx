@@ -15,7 +15,8 @@ export function EmptyFollowups() {
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
         Ask your copilot to schedule something for later and it will show up
-        here so you can edit or cancel it.
+        here so you can cancel it. To change a follow-up, cancel and ask the
+        copilot to schedule a new one.
       </Text>
     </div>
   );
