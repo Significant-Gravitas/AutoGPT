@@ -195,9 +195,9 @@ describe("FollowupsPage", () => {
     expect(screen.getByText("Nightly cleanup")).toBeDefined();
     const graphRow = screen.getByTestId("schedule-row");
     expect(graphRow.getAttribute("data-schedule-kind")).toBe("graph");
-    expect(within(graphRow).getByTestId("schedule-kind-badge").textContent).toBe(
-      "Agent run",
-    );
+    expect(
+      within(graphRow).getByTestId("schedule-kind-badge").textContent,
+    ).toBe("Agent run");
   });
 
   test("shows a destructive toast when the delete API fails", async () => {

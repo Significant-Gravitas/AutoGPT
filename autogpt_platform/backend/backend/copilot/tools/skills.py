@@ -38,6 +38,7 @@ from backend.copilot.service import strip_server_injected_tags
 from backend.data.db_accessors import workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -680,8 +681,6 @@ async def is_skills_feature_enabled(user_id: str | None) -> bool:
     """
     if not user_id:
         return True
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
     return await is_feature_enabled(Flag.COPILOT_SKILLS, user_id, default=True)
 
 

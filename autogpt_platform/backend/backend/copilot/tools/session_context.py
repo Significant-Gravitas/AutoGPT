@@ -27,6 +27,7 @@ import logging
 
 from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.util.clients import get_scheduler_client
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,6 @@ async def is_followups_feature_enabled(user_id: str | None) -> bool:
     """
     if not user_id:
         return True
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
     return await is_feature_enabled(
         Flag.COPILOT_SCHEDULED_FOLLOWUPS, user_id, default=True
     )

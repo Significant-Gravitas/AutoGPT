@@ -284,7 +284,7 @@ async def test_returns_feature_disabled_when_flag_off(tool):
     )
 
     with patch(
-        "backend.copilot.tools.session_context.is_followups_feature_enabled",
+        f"{_TOOL_PATH}.is_followups_feature_enabled",
         new=AsyncMock(return_value=False),
     ), patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client):
         result = await tool._execute(

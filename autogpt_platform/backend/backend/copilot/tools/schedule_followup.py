@@ -31,6 +31,7 @@ from typing import Any
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
@@ -149,13 +150,6 @@ class ScheduleFollowupTool(BaseTool):
                 error="auth_required",
                 session_id=current_session_id,
             )
-        # Per-user kill-switch — ``COPILOT_SCHEDULED_FOLLOWUPS`` LD
-        # flag.  Default-on; flip off in LaunchDarkly to disable the
-        # tool without a redeploy.
-        from backend.copilot.tools.session_context import (
-            is_followups_feature_enabled,
-        )
-
         if not await is_followups_feature_enabled(user_id):
             return ErrorResponse(
                 message=(
