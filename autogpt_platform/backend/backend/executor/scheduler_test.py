@@ -7,10 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.data import db
-from backend.executor.scheduler import (
-    _build_trigger,
-    _normalize_cron_day_of_week,
-)
+from backend.executor.scheduler import _build_trigger, _normalize_cron_day_of_week
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.test import SpinTestServer

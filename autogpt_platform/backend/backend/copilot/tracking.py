@@ -212,7 +212,7 @@ def track_agent_scheduled(
 
 def track_followup_scheduled(
     user_id: str,
-    session_id: str,
+    session_id: str | None,
     schedule_id: str,
     is_recurring: bool,
 ) -> None:
@@ -220,7 +220,9 @@ def track_followup_scheduled(
 
     Args:
         user_id: The user's ID
-        session_id: The chat session ID being followed up
+        session_id: The chat session ID being followed up. ``None`` for
+            the fresh-chat sentinel (the destination session doesn't
+            exist yet — it will be created when the schedule fires).
         schedule_id: ID of the created schedule
         is_recurring: True if cron, False if one-shot
     """

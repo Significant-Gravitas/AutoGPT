@@ -118,14 +118,14 @@ class ScheduleFollowupTool(BaseTool):
                     ),
                 },
                 "session_id": {
-                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "type": "string",
                     "description": (
-                        "Target session UUID. OMIT or null = create a "
-                        "brand-new chat at fire-time (no prior context). "
-                        "Pass the current session's id from <session_"
-                        "context> to fire into THIS chat with full "
-                        "history. Sessions owned by other users are "
-                        "rejected as 'session_not_found'."
+                        "Target session UUID. OMIT this field entirely "
+                        "to create a brand-new chat at fire-time (no "
+                        "prior context). Pass the current session's id "
+                        "from <session_context> to fire into THIS chat "
+                        "with full history. Sessions owned by other "
+                        "users are rejected as 'session_not_found'."
                     ),
                 },
                 "name": {

@@ -49,7 +49,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the same user (parent autopilot → sub-session followups). The parameter
 # description spends ~170 chars on the ownership-rejection semantics so
 # the model doesn't try to wake up other users' sessions.
-_CHAR_BUDGET = 37_000
+# Bumped 37000 -> 37500 for the schedule_followup null-session sentinel
+# (omit `session_id` → create a fresh chat at fire-time). The
+# description + tool-level prose grew ~400 chars to spell out: which
+# value picks which destination (omit vs current vs other), what
+# "fresh chat" means for the model's expectations, and the
+# read-from-<session_context> handoff for same-chat reminders.
+_CHAR_BUDGET = 37_500
 
 
 @pytest.fixture(scope="module")
