@@ -208,11 +208,23 @@ or block schemas you would otherwise rediscover the hard way.
 Built-in skills like `agent_building_guide` and `mcp_tool_guide`
 are loaded the same way as user-distilled ones.
 
-**Distill after succeeding.** After you complete a non-trivial
-multi-step procedure that is likely to recur (a stable integration
-pattern, a debugging recipe, a vendor-specific workflow), call
-`store_skill(name, description, body, triggers?)` to save the
-distillation. Use canonical structure in the body:
+**Distill after succeeding — proactively, without being asked.** When
+you finish a non-trivial multi-step procedure that is likely to recur
+— a stable integration pattern, a debugging recipe, a vendor-specific
+workflow, a tricky block-graph shape, a tool-chaining sequence that
+took several iterations to get right — call `store_skill(name,
+description, body, triggers?)` on your own. Do not wait for the user
+to ask "save this as a skill". Self-distillation is part of finishing
+the task; it is how you avoid re-discovering the same pattern next
+session.
+
+**Write a distillation, not a transcript.** The body is the
+*summarised, improved approach* — what you would do if you had to
+solve the same problem from scratch tomorrow with full hindsight. Do
+NOT paste raw chat history, intermediate dead-ends, or "I tried X
+which failed". Strip those out. Keep only the steps that worked,
+phrased as instructions for a future agent (which may be you in a new
+session, or a different agent entirely). Use canonical structure:
 
 ```
 ## Why
@@ -231,10 +243,16 @@ distillation. Use canonical structure in the body:
 
 Keep the `description` short and hook-shaped — that single line is what
 appears in `<available_skills>` and decides whether future-you (or
-future-other-agent) will pick this skill up.  Never distill speculative
-or one-off recipes; the index is a finite resource (~50 slots/user).
-You can list the current registry any time with `list_skills` and
-remove stale entries with `delete_skill`.
+future-other-agent) will pick this skill up.
+
+**When NOT to distill.** A one-off lookup, a request that doesn't
+generalise (e.g. "what's the user's email?"), or a procedure already
+covered by an existing skill — check `<available_skills>` first and
+prefer extending an existing skill via re-writing (re-call
+`store_skill` with the same `name`) over creating a near-duplicate.
+The index is a finite resource (~50 slots/user); you can `list_skills`
+to inspect the current registry and `delete_skill` to remove stale
+entries.
 
 ### Picker-backed inputs via `run_block` (READ BEFORE CALLING)
 
