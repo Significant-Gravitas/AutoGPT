@@ -102,6 +102,25 @@ describe("FollowupsPage", () => {
     );
   });
 
+  test("renders a fresh-chat sentinel row (session_id=null) without a session link", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", session_id: null as unknown as string }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("followup-row");
+    // No clickable session link when there is no target session yet.
+    expect(within(row).queryByTestId("followup-open-session")).toBeNull();
+    // Renders the "New chat" pill instead so the user can tell the
+    // follow-up will spawn a fresh conversation at fire time.
+    expect(within(row).getByText("New chat")).toBeDefined();
+    // Delete still works on the sentinel row.
+    expect(within(row).getByTestId("followup-delete-button")).toBeDefined();
+  });
+
   test("Cancel button opens the confirmation dialog and calls the delete API", async () => {
     server.use(
       getListCopilotFollowupSchedulesMockHandler([makeFollowup({ id: "f1" })]),

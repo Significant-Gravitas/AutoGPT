@@ -11281,7 +11281,10 @@
             "title": "Schedule Id"
           },
           "user_id": { "type": "string", "title": "User Id" },
-          "session_id": { "type": "string", "title": "Session Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
           "message": { "type": "string", "title": "Message" },
           "cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -11314,14 +11317,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "user_id",
-          "session_id",
-          "message",
-          "id",
-          "name",
-          "next_run_time"
-        ],
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
         "title": "CopilotTurnJobInfo"
       },
       "CopilotUsageExportResponse": {

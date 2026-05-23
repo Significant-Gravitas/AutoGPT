@@ -1,17 +1,23 @@
-"""Tool for scheduling a follow-up copilot turn on a session.
+"""Tool for scheduling a follow-up copilot turn.
 
 When the model wants to defer work — "check the CI in 20 minutes",
 "send the email at 7am" — it calls this tool with the message to send
-at the scheduled time. At fire time the scheduler enqueues a new
-copilot turn against ``session_id``, so the conversation resumes with
-full history intact.
+at the scheduled time.
 
-By default the followup targets the current session, but the caller
-can pass ``session_id`` explicitly to target a different conversation
-they own (e.g. a parent autopilot scheduling a wake-up for a
-sub-session, or an admin tool resuming a specific user session).
-Ownership is validated against the calling user — you cannot schedule
-followups on someone else's sessions.
+The ``session_id`` argument decides WHERE the follow-up lands:
+
+* Omitted / ``null`` — sentinel meaning "fire into a **fresh chat**".
+  At fire time the scheduler creates a new copilot session for the
+  user and routes the turn into it (no prior conversation context).
+  Use this for recurring "morning brief" / "daily digest" patterns
+  where a clean slate is preferred over polluting the current chat.
+
+* A specific session UUID — the follow-up resumes that session with
+  full history.  This is the right value for "remind me here in 20
+  minutes": the model reads the current ``session_id`` from the
+  trusted ``<session_context>`` block injected on every turn and
+  passes it back verbatim.  Ownership is validated — UUIDs belonging
+  to other users are rejected as ``session_not_found``.
 
 The tool ends the current turn; the model should send its final
 user-facing message *before* calling this. The deferred work happens
@@ -61,16 +67,20 @@ class ScheduleFollowupTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Schedule a copilot follow-up turn. The 'message' is sent at "
-            "the scheduled time and the model resumes with the target "
-            "conversation's full history. Defaults to the current "
-            "session; pass 'session_id' to target a different "
-            "conversation you own. Use 'delay_seconds' for one-shot "
-            "followups ('in 20 minutes', 'at 7am tomorrow' — convert "
-            "absolute times to a delay) or 'cron' for recurring "
-            "schedules ('every Monday at 9am'). After calling this tool "
-            "your turn ends — send your final user-facing message "
-            "before calling."
+            "Schedule a copilot follow-up turn. The 'message' is sent "
+            "at the scheduled time. The 'session_id' arg picks the "
+            "destination: OMIT IT (or pass null) to fire into a brand-"
+            "new chat created at fire-time — best for daily briefs / "
+            "recurring digests / anything that should start fresh. "
+            "Pass an existing 'session_id' (you can read the current "
+            "one from the trusted <session_context> block) to resume "
+            "that conversation with its full history — best for "
+            "'remind me here in 20 minutes'. Use 'delay_seconds' for "
+            "one-shot followups ('in 20 minutes', 'at 7am tomorrow' — "
+            "convert absolute times to a delay) or 'cron' for "
+            "recurring schedules ('every Monday at 9am'). After "
+            "calling this tool your turn ends — send your final user-"
+            "facing message before calling."
         )
 
     @property
@@ -108,12 +118,14 @@ class ScheduleFollowupTool(BaseTool):
                     ),
                 },
                 "session_id": {
-                    "type": "string",
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
                     "description": (
-                        "Target session for the follow-up. Defaults to "
-                        "the current conversation (see <session_context>). "
-                        "Must be a session owned by the calling user — "
-                        "others are rejected as 'session_not_found'."
+                        "Target session UUID. OMIT or null = create a "
+                        "brand-new chat at fire-time (no prior context). "
+                        "Pass the current session's id from <session_"
+                        "context> to fire into THIS chat with full "
+                        "history. Sessions owned by other users are "
+                        "rejected as 'session_not_found'."
                     ),
                 },
                 "name": {
@@ -146,25 +158,24 @@ class ScheduleFollowupTool(BaseTool):
                 session_id=current_session_id,
             )
 
-        # Target session: explicit override if provided AND owned by the
-        # caller, otherwise the current session. `get_chat_session` returns
-        # None when the session doesn't exist OR belongs to a different user,
-        # so this single check covers both "not found" and "not yours".
-        override_session_id: str | None = kwargs.get("session_id")
-        if override_session_id and override_session_id != current_session_id:
-            target = await get_chat_session(override_session_id, user_id)
+        # Target session: ``None`` (omitted / explicit null) = sentinel for
+        # "create a fresh chat at fire time" — the scheduler handles it.
+        # A non-null value pins the followup to an existing session; we
+        # validate ownership here (``get_chat_session`` returns None for
+        # both "not found" and "not yours", which collapse into the same
+        # error from the model's perspective).
+        target_session_id: str | None = kwargs.get("session_id")
+        if target_session_id and target_session_id != current_session_id:
+            target = await get_chat_session(target_session_id, user_id)
             if target is None:
                 return ErrorResponse(
                     message=(
-                        f"Session {override_session_id} not found or not "
+                        f"Session {target_session_id} not found or not "
                         f"owned by the calling user."
                     ),
                     error="session_not_found",
                     session_id=current_session_id,
                 )
-            target_session_id = override_session_id
-        else:
-            target_session_id = current_session_id
 
         delay_seconds: int | None = kwargs.get("delay_seconds")
         cron: str | None = kwargs.get("cron")
@@ -240,11 +251,12 @@ class ScheduleFollowupTool(BaseTool):
             schedule_id=info.id,
             is_recurring=is_recurring,
         )
-        target_note = (
-            ""
-            if target_session_id == current_session_id
-            else f" on session {target_session_id}"
-        )
+        if target_session_id is None:
+            target_note = " (fires into a fresh chat)"
+        elif target_session_id == current_session_id:
+            target_note = ""
+        else:
+            target_note = f" on session {target_session_id}"
         when_str = (
             f"every '{cron}' ({user_timezone})"
             if is_recurring

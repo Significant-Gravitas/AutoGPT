@@ -30,50 +30,65 @@ export function FollowupListItem({ followup }: Props) {
     fullMessage,
   } = useFollowupListItem({ followup });
 
+  const sessionLabel = followup.session_id
+    ? `Session ${followup.session_id.slice(0, 8)}`
+    : "New chat";
+
+  const detailContent = (
+    <>
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
+        <ChatCircleTextIcon
+          size={18}
+          className="text-yellow-700"
+          weight="bold"
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-1">
+        <Text
+          variant="body-medium"
+          className="block w-full truncate text-ellipsis"
+        >
+          {messagePreview}
+        </Text>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <Text variant="small" className="!text-zinc-500" title={nextRunTitle}>
+            {nextRunLabel}
+          </Text>
+          <span className="text-zinc-300">•</span>
+          <Text variant="small" className="!text-zinc-500">
+            {recurrenceLabel}
+          </Text>
+          <span className="text-zinc-300">•</span>
+          <Text variant="small" className="!text-zinc-400">
+            {sessionLabel}
+          </Text>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div
       className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="followup-row"
       data-followup-id={followup.id}
     >
-      <Link
-        href={sessionHref}
-        className="flex min-w-0 flex-1 items-start gap-3 hover:opacity-80"
-        data-testid="followup-open-session"
-      >
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
-          <ChatCircleTextIcon
-            size={18}
-            className="text-yellow-700"
-            weight="bold"
-          />
+      {sessionHref ? (
+        <Link
+          href={sessionHref}
+          className="flex min-w-0 flex-1 items-start gap-3 hover:opacity-80"
+          data-testid="followup-open-session"
+        >
+          {detailContent}
+        </Link>
+      ) : (
+        <div
+          className="flex min-w-0 flex-1 items-start gap-3"
+          data-testid="followup-row-no-session"
+        >
+          {detailContent}
         </div>
-        <div className="flex min-w-0 flex-col gap-1">
-          <Text
-            variant="body-medium"
-            className="block w-full truncate text-ellipsis"
-          >
-            {messagePreview}
-          </Text>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <Text
-              variant="small"
-              className="!text-zinc-500"
-              title={nextRunTitle}
-            >
-              {nextRunLabel}
-            </Text>
-            <span className="text-zinc-300">•</span>
-            <Text variant="small" className="!text-zinc-500">
-              {recurrenceLabel}
-            </Text>
-            <span className="text-zinc-300">•</span>
-            <Text variant="small" className="!text-zinc-400">
-              Session {followup.session_id.slice(0, 8)}
-            </Text>
-          </div>
-        </div>
-      </Link>
+      )}
 
       <div className="flex flex-shrink-0 items-center gap-2">
         <Button

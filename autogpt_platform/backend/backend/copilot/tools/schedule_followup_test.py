@@ -90,7 +90,11 @@ async def test_delay_too_short(tool, session):
 
 
 @pytest.mark.asyncio
-async def test_one_shot_delay_schedules(tool, session):
+async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(tool, session):
+    """Omitting session_id is the sentinel for "create a fresh chat at fire
+    time" — the scheduler must receive ``session_id=None`` (not the current
+    session's id) so the executor's create-session branch fires.
+    """
     mock_user_db = MagicMock()
     mock_user = MagicMock(timezone="America/New_York")
     mock_user_db().get_user_by_id = AsyncMock(return_value=mock_user)
@@ -115,11 +119,37 @@ async def test_one_shot_delay_schedules(tool, session):
     assert result.schedule_id == "cop-1"
     assert result.is_recurring is False
     call_kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
-    assert call_kwargs["session_id"] == session.session_id
+    assert call_kwargs["session_id"] is None  # sentinel for "create fresh chat"
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["cron"] is None
     assert call_kwargs["run_at"] is not None
     assert call_kwargs["user_timezone"] == "America/New_York"
+    assert "fresh chat" in result.message  # user-facing copy reflects sentinel
+
+
+@pytest.mark.asyncio
+async def test_explicit_null_session_id_passes_new_chat_sentinel(tool, session):
+    """Explicit ``session_id=None`` is equivalent to omitting it — both are
+    the sentinel for "create a fresh chat at fire time"."""
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    mock_client = AsyncMock()
+    mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="daily brief",
+            delay_seconds=600,
+            session_id=None,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    assert mock_client.add_copilot_turn_schedule.call_args.kwargs["session_id"] is None
 
 
 @pytest.mark.asyncio

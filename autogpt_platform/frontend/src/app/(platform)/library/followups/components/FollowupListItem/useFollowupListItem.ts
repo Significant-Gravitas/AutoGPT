@@ -8,7 +8,7 @@ import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
-import { describeFollowup } from "./helpers";
+import { describeFollowup, formatNextRunTitle } from "./helpers";
 
 interface Args {
   followup: CopilotTurnJobInfo;
@@ -32,7 +32,10 @@ export function useFollowupListItem({ followup }: Args) {
     nextRunDate && !Number.isNaN(nextRunDate.valueOf())
       ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
       : "Pending";
-  const nextRunTitle = nextRunDate ? nextRunDate.toString() : undefined;
+  const nextRunTitle = formatNextRunTitle(
+    followup.next_run_time,
+    followup.user_timezone ?? followup.timezone,
+  );
 
   const recurrenceLabel = followup.cron
     ? safeHumanizeCron(followup.cron)
