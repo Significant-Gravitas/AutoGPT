@@ -637,24 +637,27 @@ async def inject_user_context(
             f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
             + final_message
         )
-    # Prepend the per-user skill index as an <available_skills> block.
-    # Sits ABOVE session_context (and below memory_context) so the
-    # cache breakpoint at ``</available_skills>\n\n`` ends up with the
-    # per-user-stable prefix (memory + skills) on the cached side and
-    # the per-turn dynamic blocks (session, budget, env) + user text on
-    # the variable side.
-    if skills_ctx:
-        final_message = (
-            f"<{SKILLS_CONTEXT_TAG}>\n{skills_ctx}\n</{SKILLS_CONTEXT_TAG}>\n\n"
-            + final_message
-        )
-    # Prepend Graphiti warm context as a <memory_context> block AFTER sanitization
-    # so that the trusted server-injected block is never stripped by
-    # sanitize_user_supplied_context (which removes attacker-supplied tags).
-    # This must be the outermost prefix so the LLM sees memory context first.
+    # Prepend Graphiti warm context as a <memory_context> block AFTER
+    # sanitization so the trusted server-injected block is never stripped by
+    # ``sanitize_user_supplied_context``.  Memory must land BELOW
+    # ``<available_skills>`` in the final message because Graphiti
+    # recomputes the warm context every turn via a similarity search keyed
+    # on the current message — if it sat in the cached prefix it would
+    # defeat the per-user skill cache below.
     if warm_ctx:
         final_message = (
             f"<{MEMORY_CONTEXT_TAG}>\n{warm_ctx}\n</{MEMORY_CONTEXT_TAG}>\n\n"
+            + final_message
+        )
+    # Prepend the per-user skill index as the OUTERMOST <available_skills>
+    # block.  The cache breakpoint regex matches at
+    # ``</available_skills>\n\n`` so ONLY the skill index sits on the
+    # cached side; memory_context / session_context / budget_context /
+    # env_context / user_context / user text all land on the variable side
+    # (correct — they're per-turn dynamic).
+    if skills_ctx:
+        final_message = (
+            f"<{SKILLS_CONTEXT_TAG}>\n{skills_ctx}\n</{SKILLS_CONTEXT_TAG}>\n\n"
             + final_message
         )
 
