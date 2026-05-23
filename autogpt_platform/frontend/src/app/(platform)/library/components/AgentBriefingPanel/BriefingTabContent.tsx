@@ -3,6 +3,8 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
+import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   formatResetTime,
   formatTierLabel,
@@ -18,6 +20,7 @@ import type { AgentStatusFilter } from "../../types";
 import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 import { useState } from "react";
+import { CostsBreakdown } from "./CostsBreakdown/CostsBreakdown";
 
 interface Props {
   activeTab: AgentStatusFilter;
@@ -26,7 +29,7 @@ interface Props {
 
 export function BriefingTabContent({ activeTab, agents }: Props) {
   if (activeTab === "all") {
-    return <UsageSection />;
+    return <UsageSection agents={agents} />;
   }
 
   if (
@@ -40,7 +43,7 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
   return <AgentListSection activeTab={activeTab} agents={agents} />;
 }
 
-function UsageSection() {
+function UsageSection({ agents }: { agents: LibraryAgent[] }) {
   const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
@@ -51,48 +54,109 @@ function UsageSection() {
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
-  if (!isSuccess || !usage) return null;
-  if (!usage.daily && !usage.weekly) return null;
-
-  const tierLabel = formatTierLabel(usage.tier);
+  const hasUsageMeters = isSuccess && usage && (usage.daily || usage.weekly);
+  const tierLabel = hasUsageMeters ? formatTierLabel(usage.tier) : null;
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2">
-        <Text variant="h5" className="text-neutral-800">
-          Usage limits
-        </Text>
-        {tierLabel && (
-          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
-            {tierLabel} plan
-          </Badge>
-        )}
-        <div className="flex-1" />
-        {isBillingEnabled && (
-          <Link
-            href="/settings/billing"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Manage billing
-          </Link>
-        )}
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {usage.daily && (
-          <UsageMeter
-            label="Today"
-            percentUsed={usage.daily.percent_used}
-            resetsAt={usage.daily.resets_at}
-          />
-        )}
-        {usage.weekly && (
-          <UsageMeter
-            label="This week"
-            percentUsed={usage.weekly.percent_used}
-            resetsAt={usage.weekly.resets_at}
-          />
-        )}
-      </div>
+      {hasUsageMeters && (
+        <>
+          <div className="flex items-center gap-2">
+            <Text variant="h5" className="text-neutral-800">
+              Usage limits
+            </Text>
+            {tierLabel && (
+              <Badge
+                variant="info"
+                size="small"
+                className={TIER_BADGE_CLASS_NAME}
+              >
+                {tierLabel} plan
+              </Badge>
+            )}
+            <div className="flex-1" />
+            {isBillingEnabled && (
+              <Link
+                href="/settings/billing"
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Manage billing
+              </Link>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {usage.daily && (
+              <UsageMeter
+                label="Today"
+                percentUsed={usage.daily.percent_used}
+                resetsAt={usage.daily.resets_at}
+              />
+            )}
+            {usage.weekly && (
+              <UsageMeter
+                label="This week"
+                percentUsed={usage.weekly.percent_used}
+                resetsAt={usage.weekly.resets_at}
+              />
+            )}
+          </div>
+        </>
+      )}
+      <CostsBreakdown agents={agents} />
+      <CopilotLibrarySummary />
+    </div>
+  );
+}
+
+function CopilotLibrarySummary() {
+  // Discoverability is already gated by AGENT_BRIEFING at the parent
+  // panel — this pill renders only inside AgentBriefingPanel, which is
+  // itself flag-gated.  No second flag here so we don't end up with two
+  // flags we'd always toggle together.
+  const { data: skillsRes } = useListCopilotSkills({
+    query: { staleTime: 30_000 },
+  });
+  const { data: followupsRes } = useListCopilotFollowupSchedules({
+    query: { staleTime: 30_000 },
+  });
+
+  const skillsCount =
+    skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
+  const followupsCount =
+    followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
+
+  // Suppress the pill entirely when the user has no copilot library
+  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not
+  // discovery affordance.  The pill reappears the moment either count
+  // turns positive (e.g. on the next refetch after a store_skill /
+  // schedule_followup tool call).
+  if (skillsCount === 0 && followupsCount === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      data-testid="copilot-library-summary"
+    >
+      <Text variant="small" className="!text-zinc-500">
+        Copilot library
+      </Text>
+      <Link
+        href="/library/skills"
+        className="text-sm text-violet-700 hover:underline"
+        data-testid="copilot-library-skills-link"
+      >
+        {skillsCount} skill{skillsCount === 1 ? "" : "s"}
+      </Link>
+      <span className="text-zinc-300">•</span>
+      <Link
+        href="/library/followups"
+        className="text-sm text-yellow-700 hover:underline"
+        data-testid="copilot-library-followups-link"
+      >
+        {followupsCount} follow-up{followupsCount === 1 ? "" : "s"}
+      </Link>
     </div>
   );
 }

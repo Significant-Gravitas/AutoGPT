@@ -3984,6 +3984,82 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/executions/cost-summary": {
+      "get": {
+        "tags": ["v1", "graphs"],
+        "summary": "User cost summary",
+        "description": "Aggregated cost breakdown for the calling user's graph executions.",
+        "operationId": "getV1User cost summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window start (UTC). Defaults to start of current calendar month.",
+              "title": "Since"
+            },
+            "description": "Window start (UTC). Defaults to start of current calendar month."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window end (UTC). Defaults to now.",
+              "title": "Until"
+            },
+            "description": "Window end (UTC). Defaults to now."
+          },
+          {
+            "name": "top_runs_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Maximum number of top-cost runs to return.",
+              "default": 10,
+              "title": "Top Runs Limit"
+            },
+            "description": "Maximum number of top-cost runs to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserExecutionCostSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
@@ -8003,6 +8079,34 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List copilot follow-up schedules for a user",
+        "description": "Return only copilot-turn schedules for the current user.\n\nSibling of :func:`list_all_graphs_execution_schedules`; one route per kind\nkeeps the generated frontend client typed to a single concrete return type\ninstead of a discriminated union.",
+        "operationId": "listCopilotFollowupSchedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CopilotTurnJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Listcopilotfollowupschedules"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -8038,6 +8142,121 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "List user-distilled copilot skills",
+        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "operationId": "listCopilotSkills",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
+                  "type": "array",
+                  "title": "Response Listcopilotskills"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skills/{name}": {
+      "delete": {
+        "tags": ["v1", "skills"],
+        "summary": "Delete a user-distilled copilot skill",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "operationId": "deleteCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to delete",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" },
+                  "title": "Response Deletecopilotskill"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Read a single copilot skill with its full SKILL.md body",
+        "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
+        "operationId": "readCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to read",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to read"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -10879,6 +11098,10 @@
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
           }
         },
         "type": "object",
@@ -11002,6 +11225,106 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotSkillDetail": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          },
+          "body": { "type": "string", "title": "Body" },
+          "version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "sibling_files": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Sibling Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "body"],
+        "title": "CopilotSkillDetail",
+        "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description"],
+        "title": "CopilotSkillInfo",
+        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded — they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
+      },
+      "CopilotTurnJobInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "copilot_turn",
+            "title": "Kind",
+            "default": "copilot_turn"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Run At"
+          },
+          "cap_retry_count": {
+            "type": "integer",
+            "title": "Cap Retry Count",
+            "default": 0
+          },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
+        "title": "CopilotTurnJobInfo"
       },
       "CopilotUsageExportResponse": {
         "properties": {
@@ -12240,6 +12563,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -15437,6 +15766,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_created",
           "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
@@ -15467,7 +15797,11 @@
           "memory_forget_candidates",
           "memory_forget_confirm",
           "todo_write",
-          "platform_info"
+          "platform_info",
+          "skill_stored",
+          "skill_loaded",
+          "skill_deleted",
+          "skill_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -15841,25 +16175,49 @@
       "ScheduleSummary": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
           "name": { "type": "string", "title": "Name" },
-          "cron": { "type": "string", "title": "Cron" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
         },
         "type": "object",
         "required": [
           "schedule_id",
+          "kind",
           "name",
-          "cron",
           "timezone",
-          "next_run_time",
-          "graph_id",
-          "graph_version"
+          "next_run_time"
         ],
         "title": "ScheduleSummary",
-        "description": "Summary of a single schedule."
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
       },
       "SchedulesListResponse": {
         "properties": {
@@ -16015,7 +16373,11 @@
             "title": "Chat Status",
             "default": "idle"
           },
-          "is_processing": { "type": "boolean", "title": "Is Processing" }
+          "is_processing": { "type": "boolean", "title": "Is Processing" },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],
@@ -18723,6 +19085,16 @@
         "title": "UsageWindowPublic",
         "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
+      "UserAgentCostRollup": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["graph_id", "cost_cents", "run_count"],
+        "title": "UserAgentCostRollup"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -18770,6 +19142,56 @@
           "request_count"
         ],
         "title": "UserCostSummary"
+      },
+      "UserDailyCost": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["date", "cost_cents", "run_count"],
+        "title": "UserDailyCost"
+      },
+      "UserExecutionCostSummary": {
+        "properties": {
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "billable_run_count": {
+            "type": "integer",
+            "title": "Billable Run Count"
+          },
+          "failed_cost_cents": {
+            "type": "integer",
+            "title": "Failed Cost Cents"
+          },
+          "by_agent": {
+            "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
+            "type": "array",
+            "title": "By Agent"
+          },
+          "top_runs": {
+            "items": { "$ref": "#/components/schemas/UserTopRun" },
+            "type": "array",
+            "title": "Top Runs"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/UserDailyCost" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cents",
+          "run_count",
+          "billable_run_count",
+          "failed_cost_cents",
+          "by_agent",
+          "top_runs",
+          "daily"
+        ],
+        "title": "UserExecutionCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -19034,6 +19456,32 @@
         "type": "object",
         "required": ["user_id", "tier"],
         "title": "UserTierResponse"
+      },
+      "UserTopRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "duration_seconds": { "type": "number", "title": "Duration Seconds" },
+          "node_error_count": { "type": "integer", "title": "Node Error Count" }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "cost_cents",
+          "started_at",
+          "status",
+          "duration_seconds",
+          "node_error_count"
+        ],
+        "title": "UserTopRun"
       },
       "UserTransaction": {
         "properties": {

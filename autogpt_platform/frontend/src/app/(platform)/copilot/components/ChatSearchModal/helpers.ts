@@ -4,6 +4,7 @@ export interface SearchSession {
   updated_at: string;
   is_processing?: boolean;
   chat_status?: string | null;
+  source_platform?: string | null;
 }
 
 export interface HighlightPart {

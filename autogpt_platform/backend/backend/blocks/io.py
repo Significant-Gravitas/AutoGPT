@@ -54,11 +54,6 @@ class AgentInputBlock(Block):
             default=False,
             advanced=True,
         )
-        secret: bool = SchemaField(
-            description="Whether the input should be treated as a secret.",
-            default=False,
-            advanced=True,
-        )
 
         def generate_schema(self):
             return copy.deepcopy(self.get_field_schema("value"))
@@ -141,11 +136,6 @@ class AgentOutputBlock(Block):
         )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
-            default=False,
-            advanced=True,
-        )
-        secret: bool = SchemaField(
-            description="Whether the output should be treated as a secret.",
             default=False,
             advanced=True,
         )
@@ -494,7 +484,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 "restricted to these values. Leave empty for free-text input."
             ),
             validation_alias=AliasChoices("options", "placeholder_values"),
-            json_schema_extra={"advanced": False, "secret": False},
+            json_schema_extra={"advanced": False},
         )
 
         def generate_schema(self):
