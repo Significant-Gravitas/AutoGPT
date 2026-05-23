@@ -125,6 +125,15 @@ function CopilotLibrarySummary() {
   const followupsCount =
     followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
 
+  // Suppress the pill entirely when the user has no copilot library
+  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not
+  // discovery affordance.  The pill reappears the moment either count
+  // turns positive (e.g. on the next refetch after a store_skill /
+  // schedule_followup tool call).
+  if (skillsCount === 0 && followupsCount === 0) {
+    return null;
+  }
+
   return (
     <div
       className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"

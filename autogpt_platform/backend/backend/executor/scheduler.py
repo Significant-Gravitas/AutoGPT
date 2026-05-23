@@ -987,7 +987,7 @@ class Scheduler(AppService):
         ``id=schedule_id`` so the row is addressable by our generated UUID).
         """
         assert job_args.schedule_id is not None
-        return self.scheduler.add_job(
+        job = self.scheduler.add_job(
             dispatch_func,
             kwargs=job_args.model_dump(mode="json"),
             name=name,
@@ -996,6 +996,11 @@ class Scheduler(AppService):
             replace_existing=True,
             id=job_args.schedule_id,
         )
+        # Invalidate the read cache so the new job shows up on the next
+        # ``get_execution_schedules`` call instead of waiting up to
+        # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
+        self._invalidate_jobs_cache()
+        return job
 
     @expose
     def add_graph_execution_schedule(
@@ -1128,6 +1133,9 @@ class Scheduler(AppService):
 
         logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
+        # Invalidate the read cache so the deletion shows up immediately
+        # on the next ``get_execution_schedules`` call.
+        self._invalidate_jobs_cache()
         return info
 
     @expose
@@ -1149,6 +1157,33 @@ class Scheduler(AppService):
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
+    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)``. APScheduler
+    # has no SQL-level user_id / kind filter — it loads every row and
+    # unpickles each ``job.kwargs`` in Python.  The /library page now
+    # fires THREE separate calls into this method on cold load (existing
+    # graph schedules + new copilot followups + briefing-pill counts),
+    # so we memoise the unfiltered list for a few seconds.  Mutations
+    # (`add_*_schedule`, `delete_schedule`) clear the cache so user-visible
+    # latency on writes is unchanged.
+    _JOBS_CACHE_TTL_S = 5.0
+    _jobs_cache: list[JobObj] | None = None
+    _jobs_cache_expires_at: float = 0.0
+
+    def _get_jobs_cached(self) -> list[JobObj]:
+        import time
+
+        now = time.monotonic()
+        if self._jobs_cache is not None and now < self._jobs_cache_expires_at:
+            return self._jobs_cache
+        jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        self._jobs_cache = jobs
+        self._jobs_cache_expires_at = now + self._JOBS_CACHE_TTL_S
+        return jobs
+
+    def _invalidate_jobs_cache(self) -> None:
+        self._jobs_cache = None
+        self._jobs_cache_expires_at = 0.0
+
     @expose
     def get_execution_schedules(
         self,
@@ -1163,7 +1198,7 @@ class Scheduler(AppService):
         Graph-only filters (*graph_id*) silently skip copilot-turn rows;
         copilot-only filters (*session_id*) silently skip graph rows.
         """
-        jobs: list[JobObj] = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        jobs: list[JobObj] = self._get_jobs_cached()
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
             info = _job_to_info(job) if job.next_run_time is not None else None

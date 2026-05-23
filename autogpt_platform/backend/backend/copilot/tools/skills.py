@@ -562,6 +562,34 @@ async def read_user_skill_with_body(user_id: str, name: str) -> ParsedSkill | No
     return await _parse_skill_from_workspace(manager, _skill_md_path(slug))
 
 
+async def list_user_skill_sibling_paths(user_id: str, name: str) -> list[str]:
+    """Return the workspace paths of files siblings to ``SKILL.md`` in a
+    user-stored skill's folder (``references/``, ``scripts/``, ``assets/``,
+    or anything the model stashed there at distillation time).
+
+    Used by the REST GET ``/skills/{name}`` endpoint so the library UI's
+    expand-to-view dialog can show the model what extra artefacts the
+    skill bundle carries.  Returns ``[]`` on any error — sibling listing
+    is best-effort and must not fail the parent request.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return []
+    try:
+        manager = await _get_user_skill_manager(user_id)
+        files = await manager.list_files(
+            path=f"{SKILL_FOLDER}/{slug}/",
+            limit=50,
+            include_all_sessions=True,
+        )
+        return [f.path for f in files if not f.path.endswith("/SKILL.md")]
+    except Exception:
+        logger.warning(
+            "[skills] failed to list sibling files for %s", slug, exc_info=True
+        )
+        return []
+
+
 def get_default_skills_for_index() -> list[ParsedSkill]:
     """Return the default seeded skills with **empty bodies** — suitable
     for rendering the per-turn ``<available_skills>`` index, which only

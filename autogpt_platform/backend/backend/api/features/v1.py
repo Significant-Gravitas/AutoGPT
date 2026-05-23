@@ -55,6 +55,7 @@ from backend.copilot.tools.skills import (
     SkillNotFoundError,
     delete_user_skill,
     get_default_skill_with_body,
+    list_user_skill_sibling_paths,
     list_user_skills,
     read_user_skill_with_body,
 )
@@ -2402,6 +2403,11 @@ class CopilotSkillDetail(BaseModel):
     body: str
     version: str | None = None
     is_default: bool = False
+    # Sibling files in the same skill folder (references/, scripts/,
+    # assets/, etc.) — the workspace paths the model can reach via
+    # ``read_workspace_file``.  Empty for built-in defaults since they
+    # ship as on-disk markdown and have no sibling artefacts.
+    sibling_files: list[str] = []
 
 
 @v1_router.get(
@@ -2474,6 +2480,7 @@ async def read_copilot_skill(
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
         )
+    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
     return CopilotSkillDetail(
         name=parsed.name,
         description=parsed.description,
@@ -2481,6 +2488,7 @@ async def read_copilot_skill(
         body=parsed.body,
         version=parsed.version,
         is_default=False,
+        sibling_files=sibling_files,
     )
 
 

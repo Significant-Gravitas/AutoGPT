@@ -122,13 +122,33 @@ export function SkillListItem({ skill }: Props) {
                 />
               </div>
             ) : (
-              <pre
-                className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
-                style={{ whiteSpace: "pre-wrap" }}
-                data-testid="skill-view-body"
-              >
-                {detail?.body || "(no body)"}
-              </pre>
+              <>
+                <pre
+                  className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
+                  style={{ whiteSpace: "pre-wrap" }}
+                  data-testid="skill-view-body"
+                >
+                  {detail?.body || "(no body)"}
+                </pre>
+                {detail?.sibling_files && detail.sibling_files.length > 0 ? (
+                  <div
+                    className="flex flex-col gap-1"
+                    data-testid="skill-view-sibling-files"
+                  >
+                    <Text variant="small" className="!text-zinc-500">
+                      Bundled files ({detail.sibling_files.length}
+                      ):
+                    </Text>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-xs text-zinc-600">
+                      {detail.sibling_files.map((path) => (
+                        <li key={path} className="break-all">
+                          {path}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </Dialog.Content>

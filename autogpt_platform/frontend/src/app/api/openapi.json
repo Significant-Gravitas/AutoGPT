@@ -11245,6 +11245,12 @@
             "type": "boolean",
             "title": "Is Default",
             "default": false
+          },
+          "sibling_files": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Sibling Files",
+            "default": []
           }
         },
         "type": "object",

@@ -90,7 +90,9 @@ async def test_delay_too_short(tool, session):
 
 
 @pytest.mark.asyncio
-async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(tool, session):
+async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(
+    tool, session
+):
     """Omitting session_id is the sentinel for "create a fresh chat at fire
     time" — the scheduler must receive ``session_id=None`` (not the current
     session's id) so the executor's create-session branch fires.
