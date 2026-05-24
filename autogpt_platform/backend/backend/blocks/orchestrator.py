@@ -1071,7 +1071,6 @@ class OrchestratorBlock(Block):
 
         # Create proper node execution using upsert_execution_input
         node_exec_result = None
-        final_input_data = None
 
         # Merge static defaults from the target node with LLM-provided inputs.
         # The LLM only passes values it decides to fill (e.g., "value"), but
@@ -1083,13 +1082,20 @@ class OrchestratorBlock(Block):
         if not merged_input_data:
             raise ValueError(f"Tool call has no input data: {tool_call}")
 
+        # Accumulate all fields before persisting so the NodeExecutionEntry
+        # receives the complete dict.  Previously, `final_input_data` was
+        # overwritten on every iteration of the loop below, so only the
+        # last field's value was stored in `inputs` — causing downstream
+        # `validate_exec` to fail with "missing input {'credentials'}".
+        accumulated_input: dict[str, Any] = {}
         for input_name, input_value in merged_input_data.items():
-            node_exec_result, final_input_data = await db_client.upsert_execution_input(
+            node_exec_result, _ = await db_client.upsert_execution_input(
                 node_id=sink_node_id,
                 graph_exec_id=execution_params.graph_exec_id,
                 input_name=input_name,
                 input_data=input_value,
             )
+            accumulated_input[input_name] = input_value
 
         if node_exec_result is None:
             raise RuntimeError(
@@ -1105,7 +1111,7 @@ class OrchestratorBlock(Block):
             node_exec_id=node_exec_result.node_exec_id,
             node_id=sink_node_id,
             block_id=target_node.block_id,
-            inputs=final_input_data or {},
+            inputs=accumulated_input,
             execution_context=execution_params.execution_context,
         )
 
