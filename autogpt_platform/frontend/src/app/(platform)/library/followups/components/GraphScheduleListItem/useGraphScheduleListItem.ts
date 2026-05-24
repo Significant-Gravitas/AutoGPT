@@ -1,10 +1,8 @@
-import {
-  getGetV1ListExecutionSchedulesForAUserQueryKey,
-  useDeleteV1DeleteExecutionSchedule,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -56,11 +54,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
       await deleteSchedule({ scheduleId: schedule.id });
       toast({ title: "Schedule deleted" });
       setIsDeleteOpen(false);
-      // Refresh BOTH lists since the briefing pill counts both kinds
-      // and the user expects the deleted row to disappear immediately.
-      queryClient.invalidateQueries({
-        queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
-      });
+      invalidateAllScheduleQueries(queryClient, schedule.graph_id);
     } catch (error) {
       toast({
         title: "Failed to delete schedule",

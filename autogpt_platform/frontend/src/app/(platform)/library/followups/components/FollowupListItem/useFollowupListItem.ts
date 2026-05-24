@@ -1,10 +1,8 @@
-import {
-  getListCopilotFollowupSchedulesQueryKey,
-  useDeleteV1DeleteExecutionSchedule,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
@@ -62,12 +60,7 @@ export function useFollowupListItem({ followup }: Args) {
       await deleteSchedule({ scheduleId: followup.id });
       toast({ title: "Follow-up deleted" });
       setIsDeleteOpen(false);
-      // Invalidation is the single source of truth — React Query will
-      // refetch the list automatically. No need for a parent-supplied
-      // `onDeleted` callback that would race the toast.
-      queryClient.invalidateQueries({
-        queryKey: getListCopilotFollowupSchedulesQueryKey(),
-      });
+      invalidateAllScheduleQueries(queryClient);
     } catch (error) {
       toast({
         title: "Failed to delete follow-up",
