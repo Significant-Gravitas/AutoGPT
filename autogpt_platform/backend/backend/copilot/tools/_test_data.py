@@ -66,11 +66,22 @@ def make_session(user_id: str, *, guide_read: bool = True, library_check: bool =
             )
         )
     if library_check:
+        # Inject the args that ``require_library_check`` looks for —
+        # the gate (per Sentry's HIGH bug prediction) requires
+        # ``for_creation=true``, not just the tool name. Use a JSON
+        # string for ``arguments`` to match the OpenAI tool-call shape.
         messages.append(
             ChatMessage(
                 role="assistant",
                 content="",
-                tool_calls=[{"function": {"name": "find_library_agent"}}],
+                tool_calls=[
+                    {
+                        "function": {
+                            "name": "find_library_agent",
+                            "arguments": '{"for_creation": true, "goal_summary": "test"}',
+                        }
+                    }
+                ],
             )
         )
     return ChatSession(

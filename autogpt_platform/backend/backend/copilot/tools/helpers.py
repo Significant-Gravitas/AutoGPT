@@ -946,24 +946,78 @@ def require_guide_read(session: ChatSession, tool_name: str):
 _LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
 
 
-def require_library_check(session: ChatSession, tool_name: str):
-    """Return an ErrorResponse if ``find_library_agent`` hasn't been called.
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff ``find_library_agent`` was called with ``for_creation=true``.
 
-    Bypassed in builder-bound sessions because those already operate on a
-    specific agent — there is no "should we create one?" decision to make.
+    Walks the durable ``messages`` history (session-wide) looking for a
+    ``find_library_agent`` tool call whose arguments include
+    ``for_creation: true``. Default-mode (substring-search) calls do
+    **not** satisfy the gate — they use the lexical-only path that
+    silently misses paraphrased duplicates the hybrid similarity check
+    catches.
+
+    Args may be stored either as a JSON string (the OpenAI tool-call
+    convention) or as a Python dict (some inproc test fixtures). We
+    handle both; anything we can't parse is treated as not-for-creation.
+
+    Does not consult ``_inflight_tool_calls`` because that buffer
+    tracks names only — no args to inspect. The cost is that a
+    parallel-dispatch turn (rare, model-quirky) will fail the gate
+    and the LLM must retry serially, which is the correct flow.
+    """
+    import json  # noqa: PLC0415 — local: only used in this gate path
+
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+            if (fn.get("name") or tc.get("name")) != _LIBRARY_CHECK_TOOL_NAME:
+                continue
+            raw_args = fn.get("arguments") if isinstance(fn, dict) else None
+            if raw_args is None:
+                raw_args = tc.get("arguments") if isinstance(tc, dict) else None
+            if isinstance(raw_args, str):
+                try:
+                    args = json.loads(raw_args)
+                except (ValueError, TypeError):
+                    continue
+            elif isinstance(raw_args, dict):
+                args = raw_args
+            else:
+                continue
+            if args.get("for_creation") is True:
+                return True
+    return False
+
+
+def require_library_check(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if the create-time similarity check
+    hasn't been performed.
+
+    The gate requires ``find_library_agent`` to have been called with
+    ``for_creation=true`` (the hybrid semantic + lexical match path).
+    Default-mode (substring-search) calls do not satisfy the gate —
+    Sentry's HIGH-severity bug-prediction caught that just checking the
+    tool name would let the LLM bypass the hybrid check by running a
+    cheap substring search instead.
+
+    Bypassed in builder-bound sessions because those already operate on
+    a specific agent — there is no "should we create one?" decision.
     """
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:
         return None
-    if session.has_tool_been_called(_LIBRARY_CHECK_TOOL_NAME):
+    if _was_called_for_creation(session):
         return None
     return ErrorResponse(
         message=(
             f"Before {tool_name} can run, search the user's library for an "
             "agent that already does what they want. Call "
             "`find_library_agent` with `for_creation=true` and "
-            "`goal_summary=<one-sentence description of the user's goal>`. "
+            "`goal_summary=<one-sentence description of the user's goal>` "
+            "(default-mode substring search does NOT satisfy this gate). "
             "If any agents are returned, present them to the user and ask "
             "whether they want to reuse one. Only retry "
             f"{tool_name} with `library_check_ack=true` if the user "

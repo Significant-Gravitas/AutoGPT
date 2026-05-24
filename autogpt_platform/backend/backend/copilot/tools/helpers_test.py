@@ -1338,14 +1338,64 @@ class TestExecuteBlockAutoCredentials:
 class TestRequireLibraryCheck:
     """Tests for the library-similarity gate."""
 
-    def test_passes_when_tool_was_called_in_messages(self):
+    def _session_with_lib_call(self, *, args):
+        """Build a session containing one ``find_library_agent`` tool call
+        with the given ``arguments`` payload (str or dict accepted)."""
+        from backend.copilot.model import ChatMessage
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {"function": {"name": "find_library_agent", "arguments": args}}
+                ],
+            )
+        )
+        return session
+
+    def test_passes_when_tool_was_called_with_for_creation_true(self):
+        """The default fixture injects for_creation=true; gate must pass."""
         session = make_session("user-lib-check", guide_read=False, library_check=True)
         assert require_library_check(session, "create_agent") is None
 
-    def test_passes_when_tool_was_announced_inflight(self):
+    def test_rejects_default_mode_call(self):
+        """Sentry HIGH bug: a plain find_library_agent(query=...) call
+        must NOT satisfy the gate — only the hybrid for_creation=true
+        path catches paraphrased duplicates."""
+        session = self._session_with_lib_call(args='{"query": "email"}')
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+        assert "for_creation" in result.message
+
+    def test_rejects_for_creation_false_call(self):
+        """Explicitly passing for_creation=false must also fail."""
+        session = self._session_with_lib_call(args='{"for_creation": false}')
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_accepts_dict_args_with_for_creation_true(self):
+        """Args can be a Python dict (test fixtures sometimes skip the
+        JSON-encode step the OpenAI wire format uses)."""
+        session = self._session_with_lib_call(args={"for_creation": True})
+        assert require_library_check(session, "create_agent") is None
+
+    def test_rejects_malformed_args_json(self):
+        """Unparseable args string is treated as not-for-creation."""
+        session = self._session_with_lib_call(args="{not json")
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_alone_does_not_satisfy(self):
+        """Announcing the tool name without args (inflight) cannot
+        satisfy the gate because the inflight buffer doesn't track args.
+        The LLM must dispatch with proper args; the call lands in
+        ``messages`` and unlocks the gate from there."""
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.announce_inflight_tool_call("find_library_agent")
-        assert require_library_check(session, "create_agent") is None
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
 
     def test_returns_error_when_not_called(self):
         session = make_session("user-lib-check", guide_read=False, library_check=False)
