@@ -19,10 +19,9 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search user's library agents. Omit query to list all; "
-            "include_graph=true returns full nodes+links. for_creation=true "
-            "with goal_summary runs the similarity check required before "
-            "create_agent."
+            "Search user's library agents. for_creation=true+goal_summary "
+            "runs the similarity check required by create_agent. Omit query "
+            "to list all; include_graph=true for nodes+links."
         )
 
     @property
@@ -45,12 +44,12 @@ class FindLibraryAgentTool(BaseTool):
                 },
                 "for_creation": {
                     "type": "boolean",
-                    "description": "Similarity check before create_agent.",
+                    "description": "Pre-create similarity check.",
                     "default": False,
                 },
                 "goal_summary": {
                     "type": "string",
-                    "description": "Required when for_creation=true.",
+                    "description": "Required when for_creation.",
                 },
             },
             # ``goal_summary`` is deliberately NOT listed as a required

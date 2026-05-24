@@ -68,10 +68,7 @@ class CreateAgentTool(BaseTool):
                 },
                 "library_check_ack": {
                     "type": "boolean",
-                    "description": (
-                        "Bypass the library-similarity gate after the user "
-                        "declined a match."
-                    ),
+                    "description": "Bypass library-similarity gate after user declined.",
                     "default": False,
                 },
             },
