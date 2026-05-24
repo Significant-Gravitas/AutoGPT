@@ -8,18 +8,21 @@ import { describe, expect, test, vi } from "vitest";
 import { invalidateAllScheduleQueries } from "./invalidate-schedules";
 
 describe("invalidateAllScheduleQueries", () => {
-  test("invalidates user-wide schedules + copilot followups + per-graph when graphId provided", () => {
+  test("invalidates user-wide schedules + copilot followups + library agents + per-graph when graphId provided", () => {
     const queryClient = new QueryClient();
     const spy = vi.spyOn(queryClient, "invalidateQueries");
 
     invalidateAllScheduleQueries(queryClient, "graph-abc");
 
-    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy).toHaveBeenCalledTimes(4);
     expect(spy).toHaveBeenCalledWith({
       queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: getListCopilotFollowupSchedulesQueryKey(),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: ["/api/library/agents"],
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey("graph-abc"),
@@ -32,12 +35,15 @@ describe("invalidateAllScheduleQueries", () => {
 
     invalidateAllScheduleQueries(queryClient);
 
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledTimes(3);
     expect(spy).toHaveBeenCalledWith({
       queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: getListCopilotFollowupSchedulesQueryKey(),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: ["/api/library/agents"],
     });
   });
 });
