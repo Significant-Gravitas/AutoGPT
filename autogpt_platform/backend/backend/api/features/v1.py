@@ -50,6 +50,15 @@ from backend.api.model import (
 )
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillNotFoundError,
+    delete_user_skill,
+    get_default_skill_with_body,
+    list_user_skill_sibling_paths,
+    list_user_skills,
+    read_user_skill_with_body,
+)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -2299,7 +2308,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -2314,7 +2323,37 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+
+
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(
@@ -2335,6 +2374,150 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+########################################################
+##################### COPILOT SKILLS #####################
+########################################################
+
+
+class CopilotSkillInfo(BaseModel):
+    """User-distilled copilot skill metadata for the library UI.
+
+    Defaults (built-in agent-building / MCP-tool guides) are intentionally
+    excluded — they cannot be edited or deleted, so surfacing them in the
+    user-facing list would add noise without affordances.
+    """
+
+    name: str
+    description: str
+    triggers: list[str] = []
+
+
+class CopilotSkillDetail(BaseModel):
+    """Full SKILL.md content surfaced to the library expand-to-view UI."""
+
+    name: str
+    description: str
+    triggers: list[str] = []
+    body: str
+    version: str | None = None
+    is_default: bool = False
+    # Sibling files in the same skill folder (references/, scripts/,
+    # assets/, etc.) — the workspace paths the model can reach via
+    # ``read_workspace_file``.  Empty for built-in defaults since they
+    # ship as on-disk markdown and have no sibling artefacts.
+    sibling_files: list[str] = []
+
+
+@v1_router.get(
+    path="/skills",
+    summary="List user-distilled copilot skills",
+    operation_id="listCopilotSkills",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_skills(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[CopilotSkillInfo]:
+    """Return user-stored skills for the current user.
+
+    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
+    library UI sees the exact same set the copilot ``<available_skills>``
+    block surfaces, minus the built-in defaults (which are read-only and
+    handled separately by the copilot runtime).
+    """
+    skills = await list_user_skills(user_id)
+    return [
+        CopilotSkillInfo(
+            name=s.name,
+            description=s.description,
+            triggers=list(s.triggers),
+        )
+        for s in skills
+    ]
+
+
+@v1_router.get(
+    path="/skills/{name}",
+    summary="Read a single copilot skill with its full SKILL.md body",
+    operation_id="readCopilotSkill",
+    tags=["skills"],
+    responses={404: {"description": "Skill not found"}},
+    dependencies=[Security(requires_user)],
+)
+async def read_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to read"),
+) -> CopilotSkillDetail:
+    """Return full SKILL.md content (name, description, triggers, body)
+    for the library UI's expand-to-view dialog.
+
+    Built-in default skills are returned with ``is_default=True`` so the
+    UI can hide destructive affordances; missing user skills return 404.
+    """
+    slug = name.strip().lower()
+    try:
+        default = get_default_skill_with_body(slug)
+    except OSError:
+        # Don't leak the on-disk path; operators trace via server logs.
+        logger.exception("[skills] failed to load default skill body for %s", slug)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load default skill body",
+        )
+    if default is not None:
+        return CopilotSkillDetail(
+            name=default.name,
+            description=default.description,
+            triggers=list(default.triggers),
+            body=default.body,
+            is_default=True,
+        )
+
+    parsed = await read_user_skill_with_body(user_id, slug)
+    if parsed is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
+    return CopilotSkillDetail(
+        name=parsed.name,
+        description=parsed.description,
+        triggers=list(parsed.triggers),
+        body=parsed.body,
+        version=parsed.version,
+        is_default=False,
+        sibling_files=sibling_files,
+    )
+
+
+@v1_router.delete(
+    path="/skills/{name}",
+    summary="Delete a user-distilled copilot skill",
+    operation_id="deleteCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def delete_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to delete"),
+) -> dict[str, str]:
+    """Delete a user-distilled skill by slug.
+
+    Built-in defaults are not user-deletable — attempting to delete one
+    returns 400.  Missing skills return 404 so the UI can reconcile a
+    stale list.
+    """
+    try:
+        slug = await delete_user_skill(user_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BuiltInSkillError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"name": slug}
 
 
 ########################################################
