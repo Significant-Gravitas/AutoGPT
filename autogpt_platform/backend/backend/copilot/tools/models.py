@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
@@ -100,6 +101,12 @@ class ResponseType(str, Enum):
 
     # Platform info
     PLATFORM_INFO = "platform_info"
+
+    # Skills (self-distilled procedure registry)
+    SKILL_STORED = "skill_stored"
+    SKILL_LOADED = "skill_loaded"
+    SKILL_DELETED = "skill_deleted"
+    SKILL_LIST = "skill_list"
 
 
 # Base response model
