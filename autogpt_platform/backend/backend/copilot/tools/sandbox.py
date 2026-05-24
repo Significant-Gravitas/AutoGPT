@@ -261,7 +261,10 @@ async def run_sandboxed(
             # proc.kill() alone only kills the bwrap parent, leaving
             # children running until they finish naturally.
             try:
-                os.killpg(proc.pid, signal.SIGKILL)
+                if platform.system() != "Windows":
+                    os.killpg(proc.pid, signal.SIGKILL)  # type: ignore[attr-defined]
+                else:
+                    proc.kill()
             except ProcessLookupError:
                 pass  # Already exited
             except OSError as kill_err:
