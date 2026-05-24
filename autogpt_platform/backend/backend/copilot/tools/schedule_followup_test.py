@@ -263,3 +263,37 @@ async def test_cron_schedules_recurring(tool, session):
     assert call_kwargs["cron"] == "0 9 * * 1"
     assert call_kwargs["run_at"] is None
     assert call_kwargs["user_timezone"] == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_returns_feature_disabled_when_flag_off(tool):
+    """When the per-user LD flag is off, ``_execute`` short-circuits to a
+    structured ``feature_disabled`` error WITHOUT touching the scheduler
+    client.  This is the rollback story — flipping the flag has to make
+    new schedules impossible without a redeploy."""
+    session = make_session(_USER)
+
+    scheduler_client = MagicMock()
+    scheduler_client.add_copilot_turn_schedule = AsyncMock(
+        side_effect=AssertionError("scheduler must not be touched when flag off")
+    )
+
+    with patch(
+        f"{_TOOL_PATH}.is_followups_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ), patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=scheduler_client):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="ping me later",
+            delay_seconds=120,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "feature_disabled"
+    scheduler_client.add_copilot_turn_schedule.assert_not_awaited()

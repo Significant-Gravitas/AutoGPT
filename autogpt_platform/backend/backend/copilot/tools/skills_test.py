@@ -1157,3 +1157,77 @@ async def test_read_user_skill_with_body_returns_full_text():
     assert result is not None
     assert result.name == "myskill"
     assert "# Body" in result.body
+
+
+# ---------------------------------------------------------------------------
+# COPILOT_SKILLS LaunchDarkly kill-switch — default-on; LD-off must collapse
+# the per-turn ``<available_skills>`` block to empty AND make every MCP tool
+# return a structured ``feature_disabled`` error.  This is the rollback story
+# if the feature regresses in prod.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_skills_context_empty_when_flag_disabled():
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await build_skills_context("user-1")
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_build_skills_context_normal_when_flag_enabled():
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/x/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="x", description="ok", body="b")
+    ).encode()
+    with _patch_skills_path(fake_manager), patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=True),
+    ), patch(
+        "backend.copilot.tools.skills._read_skills_cache",
+        new=AsyncMock(return_value=None),
+    ), patch(
+        "backend.copilot.tools.skills._write_skills_cache",
+        new=AsyncMock(),
+    ):
+        result = await build_skills_context("user-1")
+
+    assert "name: x" in result
+
+
+@pytest.mark.asyncio
+async def test_store_skill_returns_feature_disabled_when_flag_off():
+    tool = StoreSkillTool()
+    session = _make_session()
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="x",
+            description="d",
+            body="b",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "feature_disabled"
+
+
+@pytest.mark.asyncio
+async def test_list_skills_returns_feature_disabled_when_flag_off():
+    tool = ListSkillsTool()
+    session = _make_session()
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await tool._execute(user_id="user-1", session=session)
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "feature_disabled"

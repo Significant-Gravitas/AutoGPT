@@ -11,12 +11,12 @@ export function EmptyFollowups() {
         <ClockClockwiseIcon size={24} className="text-yellow-700" />
       </div>
       <Text variant="h4" className="text-zinc-900">
-        No copilot follow-ups
+        Nothing scheduled
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-500">
-        Ask your copilot to schedule something for later and it will show up
-        here so you can cancel it. To change a follow-up, cancel and ask the
-        copilot to schedule a new one.
+        Ask your copilot to schedule a follow-up, or add a recurring schedule to
+        an agent from the builder — both will show up here so you can review or
+        cancel them.
       </Text>
     </div>
   );

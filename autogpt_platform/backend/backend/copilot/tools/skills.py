@@ -38,6 +38,7 @@ from backend.copilot.service import strip_server_injected_tags
 from backend.data.db_accessors import workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -671,12 +672,30 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
     return "\n".join(lines)
 
 
+async def is_skills_feature_enabled(user_id: str | None) -> bool:
+    """Per-user kill-switch for the skills feature (``COPILOT_SKILLS``
+    LaunchDarkly flag).  Default-on; the flag exists only so we can
+    disable the feature without a redeploy.  Anonymous calls
+    (no ``user_id``) treat as enabled so unauthenticated paths don't
+    surprise-break.
+    """
+    if not user_id:
+        return True
+    return await is_feature_enabled(Flag.COPILOT_SKILLS, user_id, default=True)
+
+
 async def build_skills_context(user_id: str | None) -> str:
     """Build the body of the ``<available_skills>`` block injected into
     the first user message.  Returns ``""`` if there are no skills to
     show — :func:`inject_user_context` then omits the block entirely so
     sessions with no skill state don't pay the tag overhead.
+
+    Also returns ``""`` when the ``COPILOT_SKILLS`` LD flag is off for
+    this user, so the kill-switch fully suppresses the per-turn index
+    cost (no list query, no Redis hit, nothing to cache).
     """
+    if not await is_skills_feature_enabled(user_id):
+        return ""
     skills = await list_all_skills(user_id)
     index = render_skills_index(skills)
     if not index:
@@ -790,6 +809,17 @@ class StoreSkillTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
+            )
+        if not await is_skills_feature_enabled(user_id):
+            return ErrorResponse(
+                message=(
+                    "Skill registry is currently disabled for this user. "
+                    "Re-enable the ``copilot-skills`` LaunchDarkly flag to "
+                    "use ``store_skill`` / ``read_skill`` / ``delete_skill`` "
+                    "/ ``list_skills``."
+                ),
+                error="feature_disabled",
+                session_id=session_id,
             )
 
         name = name.strip().lower()
@@ -1013,6 +1043,12 @@ class ReadSkillTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
+        if not await is_skills_feature_enabled(user_id):
+            return ErrorResponse(
+                message="Skill registry is currently disabled for this user.",
+                error="feature_disabled",
+                session_id=session_id,
+            )
         name = name.strip().lower()
         if not name:
             return ErrorResponse(message="name is required", session_id=session_id)
@@ -1149,6 +1185,12 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
+        if not await is_skills_feature_enabled(user_id):
+            return ErrorResponse(
+                message="Skill registry is currently disabled for this user.",
+                error="feature_disabled",
+                session_id=session_id,
+            )
         try:
             slug = await delete_user_skill(user_id, name)
         except ValueError as exc:
@@ -1199,6 +1241,12 @@ class ListSkillsTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
+        if not await is_skills_feature_enabled(user_id):
+            return ErrorResponse(
+                message="Skill registry is currently disabled for this user.",
+                error="feature_disabled",
+                session_id=session.session_id,
+            )
         skills = await list_all_skills(user_id)
         payload = [
             {
