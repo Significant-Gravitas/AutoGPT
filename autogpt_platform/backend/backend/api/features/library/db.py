@@ -73,7 +73,7 @@ async def _fetch_schedule_info(
     """
     try:
         scheduler_client = get_scheduler_client()
-        schedules = await scheduler_client.get_execution_schedules(
+        schedules = await scheduler_client.get_graph_execution_schedules(
             graph_id=graph_id,
             user_id=user_id,
         )
@@ -915,7 +915,7 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
         user_id: The ID of the user
     """
     scheduler_client = get_scheduler_client()
-    schedules = await scheduler_client.get_execution_schedules(
+    schedules = await scheduler_client.get_graph_execution_schedules(
         graph_id=graph_id, user_id=user_id
     )
 
