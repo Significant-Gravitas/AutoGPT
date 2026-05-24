@@ -1004,47 +1004,72 @@ def require_guide_read(session: ChatSession, tool_name: str):
 _LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
 
 
-def _was_called_for_creation(session: ChatSession) -> bool:
-    """True iff ``find_library_agent`` was called with ``for_creation=true``.
+def _has_for_creation_args(args: dict) -> bool:
+    """True iff *args* carries the inputs the hybrid similarity check needs.
 
-    Walks the durable ``messages`` history (session-wide) looking for a
-    ``find_library_agent`` tool call whose arguments include
-    ``for_creation: true``. Default-mode (substring-search) calls do
-    **not** satisfy the gate — they use the lexical-only path that
-    silently misses paraphrased duplicates the hybrid similarity check
-    catches.
-
-    Args may be stored either as a JSON string (the OpenAI tool-call
-    convention) or as a Python dict (some inproc test fixtures). We
-    handle both; anything we can't parse is treated as not-for-creation.
-
-    Does not consult ``_inflight_tool_calls`` because that buffer
-    tracks names only — no args to inspect. The cost is that a
-    parallel-dispatch turn (rare, model-quirky) will fail the gate
-    and the LLM must retry serially, which is the correct flow.
+    Requires both ``for_creation=True`` AND a non-empty ``goal_summary``
+    string. An empty ``goal_summary`` would route the tool through its
+    soft-fail path (``NoResultsResponse`` with a "please retry" hint)
+    without actually running the search, so accepting it as a satisfied
+    gate would let the LLM bypass the check entirely — caught by
+    Sentry's MEDIUM bug prediction on agent_search.py:384.
     """
-    import json  # noqa: PLC0415 — local: only used in this gate path
+    if args.get("for_creation") is not True:
+        return False
+    goal_summary = args.get("goal_summary")
+    return isinstance(goal_summary, str) and bool(goal_summary.strip())
 
+
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff ``find_library_agent`` was called with ``for_creation=true``
+    AND a non-empty ``goal_summary`` — the inputs the hybrid similarity
+    check actually needs to run.
+
+    Mirrors ``_read_skill_called_for``'s two-source pattern:
+    1. In-flight first via :meth:`ChatSession.get_inflight_tool_call_args`
+       so a parallel-dispatch ``find_library_agent`` + ``create_agent``
+       turn doesn't false-reject (caught by Sentry's MEDIUM bug
+       prediction on helpers.py:1049).
+    2. Durable scan of past turns + already-flushed current-turn rows,
+       handling both the OpenAI ``function.arguments`` JSON-string shape
+       and the flat fallback some persisted rows use.
+
+    Default-mode (substring-search) calls and empty-``goal_summary``
+    soft-fail calls do **not** satisfy the gate — both bypass the
+    hybrid path that catches paraphrased duplicates.
+    """
+    # In-flight first — dispatcher passes argument dicts directly, no
+    # JSON parsing needed. Catches calls issued earlier in the current
+    # turn whose tool-call row hasn't been flushed to ``messages`` yet.
+    for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
+        if _has_for_creation_args(args):
+            return True
+
+    # Durable scan: past turns + already-flushed current turn.
     for msg in reversed(session.messages):
         if msg.role != "assistant" or not msg.tool_calls:
             continue
         for tc in msg.tool_calls:
-            fn = tc.get("function", {}) if isinstance(tc, dict) else {}
-            if (fn.get("name") or tc.get("name")) != _LIBRARY_CHECK_TOOL_NAME:
+            # Defensive: persisted rows may carry ``function`` as None or
+            # a non-dict (matches ``_read_skill_called_for``'s shape).
+            fn_raw = tc.get("function") if isinstance(tc, dict) else None
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or (tc.get("name") if isinstance(tc, dict) else None)
+            if name != _LIBRARY_CHECK_TOOL_NAME:
                 continue
-            raw_args = fn.get("arguments") if isinstance(fn, dict) else None
-            if raw_args is None:
-                raw_args = tc.get("arguments") if isinstance(tc, dict) else None
+            raw_args = fn.get("arguments") if fn else None
+            if raw_args is None and isinstance(tc, dict):
+                raw_args = tc.get("arguments")
             if isinstance(raw_args, str):
                 try:
-                    args = json.loads(raw_args)
-                except (ValueError, TypeError):
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
                     continue
             elif isinstance(raw_args, dict):
-                args = raw_args
+                parsed = raw_args
             else:
                 continue
-            if args.get("for_creation") is True:
+            if _has_for_creation_args(parsed):
                 return True
     return False
 

@@ -1375,10 +1375,12 @@ class TestRequireLibraryCheck:
         result = require_library_check(session, "create_agent")
         assert isinstance(result, ErrorResponse)
 
-    def test_accepts_dict_args_with_for_creation_true(self):
+    def test_accepts_dict_args_with_for_creation_and_goal_summary(self):
         """Args can be a Python dict (test fixtures sometimes skip the
         JSON-encode step the OpenAI wire format uses)."""
-        session = self._session_with_lib_call(args={"for_creation": True})
+        session = self._session_with_lib_call(
+            args={"for_creation": True, "goal_summary": "summarise emails"}
+        )
         assert require_library_check(session, "create_agent") is None
 
     def test_rejects_malformed_args_json(self):
@@ -1387,11 +1389,54 @@ class TestRequireLibraryCheck:
         result = require_library_check(session, "create_agent")
         assert isinstance(result, ErrorResponse)
 
-    def test_inflight_alone_does_not_satisfy(self):
-        """Announcing the tool name without args (inflight) cannot
-        satisfy the gate because the inflight buffer doesn't track args.
-        The LLM must dispatch with proper args; the call lands in
-        ``messages`` and unlocks the gate from there."""
+    def test_rejects_for_creation_with_empty_goal_summary(self):
+        """Sentry MEDIUM (agent_search.py:384): for_creation=true with an
+        empty goal_summary routes the tool through its soft-fail path
+        without running the search. The gate must reject it."""
+        session = self._session_with_lib_call(
+            args='{"for_creation": true, "goal_summary": ""}'
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_rejects_for_creation_with_whitespace_goal_summary(self):
+        """Whitespace-only goal_summary is also soft-fail-equivalent."""
+        session = self._session_with_lib_call(
+            args='{"for_creation": true, "goal_summary": "   "}'
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_rejects_for_creation_with_missing_goal_summary(self):
+        """for_creation=true without any goal_summary key at all must fail."""
+        session = self._session_with_lib_call(args='{"for_creation": true}')
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_with_args_satisfies(self):
+        """Sentry MEDIUM (helpers.py:1049): in-flight calls with proper
+        args must satisfy the gate so a parallel-dispatch turn doesn't
+        false-reject. The dispatcher captures args via
+        ``announce_inflight_tool_call(name, arguments=...)``."""
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "summarise emails"},
+        )
+        assert require_library_check(session, "create_agent") is None
+
+    def test_inflight_with_empty_goal_summary_does_not_satisfy(self):
+        """Inflight calls also have to pass the non-empty goal_summary check."""
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": ""},
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_name_only_does_not_satisfy(self):
+        """Announcing only the name (no args dict captured) still fails."""
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.announce_inflight_tool_call("find_library_agent")
         result = require_library_check(session, "create_agent")
