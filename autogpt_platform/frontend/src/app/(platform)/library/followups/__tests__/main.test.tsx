@@ -274,12 +274,21 @@ describe("FollowupsPage", () => {
           agent_name: "" as unknown as string,
           name: "My schedule name",
         }),
+        makeGraphSchedule({
+          id: "g-fallback-default",
+          agent_name: "" as unknown as string,
+          name: "",
+        }),
       ]),
     );
 
     render(<FollowupsPage />);
 
+    // Second-tier fallback: schedule name renders when agent_name is empty.
     expect(await screen.findByText("My schedule name")).toBeDefined();
+    // Final fallback: the literal "Scheduled agent" renders when BOTH
+    // agent_name and name are empty.
+    expect(screen.getByText("Scheduled agent")).toBeDefined();
   });
 
   test("graph row: clicking View opens the dialog with graph metadata", async () => {
