@@ -196,7 +196,9 @@ export function openOAuthPopup(
     //      observes a closed popup; gives in-flight result messages a
     //      chance to land before we declare failure.
     //
-    // Why the grace at all?  The callback page does:
+    // Why the grace at all?  The callback page (see
+    // ``frontend/src/app/(platform)/auth/integrations/mcp_callback/route.ts``)
+    // does:
     //   bc.postMessage(...); localStorage.setItem(...); setTimeout(close, 1500)
     // BroadcastChannel delivery is async across-origin; the parent's
     // localStorage poll fires every 500 ms.  Without a grace window the
@@ -213,7 +215,14 @@ export function openOAuthPopup(
     // The setTimeout lives in a plain JS closure, not React state — it
     // does NOT stack across re-renders, and the AbortController cleanup
     // tears it down if the caller aborts before grace expires.
-    if (popup) {
+    // Skip the close-poll entirely when the popup was blocked.  The
+    // ``window.open("about:blank", ...)`` reference can be non-null but
+    // already-closed in that branch (we fell back to a separate new-tab
+    // ``window.open(loginUrl, "_blank")`` whose handle we deliberately
+    // don't keep — the new tab is the user's primary surface and
+    // pre-emptively rejecting on its ``closed`` state would short-circuit
+    // a successful sign-in arriving via BroadcastChannel/localStorage.
+    if (popup && !popupBlocked) {
       const POPUP_CLOSE_GRACE_MS = 3000;
       const finalLocalStorageCheck = () => {
         if (!useCrossOriginListeners || handled) return;

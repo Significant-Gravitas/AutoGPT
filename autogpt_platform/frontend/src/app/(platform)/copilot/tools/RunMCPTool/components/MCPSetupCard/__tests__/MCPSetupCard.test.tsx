@@ -112,6 +112,17 @@ describe("MCPSetupCard", () => {
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
+  it("falls back to persisted snapshot when the live cred API fails", () => {
+    // ``useGetV1ListCredentials`` returns ``null`` via ``select`` on a
+    // 401/5xx response.  Treating that as "no creds" would override a
+    // still-valid persisted snapshot; the card must keep the
+    // ``initiallyConnected`` truth instead.
+    setMockLiveCreds(null as unknown as Array<{ provider: string }>);
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
+  });
+
   it("shows manual token input after OAuth 400", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"

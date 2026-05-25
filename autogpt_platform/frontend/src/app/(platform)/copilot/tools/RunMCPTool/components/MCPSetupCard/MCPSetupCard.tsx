@@ -71,14 +71,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       staleTime: 5_000,
     },
   });
-  const liveHasCred = Array.isArray(liveCredsRes)
-    ? liveCredsRes.some(
+  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
+  // while loading or after a network/auth failure (``select`` returned
+  // ``null``).  Treating an unknown live state as ``false`` would override
+  // a still-valid persisted snapshot — see review for the
+  // initiallyConnected=false + 5xx race that surfaces a bare Connect
+  // button despite an existing cred.
+  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
+    ? "unknown"
+    : liveCredsRes.some(
         (c) =>
           c.provider === "mcp" &&
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
-      )
-    : false;
+      );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,9 +99,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
 
-  // Combined view: ``forceDisconnected`` (set by the catch block) wins;
-  // otherwise local just-connected state OR live API state.
-  const connected = !forceDisconnected && (localConnected || liveHasCred);
+  // Combined view:
+  //   1. ``forceDisconnected`` (set by the catch block) wins.
+  //   2. ``localConnected`` (just completed sign-in in this component) wins.
+  //   3. Live API truth wins over the persisted snapshot — a true tells
+  //      us the cred is there, a false tells us it isn't.
+  //   4. When live state is unknown (loading/network/auth error), fall
+  //      back to the persisted ``initiallyConnected`` snapshot rather
+  //      than defaulting to disconnected.
+  const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
+  const connected = !forceDisconnected && (localConnected || liveSays);
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
@@ -104,6 +117,15 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   useEffect(() => () => oauthAbortRef.current?.(), []);
 
   async function handleConnect() {
+    // Re-entrancy guard: a rapid double-click would otherwise race the
+    // two in-flight ``handleConnect`` invocations — the second one aborts
+    // the first's popup (``oauthAbortRef.current?.()``) but the first's
+    // ``await promise`` then rejects with ``OAUTH_ERROR_FLOW_CANCELED``,
+    // which flips ``forceDisconnected=true`` even though the second
+    // attempt is still alive.  Bail out cheaply when a flow is already
+    // running.  Button is also ``disabled={loading}`` but disabled
+    // <button> elements still fire ``click`` in some browsers.
+    if (loading) return;
     setError(null);
     // Reset showManualToken so a prior 400 doesn't keep the input visible
     // when a later attempt fails with a non-400 (e.g. network) error.
@@ -191,8 +213,15 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   async function handleManualToken() {
     const token = manualToken.trim();
     if (!token) return;
+    if (loading) return;
     setLoading(true);
     setError(null);
+    // Clear the force-disconnect override at the start so a failed
+    // manual-token attempt doesn't leave the not-connected branch wedged
+    // open on subsequent retries even though ``liveHasCred=true``.  The
+    // catch block restores it on failure; the success branch leaves it
+    // cleared.
+    setForceDisconnected(false);
     try {
       const res = await postV2StoreABearerTokenForAnMcpServer({
         server_url: serverUrl,
@@ -200,12 +229,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       });
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
-      // Clear the force-disconnected override set by an earlier OAuth
-      // failure so the new manual-token cred surfaces the Connected pill.
-      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
+      // Restore the force-disconnect override so the not-connected branch
+      // (error banner + manual-token input) stays visible — otherwise an
+      // existing ``liveHasCred=true`` would re-render the Connected pill.
+      setForceDisconnected(true);
       const err = e as Record<string, unknown>;
       setError(
         (typeof err?.message === "string" ? err.message : null) ||

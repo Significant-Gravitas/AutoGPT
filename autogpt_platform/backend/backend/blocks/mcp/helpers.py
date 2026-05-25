@@ -92,6 +92,13 @@ async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
         # evicts any cached provider token for the user.
         await mgr.delete(user_id, credential_id)
         logger.info("Invalidated stale MCP credential %s", credential_id)
+    except ValueError:
+        # ``mgr.delete`` raises ``ValueError`` when the credential is
+        # already gone (e.g. the user deleted it manually in Settings
+        # between the ``auto_lookup_mcp_credential`` call and now).  Not
+        # a problem — the goal was "this row should not exist" and it
+        # doesn't.  Demote to debug so we don't spam warnings on retries.
+        logger.debug("MCP credential %s already gone during invalidate", credential_id)
     except Exception:
         logger.warning(
             "Failed to invalidate stale MCP credential %s",

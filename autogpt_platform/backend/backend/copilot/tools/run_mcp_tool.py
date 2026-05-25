@@ -187,16 +187,41 @@ class RunMCPToolTool(BaseTool):
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
         auth_token = creds.access_token.get_secret_value() if creds else None
 
-        # "Just connect" intent: skip the MCPClient entirely and return a
-        # setup card that reflects current connection state.  Stops the
-        # model from running a no-op discovery just to surface a card and
-        # gives users a visible Reconnect affordance even when they're
-        # already signed in (previously: discovery succeeded silently and
-        # nothing rendered, so the model's "click Connect" promise
-        # mismatched the empty UI).
+        # "Just connect" intent: return only the setup card so the user
+        # gets a visible Connect/Reconnect affordance even when there's
+        # nothing else to render (previously: discovery succeeded
+        # silently and nothing rendered, so the model's "click Connect"
+        # promise mismatched the empty UI).
+        #
+        # When stored creds exist we still need to know whether they're
+        # *valid* before promising the user "Connected" — a stale row
+        # left over from a server-side revocation would mislead the UI
+        # into showing the Reconnect pill, then 401 on the next real
+        # tool call (see the John bug this PR also fixes).  Cheapest
+        # verification is ``MCPClient.initialize`` (one round-trip, no
+        # tool listing); on 401/403 we treat the cred as stale, drop the
+        # dead row, and surface the not-connected card so the user
+        # re-auths in one step.  Other HTTP errors (timeouts, 5xx) are
+        # treated as "unknown, optimistically connected" — the next
+        # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
+            connected = creds is not None
+            if creds is not None:
+                probe_client = MCPClient(server_url, auth_token=auth_token)
+                try:
+                    await probe_client.initialize()
+                except HTTPClientError as probe_err:
+                    if probe_err.status_code in _AUTH_STATUS_CODES:
+                        await invalidate_mcp_credential(user_id, creds.id)
+                        connected = False
+                except MCPClientError:
+                    # Transport / protocol failure — leave the cred in
+                    # place and report ``connected`` based on row
+                    # presence; the next real tool call will surface a
+                    # cleaner error.
+                    pass
             return self._build_setup_requirements(
-                server_url, session_id, connected=creds is not None
+                server_url, session_id, connected=connected
             )
 
         client = MCPClient(server_url, auth_token=auth_token)
