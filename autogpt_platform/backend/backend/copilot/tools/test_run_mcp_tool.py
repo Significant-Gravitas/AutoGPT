@@ -568,6 +568,7 @@ async def test_surface_connect_card_connected_when_creds_exist_and_probe_ok():
         ):
             mock_client = AsyncMock()
             mock_client.initialize = AsyncMock(return_value=None)
+            mock_client.close = AsyncMock(return_value=None)
             with patch(
                 "backend.copilot.tools.run_mcp_tool.MCPClient",
                 return_value=mock_client,
@@ -581,6 +582,9 @@ async def test_surface_connect_card_connected_when_creds_exist_and_probe_ok():
                 # Probe ran exactly once — no follow-up tool listing.
                 mock_client_cls.assert_called_once()
                 mock_client.initialize.assert_awaited_once()
+                # Session terminated via DELETE so we don't leak a row
+                # server-side on every "just connect" intent.
+                mock_client.close.assert_awaited_once()
 
     assert isinstance(response, SetupRequirementsResponse)
     assert response.setup_info.user_readiness.has_all_credentials is True
@@ -619,6 +623,7 @@ async def test_surface_connect_card_stale_creds_invalidated_returns_not_connecte
             mock_client.initialize = AsyncMock(
                 side_effect=HTTPClientError("Unauthorized", status_code=401)
             )
+            mock_client.close = AsyncMock(return_value=None)
             with patch(
                 "backend.copilot.tools.run_mcp_tool.MCPClient",
                 return_value=mock_client,
@@ -634,6 +639,8 @@ async def test_surface_connect_card_stale_creds_invalidated_returns_not_connecte
                         surface_connect_card=True,
                     )
                     mock_invalidate.assert_awaited_once_with(_USER_ID, "stale-cred-id")
+                    # close() runs in ``finally`` even when initialize raised.
+                    mock_client.close.assert_awaited_once()
 
     assert isinstance(response, SetupRequirementsResponse)
     assert response.setup_info.user_readiness.has_all_credentials is False
