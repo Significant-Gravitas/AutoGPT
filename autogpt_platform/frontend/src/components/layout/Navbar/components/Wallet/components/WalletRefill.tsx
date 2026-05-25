@@ -11,18 +11,13 @@ import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
+import { TopUpForm } from "@/components/layout/TopUpPrompt/TopUpForm/TopUpForm";
 import useCredits from "@/hooks/useCredits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-
-const topUpSchema = z.object({
-  amount: z
-    .number({ coerce: true, invalid_type_error: "Enter top-up amount" })
-    .min(5, "Top-ups start at $5. Please enter a higher amount."),
-});
 
 const autoRefillSchema = z
   .object({
@@ -46,15 +41,12 @@ export function WalletRefill() {
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
 
-  const { requestTopUp, autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
+  const { autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
     fetchInitialAutoTopUpConfig: true,
   });
 
   const [isLoading, setIsLoading] = useState(false);
 
-  const topUpForm = useForm<z.infer<typeof topUpSchema>>({
-    resolver: zodResolver(topUpSchema),
-  });
   const autoRefillForm = useForm<z.infer<typeof autoRefillSchema>>({
     resolver: zodResolver(autoRefillSchema),
   });
@@ -72,17 +64,6 @@ export function WalletRefill() {
       autoRefillForm.setValue("refillAmount", autoTopUpConfig.amount / 100);
     }
   }, [autoTopUpConfig, autoRefillForm]);
-
-  const submitTopUp = useCallback(
-    async (data: z.infer<typeof topUpSchema>) => {
-      setIsLoading(true);
-      await requestTopUp(data.amount * 100).catch(
-        toastOnFail("request top-up"),
-      );
-      setIsLoading(false);
-    },
-    [requestTopUp, toastOnFail],
-  );
 
   const submitAutoTopUpConfig = useCallback(
     async (data: z.infer<typeof autoRefillSchema>) => {
@@ -124,32 +105,7 @@ export function WalletRefill() {
             <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
               Enter an amount (min. $5) and add credits instantly.
             </div>
-            <Form {...topUpForm}>
-              <form
-                onSubmit={topUpForm.handleSubmit(submitTopUp)}
-                className="my-4"
-              >
-                <FormField
-                  control={topUpForm.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <Input
-                      label="Amount"
-                      type="amount"
-                      size="small"
-                      decimalCount={0}
-                      id={field.name}
-                      error={topUpForm.formState.errors.amount?.message}
-                      amountPrefix="$"
-                      {...field}
-                    />
-                  )}
-                />
-                <Button type="submit" disabled={isLoading} size="small">
-                  Top up
-                </Button>
-              </form>
-            </Form>
+            <TopUpForm submitLabel="Top up" />
           </TabsContent>
           <TabsContent value="auto-refill" className="flex flex-col">
             <div className="justify-start font-sans text-sm font-medium leading-snug text-zinc-900">
