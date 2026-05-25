@@ -143,9 +143,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // Reset showManualToken so a prior 400 doesn't keep the input visible
     // when a later attempt fails with a non-400 (e.g. network) error.
     setShowManualToken(false);
-    // Clear any forced-disconnect override from a previous failed attempt
-    // so liveHasCred can take over again once this attempt resolves.
-    setForceDisconnected(false);
     setLoading(true);
     oauthAbortRef.current?.();
 
@@ -188,6 +185,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         }
       }
 
+      // Only clear the force-disconnect override AFTER the OAuth dance
+      // completes successfully.  Clearing it earlier would let
+      // ``liveHasCred=true`` (Reconnect path) render the Connected pill
+      // mid-flight, briefly contradicting the in-progress "Reconnecting…"
+      // affordance.
+      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
@@ -232,12 +235,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     if (!token) return;
     setLoading(true);
     setError(null);
-    // Clear the force-disconnect override at the start so a failed
-    // manual-token attempt doesn't leave the not-connected branch wedged
-    // open on subsequent retries even though ``liveHasCred=true``.  The
-    // catch block restores it on failure; the success branch leaves it
-    // cleared.
-    setForceDisconnected(false);
     try {
       const res = await postV2StoreABearerTokenForAnMcpServer({
         server_url: serverUrl,
@@ -245,12 +242,19 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       });
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
+      // Only clear the force-disconnect override AFTER the API confirms
+      // the token was stored.  Clearing it before the await would let
+      // ``liveHasCred=true`` (from an existing stale cred) re-render the
+      // Connected pill while the request is still in flight, briefly
+      // showing a false "Connected" state to the user.
+      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
-      // Restore the force-disconnect override so the not-connected branch
-      // (error banner + manual-token input) stays visible — otherwise an
-      // existing ``liveHasCred=true`` would re-render the Connected pill.
+      // Keep the force-disconnect override on so the not-connected
+      // branch (error banner + manual-token input) stays visible — an
+      // existing ``liveHasCred=true`` would otherwise re-render the
+      // Connected pill.
       setForceDisconnected(true);
       const err = e as Record<string, unknown>;
       setError(
