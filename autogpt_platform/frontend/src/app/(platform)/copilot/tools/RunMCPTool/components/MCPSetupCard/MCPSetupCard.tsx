@@ -60,6 +60,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
   async function handleConnect() {
     setError(null);
+    // Reset showManualToken so a prior 400 doesn't keep the input visible
+    // when a later attempt fails with a non-400 (e.g. network) error.
+    setShowManualToken(false);
     setLoading(true);
     oauthAbortRef.current?.();
 

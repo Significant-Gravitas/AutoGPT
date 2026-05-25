@@ -131,14 +131,9 @@ export function openOAuthPopup(
       // Validate state token
       if (data.state !== stateToken) {
         // State mismatch — this message is for a different listener. Ignore silently.
-        console.debug("[oauth-popup] state mismatch — ignoring message", {
-          expected: stateToken,
-          got: data.state,
-        });
         return;
       }
 
-      console.debug("[oauth-popup] result received", { type: messageType });
       handled = true;
 
       if (!data.success) {
