@@ -170,6 +170,48 @@ describe("openOAuthPopup popup-close grace window", () => {
     expect(onReject).toHaveBeenCalledTimes(1);
   });
 
+  test("same-origin flow rejects immediately on popup close (no grace)", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-so",
+      useCrossOriginListeners: false, // same-origin → no grace
+    });
+    const onReject = vi.fn();
+    promise.catch(onReject);
+
+    popup.closed = true;
+    // One close-poll tick (500ms) is enough — there's no 3s grace
+    // because synchronous opener.postMessage would have already fired.
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect((onReject.mock.calls[0][0] as Error).message).toBe(
+      OAUTH_ERROR_WINDOW_CLOSED,
+    );
+  });
+
+  test("overall timeout rejects with FLOW_TIMED_OUT if popup never closes", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+
+    const { promise } = openOAuthPopup("https://example.com/oauth", {
+      stateToken: "tok-timeout",
+      useCrossOriginListeners: true,
+      timeout: 1000, // tight outer timeout for the test
+    });
+    const onReject = vi.fn();
+    promise.catch(onReject);
+
+    // Popup never closes → close-poll never observes ``closed`` → only
+    // the outer timeout can reject.
+    await vi.advanceTimersByTimeAsync(1100);
+
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect((onReject.mock.calls[0][0] as Error).message).toMatch(/timed out/i);
+  });
+
   test("state-mismatch message is ignored and does not resolve the promise", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
