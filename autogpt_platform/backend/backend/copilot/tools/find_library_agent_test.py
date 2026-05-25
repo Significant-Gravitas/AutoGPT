@@ -119,6 +119,30 @@ async def test_for_creation_without_goal_summary_soft_fails(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_for_creation_does_not_fall_back_to_query(tool, session):
+    """``query`` must NOT substitute for a missing ``goal_summary`` when
+    ``for_creation=true``. Falling back would let the search succeed
+    while the create_agent gate validator (which only accepts a non-empty
+    ``goal_summary``) rejects, forcing the LLM into a retry loop. Sentry
+    flagged this MEDIUM-severity misalignment on find_library_agent.py:83.
+    """
+    with patch(
+        "backend.copilot.tools.agent_search.hybrid_search_library_agents",
+        new=AsyncMock(return_value=[]),
+    ) as mock_search:
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            for_creation=True,
+            query="summarise my emails",
+        )
+
+    mock_search.assert_not_awaited()
+    assert isinstance(result, NoResultsResponse)
+    assert "goal_summary" in result.message
+
+
+@pytest.mark.asyncio
 async def test_for_creation_db_error_soft_fails(tool, session):
     """A DatabaseError from the hybrid search degrades to NoResults so the
     UI stays clean and the LLM can proceed."""

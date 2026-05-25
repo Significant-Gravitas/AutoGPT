@@ -76,8 +76,14 @@ class FindLibraryAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         if for_creation:
+            # No ``or query`` fallback: the create_agent gate's validator
+            # (_has_for_creation_args in helpers.py) only accepts a non-empty
+            # ``goal_summary``. Letting ``query`` satisfy the search but not
+            # the gate would force the LLM into a retry loop. Empty
+            # goal_summary still soft-fails to NoResultsResponse with a
+            # retry hint, so this is a no-op for well-formed callers.
             return await search_library_for_creation(
-                goal_summary=goal_summary or query,
+                goal_summary=goal_summary,
                 session_id=session.session_id,
                 user_id=user_id,
             )
