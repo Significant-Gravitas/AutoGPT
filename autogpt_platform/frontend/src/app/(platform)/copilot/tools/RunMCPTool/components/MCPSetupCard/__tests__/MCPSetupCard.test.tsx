@@ -112,6 +112,20 @@ describe("MCPSetupCard", () => {
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
+  it("drops Connected state when live API confirms the cred is gone, even if persisted snapshot said connected", () => {
+    // Sentry-flagged sticky-localConnected regression: the card was
+    // emitted with ``has_all_credentials=true`` (persisted snapshot)
+    // but the cred was deleted server-side before the card re-mounted
+    // on chat refresh.  Live API returns ``liveHasCred=false`` (cred
+    // gone).  The pill must flip to "Connect", not stay on "Reconnect".
+    setMockLiveCreds([]); // live truth: no cred
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
+
   it("falls back to persisted snapshot when the live cred API fails", () => {
     // ``useGetV1ListCredentials`` returns ``null`` via ``select`` on a
     // 401/5xx response.  Treating that as "no creds" would override a
@@ -191,6 +205,13 @@ describe("MCPSetupCard", () => {
   });
 
   it("drops Connected state and surfaces manual token input when Reconnect hits HTTP 400", async () => {
+    // Live creds must report the server connected so the card starts in
+    // Connected/Reconnect — ``localConnected`` is no longer seeded from
+    // the persisted snapshot (sentry bug: live false would have been
+    // shadowed by a sticky ``localConnected=true`` from initialization).
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
     );

@@ -97,7 +97,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [localConnected, setLocalConnected] = useState(initiallyConnected);
+  // ``localConnected`` is set ONLY when the user successfully completes
+  // OAuth / manual-token in this component instance.  It is NOT seeded
+  // from ``initiallyConnected`` — that path is handled via ``liveSays``
+  // below.  Seeding from the persisted snapshot would shadow a later
+  // ``liveHasCred=false`` (e.g. cred revoked) and keep the Connected
+  // pill stuck.
+  const [localConnected, setLocalConnected] = useState(false);
   // When Reconnect fails (or any in-card flow errors out), force the
   // not-connected branch even though the live cred row still exists —
   // otherwise ``liveHasCred=true`` would keep the pill rendered and the
