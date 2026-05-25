@@ -284,3 +284,43 @@ def track_trigger_setup(
         )
     except Exception as e:
         logger.warning(f"Failed to track trigger setup: {e}")
+
+
+def track_library_check_outcome(
+    user_id: str,
+    session_id: str | None,
+    outcome: str,
+    matches_count: int = 0,
+    top_score: float | None = None,
+) -> None:
+    """Track the create-time library-similarity gate's outcome so we can
+    measure how often the LLM bypasses it vs. reuses an existing agent.
+
+    Args:
+        outcome: One of ``"matches_shown"``, ``"no_matches"``,
+            ``"bypassed_ack"`` (LLM set ``library_check_ack=true``),
+            or ``"soft_failed"`` (search threw, gate silently disabled).
+        matches_count: Number of candidates returned above threshold.
+        top_score: Highest ``combined_score`` seen (above OR below
+            threshold) — included so sub-threshold near-misses can
+            inform retuning ``LIBRARY_SIMILARITY_THRESHOLD``.
+    """
+    client = _get_posthog_client()
+    if not client:
+        return
+
+    try:
+        properties = {
+            **_get_base_properties(),
+            "session_id": session_id,
+            "outcome": outcome,
+            "matches_count": matches_count,
+            "top_score": top_score,
+        }
+        client.capture(
+            distinct_id=user_id,
+            event="copilot_library_check_outcome",
+            properties=properties,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to track library check outcome: {e}")

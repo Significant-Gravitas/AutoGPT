@@ -644,9 +644,96 @@ class DocumentationHandler(ContentHandler):
         }
 
 
+class LibraryAgentHandler(ContentHandler):
+    """Handler for user-scoped library agents.
+
+    Library agents are private (one row per user) so embeddings carry a
+    non-null userId. The unique key on (contentType, contentId, userId)
+    keeps the same library_agent_id from colliding across users that may
+    have forked the same graph.
+    """
+
+    @property
+    def content_type(self) -> ContentType:
+        return ContentType.LIBRARY_AGENT
+
+    async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        missing = await query_raw_with_schema(
+            """
+            SELECT
+                la.id,
+                la."userId",
+                g.name,
+                g.description,
+                g.instructions
+            FROM {schema_prefix}"LibraryAgent" la
+            JOIN {schema_prefix}"AgentGraph" g
+              ON g.id = la."agentGraphId" AND g.version = la."agentGraphVersion"
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = la.id
+              AND uce."contentType" = 'LIBRARY_AGENT'::{schema_prefix}"ContentType"
+              AND uce."userId" = la."userId"
+            WHERE la."isDeleted" = false
+              AND la."isHidden" = false
+              AND uce."contentId" IS NULL
+            LIMIT $1
+            """,
+            batch_size,
+        )
+
+        items: list[ContentItem] = []
+        for row in missing:
+            name = row["name"] or ""
+            description = row["description"] or ""
+            instructions = row["instructions"] or ""
+            searchable_text = " ".join(
+                part for part in (name, description, instructions) if part
+            )
+            items.append(
+                ContentItem(
+                    content_id=row["id"],
+                    content_type=ContentType.LIBRARY_AGENT,
+                    searchable_text=searchable_text,
+                    metadata={"name": name},
+                    user_id=row["userId"],
+                )
+            )
+        return items
+
+    async def get_stats(self) -> dict[str, int]:
+        total_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"LibraryAgent"
+            WHERE "isDeleted" = false AND "isHidden" = false
+            """
+        )
+        total = total_result[0]["count"] if total_result else 0
+
+        with_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"LibraryAgent" la
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = la.id
+              AND uce."contentType" = 'LIBRARY_AGENT'::{schema_prefix}"ContentType"
+              AND uce."userId" = la."userId"
+            WHERE la."isDeleted" = false AND la."isHidden" = false
+            """
+        )
+        with_embeddings = with_result[0]["count"] if with_result else 0
+
+        return {
+            "total": total,
+            "with_embeddings": with_embeddings,
+            "without_embeddings": total - with_embeddings,
+        }
+
+
 # Content handler registry
 CONTENT_HANDLERS: dict[ContentType, ContentHandler] = {
     ContentType.STORE_AGENT: StoreAgentHandler(),
     ContentType.BLOCK: BlockHandler(),
     ContentType.DOCUMENTATION: DocumentationHandler(),
+    ContentType.LIBRARY_AGENT: LibraryAgentHandler(),
 }

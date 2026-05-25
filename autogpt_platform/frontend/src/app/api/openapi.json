@@ -10048,6 +10048,11 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
+          "match_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Match Score",
+            "description": "Combined relevance score in [0, 1] when this agent was returned from a similarity search (e.g. the create-time library check). Null for non-similarity sources."
+          },
           "input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
