@@ -284,4 +284,92 @@ describe("MCPSetupCard", () => {
       expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
     });
   });
+
+  it("submits manual token via Enter key", async () => {
+    // The token input has an onKeyDown that fires handleManualToken on
+    // Enter — covers the keyboard path that's an alternative to the Use
+    // Token button click.
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-enter",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.example.com",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+
+    const input = screen.getByPlaceholderText("Paste API token");
+    fireEvent.change(input, { target: { value: "my-token" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+    });
+  });
+
+  it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
+    // ``handleManualToken`` catch must flip ``forceDisconnected=true`` —
+    // otherwise an existing live cred would re-show the Connected pill
+    // even though the just-attempted manual-token store failed.
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    fireEvent.click(screen.getByRole("button", { name: /reconnect/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    // Token endpoint rejects with non-2xx → catch fires → forceDisconnected stays on.
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 422,
+      data: { detail: "Invalid token format" },
+      headers: new Headers(),
+    } as never);
+
+    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+      target: { value: "bad-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      // ``handleManualToken`` throws ``new Error("Failed to store token")``
+      // on non-2xx, which becomes the displayed error message.
+      expect(screen.getByText(/failed to store token/i)).toBeDefined();
+    });
+    // Crucial: live creds say "connected" but the failed token attempt
+    // must keep the not-connected branch rendered so the user can retry.
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
 });
