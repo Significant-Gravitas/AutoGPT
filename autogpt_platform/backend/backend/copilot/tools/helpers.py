@@ -986,3 +986,53 @@ def require_guide_read(session: ChatSession, tool_name: str):
         ),
         session_id=session.session_id,
     )
+
+
+_LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
+
+
+def _has_for_creation_args(args: dict) -> bool:
+    """``for_creation=True`` + non-empty ``goal_summary``: the inputs the
+    hybrid search actually needs. Empty goal_summary soft-fails without
+    running the search, so it must not satisfy the gate."""
+    if args.get("for_creation") is not True:
+        return False
+    goal_summary = args.get("goal_summary")
+    return isinstance(goal_summary, str) and bool(goal_summary.strip())
+
+
+def _was_called_for_creation(session: ChatSession) -> bool:
+    """True iff a satisfying ``find_library_agent`` call exists in the
+    current turn's in-flight buffer. Turn-scoped on purpose: a stale
+    call from an earlier turn's unrelated goal must not satisfy the
+    gate for a new create_agent request."""
+    for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
+        if _has_for_creation_args(args):
+            return True
+    return False
+
+
+def require_library_check(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
+    hasn't been called in this session. Bypassed in builder-bound sessions
+    (already editing a specific agent)."""
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if session.metadata.builder_graph_id:
+        return None
+    if _was_called_for_creation(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Before {tool_name} can run, search the user's library for an "
+            "agent that already does what they want. Call "
+            "`find_library_agent` with `for_creation=true` and "
+            "`goal_summary=<one-sentence description of the user's goal>` "
+            "(default-mode substring search does NOT satisfy this gate). "
+            "If any agents are returned, present them to the user and ask "
+            "whether they want to reuse one. Only retry "
+            f"{tool_name} with `library_check_ack=true` if the user "
+            "explicitly chooses to build a new agent anyway."
+        ),
+        session_id=session.session_id,
+    )
