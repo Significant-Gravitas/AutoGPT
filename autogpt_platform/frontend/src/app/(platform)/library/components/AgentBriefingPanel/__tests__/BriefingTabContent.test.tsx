@@ -8,7 +8,12 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
@@ -427,9 +432,10 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     // The pill suppresses entirely when both counts are zero — surfacing
     // "0 skills · 0 scheduled" would be noise, not a discovery affordance.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
-    expect(screen.queryByText("Autopilot library")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
+      expect(screen.queryByText("Autopilot library")).toBeNull();
+    });
   });
 
   it("shows only the skills link when scheduled count is zero", async () => {
@@ -452,7 +458,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
     expect(screen.queryByTestId("copilot-library-followups-link")).toBeNull();
   });
 
-  it("shows only the scheduled link when skills count is zero (sums followups + graph schedules)", async () => {
+  it("counts copilot follow-ups only (graph schedules are NOT folded in — they have their own briefing tab)", async () => {
     setupBriefingMocks();
     server.use(
       getListCopilotSkillsMockHandler([]),
@@ -460,6 +466,33 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
         makeFollowup({ id: "f1" }),
         makeFollowup({ id: "f2" }),
       ]),
+      // Graph schedules exist server-side but MUST NOT be added to the
+      // pill count — the briefing's own "Scheduled" tab already covers
+      // them, so folding them in here would double-count.
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g1" }),
+        makeGraphSchedule({ id: "g2" }),
+      ]),
+    );
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+
+    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    expect(
+      screen.getByTestId("copilot-library-followups-link").textContent,
+    ).toBe("2 follow-ups");
+    expect(screen.queryByTestId("copilot-library-skills-link")).toBeNull();
+  });
+
+  it("hides the pill entirely when skills=0 AND copilot follow-ups=0 (even if graph schedules exist)", async () => {
+    setupBriefingMocks();
+    server.use(
+      getListCopilotSkillsMockHandler([]),
+      getListCopilotFollowupSchedulesMockHandler([]),
+      // Graph schedules alone don't count toward the autopilot pill —
+      // they belong to the "Scheduled" briefing tab. Pill must stay
+      // hidden so we don't surface a bare "Autopilot library" header
+      // with nothing actionable.
       getGetV1ListExecutionSchedulesForAUserMockHandler([
         makeGraphSchedule({ id: "g1" }),
       ]),
@@ -467,15 +500,13 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
 
-    expect(await screen.findByText("Autopilot library")).toBeDefined();
-    // 2 followups + 1 graph schedule = 3 total scheduled.
-    expect(
-      screen.getByTestId("copilot-library-followups-link").textContent,
-    ).toBe("3 scheduled");
-    expect(screen.queryByTestId("copilot-library-skills-link")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
+      expect(screen.queryByText("Autopilot library")).toBeNull();
+    });
   });
 
-  it("shows both links with a separator when both counts are positive", async () => {
+  it("shows both links with a separator when skills AND follow-ups are positive (singular pluralization)", async () => {
     setupBriefingMocks();
     server.use(
       getListCopilotSkillsMockHandler([makeSkill({ name: "only-one" })]),
@@ -492,7 +523,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
     );
     expect(
       screen.getByTestId("copilot-library-followups-link").textContent,
-    ).toBe("1 scheduled");
+    ).toBe("1 follow-up");
     // Separator dot is only rendered when BOTH links are visible.
     const pill = screen.getByTestId("copilot-library-summary");
     expect(pill.textContent).toContain("•");
