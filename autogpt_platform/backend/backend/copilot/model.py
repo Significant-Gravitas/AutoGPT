@@ -44,6 +44,15 @@ def _get_session_cache_key(session_id: str) -> str:
     return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
 
 
+# ChatSession.chatStatus lifecycle values.  Open enum: future states
+# (e.g. ``"errored"``, ``"paused"``) can be added without a migration.
+# Within a session, turns are serialized so at most one task is in
+# flight at a time — the status sits at session scope, not message.
+CHAT_STATUS_IDLE = "idle"
+CHAT_STATUS_QUEUED = "queued"
+CHAT_STATUS_RUNNING = "running"
+
+
 # ===================== Chat data models ===================== #
 
 
@@ -61,6 +70,7 @@ class ChatSessionMetadata(BaseModel):
     # this graph and reject calls targeting a different agent.  Also used
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
+    source_platform: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -83,6 +93,15 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Owning session id and generic per-row JSONB bag.  Today the
+    # dispatcher uses ``metadata`` to preserve the submit-time payload
+    # (file_ids / mode / model / permissions / context / arrival_at)
+    # on the user row that triggered a queued turn, so a later
+    # promotion can replay the turn faithfully.  Generic so future
+    # per-row state can land here without a migration.
+    session_id: str | None = None
+    metadata: dict | None = None
+
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
@@ -98,6 +117,8 @@ class ChatMessage(BaseModel):
             sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
+            session_id=prisma_message.sessionId,
+            metadata=_parse_json_field(prisma_message.metadata),
         )
 
 
@@ -164,6 +185,8 @@ class ChatSessionInfo(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
+    chat_status: str = "idle"
 
     @property
     def dry_run(self) -> bool:
@@ -212,6 +235,7 @@ class ChatSessionInfo(BaseModel):
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
+            chat_status=prisma_session.chatStatus,
         )
 
 
@@ -227,6 +251,15 @@ class ChatSession(ChatSessionInfo):
     # completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
+    # Optional argument capture for in-flight tool calls.  Some guards
+    # (e.g. ``require_guide_read``) discriminate by argument as well as
+    # by name — for ``read_skill(name="agent_building_guide")`` we need
+    # to know the *name* arg, not just that ``read_skill`` was called.
+    # Populated alongside the name set by
+    # :meth:`announce_inflight_tool_call`; mapping from tool name to a
+    # list of argument dicts (one entry per dispatched call).
+    _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
+
     @classmethod
     def new(
         cls,
@@ -234,6 +267,7 @@ class ChatSession(ChatSessionInfo):
         *,
         dry_run: bool,
         builder_graph_id: str | None = None,
+        source_platform: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -247,6 +281,7 @@ class ChatSession(ChatSessionInfo):
             metadata=ChatSessionMetadata(
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
+                source_platform=source_platform,
             ),
         )
 
@@ -263,7 +298,9 @@ class ChatSession(ChatSessionInfo):
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
 
-    def announce_inflight_tool_call(self, tool_name: str) -> None:
+    def announce_inflight_tool_call(
+        self, tool_name: str, arguments: Any = None
+    ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
         Called by the baseline tool executor **before** the tool actually
@@ -282,12 +319,31 @@ class ChatSession(ChatSessionInfo):
         particular because its aggressive tool-call chaining exercises
         this path much more than Sonnet does).  The buffer is cleared by
         :meth:`clear_inflight_tool_calls` at turn end.
+
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
         """
         self._inflight_tool_calls.add(tool_name)
+        if isinstance(arguments, dict):
+            self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
 
     def clear_inflight_tool_calls(self) -> None:
         """Reset the in-flight tool-call announcement buffer."""
         self._inflight_tool_calls.clear()
+        self._inflight_tool_call_args.clear()
+
+    def get_inflight_tool_call_args(self, tool_name: str) -> list[dict]:
+        """Return arg snapshots captured for *tool_name* in this turn.
+
+        Returns an empty list when no in-flight call recorded args
+        (anonymous-tool-name announcements with ``arguments=None``).
+        """
+        return list(self._inflight_tool_call_args.get(tool_name, ()))
 
     def has_tool_been_called(self, tool_name: str) -> bool:
         """True when *tool_name* has been called in this session.
@@ -555,6 +611,30 @@ async def get_chat_session(
     return session
 
 
+async def get_chat_session_metadata(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSessionInfo | None:
+    """Get chat session metadata only (no messages).
+
+    Goes directly to the DB by primary key — bypasses the Redis cache,
+    which stores the full session and would deserialize the entire message
+    history just to read ``user_id``. Use this for ownership/existence
+    checks; use ``get_chat_session`` when the message history is actually
+    needed.
+    """
+    session_meta = await chat_db().get_chat_session_metadata(session_id)
+    if session_meta is None:
+        return None
+    if user_id is not None and session_meta.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: "
+            f"{session_meta.user_id} != {user_id}"
+        )
+        return None
+    return session_meta
+
+
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
@@ -578,10 +658,35 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
-    """Get a chat session from the database."""
-    session = await chat_db().get_chat_session(session_id)
-    if not session:
+    """Get a chat session from the database, capped at MAX_LOADED_CHAT_MESSAGES.
+
+    Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
+    no cursor) so the LLM-context path inherits the same tool-pair boundary
+    expansion and visibility guarantees the UI scroll-back path uses. The
+    cap-hit log surfaces here (the LLM-context use case) rather than inside the
+    generic paginated function.
+    """
+    # Local import to avoid the model→db→model cycle.
+    from .db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    if page is None:
         return None
+
+    if page.has_more:
+        logger.warning(
+            "Session %s loaded with capped messages (%d) — older history "
+            "must come from transcript checkpoint or context will be lost",
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+        )
+
+    session = ChatSession(
+        **page.session.model_dump(),
+        messages=page.messages,
+    )
 
     logger.info(
         f"Loaded session {session_id} from DB: "
@@ -674,8 +779,9 @@ async def _save_session_to_db(
     db = chat_db()
 
     if not skip_existence_check:
-        # Check if session exists in DB
-        existing = await db.get_chat_session(session.session_id)
+        # Existence check only — use the metadata-only fetch, no need to
+        # eager-load any messages here.
+        existing = await db.get_chat_session_metadata(session.session_id)
 
         if not existing:
             # Create new session
@@ -700,8 +806,22 @@ async def _save_session_to_db(
         total_completion_tokens=total_completion,
     )
 
-    # Add new messages (only those after existing count)
-    new_messages = session.messages[existing_message_count:]
+    # Identify unsaved messages.  Two cases:
+    #
+    # - Brand-new session (existing_message_count == 0): persist every message,
+    #   regardless of whether it carries a sequence (callers may construct
+    #   ``ChatSession`` from a list of ChatMessage objects that already have
+    #   sequences set, e.g. when re-using a fixture across tests — those still
+    #   need to be saved as new rows).
+    # - Existing session: filter by ``sequence is None``.  Slicing by
+    #   ``session.messages[existing_message_count:]`` is incorrect for windowed
+    #   loads (cap of MAX_LOADED_CHAT_MESSAGES) — a session with 1500 saved
+    #   messages comes back with 1000 entries, and that slice would silently
+    #   drop every newly-appended message.
+    if existing_message_count == 0:
+        new_messages = list(session.messages)
+    else:
+        new_messages = [m for m in session.messages if m.sequence is None]
     if new_messages:
         messages_data = []
         for msg in new_messages:
@@ -728,17 +848,19 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-        # Back-fill sequence numbers on the in-memory ChatMessage objects so
-        # that downstream callers (inject_user_context) can persist updates
-        # by sequence rather than falling back to index-based writes.
         for i, msg in enumerate(new_messages):
-            msg.sequence = existing_message_count + i
+            msg.sequence = actual_start + i
 
 
 async def append_and_save_message(
@@ -837,6 +959,7 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    source_platform: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -847,6 +970,7 @@ async def create_chat_session(
         builder_graph_id: When set, locks the session to the given graph.
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
+        source_platform: External chat platform that originated the session.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -857,6 +981,7 @@ async def create_chat_session(
         user_id,
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
+        source_platform=source_platform,
     )
 
     # Create in database first - fail fast if this fails

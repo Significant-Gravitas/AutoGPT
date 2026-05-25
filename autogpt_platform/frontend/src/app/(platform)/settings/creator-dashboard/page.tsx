@@ -21,6 +21,9 @@ export default function SettingsCreatorDashboardPage() {
   const {
     submissions,
     visibleSubmissions,
+    pagination,
+    onPageChange,
+    isFetching,
     stats,
     filterState,
     setFilterState,
@@ -37,6 +40,7 @@ export default function SettingsCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   } = useCreatorDashboardPage();
 
   if (error) {
@@ -75,26 +79,34 @@ export default function SettingsCreatorDashboardPage() {
           <div className="hidden md:block">
             <SubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
               index={2}
             />
           </div>
           <div className="md:hidden">
             <MobileSubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
             />
           </div>
         </>

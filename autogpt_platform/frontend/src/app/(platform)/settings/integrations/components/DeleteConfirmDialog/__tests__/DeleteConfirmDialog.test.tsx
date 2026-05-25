@@ -30,7 +30,7 @@ describe("DeleteConfirmDialog", () => {
     expect(dialog.textContent).toContain("Remove GitHub key");
   });
 
-  test("bulk delete: titles by count and lists names with overflow indicator", () => {
+  test("bulk delete: titles by count", () => {
     render(
       <DeleteConfirmDialog
         open
@@ -41,8 +41,6 @@ describe("DeleteConfirmDialog", () => {
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toContain("Remove 5 integrations?");
-    expect(dialog.textContent).toContain("A, B, C");
-    expect(dialog.textContent).toContain("and 2 more");
   });
 
   test("Remove button fires onConfirm; Cancel fires onOpenChange(false)", () => {

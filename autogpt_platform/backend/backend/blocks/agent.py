@@ -22,6 +22,11 @@ _logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
+    # Coordination block: waits on a child graph's full execution. The child
+    # has its own per-node wall-clock caps, so applying the parent's leaf-
+    # block cap here would false-positive on legitimately long sub-agent runs.
+    execution_timeout_seconds: int | None = None
+
     class Input(BlockSchemaInput):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")

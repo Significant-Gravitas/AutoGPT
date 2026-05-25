@@ -15,10 +15,8 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import {
-  UsageLimitReachedCard,
-  useIsUsageLimitReached,
-} from "../UsageLimits/UsageLimitReachedCard";
+import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
+import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
@@ -26,6 +24,7 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -64,6 +63,7 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  sessionChatStatus,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -91,7 +91,12 @@ export const ChatContainer = ({
   // open state drive layout width; an artifact generated in a stale session
   // state would otherwise shrink the chat column with no panel rendered.
   const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
-  useAutoOpenArtifacts({ sessionId });
+  useAutoOpenArtifacts({
+    sessionId,
+    messages,
+    isLoadingSession,
+    isArtifactsEnabled,
+  });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips
@@ -167,6 +172,7 @@ export const ChatContainer = ({
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
@@ -219,8 +225,8 @@ export const ChatContainer = ({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-sm">
-                    You&apos;ve reached your usage limit. Reset your daily limit
-                    or wait for it to refresh before sending more messages.
+                    You&apos;ve reached your usage limit. Wait for it to refresh
+                    or upgrade your plan to continue sending messages.
                   </TooltipContent>
                 </Tooltip>
               </motion.div>

@@ -18,6 +18,7 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -528,10 +529,15 @@ class CoPilotProcessor:
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
             )
+            # Surround the driver stream with a silence watchdog so the
+            # FE shows escalating ``StreamStatus`` messages during long
+            # silent gaps (deep thinking, slow tool execution, inter-tool
+            # gaps) instead of looping the generic "Thinking…" phrases.
+            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
-                stream=raw_stream,
+                stream=heartbeat_stream,
             )
             # Explicit aclose() on early exit: ``async for … break`` does
             # not close the generator, so GeneratorExit would never reach

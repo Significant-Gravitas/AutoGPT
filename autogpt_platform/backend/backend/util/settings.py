@@ -124,17 +124,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    enable_subscription_credit_grant: bool = Field(
+        default=False,
+        description=(
+            "If True, every paid Stripe subscription invoice grants AutoGPT"
+            " credits equal to invoice.amount_paid. OFF by default — there is"
+            " no product mandate for '$ paid == $ in credits', and prorated"
+            " upgrade invoices each produce a separate grant (distinct"
+            " invoice ids slip past the per-invoice idempotency key). Flip on"
+            " per environment intentionally if/when product wants that UX."
+        ),
+    )
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
-    )
-    enable_beta_monthly_credit: bool = Field(
-        default=True,
-        description="If beta monthly credits accounting is enabled or not",
-    )
-    num_user_credits_refill: int = Field(
-        default=1500,
-        description="Number of credits to refill for each user",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -181,6 +184,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
+    )
+    max_inflight_copilot_turns_per_user: int = Field(
+        default=15,
+        ge=1,
+        le=1000,
+        description=(
+            "Hard cap on in-flight (running + queued) AutoPilot/CoPilot "
+            "chat turns per user. Once running >= "
+            "``max_running_copilot_turns_per_user`` and the queue brings the "
+            "total to this number, ``POST /chat/stream`` returns 429. "
+            "Reached from the chat HTTP route, the AutoPilotBlock, and "
+            "run_sub_session — all funnel through schedule_chat_turn / "
+            "schedule_turn and share this cap."
+        ),
+    )
+    max_running_copilot_turns_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "Soft cap on concurrently *running* AutoPilot/CoPilot chat "
+            "turns per user. Tasks submitted while the user is at this cap "
+            "are queued in ``CopilotTaskQueue`` (FIFO) up to "
+            "``max_inflight_copilot_turns_per_user`` total in-flight. "
+            "Must be <= the in-flight cap; default 5 keeps shared-infra "
+            "concurrency predictable while letting users batch-submit."
+        ),
     )
 
     block_error_rate_threshold: float = Field(
@@ -425,6 +455,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=168,
         description="Hours between failed push subscription cleanup runs (1-168 hours)",
+    )
+
+    platform_link_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
     upload_file_size_limit_mb: int = Field(

@@ -1,6 +1,7 @@
 """Shared helpers for chat tools."""
 
 import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -322,8 +323,15 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pre-execution credit check (courtesy; spend_credits is atomic)
-            cost, cost_filter = block_usage_cost(block, input_data)
+            # Pre-execution credit check (courtesy; spend_credits is atomic).
+            # Pass `use_preflight_estimate=False` because this path bypasses
+            # the executor manager and never runs reconciliation — locking in
+            # the historical-average estimate as the final charge would be
+            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
+            # those types, preserving the pre-#13031 contract.
+            cost, cost_filter = block_usage_cost(
+                block, input_data, use_preflight_estimate=False
+            )
             has_cost = cost > 0
             _credit_db = credit_db()
             if has_cost:
@@ -887,10 +895,67 @@ def _resolve_discriminated_credentials(
 
 
 _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+# Mirrors :data:`backend.copilot.tools.skills.DEFAULT_SKILLS` — the
+# agent-building guide now also ships as the canonical default skill,
+# so calling ``read_skill("agent_building_guide")`` satisfies the gate.
+_AGENT_GUIDE_SKILL_NAME = "agent_building_guide"
+
+
+def _read_skill_called_for(session: ChatSession, skill_name: str) -> bool:
+    """Return True iff the model has called ``read_skill(name=skill_name)``
+    in this session (durable history or current-turn in-flight calls).
+
+    Scans tool-call arguments — :meth:`ChatSession.has_tool_been_called`
+    only checks tool names, but the skill registry path discriminates by
+    argument.  Defensive against malformed JSON / missing args so a
+    badly-formed historical row does not crash the guard.
+
+    Same-turn safety: also inspects in-flight calls (captured via
+    :meth:`ChatSession.get_inflight_tool_call_args`) so a ``read_skill``
+    dispatched earlier in the *current* turn is recognised before its
+    row lands in ``session.messages``.
+    """
+    # In-flight first — newest calls live here and the dispatcher
+    # records argument dicts (not strings) so no JSON parsing needed.
+    for args in session.get_inflight_tool_call_args("read_skill"):
+        if str(args.get("name") or "").strip().lower() == skill_name:
+            return True
+    # Durable scan of past turns + already-flushed current turn.
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            # Defensive: a persisted row may carry ``function`` as ``None`` or
+            # a non-dict if a past producer ever shipped a malformed payload —
+            # treat the flat ``name`` / ``arguments`` shape as the fallback so
+            # the gate path never raises on bad data.
+            fn_raw = tc.get("function")
+            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
+            name = fn.get("name") or tc.get("name")
+            if name != "read_skill":
+                continue
+            raw_args = fn.get("arguments") if fn else tc.get("arguments")
+            if isinstance(raw_args, str):
+                try:
+                    parsed = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(raw_args, dict):
+                parsed = raw_args
+            else:
+                continue
+            if str(parsed.get("name") or "").strip().lower() == skill_name:
+                return True
+    return False
 
 
 def require_guide_read(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Accepts either the legacy ``get_agent_building_guide`` tool call OR
+    a ``read_skill(name="agent_building_guide")`` call — the skill
+    registry now seeds the same content as the canonical default skill,
+    so either path satisfies the contract.
 
     Import inline to keep ``helpers.py`` free of tool-response imports.
     Uses :meth:`ChatSession.has_tool_been_called` which checks both the
@@ -902,8 +967,6 @@ def require_guide_read(session: ChatSession, tool_name: str):
     Kimi K2.6 in particular because its aggressive tool-call chaining
     exercises this path far more than Sonnet does.
     """
-    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
-
     # Builder-bound sessions always receive the guide inline via the
     # per-turn ``<builder_context>`` injection (see
     # ``backend.copilot.builder_context``), so no tool-call gate is needed —
@@ -912,12 +975,14 @@ def require_guide_read(session: ChatSession, tool_name: str):
         return None
     if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
         return None
+    if _read_skill_called_for(session, _AGENT_GUIDE_SKILL_NAME):
+        return None
     return ErrorResponse(
         message=(
-            f"Call get_agent_building_guide first, then retry {tool_name}. "
-            "The guide documents required block ids, input/output schemas, "
-            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
-            "generating agent JSON without it produces schema mismatches."
+            'Call get_agent_building_guide (or read_skill(name="agent_building_guide")) '
+            f"first, then retry {tool_name}. The guide documents required block ids, "
+            "input/output schemas, link semantics, and AgentExecutorBlock / MCPToolBlock "
+            "usage — generating agent JSON without it produces schema mismatches."
         ),
         session_id=session.session_id,
     )

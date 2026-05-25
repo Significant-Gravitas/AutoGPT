@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { keepPreviousData } from "@tanstack/react-query";
 
 import {
   getGetV2ListMySubmissionsQueryKey,
   useDeleteV2DeleteStoreSubmission,
+  useGetV2GetUserProfile,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
+import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
@@ -14,10 +17,12 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 import {
   applyFiltersAndSort,
-  computeStats,
   INITIAL_FILTER_STATE,
+  toDashboardStats,
   type FilterState,
 } from "./helpers";
+
+const PAGE_SIZE = 20;
 
 type PublishStep = "select" | "info" | "review";
 
@@ -52,20 +57,58 @@ export function useCreatorDashboardPage() {
     submission: null,
   });
 
-  const [filterState, setFilterState] =
+  const [filterState, setFilterStateRaw] =
     useState<FilterState>(INITIAL_FILTER_STATE);
+
+  const [page, setPage] = useState(1);
+
+  const { data: profile } = useGetV2GetUserProfile({
+    query: {
+      select: (x) => x.data as ProfileDetails,
+      enabled: !!user,
+    },
+  });
+  const creatorUsername = profile?.username;
 
   const {
     data: response,
     isSuccess,
+    isFetching,
     error,
     refetch,
-  } = useGetV2ListMySubmissions(undefined, {
-    query: {
-      select: (x) => x.data as StoreSubmissionsResponse,
-      enabled: !!user,
+  } = useGetV2ListMySubmissions(
+    { page, page_size: PAGE_SIZE },
+    {
+      query: {
+        select: (x) => x.data as StoreSubmissionsResponse,
+        enabled: !!user,
+        placeholderData: keepPreviousData,
+      },
     },
-  });
+  );
+
+  const [isSortingTransition, setIsSortingTransition] = useState(false);
+  const sortingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (sortingTimerRef.current) clearTimeout(sortingTimerRef.current);
+    };
+  }, []);
+
+  function setFilterState(next: FilterState) {
+    setFilterStateRaw(next);
+    setPage(1);
+    setIsSortingTransition(true);
+    if (sortingTimerRef.current) clearTimeout(sortingTimerRef.current);
+    sortingTimerRef.current = setTimeout(() => {
+      setIsSortingTransition(false);
+    }, 400);
+  }
+
+  function onPageChange(nextPage: number) {
+    setPage(nextPage);
+  }
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
     mutation: {
@@ -79,7 +122,7 @@ export function useCreatorDashboardPage() {
 
   const submissions = response?.submissions ?? [];
 
-  const stats = useMemo(() => computeStats(submissions), [submissions]);
+  const stats = toDashboardStats(response?.stats);
 
   const visibleSubmissions = useMemo(
     () => applyFiltersAndSort(submissions, filterState),
@@ -142,6 +185,9 @@ export function useCreatorDashboardPage() {
   return {
     submissions,
     visibleSubmissions,
+    pagination: response?.pagination,
+    onPageChange,
+    isFetching: isFetching || isSortingTransition,
     stats,
     filterState,
     setFilterState,
@@ -159,5 +205,6 @@ export function useCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   };
 }

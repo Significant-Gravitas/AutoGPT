@@ -452,14 +452,12 @@ def test_render_reasoning_on_is_default():
     assert "StreamReasoningDelta" in types
 
 
-def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_only():
-    """If the model's last LLM call after a tool_result produced only a
-    ThinkingBlock (no TextBlock), the UI would hang on the tool output
-    with no response text.  The adapter should inject a short closing
-    line before ``StreamFinish`` so the turn visibly completes."""
+def test_result_success_thinking_only_first_pass_defers_for_reprompt():
+    """First time we see a thinking-only final turn the adapter must defer:
+    no text, no StreamFinish.  Driver reads ``pending_thinking_only_reprompt``
+    and re-prompts the model for a closing TextBlock before falling back."""
     adapter = _adapter()
 
-    # Tool use + tool_result (simulates the tool round).
     adapter.convert_message(
         AssistantMessage(
             content=[
@@ -477,11 +475,6 @@ def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_on
         )
     )
 
-    # Model's "final turn" after tool_result is thinking-only.  This test
-    # simulates the *degenerate* case where the SDK never surfaces an
-    # AssistantMessage carrying the ThinkingBlock at all (not even the
-    # streamed reasoning events) before ResultMessage — only the tool_result
-    # has arrived.  The fallback guard should still synthesize closing text.
     msg = ResultMessage(
         subtype="success",
         duration_ms=100,
@@ -493,10 +486,205 @@ def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_on
     )
     results = adapter.convert_message(msg)
 
-    # Fallback text should be injected before the finish events.
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
-    assert len(text_deltas) == 1, "should synthesize exactly one fallback text"
+    finishes = [r for r in results if isinstance(r, StreamFinish)]
+    assert text_deltas == [], "first pass must not emit placeholder"
+    assert finishes == [], "first pass must skip StreamFinish so driver can re-prompt"
+    assert adapter.pending_thinking_only_reprompt is True
+    assert adapter.thinking_only_reprompted is False
+
+
+def test_result_success_thinking_only_after_reprompt_promotes_thinking():
+    """After re-prompt, if the model still produces thinking-only, the
+    adapter promotes the most recent ThinkingBlock content to visible text
+    rather than showing the bare placeholder."""
+    adapter = _adapter()
+    adapter._last_thinking_content = (
+        "Here are the best restaurants: Dishoom, The Clove Club, Padella."
+    )
+    # Simulate the driver having already fired the re-prompt round once.
+    adapter.thinking_only_reprompted = True
+    adapter._any_tool_results_seen = True
+    adapter._text_since_last_tool_result = False
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="",
+    )
+    results = adapter.convert_message(msg)
+
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1
+    assert "Dishoom" in text_deltas[0].delta
+    assert isinstance(results[-1], StreamFinish)
+
+
+def test_result_success_thinking_only_two_rounds_with_driver_reset_emits_fallback():
+    """Regression: the driver's reset between the deferred first round and
+    the re-prompt second round must leave enough state for the guard to
+    fire when the second round also returns thinking-only.  Specifically,
+    ``_any_tool_results_seen`` must remain True after the reset — the
+    guard requires it.
+    """
+    adapter = _adapter()
+
+    # --- Round 1: tool_use → tool_result → thinking-only finish.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="Round 1 internal reasoning.", signature="")
+            ],
+            model="test",
+        )
+    )
+    round1 = adapter.convert_message(
+        ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=2,
+            session_id="s1",
+            result="",
+        )
+    )
+    assert adapter.pending_thinking_only_reprompt is True
+    assert [r for r in round1 if isinstance(r, StreamFinish)] == []
+
+    # --- Driver behaviour between rounds (must mirror service.py exactly).
+    adapter.pending_thinking_only_reprompt = False
+    adapter.thinking_only_reprompted = True
+    adapter._text_since_last_tool_result = False
+    # Intentionally do NOT touch ``_any_tool_results_seen`` — the guard at
+    # ResultMessage time needs it to stay True so the placeholder fires
+    # if the re-prompt round also returns thinking-only.
+
+    # --- Round 2: model returns thinking-only again.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="Round 2 internal reasoning.", signature="")
+            ],
+            model="test",
+        )
+    )
+    round2 = adapter.convert_message(
+        ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=4,
+            session_id="s1",
+            result="",
+        )
+    )
+    text_deltas = [r for r in round2 if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1, "second pass must emit fallback text"
     assert text_deltas[0].delta.strip()  # non-empty
+    assert isinstance(round2[-1], StreamFinish)
+
+
+def test_tool_result_clears_stale_thinking_so_fallback_does_not_leak_pre_tool_thinking():
+    """Stale ``ThinkingBlock`` content from before a tool call must not be
+    promoted as fallback text once the tool result has landed.  Without
+    this reset, a turn that thinks → tool_use → tool_result → silent
+    finish would surface the *pre-tool* reasoning to the user, which
+    pre-dates the actual answer the user is waiting for."""
+    adapter = _adapter()
+
+    # Pre-tool thinking — should be discarded when the tool_result lands.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="Stale pre-tool reasoning.", signature="")],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={}),
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+    # Tool_result must wipe ``_last_thinking_content`` — otherwise
+    # ``Stale pre-tool reasoning.`` would be the fallback below.
+    assert adapter._last_thinking_content == ""
+
+    # Simulate a thinking-only finish that emits NO new ThinkingBlock at all
+    # (so ``_last_thinking_content`` stays empty), and a re-prompt round that
+    # also produces nothing.  The fallback must be the placeholder, not the
+    # stale pre-tool reasoning.
+    adapter.thinking_only_reprompted = True
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="",
+    )
+    results = adapter.convert_message(msg)
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1
+    assert text_deltas[0].delta == "(Done — no further commentary.)"
+    assert "Stale pre-tool" not in text_deltas[0].delta
+
+
+def test_result_success_thinking_only_after_reprompt_falls_back_to_placeholder():
+    """After re-prompt with no thinking content captured either, the
+    adapter emits the placeholder so the turn still visibly completes."""
+    adapter = _adapter()
+    adapter._last_thinking_content = ""
+    adapter.thinking_only_reprompted = True
+    adapter._any_tool_results_seen = True
+    adapter._text_since_last_tool_result = False
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="",
+    )
+    results = adapter.convert_message(msg)
+
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1
+    assert text_deltas[0].delta == "(Done — no further commentary.)"
     assert isinstance(results[-1], StreamFinish)
 
 
@@ -573,7 +761,7 @@ def test_result_empty_success_emits_error_and_finish():
     no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
     bug. The adapter surfaces it as a ``StreamError`` *paired with*
     ``StreamFinish`` so the service-layer post-stream flow flips
-    ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
+    ``acc.stream_completed`` and skips the ``STREAM_INCOMPLETE_MARKER``
     branch. ``SystemMessage(subtype="init")`` opened a step, so the
     empty-completion branch must close it before emitting the error."""
     adapter = _adapter()
@@ -644,6 +832,73 @@ def test_result_success_with_text_emits_finish_not_error():
     assert "StreamError" not in types
 
 
+def test_result_success_thinking_only_no_tools_emits_empty_completion():
+    """Thinking-only success with zero tools: model emitted ThinkingBlock(s)
+    and nothing else, ResultMessage subtype="success", no tool_use / tool_result
+    seen. ``_is_empty_completion`` excludes turns where reasoning started, and
+    the post-tool-result re-prompt guard requires ``_any_tool_results_seen``.
+    Without surfacing this, the FE renders an inline expanded reasoning panel
+    indistinguishable from a still-streaming turn (Toran's prod symptom in the
+    "While testing the new payment, billing" thread)."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="reasoning about the answer", signature="sig")
+            ],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamError" in types
+    assert "StreamFinish" in types
+    assert types.index("StreamError") < types.index("StreamFinish")
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+
+
+def test_result_success_thinking_only_with_text_after_no_error():
+    """Regression guard: when text follows the ThinkingBlock, the turn is
+    legitimately complete and must NOT trip the new thinking-only guard."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ThinkingBlock(thinking="figuring out", signature="sig"),
+                TextBlock(text="here is the answer"),
+            ],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="here is the answer",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
 def test_result_success_with_nonzero_output_tokens_not_empty():
     """If ``output_tokens > 0`` but ``result`` is empty, don't classify as
     empty — fall through to the existing success path. No prior
@@ -684,6 +939,105 @@ def test_result_error_emits_error_and_finish():
     assert isinstance(results[0], StreamError)
     assert "Invalid API key provided" in results[0].errorText
     assert isinstance(results[1], StreamFinish)
+
+
+def test_result_orphan_tool_use_then_empty_assistant_emits_empty_completion():
+    """SECRT-2333: a turn that emits tool_use blocks whose tool never runs,
+    then an AssistantMessage with empty content, then a ResultMessage with
+    ``subtype='error'`` must surface as an ``empty_completion`` StreamError —
+    even when subtype is "error" (langsmith ``is_error=true`` case).
+    Without this guard the chat history just stops mid-task because the
+    empty AssistantMessage produces no events and the StreamError emitted
+    by the subtype=error branch is racy on the wire."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Step 1: model emits 4 ToolUseBlocks (parallel browser_act calls).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id=f"t{i}",
+                    name=f"{MCP_TOOL_PREFIX}browser_act",
+                    input={"action": "click", "selector": f"e{i}"},
+                )
+                for i in range(4)
+            ],
+            model="test",
+        )
+    )
+    # Step 2: tool never executes (no UserMessage tool_result).  Model
+    # emits a thinking-only AssistantMessage trying to plan the next click.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="Planning click on e113", signature="")],
+            model="test",
+        )
+    )
+    # Step 3: model returns an AssistantMessage with empty content.
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    # Step 4: ResultMessage with subtype="error".
+    msg = ResultMessage(
+        subtype="error",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=3,
+        session_id="s1",
+        result="model returned empty content",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # The empty-completion guard must beat the subtype=error branch so the
+    # service-layer post-stream flow can flip ``acc.stream_completed=True``
+    # via the paired StreamFinish and the dispatched StreamError persists
+    # an error marker.
+    assert "StreamError" in types, types
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion", err.code
+    # StreamFinish is required so ``acc.stream_completed`` flips True and
+    # the post-stream branch doesn't append a second STREAM_INCOMPLETE_MARKER.
+    assert "StreamFinish" in types, types
+
+
+def test_result_orphan_tool_use_with_thinking_only_assistant_does_not_fire():
+    """The orphan-tool-use guard must NOT fire when the final AssistantMessage
+    carried any content (e.g. just a ThinkingBlock).  Without this guard the
+    thinking-only-final-turn re-prompt would never get a chance to run."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t1",
+                    name=f"{MCP_TOOL_PREFIX}browser_act",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    # The most recent AssistantMessage has thinking — NOT empty content.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="hmm", signature="")],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=2,
+        session_id="s1",
+        result="hmm",
+        usage={"output_tokens": 5},
+    )
+    results = adapter.convert_message(msg)
+    err_codes = [r.code for r in results if isinstance(r, StreamError)]
+    assert "empty_completion" not in err_codes, err_codes
 
 
 # -- Text after tools (new block ID) ----------------------------------------
@@ -843,15 +1197,11 @@ def test_flush_unresolved_at_result_message():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # flushed with empty output
         "StreamFinishStep",  # step closed by flush
-        # Flush marks a tool_result as seen, so the thinking-only-final-turn
-        # guard at ResultMessage time synthesizes a closing text delta.
-        "StreamStartStep",
-        "StreamTextStart",
-        "StreamTextDelta",
-        "StreamTextEnd",
-        "StreamFinishStep",
-        "StreamFinish",
     ]
+    # Flush marked a tool_result as seen with no text since, so the
+    # thinking-only-final-turn guard defers placeholder emission and asks
+    # the driver to re-prompt (no StreamFinish yet).
+    assert adapter.pending_thinking_only_reprompt is True
     # The flushed output should be empty (no stash available)
     output_event = [
         r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
@@ -1528,3 +1878,338 @@ def test_summary_walk_skips_fully_streamed_text():
     summary_deltas = [r for r in summary if isinstance(r, StreamTextDelta)]
     assert len(partial_deltas) == 1
     assert summary_deltas == []
+
+
+def test_retry_adapter_with_prior_emitted_content_suppresses_empty_completion():
+    """Regression: when the service layer recreates the adapter for a retry
+    after the prior attempt already streamed text/tools to the wire, an empty
+    success ResultMessage on the retry must NOT surface as an empty_completion
+    StreamError — the user already received content from the prior attempt
+    and would otherwise see a spurious "model returned an empty response"
+    overlay on top of working output.
+    """
+    adapter = _adapter()
+    adapter.prior_attempt_emitted_visible_content = True
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
+def test_retry_adapter_without_prior_content_still_surfaces_empty_completion():
+    """Counter-test: when prior_attempt_emitted_visible_content is False (the
+    default — first attempt), the SECRT-2252 guard must still fire on a
+    ghost-finished success.
+    """
+    adapter = _adapter()
+    assert adapter.prior_attempt_emitted_visible_content is False
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+
+
+def test_emitted_visible_content_property_combines_signals():
+    """The ``emitted_visible_content`` property must be True when any of the
+    underlying visibility signals is set, so the service-layer retry path
+    can forward the prior adapter's state without reaching into private
+    flags.
+    """
+    adapter = _adapter()
+    assert adapter.emitted_visible_content is False
+
+    adapter.has_started_text = True
+    assert adapter.emitted_visible_content is True
+    adapter.has_started_text = False
+
+    adapter.has_started_reasoning = True
+    assert adapter.emitted_visible_content is True
+    adapter.has_started_reasoning = False
+
+    adapter._any_tool_results_seen = True
+    assert adapter.emitted_visible_content is True
+    adapter._any_tool_results_seen = False
+
+    adapter.prior_attempt_emitted_visible_content = True
+    assert adapter.emitted_visible_content is True
+
+
+def test_empty_completion_suppressed_when_real_tool_result_already_seen():
+    """Regression: a long turn that successfully resolved tool results earlier
+    (real ToolResultBlock content via UserMessage) then ends with a trailing
+    empty AssistantMessage plus an orphan flush must NOT fire the
+    empty_completion error — the user already received content earlier in
+    the turn (dev session b0e8ca83).
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+
+    # Stage 1: model emits a tool_use and the SDK returns a real tool_result.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-real",
+                    name=f"{MCP_TOOL_PREFIX}find_block",
+                    input={"query": "linkedin"},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(
+                    tool_use_id="t-real",
+                    content='{"blocks": [{"id": "abc", "name": "PostToLinkedInBlock"}]}',
+                )
+            ],
+        )
+    )
+    assert adapter._any_real_tool_result_seen is True
+    assert adapter.emitted_real_content_to_wire is True
+
+    # Stage 2: model emits another tool_use that never resolves (orphan).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={"block_id": "abc"},
+                )
+            ],
+            model="test",
+        )
+    )
+
+    # Stage 3: empty trailing AssistantMessage (no flush triggered yet —
+    # empty content is_tool_only-vacuously-true).
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    assert adapter._last_assistant_had_empty_content is True
+
+    # Stage 4: ResultMessage success with empty result. The ResultMessage
+    # branch flushes the orphan t-orphan (stash empty → empty-fallback
+    # emitted) which sets _any_orphan_flush_seen=True. Without the
+    # emitted_real_content_to_wire gate, path B fires
+    # (_any_orphan_flush_seen + _last_assistant_had_empty_content) and
+    # emits a spurious "model returned an empty response" overlay on top
+    # of the working find_block widget the user already saw.
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert adapter._any_orphan_flush_seen is True
+    # The critical guarantee: NO empty-completion StreamError is emitted on
+    # top of the user's working content. The success branch may either emit
+    # StreamFinish directly or hand off to the thinking-only-reprompt path
+    # (which returns early without StreamFinish) — both are correct outcomes;
+    # the bug is specifically the spurious error overlay.
+    assert "StreamError" not in types
+
+
+def test_empty_completion_still_fires_on_orphan_with_only_empty_fallbacks():
+    """Counter-test: the SECRT-2333 guard must still fire when the orphan
+    flush only emitted empty fallbacks (no real tool result ever reached the
+    wire) and the trailing AssistantMessage was also empty. The fix only
+    suppresses the overlay when real content was seen.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Model emits tool_use that never produces a real tool_result.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={"block_id": "abc"},
+                )
+            ],
+            model="test",
+        )
+    )
+    # Empty trailing AssistantMessage — sets _last_assistant_had_empty_content.
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    assert adapter._any_real_tool_result_seen is False
+    assert adapter.emitted_real_content_to_wire is False
+    # ResultMessage success — flush at ResultMessage time emits empty
+    # fallback for t-orphan (stash empty), sets _any_orphan_flush_seen.
+    # SECRT-2333 path B fires (orphan + empty last) because the gate
+    # doesn't suppress (no real content was seen).
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    assert adapter._any_orphan_flush_seen is True
+    err = next((r for r in results if isinstance(r, StreamError)), None)
+    assert err is not None
+    assert err.code == "empty_completion"
+
+
+def test_empty_completion_suppressed_when_text_already_streamed():
+    """Counter-test for the text path: a turn that emitted text early then
+    ends with an empty AssistantMessage + orphan flush must not fire the
+    overlay either. has_started_text alone is enough.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="here's what I found:")], model="test")
+    )
+    assert adapter.has_started_text is True
+    # Orphan tool_use + empty trailing AssistantMessage + flush of empty stash.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-orphan",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # Same as the prior test: success branch may hand off to thinking-only-
+    # reprompt instead of emitting StreamFinish directly; the critical bug
+    # we're guarding against is the spurious empty-completion overlay.
+    assert "StreamError" not in types
+
+
+def test_real_tool_result_flag_set_by_stashed_flush():
+    """The flush path must set _any_real_tool_result_seen=True when it pops
+    REAL stashed output, but NOT when it has to emit an empty fallback.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Initialise the stash ContextVar (normally done by set_execution_context).
+    _pto.set({})
+    # Simulate PostToolUse hook stashing real output for a built-in tool.
+    _stash("ReadFile", "file content here")
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ToolUseBlock(id="t-real", name="ReadFile", input={"path": "/x"})],
+            model="test",
+        )
+    )
+    # AssistantMessage with non-tool content triggers flush
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="done")], model="test")
+    )
+    assert adapter._any_real_tool_result_seen is True
+    assert adapter._any_orphan_flush_seen is True
+    # Cleanup
+    _pto.set({})  # type: ignore[arg-type]
+
+
+def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
+    """When the SDK ends a turn with subtype=``error_max_budget_usd``, the
+    user-facing error must be the specific budget-exhausted message — even
+    if the orphan-flush guard would otherwise have fired the generic
+    empty-completion overlay.
+    """
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    # Mimic 835da550 prefix: tool_use with no real result, empty trailing
+    # AssistantMessage, then a budget-exhausted ResultMessage.
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="t-budget",
+                    name=f"{MCP_TOOL_PREFIX}run_block",
+                    input={},
+                )
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(AssistantMessage(content=[], model="test"))
+    msg = ResultMessage(
+        subtype="error_max_budget_usd",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=1,
+        session_id="s1",
+        result="budget exhausted",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    errors = [r for r in results if isinstance(r, StreamError)]
+    assert len(errors) == 1
+    assert errors[0].code == "max_budget_exhausted"
+    assert "budget" in errors[0].errorText.lower()
+    # Must NOT shadow with empty_completion overlay.
+    assert all(e.code != "empty_completion" for e in errors)
+
+
+def test_error_max_turns_surfaces_specific_error():
+    """``error_max_turns`` should similarly route to its own message."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="error_max_turns",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=999,
+        session_id="s1",
+        result="hit cap",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next((r for r in results if isinstance(r, StreamError)), None)
+    assert err is not None
+    assert err.code == "max_turns_exhausted"

@@ -7,6 +7,81 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/blocks/cost-estimates": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "blocks"],
+        "summary": "Export Block Cost Estimates",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "operationId": "getV2Export block cost estimates",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum executions per block to include",
+              "default": 10,
+              "title": "Min Samples"
+            },
+            "description": "Minimum executions per block to include"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -1662,6 +1737,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2112,6 +2190,8 @@
                     {
                       "$ref": "#/components/schemas/TaskDecompositionResponse"
                     },
+                    { "$ref": "#/components/schemas/ScheduleListResponse" },
+                    { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
                     { "$ref": "#/components/schemas/MemorySearchResponse" },
                     {
@@ -2370,7 +2450,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
-        "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
+        "description": "Cancel an in-flight task for a session.\n\nHandles both lifecycle states uniformly:\n\n* **Queued** (``chatStatus='queued'``) — the dispatcher hasn't\n  claimed the row yet.  Flip the session back to ``idle`` and\n  return; no executor cancel event needed.\n* **Running** (``chatStatus='running'``) — publish a cancel event\n  to the executor via RabbitMQ FANOUT, then poll Redis until the\n  task status flips out of ``running`` or a 5 s timeout is hit.",
         "operationId": "postV2CancelSessionTask",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2496,7 +2576,10 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" }
+          "429": { "description": "Call-frequency cap exceeded" },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
         }
       }
     },
@@ -2592,6 +2675,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
@@ -2602,7 +2688,10 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit or call-frequency cap exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
+          },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -3898,6 +3987,82 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/executions/cost-summary": {
+      "get": {
+        "tags": ["v1", "graphs"],
+        "summary": "User cost summary",
+        "description": "Aggregated cost breakdown for the calling user's graph executions.",
+        "operationId": "getV1User cost summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window start (UTC). Defaults to start of current calendar month.",
+              "title": "Since"
+            },
+            "description": "Window start (UTC). Defaults to start of current calendar month."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Window end (UTC). Defaults to now.",
+              "title": "Until"
+            },
+            "description": "Window end (UTC). Defaults to now."
+          },
+          {
+            "name": "top_runs_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Maximum number of top-cost runs to return.",
+              "default": 10,
+              "title": "Top Runs Limit"
+            },
+            "description": "Maximum number of top-cost runs to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserExecutionCostSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
@@ -4229,6 +4394,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Payment required: NO_TIER paywall, or insufficient credit balance"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4236,7 +4404,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -5470,6 +5639,17 @@
               "title": "Include Root Only"
             },
             "description": "Only return agents without a folder (root-level agents)"
+          },
+          {
+            "name": "is_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents.",
+              "title": "Is Hidden"
+            },
+            "description": "Filter by hidden status. True = only hidden, False = only non-hidden, omit = all agents."
           }
         ],
         "responses": {
@@ -5820,6 +6000,48 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/{library_agent_id}/triggers": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "List Trigger Agents",
+        "description": "List trigger agents linked to the given parent agent.",
+        "operationId": "getV2List trigger agents",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2List Trigger Agents"
+                }
               }
             }
           },
@@ -6471,6 +6693,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -6478,7 +6703,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Subscription state temporarily unavailable" }
         }
       }
     },
@@ -7188,7 +7414,6 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
               "type": "string",
@@ -7857,6 +8082,34 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List copilot follow-up schedules for a user",
+        "description": "Return only copilot-turn schedules for the current user.\n\nSibling of :func:`list_all_graphs_execution_schedules`; one route per kind\nkeeps the generated frontend client typed to a single concrete return type\ninstead of a discriminated union.",
+        "operationId": "listCopilotFollowupSchedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CopilotTurnJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Listcopilotfollowupschedules"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -7892,6 +8145,121 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "List user-distilled copilot skills",
+        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "operationId": "listCopilotSkills",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
+                  "type": "array",
+                  "title": "Response Listcopilotskills"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skills/{name}": {
+      "delete": {
+        "tags": ["v1", "skills"],
+        "summary": "Delete a user-distilled copilot skill",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "operationId": "deleteCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to delete",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" },
+                  "title": "Response Deletecopilotskill"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Read a single copilot skill with its full SKILL.md body",
+        "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
+        "operationId": "readCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to read",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to read"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8614,6 +8982,15 @@
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MyAgentsSortBy",
+              "default": "most_recent"
             }
           }
         ],
@@ -10127,11 +10504,67 @@
             "type": "integer",
             "title": "Cost Divisor",
             "default": 1
+          },
+          "token_rate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TokenRateDisplay" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
+      },
+      "BlockCostEstimateRow": {
+        "properties": {
+          "block_id": { "type": "string", "title": "Block Id" },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "cost_type": { "type": "string", "title": "Cost Type" },
+          "samples": { "type": "integer", "title": "Samples" },
+          "mean_credits": { "type": "integer", "title": "Mean Credits" },
+          "p50_credits": { "type": "integer", "title": "P50 Credits" },
+          "p95_credits": { "type": "integer", "title": "P95 Credits" }
+        },
+        "type": "object",
+        "required": [
+          "block_id",
+          "block_name",
+          "cost_type",
+          "samples",
+          "mean_credits",
+          "p50_credits",
+          "p95_credits"
+        ],
+        "title": "BlockCostEstimateRow"
+      },
+      "BlockCostEstimatesResponse": {
+        "properties": {
+          "estimates": {
+            "items": { "$ref": "#/components/schemas/BlockCostEstimateRow" },
+            "type": "array",
+            "title": "Estimates"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" },
+          "min_samples": { "type": "integer", "title": "Min Samples" },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimates",
+          "total_rows",
+          "window_days",
+          "max_window_days",
+          "min_samples",
+          "generated_at"
+        ],
+        "title": "BlockCostEstimatesResponse"
       },
       "BlockCostType": {
         "type": "string",
@@ -10668,6 +11101,10 @@
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
           }
         },
         "type": "object",
@@ -10791,6 +11228,106 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotSkillDetail": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          },
+          "body": { "type": "string", "title": "Body" },
+          "version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "sibling_files": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Sibling Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "body"],
+        "title": "CopilotSkillDetail",
+        "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description"],
+        "title": "CopilotSkillInfo",
+        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded — they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
+      },
+      "CopilotTurnJobInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "copilot_turn",
+            "title": "Kind",
+            "default": "copilot_turn"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Run At"
+          },
+          "cap_retry_count": {
+            "type": "integer",
+            "title": "Cap Retry Count",
+            "default": 0
+          },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
+        "title": "CopilotTurnJobInfo"
       },
       "CopilotUsageExportResponse": {
         "properties": {
@@ -12063,6 +12600,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -12864,6 +13407,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Folder Name"
           },
+          "is_hidden": {
+            "type": "boolean",
+            "title": "Is Hidden",
+            "default": false
+          },
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
@@ -13134,6 +13682,11 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
+          },
+          "is_hidden": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Hidden",
+            "description": "Whether to hide the agent from the library listing"
           },
           "settings": {
             "anyOf": [
@@ -13614,6 +14167,11 @@
         "type": "object",
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
+      },
+      "MyAgentsSortBy": {
+        "type": "string",
+        "enum": ["most_recent", "name"],
+        "title": "MyAgentsSortBy"
       },
       "MyUnpublishedAgent": {
         "properties": {
@@ -15244,6 +15802,10 @@
           "block_details",
           "block_output",
           "review_required",
+          "schedule_list",
+          "schedule_deleted",
+          "schedule_created",
+          "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",
@@ -15272,7 +15834,12 @@
           "memory_search",
           "memory_forget_candidates",
           "memory_forget_confirm",
-          "todo_write"
+          "todo_write",
+          "platform_info",
+          "skill_stored",
+          "skill_loaded",
+          "skill_deleted",
+          "skill_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -15502,6 +16069,24 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "ScheduleDeletedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_deleted"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedule_id": { "type": "string", "title": "Schedule Id" }
+        },
+        "type": "object",
+        "required": ["message", "schedule_id"],
+        "title": "ScheduleDeletedResponse",
+        "description": "Response confirming a schedule was deleted."
+      },
       "ScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
@@ -15603,6 +16188,75 @@
         "title": "ScheduleHealthMetrics",
         "description": "Summary of schedule health diagnostics"
       },
+      "ScheduleListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "schedule_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/ScheduleSummary" },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": ["message", "schedules"],
+        "title": "ScheduleListResponse",
+        "description": "Response containing a list of schedules."
+      },
+      "ScheduleSummary": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "kind",
+          "name",
+          "timezone",
+          "next_run_time"
+        ],
+        "title": "ScheduleSummary",
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -15698,6 +16352,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
           },
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
+          },
           "messages": {
             "items": { "additionalProperties": true, "type": "object" },
             "type": "array",
@@ -15747,7 +16406,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "is_processing": { "type": "boolean", "title": "Is Processing" }
+          "chat_status": {
+            "type": "string",
+            "title": "Chat Status",
+            "default": "idle"
+          },
+          "is_processing": { "type": "boolean", "title": "Is Processing" },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "is_processing"],
@@ -16534,10 +17202,11 @@
             "type": "array",
             "title": "Submissions"
           },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" },
+          "stats": { "$ref": "#/components/schemas/SubmissionStats" }
         },
         "type": "object",
-        "required": ["submissions", "pagination"],
+        "required": ["submissions", "pagination", "stats"],
         "title": "StoreSubmissionsResponse"
       },
       "StreamChatRequest": {
@@ -16603,6 +17272,28 @@
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
+      "SubmissionStats": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "approved": { "type": "integer", "title": "Approved" },
+          "pending": { "type": "integer", "title": "Pending" },
+          "total_runs": { "type": "integer", "title": "Total Runs" },
+          "average_rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "approved",
+          "pending",
+          "total_runs",
+          "average_rating"
+        ],
+        "title": "SubmissionStats",
+        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination —\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
+      },
       "SubmissionStatus": {
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
@@ -16627,6 +17318,19 @@
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs"
+          },
+          "tier_costs_yearly": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs Yearly",
+            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "description": "Billing cycle of the user's active Stripe subscription. Defaults to ``monthly`` for users without an active sub. ``monthly_cost`` above reflects this cycle's actual price (so a yearly subscriber sees their yearly amount, not the monthly equivalent).",
+            "default": "monthly"
           },
           "tier_multipliers": {
             "additionalProperties": { "type": "number" },
@@ -16666,6 +17370,14 @@
             ],
             "title": "Pending Tier Effective At"
           },
+          "pending_billing_cycle": {
+            "anyOf": [
+              { "type": "string", "enum": ["monthly", "yearly"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Billing Cycle",
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
+          },
           "url": {
             "type": "string",
             "title": "Url",
@@ -16704,6 +17416,12 @@
             "type": "string",
             "title": "Cancel Url",
             "default": ""
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
           }
         },
         "type": "object",
@@ -17532,6 +18250,32 @@
         "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRateDisplay": {
+        "properties": {
+          "input_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Input Usd Per 1M"
+          },
+          "output_usd_per_1m": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Output Usd Per 1M"
+          },
+          "cache_read_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Read Usd Per 1M"
+          },
+          "cache_creation_usd_per_1m": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Cache Creation Usd Per 1M"
+          }
+        },
+        "type": "object",
+        "required": ["input_usd_per_1m", "output_usd_per_1m"],
+        "title": "TokenRateDisplay",
+        "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
       "TokenRequestByCode": {
         "properties": {
@@ -18412,6 +19156,16 @@
         "title": "UsageWindowPublic",
         "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
+      "UserAgentCostRollup": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["graph_id", "cost_cents", "run_count"],
+        "title": "UserAgentCostRollup"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -18459,6 +19213,56 @@
           "request_count"
         ],
         "title": "UserCostSummary"
+      },
+      "UserDailyCost": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["date", "cost_cents", "run_count"],
+        "title": "UserDailyCost"
+      },
+      "UserExecutionCostSummary": {
+        "properties": {
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "billable_run_count": {
+            "type": "integer",
+            "title": "Billable Run Count"
+          },
+          "failed_cost_cents": {
+            "type": "integer",
+            "title": "Failed Cost Cents"
+          },
+          "by_agent": {
+            "items": { "$ref": "#/components/schemas/UserAgentCostRollup" },
+            "type": "array",
+            "title": "By Agent"
+          },
+          "top_runs": {
+            "items": { "$ref": "#/components/schemas/UserTopRun" },
+            "type": "array",
+            "title": "Top Runs"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/UserDailyCost" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cents",
+          "run_count",
+          "billable_run_count",
+          "failed_cost_cents",
+          "by_agent",
+          "top_runs",
+          "daily"
+        ],
+        "title": "UserExecutionCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -18723,6 +19527,32 @@
         "type": "object",
         "required": ["user_id", "tier"],
         "title": "UserTierResponse"
+      },
+      "UserTopRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "duration_seconds": { "type": "number", "title": "Duration Seconds" },
+          "node_error_count": { "type": "integer", "title": "Node Error Count" }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "cost_cents",
+          "started_at",
+          "status",
+          "duration_seconds",
+          "node_error_count"
+        ],
+        "title": "UserTopRun"
       },
       "UserTransaction": {
         "properties": {

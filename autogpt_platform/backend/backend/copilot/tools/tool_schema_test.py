@@ -21,9 +21,50 @@ from backend.copilot.tools import TOOL_REGISTRY
 # response shape carries) and the dry_run description. Keeps the
 # regression gate effective while accepting a deliberate ~120-token
 # spend on LLM-decision-critical copy.
-# Bumped to 34000 to accommodate decompose_goal tool + web_search +
-# TodoWrite tool descriptions.
-_CHAR_BUDGET = 35_000
+# Bumped 32500 -> 32800 on PR #12871 for the new web_search tool
+# (server-side Anthropic beta). Description already trimmed to the
+# minimum viable copy; the bump absorbs the schema skeleton cost
+# (~300 chars / ~75 tokens) for a new LLM-facing primitive.
+# Bumped 32800 -> 33200 on PR #12873 for the web_search Perplexity
+# Sonar refactor — adds a load-bearing `deep` boolean with explicit
+# "~100x more expensive" cost warning the model must see to avoid
+# accidentally triggering sonar-reasoning on ordinary lookups, plus
+# synthesised-answer wording in the top-level description so the LLM
+# reads the answer before reaching for `web_fetch`. Both are
+# LLM-decision-critical copy, not bloat.
+# Bumped 33200 -> 34000 when baseline gained the MCP `TodoWrite` tool
+# for parity with the Claude Code SDK's built-in (PR #12879). The new
+# schema adds ~600 chars; description already trimmed to the minimum
+# viable copy.
+# Bumped 34000 -> 35000 on PR #12740 for the schedule management tools
+# (list_schedules, delete_schedule) needed by the trigger-agent flow.
+# Bumped 35000 -> 35500 on PR #12740 for the list_agent_triggers tool
+# (returns trigger agents + webhook presets for a parent agent so
+# AutoPilot can inspect/manage them).
+# Bumped 35500 -> 36500 for the schedule_followup tool. Adds ~950 chars
+# of LLM-decision-critical copy: delay_seconds vs cron disambiguation,
+# explicit "ends your turn" caveat, and an example wake-up message.
+# Bumped 36500 -> 37000 for the schedule_followup `session_id` override
+# parameter — lets the model target a different conversation owned by
+# the same user (parent autopilot → sub-session followups). The parameter
+# description spends ~170 chars on the ownership-rejection semantics so
+# the model doesn't try to wake up other users' sessions.
+# Bumped 37000 -> 38500 for the skill registry (store_skill, read_skill,
+# delete_skill, list_skills) — the four tools that back the new
+# self-learning loop.  Descriptions are already trimmed to the minimum
+# viable copy; the bump absorbs the four schema skeletons plus the
+# canonical SKILL.md frontmatter callout the model needs to format
+# distillations correctly.
+# Bumped 38500 -> 39000 for the schedule_followup ``session_id=null``
+# sentinel — its description spends ~170 chars explaining the "fire
+# into a fresh chat" semantics so the model picks the right value
+# (null vs omit vs target_session_id) for autopilot-style flows.
+# Bumped 39000 -> 40000 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+_CHAR_BUDGET = 40_000
 
 
 @pytest.fixture(scope="module")
@@ -67,9 +108,18 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
+            # ``anyOf`` is the JSON-Schema-compliant way to model a
+            # nullable / union-typed parameter (e.g. ``session_id`` may
+            # be ``string`` or ``null`` for the fresh-chat sentinel).
+            # Accept either a top-level ``type`` OR an ``anyOf`` whose
+            # branches each carry their own ``type``.
+            has_type = "type" in prop_def or (
+                isinstance(prop_def.get("anyOf"), list)
+                and all(isinstance(b, dict) and "type" in b for b in prop_def["anyOf"])
+            )
             assert (
-                "type" in prop_def
-            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+                has_type
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type' (or a typed 'anyOf')"
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"

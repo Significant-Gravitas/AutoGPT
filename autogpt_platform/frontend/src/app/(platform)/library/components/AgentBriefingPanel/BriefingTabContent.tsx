@@ -3,14 +3,18 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
+import {
+  useGetV1ListExecutionSchedulesForAUser,
+  useListCopilotFollowupSchedules,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   formatResetTime,
-  formatCents,
+  formatTierLabel,
+  TIER_BADGE_CLASS_NAME,
 } from "@/app/(platform)/copilot/components/usageHelpers";
-import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
@@ -19,6 +23,7 @@ import type { AgentStatusFilter } from "../../types";
 import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
 import { useState } from "react";
+import { CostsBreakdown } from "./CostsBreakdown/CostsBreakdown";
 
 interface Props {
   activeTab: AgentStatusFilter;
@@ -27,7 +32,7 @@ interface Props {
 
 export function BriefingTabContent({ activeTab, agents }: Props) {
   if (activeTab === "all") {
-    return <UsageSection />;
+    return <UsageSection agents={agents} />;
   }
 
   if (
@@ -41,7 +46,7 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
   return <AgentListSection activeTab={activeTab} agents={agents} />;
 }
 
-function UsageSection() {
+function UsageSection({ agents }: { agents: LibraryAgent[] }) {
   const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
@@ -51,56 +56,131 @@ function UsageSection() {
   });
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
 
-  if (!isSuccess || !usage) return null;
-  if (!usage.daily && !usage.weekly) return null;
+  const hasUsageMeters = isSuccess && usage && (usage.daily || usage.weekly);
+  const tierLabel = hasUsageMeters ? formatTierLabel(usage.tier) : null;
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2">
-        <Text variant="h5" className="text-neutral-800">
-          Usage limits
-        </Text>
-        {usage.tier && (
-          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
-            {usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()} plan
-          </Badge>
-        )}
-        <div className="flex-1" />
-        {isBillingEnabled && (
-          <Link
-            href="/profile/credits"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Manage billing
-          </Link>
-        )}
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {usage.daily && (
-          <UsageMeter
-            label="Today"
-            percentUsed={usage.daily.percent_used}
-            resetsAt={usage.daily.resets_at}
-          />
-        )}
-        {usage.weekly && (
-          <UsageMeter
-            label="This week"
-            percentUsed={usage.weekly.percent_used}
-            resetsAt={usage.weekly.resets_at}
-          />
-        )}
-      </div>
-      <UsageFooter
-        usage={usage}
-        hasInsufficientCredits={hasInsufficientCredits}
-        onCreditChange={fetchCredits}
-      />
+      {hasUsageMeters && (
+        <>
+          <div className="flex items-center gap-2">
+            <Text variant="h5" className="text-neutral-800">
+              Usage limits
+            </Text>
+            {tierLabel && (
+              <Badge
+                variant="info"
+                size="small"
+                className={TIER_BADGE_CLASS_NAME}
+              >
+                {tierLabel} plan
+              </Badge>
+            )}
+            <div className="flex-1" />
+            {isBillingEnabled && (
+              <Link
+                href="/settings/billing"
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Manage billing
+              </Link>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {usage.daily && (
+              <UsageMeter
+                label="Today"
+                percentUsed={usage.daily.percent_used}
+                resetsAt={usage.daily.resets_at}
+              />
+            )}
+            {usage.weekly && (
+              <UsageMeter
+                label="This week"
+                percentUsed={usage.weekly.percent_used}
+                resetsAt={usage.weekly.resets_at}
+              />
+            )}
+          </div>
+        </>
+      )}
+      <CostsBreakdown agents={agents} />
+      <CopilotLibrarySummary />
+    </div>
+  );
+}
+
+function CopilotLibrarySummary() {
+  // Discoverability is already gated by AGENT_BRIEFING at the parent
+  // panel — this pill renders only inside AgentBriefingPanel, which is
+  // itself flag-gated.  No second flag here so we don't end up with two
+  // flags we'd always toggle together.
+  const { data: skillsRes } = useListCopilotSkills({
+    query: { staleTime: 30_000 },
+  });
+  const { data: followupsRes } = useListCopilotFollowupSchedules({
+    query: { staleTime: 30_000 },
+  });
+  // Graph schedules (recurring agent runs) live alongside followups in
+  // the unified Scheduled page — count them together so the briefing
+  // pill mirrors what the user sees there.
+  const { data: graphsRes } = useGetV1ListExecutionSchedulesForAUser({
+    query: { staleTime: 30_000 },
+  });
+
+  const skillsCount =
+    skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
+  const copilotFollowupsCount =
+    followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
+  const graphSchedulesCount =
+    graphsRes && graphsRes.status === 200 ? graphsRes.data.length : 0;
+  const scheduledCount = copilotFollowupsCount + graphSchedulesCount;
+
+  // Suppress the pill entirely when the user has no autopilot library
+  // content yet — surfacing "0 skills · 0 scheduled" is noise, not a
+  // discovery affordance.  The pill reappears the moment either count
+  // turns positive (e.g. on the next refetch after a store_skill /
+  // schedule_followup / add_graph_execution_schedule tool call).
+  if (skillsCount === 0 && scheduledCount === 0) {
+    return null;
+  }
+
+  // Per-link hide: surface only the counts that are non-zero.  We
+  // already returned ``null`` above when both are zero, so at least
+  // one of these two branches always renders.
+  const showSkills = skillsCount > 0;
+  const showScheduled = scheduledCount > 0;
+
+  return (
+    <div
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      data-testid="copilot-library-summary"
+    >
+      <Text variant="small" className="!text-zinc-500">
+        Autopilot library
+      </Text>
+      {showSkills ? (
+        <Link
+          href="/library/skills"
+          className="text-sm text-violet-700 hover:underline"
+          data-testid="copilot-library-skills-link"
+        >
+          {skillsCount} skill{skillsCount === 1 ? "" : "s"}
+        </Link>
+      ) : null}
+      {showSkills && showScheduled ? (
+        <span className="text-zinc-300">•</span>
+      ) : null}
+      {showScheduled ? (
+        <Link
+          href="/library/followups"
+          className="text-sm text-yellow-700 hover:underline"
+          data-testid="copilot-library-followups-link"
+        >
+          {scheduledCount} scheduled
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -233,57 +313,6 @@ function AgentListSection({
             {showAll ? "Collapse" : `Show all (${filtered.length})`}
           </Button>
         </div>
-      )}
-    </div>
-  );
-}
-
-function UsageFooter({
-  usage,
-  hasInsufficientCredits,
-  onCreditChange,
-}: {
-  usage: CoPilotUsagePublic;
-  hasInsufficientCredits: boolean;
-  onCreditChange?: () => void;
-}) {
-  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const isWeeklyExhausted = !!usage.weekly && usage.weekly.percent_used >= 100;
-  const resetCost = usage.reset_cost ?? 0;
-  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
-
-  const showReset =
-    isDailyExhausted &&
-    !isWeeklyExhausted &&
-    resetCost > 0 &&
-    !hasInsufficientCredits;
-
-  const showAddCredits =
-    isDailyExhausted && !isWeeklyExhausted && hasInsufficientCredits;
-
-  if (!showReset && !showAddCredits) return null;
-
-  return (
-    <div className="mt-4 flex items-center gap-3">
-      {showReset && (
-        <Button
-          variant="primary"
-          size="small"
-          onClick={() => resetUsage()}
-          loading={isPending}
-        >
-          {isPending
-            ? "Resetting..."
-            : `Reset daily limit for ${formatCents(resetCost)}`}
-        </Button>
-      )}
-      {showAddCredits && (
-        <Link
-          href="/profile/credits"
-          className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Add credits to reset
-        </Link>
       )}
     </div>
   );
