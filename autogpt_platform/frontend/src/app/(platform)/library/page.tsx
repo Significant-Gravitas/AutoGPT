@@ -10,6 +10,7 @@ import type { LibraryTab, AgentStatusFilter } from "./types";
 import { useLibraryFleetSummary } from "./hooks/useLibraryFleetSummary";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
+import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 
 const LIBRARY_TABS: LibraryTab[] = [
   { id: "all", title: "All", icon: ListIcon },
@@ -45,6 +46,7 @@ export default function LibraryPage() {
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
       <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
+        <LowCreditBanner />
         <LibraryActionHeader setSearchTerm={setSearchTerm} />
         <LibraryAgentList
           searchTerm={searchTerm}
