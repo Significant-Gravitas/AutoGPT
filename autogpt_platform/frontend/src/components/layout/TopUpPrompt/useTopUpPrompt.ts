@@ -9,10 +9,14 @@ export const TopUpPromptContext = createContext<TopUpPromptContextValue | null>(
   null,
 );
 
+// The prompt is an optional enhancement, so consumers rendered without a
+// provider (e.g. a page tested outside the platform layout) fall back to an
+// inert value rather than crashing the host page.
+const inertPrompt: TopUpPromptContextValue = {
+  isOutOfCredits: false,
+  openTopUp: () => {},
+};
+
 export function useTopUpPrompt() {
-  const context = useContext(TopUpPromptContext);
-  if (!context) {
-    throw new Error("useTopUpPrompt must be used within a TopUpPromptProvider");
-  }
-  return context;
+  return useContext(TopUpPromptContext) ?? inertPrompt;
 }
