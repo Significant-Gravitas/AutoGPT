@@ -387,7 +387,10 @@ class RunMCPToolTool(BaseTool):
                     ready_to_run=connected,
                 ),
                 requirements={
-                    "credentials": missing_creds_list,
+                    # Keep `requirements.credentials` in sync with
+                    # `user_readiness.missing_credentials` — when connected,
+                    # neither field should advertise a credential need.
+                    "credentials": [] if connected else missing_creds_list,
                     "inputs": [],
                     "execution_modes": ["immediate"],
                 },
