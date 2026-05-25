@@ -151,11 +151,26 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    stop at "no integration exists" after one `find_block` miss. Load the
    MCP guide (`read_skill(name="mcp_tool_guide")`, or `get_mcp_guide` if
    `read_skill` is unavailable) once per session; if the service is in
-   the known list use that URL, otherwise query
+   the known list, use that URL directly. Otherwise query
    `https://registry.modelcontextprotocol.io/v0/servers?q=<service>` via
-   `SendAuthenticatedWebRequestBlock` (no creds needed) and use the first
-   `remotes[].url` hit. Many popular services (Sentry, etc.) aren't in
-   the hardcoded list — always check the registry before falling back.
+   the unauthenticated `SendWebRequestBlock` (the registry is public, no
+   creds needed). Many popular services (Sentry, etc.) aren't in the
+   hardcoded list — always check the registry before falling back.
+
+   Before calling `run_mcp_tool` on a registry-returned URL, **verify the
+   server's hostname matches the service** (e.g. `mcp.sentry.dev` for
+   Sentry, `mcp.<service>.com` / `mcp.<service>.dev` / vendor-owned
+   domain). If multiple plausible results exist or the hostname's vendor
+   isn't obvious, surface the candidates to the user and ask which one
+   to use — never auto-pick when the match is ambiguous, since the user
+   is about to hand sign-in credentials to that URL.
+
+   **For "just connect" intent** (user says "connect to X" / "sign in to
+   X" with no action yet), call `run_mcp_tool(server_url,
+   surface_connect_card=true)` — the tool returns only the sign-in card,
+   skipping the network call. The card renders as "Connected to X —
+   Reconnect" when creds already exist, or "Connect X" when not. Use this
+   instead of discovery-only calls so the user always sees visible state.
 
 3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
    exists (after searching both `find_block` AND the MCP registry), use

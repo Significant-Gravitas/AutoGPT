@@ -87,7 +87,10 @@ async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
     """
     try:
         mgr = IntegrationCredentialsManager()
-        await mgr.store.delete_creds_by_id(user_id, credential_id)
+        # Go through ``mgr.delete`` (not ``store.delete_creds_by_id``) so the
+        # per-credential lock + ``_invoke_creds_changed_hook`` fire — the hook
+        # evicts any cached provider token for the user.
+        await mgr.delete(user_id, credential_id)
         logger.info("Invalidated stale MCP credential %s", credential_id)
     except Exception:
         logger.warning(

@@ -80,6 +80,16 @@ class RunMCPToolTool(BaseTool):
                     "type": "object",
                     "description": "Arguments matching the tool's input schema.",
                 },
+                "surface_connect_card": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, return only the sign-in card for this "
+                        "server (no MCPClient call). Use for 'connect to "
+                        "<service>' intent without an action — the card "
+                        "indicates connected/not-connected state and offers "
+                        "Reconnect."
+                    ),
+                },
             },
             "required": ["server_url"],
         }
@@ -95,6 +105,7 @@ class RunMCPToolTool(BaseTool):
         server_url: str = "",
         tool_name: str = "",
         tool_arguments: dict[str, Any] | None = None,
+        surface_connect_card: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         server_url = server_url.strip()
@@ -175,6 +186,18 @@ class RunMCPToolTool(BaseTool):
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
         auth_token = creds.access_token.get_secret_value() if creds else None
+
+        # "Just connect" intent: skip the MCPClient entirely and return a
+        # setup card that reflects current connection state.  Stops the
+        # model from running a no-op discovery just to surface a card and
+        # gives users a visible Reconnect affordance even when they're
+        # already signed in (previously: discovery succeeded silently and
+        # nothing rendered, so the model's "click Connect" promise
+        # mismatched the empty UI).
+        if surface_connect_card:
+            return self._build_setup_requirements(
+                server_url, session_id, connected=creds is not None
+            )
 
         client = MCPClient(server_url, auth_token=auth_token)
 
@@ -306,8 +329,16 @@ class RunMCPToolTool(BaseTool):
         self,
         server_url: str,
         session_id: str,
+        connected: bool = False,
     ) -> SetupRequirementsResponse | ErrorResponse:
-        """Build a SetupRequirementsResponse for a missing MCP server credential."""
+        """Build a SetupRequirementsResponse for an MCP server credential.
+
+        ``connected=True`` flips the response into the "already signed in"
+        shape — frontend renders "Connected to <service> — Reconnect"
+        instead of the bare Connect button.  Used by the
+        ``surface_connect_card`` path so the user always gets visible
+        feedback even when stored creds are still valid.
+        """
         mcp_block = MCPToolBlock()
         credentials_fields_info = mcp_block.input_schema.get_credentials_fields_info()
 
@@ -339,16 +370,21 @@ class RunMCPToolTool(BaseTool):
 
         host = server_host(server_url)
         service = _service_name(host)
+        message = (
+            f"You're connected to {service}. Use Reconnect to swap accounts."
+            if connected
+            else f"To continue, sign in to {service} and approve access."
+        )
         return SetupRequirementsResponse(
-            message=(f"To continue, sign in to {service} and approve access."),
+            message=message,
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=server_url,
                 agent_name=service,
                 user_readiness=UserReadiness(
-                    has_all_credentials=False,
-                    missing_credentials=missing_creds_dict,
-                    ready_to_run=False,
+                    has_all_credentials=connected,
+                    missing_credentials={} if connected else missing_creds_dict,
+                    ready_to_run=connected,
                 ),
                 requirements={
                     "credentials": missing_creds_list,

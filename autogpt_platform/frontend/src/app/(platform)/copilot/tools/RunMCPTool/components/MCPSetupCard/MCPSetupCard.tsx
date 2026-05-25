@@ -39,11 +39,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
 
+  // Initial connection state comes from the backend.  When the model
+  // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
+  // `has_all_credentials` reflects whether the user already has a stored
+  // credential for this server — so we render "Connected — Reconnect"
+  // straight away instead of a bare Connect button.
+  const initiallyConnected = Boolean(
+    output.setup_info?.user_readiness?.has_all_credentials,
+  );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(initiallyConnected);
   const oauthAbortRef = useRef<(() => void) | null>(null);
 
   // Abort any in-progress OAuth popup when the component unmounts.
@@ -145,10 +154,30 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     }
   }
 
+  // Already-connected state.  Shown when the backend reports
+  // ``has_all_credentials=true`` (model called with
+  // ``surface_connect_card=true`` and creds already exist), or after the
+  // user just completed a Connect flow in this component instance.  Always
+  // expose Reconnect so the user can swap accounts.
   if (connected) {
     return (
-      <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-        Connected to {service}!
+      <div className="mt-2 grid gap-2">
+        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Connected to {service}.{" "}
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={loading}
+            className="ml-1 underline underline-offset-2 hover:no-underline disabled:opacity-60"
+          >
+            {loading ? "Reconnecting…" : "Reconnect"}
+          </button>
+        </div>
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
       </div>
     );
   }

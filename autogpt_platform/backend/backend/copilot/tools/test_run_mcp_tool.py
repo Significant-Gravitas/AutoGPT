@@ -544,6 +544,78 @@ async def test_auth_required_without_creds_returns_setup_requirements():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_connected_when_creds_exist():
+    """surface_connect_card=True + valid creds → SetupReq has_all_credentials=True.
+
+    The model uses this for "just connect" intent so the user gets visible
+    state (Connected — Reconnect) without running a discovery round-trip.
+    """
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    mock_creds = MagicMock()
+    mock_creds.access_token = SecretStr("fresh-token")
+    mock_creds.id = "fresh-cred-id"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=mock_creds,
+        ):
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient"
+            ) as mock_client_cls:
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    surface_connect_card=True,
+                )
+                mock_client_cls.assert_not_called()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is True
+    assert response.setup_info.user_readiness.ready_to_run is True
+    assert response.setup_info.user_readiness.missing_credentials == {}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_disconnected_when_no_creds():
+    """surface_connect_card=True + no creds → SetupReq has_all_credentials=False.
+
+    Renders as the standard "Connect <service>" card; no network call made.
+    """
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient"
+            ) as mock_client_cls:
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    surface_connect_card=True,
+                )
+                mock_client_cls.assert_not_called()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is False
+    assert response.setup_info.user_readiness.ready_to_run is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
     """HTTP 403 when creds ARE present → still fire setup card, drop the stale row.
 
