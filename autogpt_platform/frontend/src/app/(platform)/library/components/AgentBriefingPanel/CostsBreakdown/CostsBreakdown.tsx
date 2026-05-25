@@ -102,6 +102,9 @@ function ExpandedBody({
 
   return (
     <>
+      <Text variant="small" className="text-neutral-500">
+        Calendar month so far · {formatMonthRangeLabel()}
+      </Text>
       <StatRow
         items={[
           {
@@ -126,10 +129,25 @@ function ExpandedBody({
         <SpendByAgentList
           rollups={summary.by_agent}
           agentLookup={agentLookup}
+          totalCents={summary.total_cents}
         />
       </div>
     </>
   );
+}
+
+function formatMonthRangeLabel(): string {
+  const now = new Date();
+  const monthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
+  const fmt = (d: Date) =>
+    d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  return `${fmt(monthStart)} – today (UTC)`;
 }
 
 interface StatItem {
