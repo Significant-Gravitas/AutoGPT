@@ -28,8 +28,16 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
     activeTab === "attention" ||
     activeTab === "completed"
   ) {
-    return <ExecutionListSection activeTab={activeTab} agents={agents} />;
+    return (
+      <ExecutionListSection
+        key={activeTab}
+        activeTab={activeTab}
+        agents={agents}
+      />
+    );
   }
 
-  return <AgentListSection activeTab={activeTab} agents={agents} />;
+  return (
+    <AgentListSection key={activeTab} activeTab={activeTab} agents={agents} />
+  );
 }

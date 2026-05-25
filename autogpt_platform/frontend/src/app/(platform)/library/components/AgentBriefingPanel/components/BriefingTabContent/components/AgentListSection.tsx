@@ -7,7 +7,7 @@ import { getAgentStatusLabel, MAX_VISIBLE } from "../helpers";
 import { EmptyMessage } from "./EmptyMessage";
 import { AgentStatusFilter } from "@/app/(platform)/library/types";
 import { useAgentStatusMap } from "@/app/(platform)/library/hooks/useAgentStatus";
-import { SitrepItem } from "../../../../SitrepItem/SitrepItem";
+import { SitrepItem } from "@/app/(platform)/library/components/SitrepItem/SitrepItem";
 
 interface Props {
   activeTab: AgentStatusFilter;

@@ -3,8 +3,8 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
-import { useSitrepItems } from "../../../../SitrepItem/useSitrepItems";
-import { SitrepItem } from "../../../../SitrepItem/SitrepItem";
+import { useSitrepItems } from "@/app/(platform)/library/components/SitrepItem/useSitrepItems";
+import { SitrepItem } from "@/app/(platform)/library/components/SitrepItem/SitrepItem";
 import type { AgentStatusFilter } from "@/app/(platform)/library/types";
 import { MAX_VISIBLE } from "../helpers";
 import { EmptyMessage } from "./EmptyMessage";
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function ExecutionListSection({ activeTab, agents }: Props) {
-  const allItems = useSitrepItems(agents, 50);
+  const allItems = useSitrepItems(agents, agents.length);
   const [showAll, setShowAll] = useState(false);
 
   const filtered = allItems.filter((item) => {

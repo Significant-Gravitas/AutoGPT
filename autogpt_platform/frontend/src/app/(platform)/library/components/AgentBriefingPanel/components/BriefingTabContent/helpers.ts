@@ -23,12 +23,12 @@ export function getAgentStatusLabel(tab: string, agent: LibraryAgent): string {
   return TAB_STATUS_LABEL[tab] ?? "";
 }
 
-export const EMPTY_MESSAGES: Record<string, string> = {
+const EMPTY_MESSAGES: Record<string, string> = {
   running: "No agents running right now",
   attention: "No agents that need attention",
-  completed: "No recently completed runs",
+  completed: "No recently completed tasks",
   listening: "No agents listening for events",
-  scheduled: "No agents with scheduled runs",
+  scheduled: "No agents with scheduled tasks",
   idle: "No idle agents",
 };
 
