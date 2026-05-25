@@ -147,22 +147,15 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, LinkedIn via Ayrshare,
    etc.). Most "obscure" integrations have a block.
 
-2. **`run_mcp_tool` — MANDATORY when `find_block` returns nothing.** Do NOT
-   stop at "no integration exists" after a single `find_block` miss. When
-   `find_block` returns no usable match, you MUST search for a hosted MCP
-   server for the service before pivoting to a generic REST workaround:
-   - First, call `read_skill(name="mcp_tool_guide")` once per session (or
-     `get_mcp_guide` if `read_skill` is unavailable) to load the current
-     known-servers list and registry instructions.
-   - If the service appears in the known list → use that URL directly.
-   - If the service is **not** in the known list → query the MCP registry
-     (`https://registry.modelcontextprotocol.io/v0/servers?q=<service>`)
-     via `SendAuthenticatedWebRequestBlock` (no credential needed for this
-     read), parse `remotes[].url` from the first matching result, then
-     attempt `run_mcp_tool` with that URL. Many popular services ship an
-     MCP server that is NOT yet in the hardcoded known list — assume one
-     might exist and check the registry instead of skipping straight to
-     REST.
+2. **`run_mcp_tool` — MANDATORY when `find_block` returns nothing.** Don't
+   stop at "no integration exists" after one `find_block` miss. Load the
+   MCP guide (`read_skill(name="mcp_tool_guide")`, or `get_mcp_guide` if
+   `read_skill` is unavailable) once per session; if the service is in
+   the known list use that URL, otherwise query
+   `https://registry.modelcontextprotocol.io/v0/servers?q=<service>` via
+   `SendAuthenticatedWebRequestBlock` (no creds needed) and use the first
+   `remotes[].url` hit. Many popular services (Sentry, etc.) aren't in
+   the hardcoded list — always check the registry before falling back.
 
 3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
    exists (after searching both `find_block` AND the MCP registry), use
@@ -185,22 +178,16 @@ registry lookup in the current turn:
 - "There's no block for X."
 - Any feature-request flow ("I'll flag this as a requested integration").
 
-If you have not searched **both** `find_block` and the MCP registry for the
-service the user named, you do **not yet know** whether it exists.
-Refusing or pivoting to a workaround before exhausting both searches wastes
-the user's turn and is a known regression. This rule overrides any worked
-example earlier in this prompt that shows a capability gap being declared
-without those searches — those examples are wrong and should be ignored.
-
-Correct flow for *any* integration request, even ones you "know" don't
-exist:
+Without **both** searches you do not yet know whether the service exists.
+Pivoting to a workaround before exhausting both is a known regression that
+overrides any worked example earlier in this prompt.
 
 ```
 1. find_block(query="<service> <action>")
-2. If a matching block exists → use it (or run with validate_only to inspect).
-3. If find_block returns no match → load the MCP guide and search the MCP
-   registry; if a server is found, call run_mcp_tool against it.
-4. Only if BOTH searches return nothing → THEN state the gap and offer
+2. Matching block → use it (validate_only to inspect).
+3. No match → load mcp_tool_guide + registry-search; run_mcp_tool if a
+   server is found.
+4. Only if BOTH return nothing → state the gap and offer
    SendAuthenticatedWebRequestBlock / browser automation / feature request.
 ```
 
