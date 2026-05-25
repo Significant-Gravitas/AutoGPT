@@ -2,10 +2,7 @@
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
-import {
-  useGetV1ListExecutionSchedulesForAUser,
-  useListCopilotFollowupSchedules,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Button } from "@/components/atoms/Button/Button";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
@@ -45,43 +42,41 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
 function CopilotLibrarySummary() {
   // Discoverability is already gated by AGENT_BRIEFING at the parent
   // panel — this pill renders only inside AgentBriefingPanel, which is
-  // itself flag-gated.  No second flag here so we don't end up with two
-  // flags we'd always toggle together.
+  // itself flag-gated.  No second flag here because the count-based
+  // hide below already keeps the pill quiet for users who don't use
+  // the feature.
   const { data: skillsRes } = useListCopilotSkills({
     query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({
     query: { staleTime: 30_000 },
   });
-  // Graph schedules (recurring agent runs) live alongside followups in
-  // the unified Scheduled page — count them together so the briefing
-  // pill mirrors what the user sees there.
-  const { data: graphsRes } = useGetV1ListExecutionSchedulesForAUser({
-    query: { staleTime: 30_000 },
-  });
 
   const skillsCount =
     skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
-  const copilotFollowupsCount =
+  // Count only copilot follow-ups here — graph schedules (recurring
+  // agent runs) are already surfaced by the briefing's own "Scheduled"
+  // tab above, so folding them into this pill would double-count and
+  // confuse the "Autopilot library" framing.  The pill's link still
+  // goes to the unified `/library/followups` page, where both kinds
+  // are listed together.
+  const followupCount =
     followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
-  const graphSchedulesCount =
-    graphsRes && graphsRes.status === 200 ? graphsRes.data.length : 0;
-  const scheduledCount = copilotFollowupsCount + graphSchedulesCount;
 
   // Suppress the pill entirely when the user has no autopilot library
-  // content yet — surfacing "0 skills · 0 scheduled" is noise, not a
+  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not a
   // discovery affordance.  The pill reappears the moment either count
-  // turns positive (e.g. on the next refetch after a store_skill /
-  // schedule_followup / add_graph_execution_schedule tool call).
-  if (skillsCount === 0 && scheduledCount === 0) {
+  // turns positive (e.g. after a store_skill / schedule_followup tool
+  // call).
+  if (skillsCount === 0 && followupCount === 0) {
     return null;
   }
 
   // Per-link hide: surface only the counts that are non-zero.  We
   // already returned ``null`` above when both are zero, so at least
-  // one of these two branches always renders.
+  // one branch always renders.
   const showSkills = skillsCount > 0;
-  const showScheduled = scheduledCount > 0;
+  const showFollowups = followupCount > 0;
 
   return (
     <div
@@ -100,16 +95,16 @@ function CopilotLibrarySummary() {
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
         </Link>
       ) : null}
-      {showSkills && showScheduled ? (
+      {showSkills && showFollowups ? (
         <span className="text-zinc-300">•</span>
       ) : null}
-      {showScheduled ? (
+      {showFollowups ? (
         <Link
           href="/library/followups"
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >
-          {scheduledCount} scheduled
+          {followupCount} follow-up{followupCount === 1 ? "" : "s"}
         </Link>
       ) : null}
     </div>
