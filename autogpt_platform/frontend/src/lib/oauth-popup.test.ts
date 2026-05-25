@@ -16,9 +16,9 @@ function makePopupStub() {
 }
 
 function setupPopup(stub: ReturnType<typeof makePopupStub> | null) {
-  return vi.spyOn(window, "open").mockImplementation(
-    () => stub as unknown as Window,
-  );
+  return vi
+    .spyOn(window, "open")
+    .mockImplementation(() => stub as unknown as Window);
 }
 
 describe("openOAuthPopup popup-close grace window", () => {
