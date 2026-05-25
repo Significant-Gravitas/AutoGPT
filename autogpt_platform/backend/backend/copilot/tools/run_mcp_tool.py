@@ -214,12 +214,25 @@ class RunMCPToolTool(BaseTool):
                     if probe_err.status_code in _AUTH_STATUS_CODES:
                         await invalidate_mcp_credential(user_id, creds.id)
                         connected = False
-                except MCPClientError:
-                    # Transport / protocol failure — leave the cred in
-                    # place and report ``connected`` based on row
-                    # presence; the next real tool call will surface a
-                    # cleaner error.
-                    pass
+                    # Other HTTP statuses (5xx, redirects, etc.) → leave
+                    # the cred in place and report "optimistically
+                    # connected" — the user can still try; the real tool
+                    # call will surface the actual error if it persists.
+                except (MCPClientError, Exception):
+                    # Any other failure (asyncio.TimeoutError, network
+                    # errors, MCP protocol failures) — also treat as
+                    # "unknown, optimistically connected".  Important:
+                    # we MUST NOT let a transient server outage delete
+                    # the user's still-valid cred.  Catching ``Exception``
+                    # broadly here keeps the surface_connect_card
+                    # fast-path resilient instead of propagating an
+                    # uncaught exception out of ``_execute``.
+                    logger.debug(
+                        "MCP probe for surface_connect_card failed for %s — "
+                        "reporting optimistically connected",
+                        server_host(server_url),
+                        exc_info=True,
+                    )
             return self._build_setup_requirements(
                 server_url, session_id, connected=connected
             )

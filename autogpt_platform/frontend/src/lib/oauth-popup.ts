@@ -223,7 +223,12 @@ export function openOAuthPopup(
     // pre-emptively rejecting on its ``closed`` state would short-circuit
     // a successful sign-in arriving via BroadcastChannel/localStorage.
     if (popup && !popupBlocked) {
-      const POPUP_CLOSE_GRACE_MS = 3000;
+      // Grace window only applies to cross-origin flows.  Same-origin
+      // OAuth resolves via ``window.opener.postMessage`` which the
+      // parent receives synchronously on the same event-loop tick the
+      // popup posts it — there's no async delivery race to wait for,
+      // and adding 3 s of fake spinner after a manual close hurts UX.
+      const POPUP_CLOSE_GRACE_MS = useCrossOriginListeners ? 3000 : 0;
       const finalLocalStorageCheck = () => {
         if (!useCrossOriginListeners || handled) return;
         try {
@@ -241,6 +246,17 @@ export function openOAuthPopup(
           clearInterval(closedPollInterval);
           finalLocalStorageCheck();
           if (handled) return;
+          if (POPUP_CLOSE_GRACE_MS === 0) {
+            // Same-origin path: any postMessage that was going to fire
+            // already did during the synchronous ``finalLocalStorageCheck``
+            // window (well, it's a no-op for same-origin, but the message
+            // listener queued from the popup before close would have run).
+            // Reject immediately without the cross-origin grace.
+            handled = true;
+            reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+            controller.abort("popup_closed");
+            return;
+          }
           const graceTimeout = setTimeout(() => {
             if (handled) return;
             finalLocalStorageCheck();
