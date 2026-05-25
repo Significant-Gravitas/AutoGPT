@@ -85,10 +85,17 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [localConnected, setLocalConnected] = useState(initiallyConnected);
+  // When Reconnect fails (or any in-card flow errors out), force the
+  // not-connected branch even though the live cred row still exists —
+  // otherwise ``liveHasCred=true`` would keep the pill rendered and the
+  // user couldn't see the error banner or the manual-token input.  Reset
+  // on the next attempt so the user can retry.
+  const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
 
-  // Combined view: live API state OR local just-connected state.
-  const connected = localConnected || liveHasCred;
+  // Combined view: ``forceDisconnected`` (set by the catch block) wins;
+  // otherwise local just-connected state OR live API state.
+  const connected = !forceDisconnected && (localConnected || liveHasCred);
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
@@ -101,6 +108,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // Reset showManualToken so a prior 400 doesn't keep the input visible
     // when a later attempt fails with a non-400 (e.g. network) error.
     setShowManualToken(false);
+    // Clear any forced-disconnect override from a previous failed attempt
+    // so liveHasCred can take over again once this attempt resolves.
+    setForceDisconnected(false);
     setLoading(true);
     oauthAbortRef.current?.();
 
@@ -148,8 +158,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     } catch (e: unknown) {
       const err = e as Record<string, unknown>;
       // Reconnect failures must drop the Connected view so the user sees
-      // the error / manual-token input rendered by the not-connected branch.
+      // the error / manual-token input rendered by the not-connected
+      // branch.  Setting ``localConnected=false`` alone isn't enough when
+      // a stored cred still exists (``liveHasCred=true``) — flip
+      // ``forceDisconnected`` so the not-connected branch wins until the
+      // user retries.
       setConnected(false);
+      setForceDisconnected(true);
       if (err?.status === 400) {
         setShowManualToken(true);
         setError(
@@ -185,6 +200,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       });
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
+      // Clear the force-disconnected override set by an earlier OAuth
+      // failure so the new manual-token cred surfaces the Connected pill.
+      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {

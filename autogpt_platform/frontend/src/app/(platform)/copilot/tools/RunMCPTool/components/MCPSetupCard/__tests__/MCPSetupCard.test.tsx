@@ -203,4 +203,34 @@ describe("MCPSetupCard", () => {
     expect(screen.getByText(/does not support OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
+
+  it("drops Connected state on Reconnect failure even when live creds still report the server as connected", async () => {
+    // Sentry-flagged bug: when a stored cred exists (``liveHasCred=true``)
+    // and the user clicks Reconnect → OAuth 400, the previous
+    // ``connected = localConnected || liveHasCred`` logic would keep the
+    // Connected pill rendered because liveHasCred was still true.  The
+    // user couldn't see the error or the manual-token input.  Fix:
+    // ``forceDisconnected`` overrides both states on any catch.
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth support" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    // Live creds say connected → starts in Connected state.
+    const reconnectBtn = screen.getByRole("button", { name: /reconnect/i });
+    fireEvent.click(reconnectBtn);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
 });
