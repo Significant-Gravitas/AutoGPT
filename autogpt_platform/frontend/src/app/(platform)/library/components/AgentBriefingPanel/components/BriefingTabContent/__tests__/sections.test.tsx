@@ -40,10 +40,10 @@ function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
   } as unknown as LibraryAgent;
 }
 
-function makeRunningExecution(graphId: string, id: string): GraphExecutionMeta {
+function makeRunningExecution(graphID: string, id: string): GraphExecutionMeta {
   return {
     id,
-    graph_id: graphId,
+    graph_id: graphID,
     graph_version: 1,
     status: "RUNNING",
     started_at: new Date().toISOString(),
