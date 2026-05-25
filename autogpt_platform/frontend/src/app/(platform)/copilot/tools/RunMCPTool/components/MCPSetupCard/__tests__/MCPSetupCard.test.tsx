@@ -244,4 +244,44 @@ describe("MCPSetupCard", () => {
     });
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
+
+  it("re-entrancy guard prevents handleConnect from firing twice on rapid double-click", async () => {
+    // Without ``if (loading) return;`` the second click would race the
+    // first's in-flight popup — abort it and reject the first's await
+    // with OAUTH_ERROR_FLOW_CANCELED, even though the second attempt is
+    // still alive. The guard keeps the second click a no-op so the
+    // first attempt runs to completion.
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    // Reset call counter — prior tests in this file also invoke the same mock.
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockClear();
+    let resolveLogin: ((value: unknown) => void) | undefined;
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockReturnValueOnce(
+      new Promise((res) => {
+        resolveLogin = res;
+      }) as never,
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    const btn = screen.getByRole("button", { name: /connect example\.com/i });
+    // Rapid double-click before the first call resolves.
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+
+    // Only one network call despite two clicks.
+    expect(
+      vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mock.calls.length,
+    ).toBe(1);
+
+    // Drain the in-flight promise so React doesn't warn on unmount.
+    resolveLogin?.({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+  });
 });

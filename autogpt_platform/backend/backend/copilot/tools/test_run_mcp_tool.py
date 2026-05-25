@@ -674,6 +674,107 @@ async def test_surface_connect_card_disconnected_when_no_creds():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_probe_5xx_reports_optimistically_connected():
+    """surface_connect_card + valid creds + probe 500 → connected, cred kept.
+
+    The probe is best-effort: transient server errors (5xx, redirects)
+    must NOT delete an otherwise-valid cred.  We report
+    ``has_all_credentials=True`` and let the next real tool call surface
+    the actual error if it persists.
+    """
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    mock_creds = MagicMock()
+    mock_creds.access_token = SecretStr("valid-token")
+    mock_creds.id = "valid-cred-id"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=mock_creds,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=HTTPClientError("Internal Server Error", status_code=500)
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                with patch(
+                    "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
+                    new_callable=AsyncMock,
+                ) as mock_invalidate:
+                    response = await tool._execute(
+                        user_id=_USER_ID,
+                        session=session,
+                        server_url=_SERVER_URL,
+                        surface_connect_card=True,
+                    )
+                    mock_invalidate.assert_not_awaited()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is True
+    assert response.setup_info.user_readiness.ready_to_run is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_probe_timeout_reports_optimistically_connected():
+    """surface_connect_card + valid creds + probe TimeoutError → connected, cred kept.
+
+    Non-HTTP failures (asyncio.TimeoutError, OSError, MCPClientError) hit
+    the broad ``except Exception`` branch — same "optimistically connected"
+    semantics as the 5xx path.
+    """
+    import asyncio
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    mock_creds = MagicMock()
+    mock_creds.access_token = SecretStr("valid-token")
+    mock_creds.id = "valid-cred-id"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=mock_creds,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=asyncio.TimeoutError("probe took too long")
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                with patch(
+                    "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
+                    new_callable=AsyncMock,
+                ) as mock_invalidate:
+                    response = await tool._execute(
+                        user_id=_USER_ID,
+                        session=session,
+                        server_url=_SERVER_URL,
+                        surface_connect_card=True,
+                    )
+                    mock_invalidate.assert_not_awaited()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is True
+    assert response.setup_info.user_readiness.ready_to_run is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
     """HTTP 403 when creds ARE present → still fire setup card, drop the stale row.
 

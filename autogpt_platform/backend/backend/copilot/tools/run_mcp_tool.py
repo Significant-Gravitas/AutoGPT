@@ -218,9 +218,9 @@ class RunMCPToolTool(BaseTool):
                     # the cred in place and report "optimistically
                     # connected" — the user can still try; the real tool
                     # call will surface the actual error if it persists.
-                except (MCPClientError, Exception):
-                    # Any other failure (asyncio.TimeoutError, network
-                    # errors, MCP protocol failures) — also treat as
+                except Exception:
+                    # Any non-HTTP failure (asyncio.TimeoutError, network
+                    # errors, MCPClientError, etc.) — also treat as
                     # "unknown, optimistically connected".  Important:
                     # we MUST NOT let a transient server outage delete
                     # the user's still-valid cred.  Catching ``Exception``

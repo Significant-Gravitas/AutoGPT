@@ -218,9 +218,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   }
 
   async function handleManualToken() {
+    // Re-entrancy guard first — mirrors ``handleConnect`` so both flows
+    // present the same shape to readers.  See the comment on
+    // ``handleConnect``'s guard for the double-click race this prevents.
+    if (loading) return;
     const token = manualToken.trim();
     if (!token) return;
-    if (loading) return;
     setLoading(true);
     setError(null);
     // Clear the force-disconnect override at the start so a failed

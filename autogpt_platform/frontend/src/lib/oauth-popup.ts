@@ -247,11 +247,11 @@ export function openOAuthPopup(
           finalLocalStorageCheck();
           if (handled) return;
           if (POPUP_CLOSE_GRACE_MS === 0) {
-            // Same-origin path: any postMessage that was going to fire
-            // already did during the synchronous ``finalLocalStorageCheck``
-            // window (well, it's a no-op for same-origin, but the message
-            // listener queued from the popup before close would have run).
-            // Reject immediately without the cross-origin grace.
+            // Same-origin path: the ``window.addEventListener("message", …)``
+            // at line 149 fires synchronously when the popup posts before
+            // closing, so any successful result has already been handled
+            // by the time ``popup.closed`` flips.  Reject immediately —
+            // no async-delivery race to wait for.
             handled = true;
             reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
             controller.abort("popup_closed");
