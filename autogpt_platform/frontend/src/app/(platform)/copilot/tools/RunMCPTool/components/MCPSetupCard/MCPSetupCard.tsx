@@ -68,7 +68,14 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const { data: liveCredsRes } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
-      staleTime: 5_000,
+      // No staleTime — when this card mounts (e.g. immediately after the
+      // backend's ``invalidate_mcp_credential`` deleted a stale row),
+      // we want a fresh fetch.  A non-zero staleTime would let the
+      // previously-cached "cred exists" override the post-invalidation
+      // truth, briefly rendering "Connected" on a card whose
+      // ``has_all_credentials=false`` snapshot is the authoritative
+      // post-invalidation state.
+      refetchOnMount: "always",
     },
   });
   // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
