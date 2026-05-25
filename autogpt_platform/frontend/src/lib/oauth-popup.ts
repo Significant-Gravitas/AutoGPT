@@ -181,14 +181,27 @@ export function openOAuthPopup(
       );
     }
 
-    // Detect popup closed by user (without completing sign-in)
+    // Detect popup closed by user (without completing sign-in).
+    //
+    // Race-condition guard: the callback page writes to BroadcastChannel
+    // + localStorage and *then* calls window.close().  Across origins,
+    // BroadcastChannel / storage events can land a few hundred ms after
+    // the close — if we reject the moment `popup.closed` flips true, a
+    // successful sign-in gets reported as "Sign-in window was closed".
+    // Give in-flight handlers a short grace window (and one localStorage
+    // poll tick) to deliver before declaring failure.
     if (popup) {
+      const POPUP_CLOSE_GRACE_MS = 1500;
       const closedPollInterval = setInterval(() => {
         if (popup.closed && !handled) {
           clearInterval(closedPollInterval);
-          handled = true;
-          reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
-          controller.abort("popup_closed");
+          setTimeout(() => {
+            if (!handled) {
+              handled = true;
+              reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+              controller.abort("popup_closed");
+            }
+          }, POPUP_CLOSE_GRACE_MS);
         }
       }, 500);
       controller.signal.addEventListener("abort", () =>

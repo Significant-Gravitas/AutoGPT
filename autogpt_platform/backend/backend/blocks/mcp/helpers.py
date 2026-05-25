@@ -71,6 +71,33 @@ def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     return output_parts or None
 
 
+async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
+    """Delete a stored MCP credential that the server just rejected.
+
+    Called from the copilot's ``run_mcp_tool`` path when an MCP server
+    returns 401/403 with a credential we *do* have on file — meaning the
+    token was revoked or expired server-side without our local
+    ``access_token_expires_at`` knowing.  Removing the dead row prevents
+    ``auto_lookup_mcp_credential`` from feeding the same stale token back
+    on the next attempt and lets the user re-auth cleanly via the setup
+    card.  Failures are swallowed (best-effort) — the worst case is a
+    second loop through the same code path, which still surfaces the
+    setup card.
+    """
+    from backend.integrations.creds_manager import IntegrationCredentialsManager
+
+    try:
+        mgr = IntegrationCredentialsManager()
+        await mgr.store.delete_creds_by_id(user_id, credential_id)
+        logger.info("Invalidated stale MCP credential %s", credential_id)
+    except Exception:
+        logger.warning(
+            "Failed to invalidate stale MCP credential %s",
+            credential_id,
+            exc_info=True,
+        )
+
+
 async def auto_lookup_mcp_credential(
     user_id: str, server_url: str
 ) -> OAuth2Credentials | None:

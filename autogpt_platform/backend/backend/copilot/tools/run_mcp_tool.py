@@ -8,6 +8,7 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    invalidate_mcp_credential,
     normalize_mcp_url,
     parse_mcp_content,
     server_host,
@@ -190,8 +191,17 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES and not creds:
-                # Server requires auth and user has no stored credentials
+            if e.status_code in _AUTH_STATUS_CODES:
+                # 401/403 → user needs to (re)authenticate.  Fire the setup
+                # card whether or not we have a stored credential row: when
+                # `creds` is None the user has never connected, and when it
+                # is non-None the stored token has been revoked / expired
+                # server-side without us knowing (refresh_if_needed only
+                # refreshes when local `access_token_expires_at` says so).
+                # If we have a stale row, delete it so the next attempt
+                # doesn't loop on the same dead token.
+                if creds is not None:
+                    await invalidate_mcp_credential(user_id, creds.id)
                 return self._build_setup_requirements(server_url, session_id)
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)

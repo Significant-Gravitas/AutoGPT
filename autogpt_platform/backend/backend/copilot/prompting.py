@@ -147,12 +147,26 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, LinkedIn via Ayrshare,
    etc.). Most "obscure" integrations have a block.
 
-2. **`run_mcp_tool`** — If `find_block` returns no match, check if a hosted MCP
-   server is available for the service. Only use known MCP server URLs from
-   the registry.
+2. **`run_mcp_tool` — MANDATORY when `find_block` returns nothing.** Do NOT
+   stop at "no integration exists" after a single `find_block` miss. When
+   `find_block` returns no usable match, you MUST search for a hosted MCP
+   server for the service before pivoting to a generic REST workaround:
+   - First, call `read_skill(name="mcp_tool_guide")` once per session (or
+     `get_mcp_guide` if `read_skill` is unavailable) to load the current
+     known-servers list and registry instructions.
+   - If the service appears in the known list → use that URL directly.
+   - If the service is **not** in the known list → query the MCP registry
+     (`https://registry.modelcontextprotocol.io/v0/servers?q=<service>`)
+     via `SendAuthenticatedWebRequestBlock` (no credential needed for this
+     read), parse `remotes[].url` from the first matching result, then
+     attempt `run_mcp_tool` with that URL. Many popular services ship an
+     MCP server that is NOT yet in the hardcoded known list — assume one
+     might exist and check the registry instead of skipping straight to
+     REST.
 
-3. **`SendAuthenticatedWebRequestBlock`** — If no block or MCP server exists,
-   use `SendAuthenticatedWebRequestBlock` with existing host-scoped
+3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
+   exists (after searching both `find_block` AND the MCP registry), use
+   `SendAuthenticatedWebRequestBlock` with existing host-scoped
    credentials. Check available credentials via `connect_integration`.
 
 4. **Manual API call** — As a last resort, guide the user to set up
@@ -161,8 +175,9 @@ Order of fallbacks (only after `find_block` returns nothing usable):
 
 ### Anti-pattern: refusing without searching (CRITICAL)
 
-**Never** emit any variant of these without a preceding `find_block` call in
-the current turn:
+**Never** emit any variant of these without **both** a preceding
+`find_block` call AND, if `find_block` returned no usable match, an MCP
+registry lookup in the current turn:
 
 - "We don't have a native X integration yet."
 - "X isn't supported on the platform."
@@ -170,12 +185,12 @@ the current turn:
 - "There's no block for X."
 - Any feature-request flow ("I'll flag this as a requested integration").
 
-If you have not called `find_block` for the service the user named, you do
-**not yet know** whether it exists. Refusing or pivoting to a workaround
-before searching wastes the user's turn and is a known regression. This rule
-overrides any worked example earlier in this prompt that shows a capability
-gap being declared without a preceding `find_block` call — those examples
-are wrong and should be ignored.
+If you have not searched **both** `find_block` and the MCP registry for the
+service the user named, you do **not yet know** whether it exists.
+Refusing or pivoting to a workaround before exhausting both searches wastes
+the user's turn and is a known regression. This rule overrides any worked
+example earlier in this prompt that shows a capability gap being declared
+without those searches — those examples are wrong and should be ignored.
 
 Correct flow for *any* integration request, even ones you "know" don't
 exist:
@@ -183,7 +198,9 @@ exist:
 ```
 1. find_block(query="<service> <action>")
 2. If a matching block exists → use it (or run with validate_only to inspect).
-3. If find_block returns no match → THEN state the gap and offer
+3. If find_block returns no match → load the MCP guide and search the MCP
+   registry; if a server is found, call run_mcp_tool against it.
+4. Only if BOTH searches return nothing → THEN state the gap and offer
    SendAuthenticatedWebRequestBlock / browser automation / feature request.
 ```
 
