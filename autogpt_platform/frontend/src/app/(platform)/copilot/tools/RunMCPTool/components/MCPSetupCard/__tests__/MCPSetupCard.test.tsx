@@ -29,6 +29,24 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
 }));
 
+// Mock the credentials list hook used for the on-mount live-cred re-sync.
+// Default: no stored creds → ``liveHasCred=false`` matches the persisted
+// ``has_all_credentials=false`` snapshot so the existing tests don't have
+// to thread a connected state through MSW.  ``setMockLiveCreds`` lets
+// individual tests override the live state to verify the refresh path.
+let mockLiveCreds: Array<{ provider: string; host?: string | null }> = [];
+function setMockLiveCreds(
+  next: Array<{ provider: string; host?: string | null }>,
+) {
+  mockLiveCreds = next;
+}
+vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
+  useGetV1ListCredentials: () => ({
+    data: mockLiveCreds,
+    isLoading: false,
+  }),
+}));
+
 function makeSetupOutput(
   serverUrl = "https://mcp.example.com/mcp",
   hasAllCredentials = false,
@@ -57,7 +75,10 @@ function makeSetupOutput(
 }
 
 describe("MCPSetupCard", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    setMockLiveCreds([]);
+  });
 
   it("renders setup message and connect button", () => {
     render(<MCPSetupCard output={makeSetupOutput()} />);
@@ -65,6 +86,30 @@ describe("MCPSetupCard", () => {
     expect(
       screen.getByRole("button", { name: /connect example\.com/i }),
     ).toBeDefined();
+  });
+
+  it("renders Connected/Reconnect when live creds say the server is connected even if the persisted snapshot was disconnected", () => {
+    // Persisted card snapshot was emitted while the cred was missing (e.g.
+    // John's stale-cred 401 path), but on chat refresh the cred now exists.
+    // Card should render the connected pill, not the bare Connect button.
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
+  });
+
+  it("matches live creds across a trailing slash on the server URL", () => {
+    // Card was emitted with no trailing slash; stored cred has one.
+    // The frontend ``normalizeMcpUrl`` mirrors the backend so they match.
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp/" },
+    ]);
+    render(
+      <MCPSetupCard output={makeSetupOutput("https://mcp.example.com/mcp")} />,
+    );
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
   it("shows manual token input after OAuth 400", async () => {

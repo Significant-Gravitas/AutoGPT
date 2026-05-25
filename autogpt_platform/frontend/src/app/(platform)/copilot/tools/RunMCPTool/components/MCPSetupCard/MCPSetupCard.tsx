@@ -1,5 +1,6 @@
 "use client";
 
+import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
@@ -12,6 +13,13 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { useContext, useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
+
+function normalizeMcpUrl(url: string): string {
+  // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
+  // for ``https://mcp.sentry.dev/mcp`` matches a card emitted with the
+  // same URL whether or not the trailing slash is present.
+  return url.trim().replace(/\/+$/, "");
+}
 interface Props {
   output: SetupRequirementsResponse;
   /**
@@ -48,12 +56,42 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     output.setup_info?.user_readiness?.has_all_credentials,
   );
 
+  // The persisted backend state above is a snapshot from the moment the
+  // card was emitted.  On chat refresh that snapshot is stale — the user
+  // may have completed sign-in in a prior session.  Re-fetch the live
+  // cred list and OR it into ``connected`` so a previously-connected
+  // server still renders the "Connected — Reconnect" pill after a
+  // page reload.  We OR rather than override: once the user clicks
+  // Connect successfully in this component, ``localConnected`` stays
+  // true even if the live-cred query is briefly stale.
+  const normalizedServer = normalizeMcpUrl(serverUrl);
+  const { data: liveCredsRes } = useGetV1ListCredentials({
+    query: {
+      select: (res) => (res.status === 200 ? res.data : null),
+      staleTime: 5_000,
+    },
+  });
+  const liveHasCred = Array.isArray(liveCredsRes)
+    ? liveCredsRes.some(
+        (c) =>
+          c.provider === "mcp" &&
+          typeof c.host === "string" &&
+          normalizeMcpUrl(c.host) === normalizedServer,
+      )
+    : false;
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [connected, setConnected] = useState(initiallyConnected);
+  const [localConnected, setLocalConnected] = useState(initiallyConnected);
   const oauthAbortRef = useRef<(() => void) | null>(null);
+
+  // Combined view: live API state OR local just-connected state.
+  const connected = localConnected || liveHasCred;
+  // Setter compatible with the existing call-sites — they only ever set
+  // ``true`` after a successful flow or ``false`` to drop the pill.
+  const setConnected = setLocalConnected;
 
   // Abort any in-progress OAuth popup when the component unmounts.
   useEffect(() => () => oauthAbortRef.current?.(), []);
