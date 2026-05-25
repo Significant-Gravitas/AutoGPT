@@ -106,6 +106,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
       const err = e as Record<string, unknown>;
+      // Reconnect failures must drop the Connected view so the user sees
+      // the error / manual-token input rendered by the not-connected branch.
+      setConnected(false);
       if (err?.status === 400) {
         setShowManualToken(true);
         setError(
