@@ -197,6 +197,8 @@ Without **both** searches you do not yet know whether the service exists.
 Pivoting to a workaround before exhausting both is a known regression that
 overrides any worked example earlier in this prompt.
 
+Correct flow for *any* integration request:
+
 ```
 1. find_block(query="<service> <action>")
 2. Matching block → use it (validate_only to inspect).
