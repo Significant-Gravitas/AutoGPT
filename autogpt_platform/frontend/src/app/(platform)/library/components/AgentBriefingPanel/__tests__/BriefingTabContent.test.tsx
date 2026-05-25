@@ -8,7 +8,12 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
@@ -427,9 +432,10 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     // The pill suppresses entirely when both counts are zero — surfacing
     // "0 skills · 0 scheduled" would be noise, not a discovery affordance.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
-    expect(screen.queryByText("Autopilot library")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
+      expect(screen.queryByText("Autopilot library")).toBeNull();
+    });
   });
 
   it("shows only the skills link when scheduled count is zero", async () => {
@@ -494,9 +500,10 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
 
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
-    expect(screen.queryByText("Autopilot library")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
+      expect(screen.queryByText("Autopilot library")).toBeNull();
+    });
   });
 
   it("shows both links with a separator when skills AND follow-ups are positive (singular pluralization)", async () => {
