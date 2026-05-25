@@ -306,6 +306,59 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("shows timeout-specific error message when OAuth popup times out", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { login_url: "https://example.com/oauth", state_token: "s1" },
+      headers: new Headers(),
+    } as never);
+
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.reject(new Error("OAuth flow timed out")),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+    });
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/oauth sign-in timed out/i)).toBeDefined();
+    });
+  });
+
+  it("shows generic error message when OAuth callback fails with a non-400 status", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    // Login itself returns 500 (not 400, not timeout) → catch hits the
+    // "generic error" branch with the server's ``detail``.
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 500,
+      data: { detail: "Upstream OAuth registration failed" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/upstream oauth registration failed/i),
+      ).toBeDefined();
+    });
+    // Manual-token input must NOT appear — that's the 400-only branch.
+    expect(screen.queryByPlaceholderText("Paste API token")).toBeNull();
+  });
+
   it("submits manual token via Enter key", async () => {
     // The token input has an onKeyDown that fires handleManualToken on
     // Enter — covers the keyboard path that's an alternative to the Use
