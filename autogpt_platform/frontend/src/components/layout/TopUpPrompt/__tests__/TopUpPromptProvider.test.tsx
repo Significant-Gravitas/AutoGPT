@@ -31,20 +31,22 @@ function setupCredits(args: {
   threshold: number;
 }) {
   let creditsRequested = false;
+  let autoTopUpRequested = false;
   server.use(
     getGetV1GetUserCreditsMockHandler(() => {
       creditsRequested = true;
       return { credits: args.credits };
     }),
-    getGetV1GetAutoTopUpMockHandler({
-      amount: args.amount,
-      threshold: args.threshold,
+    getGetV1GetAutoTopUpMockHandler(() => {
+      autoTopUpRequested = true;
+      return { amount: args.amount, threshold: args.threshold };
     }),
   );
   return {
     waitForCreditsFetch: () =>
       waitFor(() => {
         expect(creditsRequested).toBe(true);
+        expect(autoTopUpRequested).toBe(true);
       }),
   };
 }
@@ -109,10 +111,10 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
 
     // What actually keeps the banner/dialog out here is the invariant: with
     // auto-refill enabled, `isOutOfCredits` is permanently false, so nothing can
-    // appear regardless of fetch timing. `waitForCreditsFetch` only gates on the
-    // credits request being intercepted (not on credits state being applied to
-    // the tree), kept as belt-and-suspenders so the assertions don't run on a
-    // bare initial mount.
+    // appear regardless of fetch timing. `waitForCreditsFetch` only gates on
+    // both backend reads (credits + auto-top-up) being intercepted (not on
+    // state being applied to the tree), kept as belt-and-suspenders so the
+    // assertions don't run on a bare initial mount.
     await screen.findByText("ready");
     await waitForCreditsFetch();
 
@@ -132,7 +134,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
 
     // With the billing flag off, `isOutOfCredits` is permanently false — the
     // invariant that keeps banner/dialog out, independent of fetch timing.
-    // `waitForCreditsFetch` only confirms the credits request was intercepted
+    // `waitForCreditsFetch` only confirms both backend reads were intercepted
     // (not that state was applied), kept as belt-and-suspenders.
     await screen.findByText("ready");
     await waitForCreditsFetch();

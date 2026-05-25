@@ -14,8 +14,8 @@ export function LowCreditBanner() {
 
   return (
     <Alert variant="warning">
-      <div className="flex items-center gap-3">
-        <AlertDescription className="flex-1">
+      <div className="flex flex-wrap items-center gap-3">
+        <AlertDescription className="min-w-[12rem] flex-1">
           You&apos;re out of automation credits — top up to keep your agents
           running.
         </AlertDescription>

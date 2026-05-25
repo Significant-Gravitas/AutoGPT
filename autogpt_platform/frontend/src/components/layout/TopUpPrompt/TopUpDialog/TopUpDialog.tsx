@@ -11,16 +11,15 @@ interface Props {
 }
 
 export function TopUpDialog({ isOpen, onClose }: Props) {
+  function handleOpenChange(open: boolean) {
+    if (!open) onClose();
+  }
+
   return (
     <Dialog
       title="You're out of automation credits"
       styling={{ maxWidth: "28rem" }}
-      controlled={{
-        isOpen,
-        set: (open) => {
-          if (!open) onClose();
-        },
-      }}
+      controlled={{ isOpen, set: handleOpenChange }}
     >
       <Dialog.Content>
         <Text variant="body">

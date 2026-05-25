@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV1GetUserCreditsMockHandler,
@@ -122,7 +122,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
   localStorage.clear();
 });
 
