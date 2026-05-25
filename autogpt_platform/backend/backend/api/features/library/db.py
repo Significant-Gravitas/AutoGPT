@@ -38,6 +38,7 @@ from backend.util.models import Pagination
 from backend.util.settings import Config
 
 from . import model as library_model
+from .embeddings import schedule_library_agent_embedding
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -597,9 +598,12 @@ async def create_library_agent(
             )
         )
 
-    # Generate images for the main graph and sub-graphs
+    # Generate images for the main graph and sub-graphs, and refresh the
+    # library-agent embedding so the create-time similarity gate can find
+    # this agent next time the user describes a goal.
     for agent, graph in zip(library_agents, graph_entries):
         asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
+        schedule_library_agent_embedding(agent.id, user_id, graph)
 
     schedule_info = await _fetch_schedule_info(user_id)
     return [
@@ -761,6 +765,9 @@ async def update_library_agent_version_and_settings(
             user_id=user_id,
             settings=updated_settings,
         )
+    # Re-embed so name/description/instructions changes are reflected in
+    # similarity search results before the next create-time gate runs.
+    schedule_library_agent_embedding(library.id, user_id, agent_graph)
     return library
 
 

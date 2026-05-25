@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     check_hitl_review,
     execute_block,
     prepare_block_for_execution,
+    require_library_check,
 )
 from backend.copilot.tools.models import (
     BlockOutputResponse,
@@ -21,6 +22,8 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
+
+from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
@@ -1330,3 +1333,82 @@ class TestExecuteBlockAutoCredentials:
         assert isinstance(result, ErrorResponse)
         assert "Insufficient credits" in result.message
         mock_lock.release.assert_awaited_once()
+
+
+class TestRequireLibraryCheck:
+    """Tests for the library-similarity gate. The gate is turn-scoped:
+    only the current turn's in-flight find_library_agent calls satisfy
+    it, so a stale call from an earlier turn (against an unrelated
+    goal_summary) cannot pass create_agent through."""
+
+    def test_inflight_with_args_satisfies(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "summarise emails"},
+        )
+        assert require_library_check(session, "create_agent") is None
+
+    def test_inflight_with_empty_goal_summary_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": ""},
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_with_for_creation_false_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": False, "goal_summary": "x"},
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_inflight_name_only_does_not_satisfy(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.announce_inflight_tool_call("find_library_agent")
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_history_only_call_does_not_satisfy(self):
+        """A find_library_agent call recorded in session.messages from a
+        prior turn must NOT satisfy the gate — it was almost certainly
+        against an unrelated goal_summary."""
+        from backend.copilot.model import ChatMessage
+
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "function": {
+                            "name": "find_library_agent",
+                            "arguments": (
+                                '{"for_creation": true, '
+                                '"goal_summary": "summarise emails"}'
+                            ),
+                        }
+                    }
+                ],
+            )
+        )
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+
+    def test_returns_error_when_not_called(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        result = require_library_check(session, "create_agent")
+        assert isinstance(result, ErrorResponse)
+        assert "find_library_agent" in result.message
+        assert "for_creation" in result.message
+        assert "library_check_ack" in result.message
+
+    def test_bypassed_in_builder_context(self):
+        session = make_session("user-lib-check", guide_read=False, library_check=False)
+        session.metadata.builder_graph_id = "some-graph-id"
+        assert require_library_check(session, "create_agent") is None

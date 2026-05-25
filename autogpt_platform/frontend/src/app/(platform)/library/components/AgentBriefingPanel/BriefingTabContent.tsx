@@ -1,21 +1,9 @@
 "use client";
 
-import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
-import {
-  useGetV1ListExecutionSchedulesForAUser,
-  useListCopilotFollowupSchedules,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
-import {
-  formatResetTime,
-  formatTierLabel,
-  TIER_BADGE_CLASS_NAME,
-} from "@/app/(platform)/copilot/components/usageHelpers";
+import { useListCopilotFollowupSchedules } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Button } from "@/components/atoms/Button/Button";
-import { Badge } from "@/components/atoms/Badge/Badge";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
 import { useAgentStatusMap } from "../../hooks/useAgentStatus";
@@ -32,7 +20,12 @@ interface Props {
 
 export function BriefingTabContent({ activeTab, agents }: Props) {
   if (activeTab === "all") {
-    return <UsageSection agents={agents} />;
+    return (
+      <div className="py-2">
+        <CostsBreakdown agents={agents} />
+        <CopilotLibrarySummary />
+      </div>
+    );
   }
 
   if (
@@ -46,111 +39,44 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
   return <AgentListSection activeTab={activeTab} agents={agents} />;
 }
 
-function UsageSection({ agents }: { agents: LibraryAgent[] }) {
-  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
-    query: {
-      select: (res) => res.data as CoPilotUsagePublic,
-      refetchInterval: 30000,
-      staleTime: 10000,
-    },
-  });
-
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-
-  const hasUsageMeters = isSuccess && usage && (usage.daily || usage.weekly);
-  const tierLabel = hasUsageMeters ? formatTierLabel(usage.tier) : null;
-
-  return (
-    <div className="py-2">
-      {hasUsageMeters && (
-        <>
-          <div className="flex items-center gap-2">
-            <Text variant="h5" className="text-neutral-800">
-              Usage limits
-            </Text>
-            {tierLabel && (
-              <Badge
-                variant="info"
-                size="small"
-                className={TIER_BADGE_CLASS_NAME}
-              >
-                {tierLabel} plan
-              </Badge>
-            )}
-            <div className="flex-1" />
-            {isBillingEnabled && (
-              <Link
-                href="/settings/billing"
-                className="text-sm text-blue-600 hover:underline"
-              >
-                Manage billing
-              </Link>
-            )}
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-            {usage.daily && (
-              <UsageMeter
-                label="Today"
-                percentUsed={usage.daily.percent_used}
-                resetsAt={usage.daily.resets_at}
-              />
-            )}
-            {usage.weekly && (
-              <UsageMeter
-                label="This week"
-                percentUsed={usage.weekly.percent_used}
-                resetsAt={usage.weekly.resets_at}
-              />
-            )}
-          </div>
-        </>
-      )}
-      <CostsBreakdown agents={agents} />
-      <CopilotLibrarySummary />
-    </div>
-  );
-}
-
 function CopilotLibrarySummary() {
   // Discoverability is already gated by AGENT_BRIEFING at the parent
   // panel — this pill renders only inside AgentBriefingPanel, which is
-  // itself flag-gated.  No second flag here so we don't end up with two
-  // flags we'd always toggle together.
+  // itself flag-gated.  No second flag here because the count-based
+  // hide below already keeps the pill quiet for users who don't use
+  // the feature.
   const { data: skillsRes } = useListCopilotSkills({
     query: { staleTime: 30_000 },
   });
   const { data: followupsRes } = useListCopilotFollowupSchedules({
     query: { staleTime: 30_000 },
   });
-  // Graph schedules (recurring agent runs) live alongside followups in
-  // the unified Scheduled page — count them together so the briefing
-  // pill mirrors what the user sees there.
-  const { data: graphsRes } = useGetV1ListExecutionSchedulesForAUser({
-    query: { staleTime: 30_000 },
-  });
 
   const skillsCount =
     skillsRes && skillsRes.status === 200 ? skillsRes.data.length : 0;
-  const copilotFollowupsCount =
+  // Count only copilot follow-ups here — graph schedules (recurring
+  // agent runs) are already surfaced by the briefing's own "Scheduled"
+  // tab above, so folding them into this pill would double-count and
+  // confuse the "Autopilot library" framing.  The pill's link still
+  // goes to the unified `/library/followups` page, where both kinds
+  // are listed together.
+  const followupCount =
     followupsRes && followupsRes.status === 200 ? followupsRes.data.length : 0;
-  const graphSchedulesCount =
-    graphsRes && graphsRes.status === 200 ? graphsRes.data.length : 0;
-  const scheduledCount = copilotFollowupsCount + graphSchedulesCount;
 
   // Suppress the pill entirely when the user has no autopilot library
-  // content yet — surfacing "0 skills · 0 scheduled" is noise, not a
+  // content yet — surfacing "0 skills · 0 follow-ups" is noise, not a
   // discovery affordance.  The pill reappears the moment either count
-  // turns positive (e.g. on the next refetch after a store_skill /
-  // schedule_followup / add_graph_execution_schedule tool call).
-  if (skillsCount === 0 && scheduledCount === 0) {
+  // turns positive (e.g. after a store_skill / schedule_followup tool
+  // call).
+  if (skillsCount === 0 && followupCount === 0) {
     return null;
   }
 
   // Per-link hide: surface only the counts that are non-zero.  We
   // already returned ``null`` above when both are zero, so at least
-  // one of these two branches always renders.
+  // one branch always renders.
   const showSkills = skillsCount > 0;
-  const showScheduled = scheduledCount > 0;
+  const showFollowups = followupCount > 0;
 
   return (
     <div
@@ -169,16 +95,16 @@ function CopilotLibrarySummary() {
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
         </Link>
       ) : null}
-      {showSkills && showScheduled ? (
+      {showSkills && showFollowups ? (
         <span className="text-zinc-300">•</span>
       ) : null}
-      {showScheduled ? (
+      {showFollowups ? (
         <Link
           href="/library/followups"
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >
-          {scheduledCount} scheduled
+          {followupCount} follow-up{followupCount === 1 ? "" : "s"}
         </Link>
       ) : null}
     </div>
@@ -314,50 +240,6 @@ function AgentListSection({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-function UsageMeter({
-  label,
-  percentUsed,
-  resetsAt,
-}: {
-  label: string;
-  percentUsed: number;
-  resetsAt: Date | string;
-}) {
-  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
-  const isHigh = percent >= 80;
-  const percentLabel =
-    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <Text variant="body-medium" className="text-neutral-700">
-          {label}
-        </Text>
-        <Text variant="body" className="tabular-nums text-neutral-500">
-          {percentLabel}
-        </Text>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
-        <div
-          role="progressbar"
-          aria-label={`${label} usage`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent}
-          className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
-          }`}
-          style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
-        />
-      </div>
-      <Text variant="small" className="text-neutral-400">
-        Resets {formatResetTime(resetsAt)}
-      </Text>
     </div>
   );
 }
