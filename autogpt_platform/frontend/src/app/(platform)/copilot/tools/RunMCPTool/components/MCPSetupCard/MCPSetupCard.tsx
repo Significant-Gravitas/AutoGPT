@@ -272,6 +272,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // user just completed a Connect flow in this component instance.  Always
   // expose Reconnect so the user can swap accounts.
   if (connected) {
+    // No error banner here — any caught error flips ``forceDisconnected``
+    // to true which forces ``connected=false``, so an error inside the
+    // connected branch is unreachable.  The not-connected branch below
+    // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
         <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -285,11 +289,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             {loading ? "Reconnecting…" : "Reconnect"}
           </button>
         </div>
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
       </div>
     );
   }
