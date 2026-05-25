@@ -22,10 +22,14 @@ export function TopUpPromptProvider({ children }: Props) {
 
   // Backend treats amount === 0 as disabled, so auto-refill only actually refills when amount > 0; suppress the nudge only then.
   const autoRefillEnabled = !!autoTopUpConfig && autoTopUpConfig.amount > 0;
+  // Both fetches resolve independently; wait for the auto-top-up config too,
+  // otherwise a user with auto-refill enabled briefly looks out-of-credits
+  // (config still null) and the daily modal fires spuriously.
   const isOutOfCredits =
     !!isBillingEnabled &&
     credits !== null &&
     credits <= 0 &&
+    autoTopUpConfig !== null &&
     !autoRefillEnabled;
 
   const [isOpen, setIsOpen] = useState(false);
