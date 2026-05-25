@@ -93,6 +93,16 @@ describe("isErrorOutput", () => {
   it("returns false for decomposition output", () => {
     expect(isErrorOutput(DECOMPOSITION)).toBe(false);
   });
+
+  it("returns true for message-only error payload (no 'error' key)", () => {
+    const messageOnly: DecomposeErrorOutput = {
+      type: "error",
+      message: "Something failed",
+    };
+    expect(isErrorOutput(messageOnly as unknown as DecomposeGoalOutput)).toBe(
+      true,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -159,7 +169,7 @@ describe("getDecomposeGoalOutput", () => {
     const messageOnly = { type: "error", message: "Something failed" };
     const result = getDecomposeGoalOutput({ output: messageOnly });
     expect(result).not.toBeNull();
-    // isErrorOutput requires 'error' key, so this falls through to message-only branch
+    expect(isErrorOutput(result!)).toBe(true);
     expect((result as DecomposeErrorOutput).message).toBe("Something failed");
   });
 });

@@ -86,7 +86,7 @@ export function isDecompositionOutput(
 export function isErrorOutput(
   output: DecomposeGoalOutput,
 ): output is DecomposeErrorOutput {
-  return "error" in output;
+  return !isDecompositionOutput(output);
 }
 
 export function getAnimationText(part: {
