@@ -29,7 +29,10 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
 }));
 
-function makeSetupOutput(serverUrl = "https://mcp.example.com/mcp") {
+function makeSetupOutput(
+  serverUrl = "https://mcp.example.com/mcp",
+  hasAllCredentials = false,
+) {
   return {
     type: "setup_requirements" as const,
     message: "To continue, sign in to example.com and approve access.",
@@ -38,9 +41,9 @@ function makeSetupOutput(serverUrl = "https://mcp.example.com/mcp") {
       agent_id: serverUrl,
       agent_name: "example.com",
       user_readiness: {
-        has_all_credentials: false,
+        has_all_credentials: hasAllCredentials,
         missing_credentials: {},
-        ready_to_run: false,
+        ready_to_run: hasAllCredentials,
       },
       requirements: {
         credentials: [],
@@ -129,5 +132,30 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     });
+  });
+
+  it("drops Connected state and surfaces manual token input when Reconnect hits HTTP 400", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth support" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+
+    // Starts in Connected state with Reconnect button visible.
+    const reconnectBtn = screen.getByRole("button", { name: /reconnect/i });
+    fireEvent.click(reconnectBtn);
+
+    // After 400, the not-connected branch must render: error banner + manual
+    // token input. The Connected/Reconnect banner must be gone.
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 });
