@@ -1,4 +1,13 @@
+import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import {
+  getGetV1ListExecutionSchedulesForAUserMockHandler,
+  getListCopilotFollowupSchedulesMockHandler,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
+import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { server } from "@/mocks/mock-server";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
@@ -32,6 +41,7 @@ vi.mock(
 
 afterEach(() => {
   mockUseGetV1UserCostSummary.mockReset();
+  server.resetHandlers();
 });
 
 function emptyCostSummary() {
@@ -352,5 +362,139 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     );
     expect(screen.getByText(/Calendar month so far/)).toBeDefined();
     expect(screen.getByText(/today \(UTC\)/)).toBeDefined();
+  });
+});
+
+describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => {
+  function setupBriefingMocks() {
+    mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
+  }
+
+  function makeSkill(overrides: { name?: string } = {}): CopilotSkillInfo {
+    return {
+      name: overrides.name ?? "skill-1",
+      description: "test skill",
+      triggers: [],
+      version: "1.0.0",
+      updated_at: new Date().toISOString(),
+    } as unknown as CopilotSkillInfo;
+  }
+
+  function makeFollowup(overrides: { id?: string } = {}): CopilotTurnJobInfo {
+    const runAt = new Date(Date.now() + 60 * 60 * 1000);
+    return {
+      id: overrides.id ?? "f-1",
+      name: "copilot-followup",
+      user_id: "user-1",
+      session_id: "session-abcdef0123",
+      message: "ping",
+      cron: null,
+      run_at: runAt,
+      next_run_time: runAt.toISOString(),
+      kind: "copilot_turn" as const,
+      timezone: "UTC",
+      cap_retry_count: 0,
+    };
+  }
+
+  function makeGraphSchedule(
+    overrides: { id?: string } = {},
+  ): GraphExecutionJobInfo {
+    return {
+      id: overrides.id ?? "g-1",
+      name: "daily",
+      user_id: "user-1",
+      graph_id: "graph-abc",
+      graph_version: 1,
+      agent_name: "Daily agent",
+      cron: "0 9 * * *",
+      input_data: {},
+      next_run_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      kind: "graph" as const,
+      timezone: "UTC",
+    };
+  }
+
+  it("renders nothing when there are zero skills AND zero scheduled items", async () => {
+    setupBriefingMocks();
+    server.use(
+      getListCopilotSkillsMockHandler([]),
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+
+    // The pill suppresses entirely when both counts are zero — surfacing
+    // "0 skills · 0 scheduled" would be noise, not a discovery affordance.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
+    expect(screen.queryByText("Autopilot library")).toBeNull();
+  });
+
+  it("shows only the skills link when scheduled count is zero", async () => {
+    setupBriefingMocks();
+    server.use(
+      getListCopilotSkillsMockHandler([
+        makeSkill({ name: "alpha" }),
+        makeSkill({ name: "beta" }),
+      ]),
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+
+    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    expect(screen.getByTestId("copilot-library-skills-link").textContent).toBe(
+      "2 skills",
+    );
+    expect(screen.queryByTestId("copilot-library-followups-link")).toBeNull();
+  });
+
+  it("shows only the scheduled link when skills count is zero (sums followups + graph schedules)", async () => {
+    setupBriefingMocks();
+    server.use(
+      getListCopilotSkillsMockHandler([]),
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1" }),
+        makeFollowup({ id: "f2" }),
+      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g1" }),
+      ]),
+    );
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+
+    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    // 2 followups + 1 graph schedule = 3 total scheduled.
+    expect(
+      screen.getByTestId("copilot-library-followups-link").textContent,
+    ).toBe("3 scheduled");
+    expect(screen.queryByTestId("copilot-library-skills-link")).toBeNull();
+  });
+
+  it("shows both links with a separator when both counts are positive", async () => {
+    setupBriefingMocks();
+    server.use(
+      getListCopilotSkillsMockHandler([makeSkill({ name: "only-one" })]),
+      getListCopilotFollowupSchedulesMockHandler([makeFollowup({ id: "f1" })]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+
+    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    // Singular form when count is 1 — verifies the pluralization branch.
+    expect(screen.getByTestId("copilot-library-skills-link").textContent).toBe(
+      "1 skill",
+    );
+    expect(
+      screen.getByTestId("copilot-library-followups-link").textContent,
+    ).toBe("1 scheduled");
+    // Separator dot is only rendered when BOTH links are visible.
+    const pill = screen.getByTestId("copilot-library-summary");
+    expect(pill.textContent).toContain("•");
   });
 });
