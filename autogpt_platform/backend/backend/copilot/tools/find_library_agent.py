@@ -52,12 +52,8 @@ class FindLibraryAgentTool(BaseTool):
                     "description": "Required when for_creation.",
                 },
             },
-            # ``goal_summary`` is deliberately NOT listed as a required
-            # property even though it is required in for_creation mode:
-            # ``search_library_for_creation`` returns a ``NoResultsResponse``
-            # with a recovery message instead of a hard validation error
-            # when it's missing, so the LLM can retry without a tool-call
-            # error surfacing in chat.
+            # goal_summary is enforced inside the for_creation branch via
+            # a NoResultsResponse soft-fail, not as a JSON-schema required.
             "required": [],
         }
 
@@ -76,12 +72,8 @@ class FindLibraryAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         if for_creation:
-            # No ``or query`` fallback: the create_agent gate's validator
-            # (_has_for_creation_args in helpers.py) only accepts a non-empty
-            # ``goal_summary``. Letting ``query`` satisfy the search but not
-            # the gate would force the LLM into a retry loop. Empty
-            # goal_summary still soft-fails to NoResultsResponse with a
-            # retry hint, so this is a no-op for well-formed callers.
+            # No ``or query`` fallback: the gate only accepts non-empty
+            # goal_summary, so falling back to ``query`` would loop the LLM.
             return await search_library_for_creation(
                 goal_summary=goal_summary,
                 session_id=session.session_id,

@@ -988,32 +988,13 @@ def require_guide_read(session: ChatSession, tool_name: str):
     )
 
 
-# ---------------------------------------------------------------------------
-# Library-similarity gate
-# ---------------------------------------------------------------------------
-#
-# Before ``create_agent`` runs, the parent agent must have searched the
-# user's library for a functionally similar agent (hybrid semantic +
-# lexical match via ``find_library_agent(for_creation=true)``). The goal is
-# to avoid producing near-duplicate agents when the user already has one
-# that does the job. ``require_library_check`` mirrors
-# ``require_guide_read``: it returns an ``ErrorResponse`` to short-circuit
-# with, or ``None`` when the check has been performed (or is unnecessary).
-
-
 _LIBRARY_CHECK_TOOL_NAME = "find_library_agent"
 
 
 def _has_for_creation_args(args: dict) -> bool:
-    """True iff *args* carries the inputs the hybrid similarity check needs.
-
-    Requires both ``for_creation=True`` AND a non-empty ``goal_summary``
-    string. An empty ``goal_summary`` would route the tool through its
-    soft-fail path (``NoResultsResponse`` with a "please retry" hint)
-    without actually running the search, so accepting it as a satisfied
-    gate would let the LLM bypass the check entirely — caught by
-    Sentry's MEDIUM bug prediction on agent_search.py:384.
-    """
+    """``for_creation=True`` + non-empty ``goal_summary``: the inputs the
+    hybrid search actually needs. Empty goal_summary soft-fails without
+    running the search, so it must not satisfy the gate."""
     if args.get("for_creation") is not True:
         return False
     goal_summary = args.get("goal_summary")
@@ -1021,37 +1002,17 @@ def _has_for_creation_args(args: dict) -> bool:
 
 
 def _was_called_for_creation(session: ChatSession) -> bool:
-    """True iff ``find_library_agent`` was called with ``for_creation=true``
-    AND a non-empty ``goal_summary`` — the inputs the hybrid similarity
-    check actually needs to run.
-
-    Mirrors ``_read_skill_called_for``'s two-source pattern:
-    1. In-flight first via :meth:`ChatSession.get_inflight_tool_call_args`
-       so a parallel-dispatch ``find_library_agent`` + ``create_agent``
-       turn doesn't false-reject (caught by Sentry's MEDIUM bug
-       prediction on helpers.py:1049).
-    2. Durable scan of past turns + already-flushed current-turn rows,
-       handling both the OpenAI ``function.arguments`` JSON-string shape
-       and the flat fallback some persisted rows use.
-
-    Default-mode (substring-search) calls and empty-``goal_summary``
-    soft-fail calls do **not** satisfy the gate — both bypass the
-    hybrid path that catches paraphrased duplicates.
-    """
-    # In-flight first — dispatcher passes argument dicts directly, no
-    # JSON parsing needed. Catches calls issued earlier in the current
-    # turn whose tool-call row hasn't been flushed to ``messages`` yet.
+    """True iff a satisfying ``find_library_agent`` call exists in either
+    the current turn's in-flight buffer or the durable message history."""
     for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
         if _has_for_creation_args(args):
             return True
 
-    # Durable scan: past turns + already-flushed current turn.
     for msg in reversed(session.messages):
         if msg.role != "assistant" or not msg.tool_calls:
             continue
         for tc in msg.tool_calls:
-            # Defensive: persisted rows may carry ``function`` as None or
-            # a non-dict (matches ``_read_skill_called_for``'s shape).
+            # Persisted rows may carry ``function`` as None / non-dict.
             fn_raw = tc.get("function") if isinstance(tc, dict) else None
             fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
             name = fn.get("name") or (tc.get("name") if isinstance(tc, dict) else None)
@@ -1075,19 +1036,9 @@ def _was_called_for_creation(session: ChatSession) -> bool:
 
 
 def require_library_check(session: ChatSession, tool_name: str):
-    """Return an ErrorResponse if the create-time similarity check
-    hasn't been performed.
-
-    The gate requires ``find_library_agent`` to have been called with
-    ``for_creation=true`` (the hybrid semantic + lexical match path).
-    Default-mode (substring-search) calls do not satisfy the gate —
-    Sentry's HIGH-severity bug-prediction caught that just checking the
-    tool name would let the LLM bypass the hybrid check by running a
-    cheap substring search instead.
-
-    Bypassed in builder-bound sessions because those already operate on
-    a specific agent — there is no "should we create one?" decision.
-    """
+    """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
+    hasn't been called in this session. Bypassed in builder-bound sessions
+    (already editing a specific agent)."""
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:

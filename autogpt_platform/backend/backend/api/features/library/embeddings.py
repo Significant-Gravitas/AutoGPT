@@ -14,7 +14,10 @@ import logging
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.embeddings import ensure_content_embedding
+from backend.api.features.store.embeddings import (
+    ensure_content_embedding,
+    get_content_embedding,
+)
 from backend.data import graph as graph_db
 
 logger = logging.getLogger(__name__)
@@ -51,6 +54,18 @@ async def _run_embedding(
                 library_agent_id,
             )
             return
+        # Skip the OpenAI call when the existing embedding's text is byte-
+        # identical — e.g. settings-only updates where the version bumped
+        # but name/description/instructions did not change.
+        existing = await get_content_embedding(
+            ContentType.LIBRARY_AGENT, library_agent_id, user_id
+        )
+        if existing and existing.get("searchableText") == searchable_text:
+            logger.debug(
+                "Library agent %s embedding text unchanged; skipping refresh",
+                library_agent_id,
+            )
+            return
         await ensure_content_embedding(
             content_type=ContentType.LIBRARY_AGENT,
             content_id=library_agent_id,
@@ -70,15 +85,8 @@ async def _run_embedding(
 def schedule_library_agent_embedding(
     library_agent_id: str, user_id: str, graph: graph_db.GraphModel
 ) -> asyncio.Task[None]:
-    """Schedule a background task that (re-)generates the embedding.
-
-    Always passes ``force=True`` so updates (name/description/instructions
-    changes via ``update_library_agent_version_and_settings``) refresh the
-    embedding. The returned task is not awaited by callers; failures are
-    logged inside ``_run_embedding``. The task is held by
-    ``_background_tasks`` until it completes to keep it from being
-    garbage-collected mid-run.
-    """
+    """Schedule a background (re-)embed. No-ops cheaply when the existing
+    embedding's searchableText is unchanged. Failures are logged, not raised."""
     task = asyncio.create_task(_run_embedding(library_agent_id, user_id, graph))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

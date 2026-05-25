@@ -253,15 +253,9 @@ async def unified_hybrid_search(
     param_idx += 1
 
     # User ID filter (for private content).
-    #
-    # Defense-in-depth against LIBRARY_AGENT NULL-userId leaks: LIBRARY_AGENT
-    # rows are always per-user (LibraryAgentHandler joins on ``userId``, the
-    # unique key is ``(contentType, contentId, userId)``). The ``OR userId
-    # IS NULL`` fallback below is necessary for legitimately public types
-    # (STORE_AGENT, BLOCK, DOCUMENTATION) but would leak a LIBRARY_AGENT row
-    # across users if one ever ended up with NULL userId via a migration or
-    # write-path bug. Exclude that combination here. Caught by Sentry's HIGH
-    # severity bug-prediction on hybrid_search.py:259.
+    # Defense-in-depth: a LIBRARY_AGENT row with NULL userId would be matched
+    # by the public ``OR userId IS NULL`` branch and leak across users.
+    # LIBRARY_AGENT rows are always per-user; explicitly exclude that combo.
     user_filter = ""
     if user_id is not None:
         params.append(user_id)
