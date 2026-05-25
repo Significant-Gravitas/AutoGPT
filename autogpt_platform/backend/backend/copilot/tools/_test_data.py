@@ -47,14 +47,14 @@ def make_session(user_id: str, *, guide_read: bool = True, library_check: bool =
 
     ``guide_read=True`` (default) pre-populates the session with a
     ``get_agent_building_guide`` tool-call history entry so the agent-
-    generation gate (see ``helpers.require_guide_read``) lets through any
-    subsequent ``create_agent`` / ``edit_agent`` / ``validate_agent_graph``
-    / ``fix_agent_graph`` call.
+    generation gate lets through any subsequent ``create_agent`` /
+    ``edit_agent`` / ``validate_agent_graph`` / ``fix_agent_graph`` call.
 
-    ``library_check=True`` (default) pre-populates the session with a
-    ``find_library_agent`` tool-call history entry so the create-time
-    library-similarity gate (see ``helpers.require_library_check``) lets
-    through ``create_agent``. Set to ``False`` to exercise the gate.
+    ``library_check=True`` (default) announces an in-flight
+    ``find_library_agent(for_creation=true)`` call so the create-time
+    library-similarity gate lets through ``create_agent``. The gate is
+    turn-scoped (in-flight only), so seeding via the in-flight buffer —
+    not the durable messages list — is the correct shape.
     """
     messages: list[ChatMessage] = []
     if guide_read:
@@ -65,26 +65,7 @@ def make_session(user_id: str, *, guide_read: bool = True, library_check: bool =
                 tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
             )
         )
-    if library_check:
-        # Inject the args that ``require_library_check`` looks for —
-        # the gate (per Sentry's HIGH bug prediction) requires
-        # ``for_creation=true``, not just the tool name. Use a JSON
-        # string for ``arguments`` to match the OpenAI tool-call shape.
-        messages.append(
-            ChatMessage(
-                role="assistant",
-                content="",
-                tool_calls=[
-                    {
-                        "function": {
-                            "name": "find_library_agent",
-                            "arguments": '{"for_creation": true, "goal_summary": "test"}',
-                        }
-                    }
-                ],
-            )
-        )
-    return ChatSession(
+    session = ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
         messages=messages,
@@ -94,6 +75,12 @@ def make_session(user_id: str, *, guide_read: bool = True, library_check: bool =
         successful_agent_runs={},
         successful_agent_schedules={},
     )
+    if library_check:
+        session.announce_inflight_tool_call(
+            "find_library_agent",
+            arguments={"for_creation": True, "goal_summary": "test"},
+        )
+    return session
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

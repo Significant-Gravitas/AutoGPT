@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
 from backend.api.features.library.search import hybrid_search_library_agents
+from backend.copilot.tracking import track_library_check_outcome
 from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
@@ -388,7 +389,12 @@ async def search_library_for_creation(
             query=goal_summary, user_id=user_id
         )
     except DatabaseError as e:
+        # logger.error → captured by Sentry's LoggingIntegration so a
+        # flaky DB doesn't silently disable the gate.
         logger.error(f"Error during hybrid library search: {e}", exc_info=True)
+        track_library_check_outcome(
+            user_id=user_id, session_id=session_id, outcome="soft_failed"
+        )
         return NoResultsResponse(
             message=(
                 "Could not run the library similarity check (database "
@@ -399,9 +405,12 @@ async def search_library_for_creation(
             session_id=session_id,
         )
     except Exception as e:
-        # Anything else (e.g. embedding-service down, pgvector edge case)
-        # — degrade gracefully rather than surface an error in chat.
-        logger.warning(f"Hybrid library search failed unexpectedly: {e}", exc_info=True)
+        # Embedding service down / pgvector edge case — degrade gracefully
+        # but log at ERROR so Sentry captures the silent feature-disable.
+        logger.error(f"Hybrid library search failed unexpectedly: {e}", exc_info=True)
+        track_library_check_outcome(
+            user_id=user_id, session_id=session_id, outcome="soft_failed"
+        )
         return NoResultsResponse(
             message=(
                 "Could not run the library similarity check. Proceeding "
@@ -413,6 +422,9 @@ async def search_library_for_creation(
         )
 
     if not matches:
+        track_library_check_outcome(
+            user_id=user_id, session_id=session_id, outcome="no_matches"
+        )
         return NoResultsResponse(
             message=(
                 "No functionally similar agents found in the user's library. "
@@ -429,6 +441,9 @@ async def search_library_for_creation(
     agents = await _load_and_format_matched_agents(matches, user_id)
 
     if not agents:
+        track_library_check_outcome(
+            user_id=user_id, session_id=session_id, outcome="no_matches"
+        )
         return NoResultsResponse(
             message=(
                 "No functionally similar agents found in the user's library. "
@@ -442,15 +457,23 @@ async def search_library_for_creation(
             session_id=session_id,
         )
 
+    top_score = max((a.match_score or 0.0) for a in agents)
+    track_library_check_outcome(
+        user_id=user_id,
+        session_id=session_id,
+        outcome="matches_shown",
+        matches_count=len(agents),
+        top_score=top_score,
+    )
     return AgentsFoundResponse(
         message=(
             "Found agents in the user's library that may already match the "
-            "user's goal. Present them, including the [% match] prefix, and "
-            "ask whether the user wants to reuse one of these instead of "
-            "creating a new agent. Use run_agent to execute a chosen "
-            "existing agent. ONLY call `create_agent` with "
-            "`library_check_ack=true` if the user explicitly chooses to "
-            "build a new one anyway."
+            "user's goal. Present them with their `match_score` (a float in "
+            "[0, 1]; format as `[N% match]` for the user) and ask whether "
+            "they want to reuse one of these instead of creating a new "
+            "agent. Use run_agent to execute a chosen existing agent. ONLY "
+            "call `create_agent` with `library_check_ack=true` if the user "
+            "explicitly chooses to build a new one anyway."
         ),
         title=(
             f"Found {len(agents)} potentially similar agent"
@@ -465,15 +488,10 @@ async def search_library_for_creation(
 async def _load_and_format_matched_agents(
     matches: list[dict[str, Any]], user_id: str
 ) -> list[AgentInfo]:
-    """Resolve hybrid-search matches to ``AgentInfo`` rows with ``[N% match]``
-    prefixed descriptions.
-
-    Skips matches that can no longer be loaded (deleted agents, wrong user)
-    and lets ``DatabaseError`` propagate to the caller's soft-fail handler.
-    Uses ``combined_score`` (pre-BM25, always in [0, 1]) for the display
-    percentage; ``relevance`` is post-BM25 and can go negative on
-    near-duplicate corpora.
-    """
+    """Resolve hybrid-search matches to ``AgentInfo`` rows with ``match_score``
+    set from the search's ``combined_score`` (pre-BM25, always in [0, 1];
+    ``relevance`` is post-BM25 and can go negative on near-duplicate corpora).
+    Skips matches that can no longer be loaded; propagates ``DatabaseError``."""
     lib_db = library_db()
     agents: list[AgentInfo] = []
     for match in matches:
@@ -494,12 +512,7 @@ async def _load_and_format_matched_agents(
             continue
 
         info = _library_agent_to_info(library_agent)
-        score = match.get("combined_score") or 0.0
-        percent = max(0, min(100, int(round(score * 100))))
-        prefix = f"[{percent}% match] "
-        info.description = (
-            prefix + info.description if info.description else prefix.strip()
-        )
+        info.match_score = match.get("combined_score") or 0.0
         agents.append(info)
     return agents
 

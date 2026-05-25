@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.library.search import (
-    LIBRARY_SIMILARITY_THRESHOLD,
     _extract_lexical_keywords,
     hybrid_search_library_agents,
 )
@@ -37,7 +36,9 @@ async def test_returns_empty_list_for_empty_query():
 
 @pytest.mark.asyncio
 async def test_delegates_to_unified_hybrid_search_with_user_scope():
-    """Delegates the heavy lifting and forwards user_id + threshold."""
+    """Delegates to unified_hybrid_search with user_id + an unfiltered
+    min_score=0 query (the wrapper does its own threshold filtering so
+    sub-threshold scores can be logged for retuning)."""
     rows = [{"content_id": "lib-1", "combined_score": 0.82}]
     patcher, mock_shim = _patch_search((rows, 1))
     with patcher:
@@ -50,8 +51,41 @@ async def test_delegates_to_unified_hybrid_search_with_user_scope():
     kwargs = mock_shim.unified_hybrid_search.call_args.kwargs
     assert kwargs["user_id"] == "user-42"
     assert kwargs["page_size"] == 3
-    assert kwargs["min_score"] == LIBRARY_SIMILARITY_THRESHOLD
+    assert kwargs["min_score"] == 0.0
     assert len(kwargs["content_types"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_filters_sub_threshold_results_after_querying():
+    """Underlying query returns all candidates; wrapper filters to
+    ``min_score`` (default LIBRARY_SIMILARITY_THRESHOLD) so the caller
+    only sees the strong matches."""
+    rows = [
+        {"content_id": "strong", "combined_score": 0.80},
+        {"content_id": "weak", "combined_score": 0.30},
+    ]
+    patcher, _ = _patch_search((rows, 2))
+    with patcher:
+        result = await hybrid_search_library_agents(
+            query="summarise my email", user_id="user-42"
+        )
+
+    assert [r["content_id"] for r in result] == ["strong"]
+
+
+@pytest.mark.asyncio
+async def test_respects_explicit_min_score_override():
+    """Caller-supplied ``min_score`` overrides the default threshold."""
+    rows = [
+        {"content_id": "a", "combined_score": 0.40},
+        {"content_id": "b", "combined_score": 0.20},
+    ]
+    patcher, _ = _patch_search((rows, 2))
+    with patcher:
+        result = await hybrid_search_library_agents(
+            query="x", user_id="u", min_score=0.35
+        )
+    assert [r["content_id"] for r in result] == ["a"]
 
 
 @pytest.mark.asyncio
@@ -108,12 +142,6 @@ def test_extract_lexical_keywords_empty_when_only_stopwords():
     assert _extract_lexical_keywords("a the of to and") == ""
 
 
-@pytest.mark.asyncio
-async def test_threshold_can_be_overridden_per_call():
-    rows: list[dict] = []
-    patcher, mock_shim = _patch_search((rows, 0))
-    with patcher:
-        await hybrid_search_library_agents(
-            query="x", user_id="u", limit=5, min_score=0.9
-        )
-    assert mock_shim.unified_hybrid_search.call_args.kwargs["min_score"] == 0.9
+# Note: caller-supplied ``min_score`` is now enforced inside the wrapper
+# (so sub-threshold scores can be logged); see
+# ``test_respects_explicit_min_score_override`` above.

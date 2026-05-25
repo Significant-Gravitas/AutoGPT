@@ -1002,36 +1002,13 @@ def _has_for_creation_args(args: dict) -> bool:
 
 
 def _was_called_for_creation(session: ChatSession) -> bool:
-    """True iff a satisfying ``find_library_agent`` call exists in either
-    the current turn's in-flight buffer or the durable message history."""
+    """True iff a satisfying ``find_library_agent`` call exists in the
+    current turn's in-flight buffer. Turn-scoped on purpose: a stale
+    call from an earlier turn's unrelated goal must not satisfy the
+    gate for a new create_agent request."""
     for args in session.get_inflight_tool_call_args(_LIBRARY_CHECK_TOOL_NAME):
         if _has_for_creation_args(args):
             return True
-
-    for msg in reversed(session.messages):
-        if msg.role != "assistant" or not msg.tool_calls:
-            continue
-        for tc in msg.tool_calls:
-            # Persisted rows may carry ``function`` as None / non-dict.
-            fn_raw = tc.get("function") if isinstance(tc, dict) else None
-            fn: dict = fn_raw if isinstance(fn_raw, dict) else {}
-            name = fn.get("name") or (tc.get("name") if isinstance(tc, dict) else None)
-            if name != _LIBRARY_CHECK_TOOL_NAME:
-                continue
-            raw_args = fn.get("arguments") if fn else None
-            if raw_args is None and isinstance(tc, dict):
-                raw_args = tc.get("arguments")
-            if isinstance(raw_args, str):
-                try:
-                    parsed = json.loads(raw_args) if raw_args else {}
-                except json.JSONDecodeError:
-                    continue
-            elif isinstance(raw_args, dict):
-                parsed = raw_args
-            else:
-                continue
-            if _has_for_creation_args(parsed):
-                return True
     return False
 
 

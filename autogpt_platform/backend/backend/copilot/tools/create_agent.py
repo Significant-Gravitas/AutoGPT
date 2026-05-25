@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
@@ -97,6 +98,12 @@ class CreateAgentTool(BaseTool):
             library_gate = require_library_check(session, "create_agent")
             if library_gate is not None:
                 return library_gate
+        elif user_id and not (session and session.metadata.builder_graph_id):
+            # Track the LLM-driven gate bypass so we can measure how often
+            # users were shown matches but chose to build new anyway.
+            track_library_check_outcome(
+                user_id=user_id, session_id=session_id, outcome="bypassed_ack"
+            )
 
         if not agent_json:
             return ErrorResponse(

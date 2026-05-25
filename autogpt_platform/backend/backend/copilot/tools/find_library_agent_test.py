@@ -46,7 +46,7 @@ def _mock_library_agent(library_id: str, name: str, description: str = ""):
 @pytest.mark.asyncio
 async def test_for_creation_returns_hybrid_ranked_results(tool, session):
     """for_creation=true delegates to hybrid_search_library_agents and
-    surfaces matches with a [N% match] prefix the LLM can present."""
+    sets match_score on each returned AgentInfo (no description mutation)."""
     match_a = {"content_id": "lib-a", "combined_score": 0.91, "relevance": 0.91}
     match_b = {"content_id": "lib-b", "combined_score": 0.72, "relevance": 0.72}
 
@@ -77,11 +77,14 @@ async def test_for_creation_returns_hybrid_ranked_results(tool, session):
 
     assert isinstance(result, AgentsFoundResponse)
     assert result.count == 2
-    # First result keeps highest similarity prefix.
-    assert result.agents[0].description.startswith("[91% match]")
-    assert result.agents[1].description.startswith("[72% match]")
-    # Message should steer the LLM toward asking the user before creation.
+    assert result.agents[0].match_score == 0.91
+    assert result.agents[1].match_score == 0.72
+    # Description must NOT be mutated with a "[N% match]" prefix anymore.
+    assert "match]" not in result.agents[0].description
+    assert "match]" not in result.agents[1].description
+    # Message should steer the LLM and reference the new field name.
     assert "library_check_ack" in result.message
+    assert "match_score" in result.message
 
 
 @pytest.mark.asyncio

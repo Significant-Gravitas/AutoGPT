@@ -174,14 +174,22 @@ async def hybrid_search_library_agents(
     # plainto_tsquery's AND-of-terms doesn't zero out every match.
     lexical_query = _extract_lexical_keywords(query) or query
 
-    results, _total = await search().unified_hybrid_search(
+    # Query at min_score=0 so we can log sub-threshold near-misses for
+    # retuning, then filter to ``min_score`` before returning.
+    raw_results, _total = await search().unified_hybrid_search(
         query=query,
         content_types=[ContentType.LIBRARY_AGENT],
         page=1,
         page_size=max(1, limit),
-        min_score=min_score,
+        min_score=0.0,
         user_id=user_id,
         weights=_LIBRARY_SEARCH_WEIGHTS,
         lexical_query=lexical_query,
     )
-    return results
+    if raw_results:
+        logger.info(
+            "Library similarity scan (threshold=%.2f): top scores=%s",
+            min_score,
+            [round(r.get("combined_score") or 0.0, 3) for r in raw_results[:5]],
+        )
+    return [r for r in raw_results if (r.get("combined_score") or 0.0) >= min_score]
