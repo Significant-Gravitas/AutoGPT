@@ -181,27 +181,49 @@ export function openOAuthPopup(
       );
     }
 
-    // Detect popup closed by user (without completing sign-in).
+    // Detect popup closed without completing sign-in.
     //
-    // Race-condition guard: the callback page writes to BroadcastChannel
-    // + localStorage and *then* calls window.close().  Across origins,
-    // BroadcastChannel / storage events can land a few hundred ms after
-    // the close — if we reject the moment `popup.closed` flips true, a
-    // successful sign-in gets reported as "Sign-in window was closed".
-    // Give in-flight handlers a short grace window (and one localStorage
-    // poll tick) to deliver before declaring failure.
+    // Three timeouts apply to the OAuth flow, only the outermost bounds
+    // user time:
+    //   1. ``timeout`` (default 5 min) — overall deadline; rejects with
+    //      OAUTH_ERROR_FLOW_TIMED_OUT if the user never finishes signing
+    //      in.  This is the only timeout that limits how long the user
+    //      has to log in.
+    //   2. 500 ms polling on ``popup.closed`` — only fires after the
+    //      popup window actually goes away (user closed it OR callback
+    //      page self-closed).  Doesn't run while the popup is open.
+    //   3. POPUP_CLOSE_GRACE_MS (1500 ms) — only starts after step 2
+    //      observes a closed popup; gives in-flight result messages a
+    //      chance to land before we declare failure.
+    //
+    // Why the grace at all?  The callback page does:
+    //   bc.postMessage(...); localStorage.setItem(...); setTimeout(close, 1500)
+    // BroadcastChannel delivery is async across-origin; the parent's
+    // localStorage poll fires every 500 ms.  Without a grace window the
+    // ``popup.closed`` rejection can win the race against a successful
+    // result that's a few hundred ms behind, surfacing the bogus
+    // "Sign-in window was closed" error John screenshotted.  1500 ms is
+    // one full localStorage-poll tick + headroom; could probably be
+    // ~800 ms but flakiness > 0.7 s extra spinner.
+    //
+    // The setTimeout lives in a plain JS closure, not React state — it
+    // does NOT stack across re-renders, and the AbortController cleanup
+    // tears it down if the caller aborts before grace expires.
     if (popup) {
       const POPUP_CLOSE_GRACE_MS = 1500;
       const closedPollInterval = setInterval(() => {
         if (popup.closed && !handled) {
           clearInterval(closedPollInterval);
-          setTimeout(() => {
+          const graceTimeout = setTimeout(() => {
             if (!handled) {
               handled = true;
               reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
               controller.abort("popup_closed");
             }
           }, POPUP_CLOSE_GRACE_MS);
+          controller.signal.addEventListener("abort", () =>
+            clearTimeout(graceTimeout),
+          );
         }
       }, 500);
       controller.signal.addEventListener("abort", () =>
