@@ -37,9 +37,7 @@ export function SearchCommandResultItem({
       onClick={onSelect}
       className={cn(
         "relative h-auto w-full justify-start rounded-md px-3 py-2 text-left transition-colors duration-150",
-        isHighlighted
-          ? "bg-zinc-100 hover:bg-zinc-100"
-          : "hover:bg-zinc-50",
+        isHighlighted ? "bg-zinc-100 hover:bg-zinc-100" : "hover:bg-zinc-50",
       )}
     >
       <span
