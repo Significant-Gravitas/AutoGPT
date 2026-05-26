@@ -33,7 +33,7 @@ import {
   UserCircle,
   UserPlus,
   Warning,
-  X,
+  XIcon,
   XLogo,
   YoutubeLogo,
 } from "@phosphor-icons/react";
@@ -120,7 +120,7 @@ const iconCategories = [
       { component: Warning, name: "Warning", phosphorName: "Warning" },
       { component: Info, name: "Info", phosphorName: "Info" },
       { component: Check, name: "Success", phosphorName: "Check" },
-      { component: X, name: "Close", phosphorName: "X" },
+      { component: XIcon, name: "Close", phosphorName: "XIcon" },
       { component: Bell, name: "Notification", phosphorName: "Bell" },
     ],
   },

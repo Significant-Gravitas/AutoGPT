@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Bell, MagnifyingGlass, XIcon } from "@phosphor-icons/react";
 import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -96,7 +96,7 @@ export function ActivityDropdown({
                   className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
-                  <X size={16} className="text-gray-500" />
+                  <XIcon size={16} className="text-gray-500" />
                 </button>
               </div>
             </div>

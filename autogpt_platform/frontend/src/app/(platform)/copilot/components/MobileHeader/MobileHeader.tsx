@@ -1,3 +1,4 @@
+import { AgentActivityDropdown } from "@/components/layout/Navbar/components/AgentActivityDropdown/AgentActivityDropdown";
 import { Button } from "@/components/atoms/Button/Button";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { ListIcon } from "@phosphor-icons/react";
@@ -21,6 +22,7 @@ export function MobileHeader({ onOpenDrawer }: Props) {
       >
         <ListIcon width="1.25rem" height="1.25rem" />
       </Button>
+      <AgentActivityDropdown />
     </div>
   );
 }

@@ -94,8 +94,7 @@ export function useCopilotPage() {
     });
 
   const breakpoint = useBreakpoint();
-  const isMobile =
-    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
+  const isMobile = breakpoint === "base" || breakpoint === "sm";
 
   const transport = useMemo(
     () =>

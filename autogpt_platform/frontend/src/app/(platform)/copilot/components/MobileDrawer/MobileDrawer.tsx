@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { PlusIcon, SpinnerGapIcon, X } from "@phosphor-icons/react";
+import { PlusIcon, SpinnerGapIcon, XIcon } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
 
 interface Props {
@@ -68,7 +68,7 @@ export function MobileDrawer({
                 aria-label="Close sessions"
                 onClick={onClose}
               >
-                <X width="1rem" height="1rem" />
+                <XIcon width="1rem" height="1rem" />
               </Button>
             </div>
           </div>
