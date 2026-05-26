@@ -62,6 +62,14 @@ class PlatformLinkingManager(AppService):
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
 
+    @expose
+    async def refresh_server_link_name(
+        self, platform: Platform, platform_server_id: str, server_name: str
+    ) -> None:
+        await platform_linking_db().refresh_server_link_name(
+            platform.value, platform_server_id, server_name
+        )
+
 
 class PlatformLinkingManagerClient(AppServiceClient):
     @classmethod
@@ -80,3 +88,6 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.get_link_token_status
     )
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
+    refresh_server_link_name = endpoint_to_async(
+        PlatformLinkingManager.refresh_server_link_name
+    )

@@ -95,6 +95,25 @@ class BotBackend:
         )
         return ResolveResult(linked=resp.linked)
 
+    async def refresh_server_name(
+        self, platform: str, platform_server_id: str, server_name: str
+    ) -> None:
+        """Push the bot's authoritative display name for a server into the DB.
+
+        Called by adapters whenever they learn or re-learn a server's name —
+        e.g. Discord's on_ready and on_guild_join. The Bots settings page
+        renders whatever is in the DB, so this keeps stale or missing names
+        in sync with what the bot is actually connected to. Best-effort:
+        failures are logged on the manager side, never raised.
+        """
+        if not server_name:
+            return
+        await self._client.refresh_server_link_name(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            server_name=server_name,
+        )
+
     async def create_link_token(
         self,
         platform: str,
