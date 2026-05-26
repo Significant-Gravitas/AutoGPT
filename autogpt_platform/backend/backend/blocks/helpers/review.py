@@ -67,6 +67,7 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        is_graph_execution: bool = True,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -143,10 +144,11 @@ class HITLReviewHelper:
             logger.info(
                 f"Block {block_name} pausing execution for node {node_exec_id} - awaiting human review"
             )
-            await HITLReviewHelper.update_node_execution_status(
-                exec_id=node_exec_id,
-                status=ExecutionStatus.REVIEW,
-            )
+            if is_graph_execution:
+                await HITLReviewHelper.update_node_execution_status(
+                    exec_id=node_exec_id,
+                    status=ExecutionStatus.REVIEW,
+                )
             return None  # Signal that execution should pause
 
         # Mark review as processed if not already done
@@ -168,6 +170,7 @@ class HITLReviewHelper:
         graph_version: int,
         block_name: str = "Block",
         editable: bool = False,
+        is_graph_execution: bool = True,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -197,6 +200,7 @@ class HITLReviewHelper:
             graph_version=graph_version,
             block_name=block_name,
             editable=editable,
+            is_graph_execution=is_graph_execution,
         )
 
         if review_result is None:

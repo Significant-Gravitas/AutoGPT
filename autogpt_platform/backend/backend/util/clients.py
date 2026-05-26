@@ -7,12 +7,15 @@ from typing import TYPE_CHECKING
 from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
 settings = Settings()
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
     from supabase import AClient, Client
 
+    from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
         DatabaseManagerClient,
@@ -25,6 +28,7 @@ if TYPE_CHECKING:
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
+    from backend.platform_linking.manager import PlatformLinkingManagerClient
 
 
 @thread_cached
@@ -63,6 +67,24 @@ def get_notification_manager_client() -> "NotificationManagerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(NotificationManagerClient)
+
+
+@thread_cached
+def get_platform_linking_manager_client() -> "PlatformLinkingManagerClient":
+    """Get a thread-cached PlatformLinkingManagerClient."""
+    from backend.platform_linking.manager import PlatformLinkingManagerClient
+    from backend.util.service import get_service_client
+
+    return get_service_client(PlatformLinkingManagerClient)
+
+
+@thread_cached
+def get_copilot_chat_bridge_client() -> "CoPilotChatBridgeClient":
+    """Get a thread-cached CoPilotChatBridgeClient."""
+    from backend.copilot.bot.app import CoPilotChatBridgeClient
+    from backend.util.service import get_service_client
+
+    return get_service_client(CoPilotChatBridgeClient)
 
 
 # ============ Execution Event Bus Helpers ============ #
@@ -161,18 +183,32 @@ async def get_async_supabase() -> "AClient":
 
 
 @cached(ttl_seconds=3600)
-def get_openai_client() -> "AsyncOpenAI | None":
+def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None":
     """
-    Get a process-cached async OpenAI client for embeddings.
+    Get a process-cached async OpenAI client.
 
-    Returns None if API key is not configured.
+    By default prefers openai_internal_api_key (direct OpenAI) and falls back
+    to open_router_api_key via OpenRouter.
+
+    When ``prefer_openrouter=True``, returns an OpenRouter client or None —
+    does **not** fall back to direct OpenAI (which can't route non-OpenAI
+    models like ``google/gemini-2.5-flash``).
     """
     from openai import AsyncOpenAI
 
-    api_key = settings.secrets.openai_internal_api_key
-    if not api_key:
+    openai_key = settings.secrets.openai_internal_api_key
+    openrouter_key = settings.secrets.open_router_api_key
+
+    if prefer_openrouter:
+        if openrouter_key:
+            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
         return None
-    return AsyncOpenAI(api_key=api_key)
+    else:
+        if openai_key:
+            return AsyncOpenAI(api_key=openai_key)
+        if openrouter_key:
+            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+    return None
 
 
 # ============ Notification Queue Helpers ============ #

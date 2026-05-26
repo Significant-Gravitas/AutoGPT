@@ -16,8 +16,7 @@ jobs:
     # Only run for PRs from members/collaborators
     if: |
       github.event.pull_request.author_association == 'OWNER' ||
-      github.event.pull_request.author_association == 'MEMBER' ||
-      github.event.pull_request.author_association == 'COLLABORATOR'
+      github.event.pull_request.author_association == 'MEMBER'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

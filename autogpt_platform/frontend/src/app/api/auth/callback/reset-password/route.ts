@@ -9,6 +9,25 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 
   if (!code) {
+    // Supabase may redirect here with error params instead of a code
+    // (e.g. when the OTP token is expired or already used)
+    const error = searchParams.get("error");
+    const errorCode = searchParams.get("error_code");
+    const errorDescription = searchParams.get("error_description");
+
+    if (error || errorCode || errorDescription) {
+      // Forward raw Supabase error params to the reset-password page,
+      // which already handles classification (expired vs other errors)
+      const params = new URLSearchParams();
+      if (error) params.set("error", error);
+      if (errorCode) params.set("error_code", errorCode);
+      if (errorDescription) params.set("error_description", errorDescription);
+
+      return NextResponse.redirect(
+        `${origin}/reset-password?${params.toString()}`,
+      );
+    }
+
     return NextResponse.redirect(
       `${origin}/reset-password?error=${encodeURIComponent("Missing verification code")}`,
     );

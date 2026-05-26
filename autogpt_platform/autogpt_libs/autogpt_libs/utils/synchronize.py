@@ -1,12 +1,15 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 from expiringdict import ExpiringDict
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis as AsyncRedis
+    from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
     from redis.asyncio.lock import Lock as AsyncRedisLock
+
+    AsyncRedisLike = Union[AsyncRedis, AsyncRedisCluster]
 
 
 class AsyncRedisKeyedMutex:
@@ -17,7 +20,7 @@ class AsyncRedisKeyedMutex:
     in case the key is not unlocked for a specified duration, to prevent memory leaks.
     """
 
-    def __init__(self, redis: "AsyncRedis", timeout: int | None = 60):
+    def __init__(self, redis: "AsyncRedisLike", timeout: int | None = 60):
         self.redis = redis
         self.timeout = timeout
         self.locks: dict[Any, "AsyncRedisLock"] = ExpiringDict(

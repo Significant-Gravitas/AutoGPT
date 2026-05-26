@@ -15,6 +15,7 @@ from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
 from backend.api.features.store.content_handlers import CONTENT_HANDLERS
+from backend.blocks import get_blocks
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
@@ -461,6 +462,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
         ContentType.BLOCK,
         ContentType.STORE_AGENT,
         ContentType.DOCUMENTATION,
+        ContentType.LIBRARY_AGENT,
     ]
 
     for content_type in processing_order:
@@ -622,6 +624,8 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     - STORE_AGENT: Removes embeddings for rejected/deleted store listings
     - BLOCK: Removes embeddings for blocks no longer registered
     - DOCUMENTATION: Removes embeddings for deleted doc files
+    - LIBRARY_AGENT: Removes embeddings for soft-deleted/hidden library agents
+      (matches the LibraryAgentHandler.get_missing_items filter)
 
     Returns:
         Dict with cleanup statistics per content type
@@ -634,6 +638,7 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
         ContentType.STORE_AGENT,
         ContentType.BLOCK,
         ContentType.DOCUMENTATION,
+        ContentType.LIBRARY_AGENT,
     ]
 
     for content_type in cleanup_types:
@@ -662,9 +667,18 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 )
                 current_ids = {row["id"] for row in valid_agents}
             elif content_type == ContentType.BLOCK:
-                from backend.blocks import get_blocks
-
                 current_ids = set(get_blocks().keys())
+            elif content_type == ContentType.LIBRARY_AGENT:
+                # Match LibraryAgentHandler.get_missing_items: only non-deleted,
+                # non-hidden LibraryAgent rows are considered valid.
+                valid_agents = await query_raw_with_schema(
+                    """
+                    SELECT id
+                    FROM {schema_prefix}"LibraryAgent"
+                    WHERE "isDeleted" = false AND "isHidden" = false
+                    """,
+                )
+                current_ids = {row["id"] for row in valid_agents}
             elif content_type == ContentType.DOCUMENTATION:
                 # Use DocumentationHandler to get section-based content IDs
                 from backend.api.features.store.content_handlers import (

@@ -34,10 +34,7 @@ export function FormRenderer({
   }, [preprocessedSchema, uiSchema]);
 
   return (
-    <div
-      className={cn("mb-6 mt-4", className)}
-      data-tutorial-id="input-handles"
-    >
+    <div className={cn("mt-4", className)} data-tutorial-id="input-handles">
       <Form
         formContext={formContext}
         idPrefix="agpt"

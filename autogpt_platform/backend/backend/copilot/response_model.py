@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.util.json import dumps as json_dumps
+from backend.util.truncate import truncate
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,15 @@ class ResponseType(str, Enum):
     TEXT_DELTA = "text-delta"
     TEXT_END = "text-end"
 
+    # Reasoning streaming (extended_thinking content blocks).  Matches
+    # the Vercel AI SDK v5 wire names so the client's ``useChat``
+    # transport accumulates these into a ``type: 'reasoning'`` UIMessage
+    # part that the ``ReasoningCollapse`` component renders collapsed by
+    # default.
+    REASONING_START = "reasoning-start"
+    REASONING_DELTA = "reasoning-delta"
+    REASONING_END = "reasoning-end"
+
     # Tool interaction
     TOOL_INPUT_START = "tool-input-start"
     TOOL_INPUT_AVAILABLE = "tool-input-available"
@@ -42,6 +52,8 @@ class ResponseType(str, Enum):
     ERROR = "error"
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
+    STATUS = "data-status"
+    CURSOR = "data-cursor"
 
 
 class StreamBaseResponse(BaseModel):
@@ -128,6 +140,31 @@ class StreamTextEnd(StreamBaseResponse):
     id: str = Field(..., description="Text block ID")
 
 
+# ========== Reasoning Streaming ==========
+
+
+class StreamReasoningStart(StreamBaseResponse):
+    """Start of a reasoning block (extended_thinking content)."""
+
+    type: ResponseType = ResponseType.REASONING_START
+    id: str = Field(..., description="Reasoning block ID")
+
+
+class StreamReasoningDelta(StreamBaseResponse):
+    """Streaming reasoning content delta."""
+
+    type: ResponseType = ResponseType.REASONING_DELTA
+    id: str = Field(..., description="Reasoning block ID")
+    delta: str = Field(..., description="Reasoning content delta")
+
+
+class StreamReasoningEnd(StreamBaseResponse):
+    """End of a reasoning block."""
+
+    type: ResponseType = ResponseType.REASONING_END
+    id: str = Field(..., description="Reasoning block ID")
+
+
 # ========== Tool Interaction ==========
 
 
@@ -150,6 +187,9 @@ class StreamToolInputAvailable(StreamBaseResponse):
     )
 
 
+_MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
+
+
 class StreamToolOutputAvailable(StreamBaseResponse):
     """Tool execution result."""
 
@@ -163,6 +203,10 @@ class StreamToolOutputAvailable(StreamBaseResponse):
     success: bool = Field(
         default=True, description="Whether the tool execution succeeded"
     )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Truncate oversized outputs after construction."""
+        self.output = truncate(self.output, _MAX_TOOL_OUTPUT_SIZE)
 
     def to_sse(self) -> str:
         """Convert to SSE format, excluding non-spec fields."""
@@ -178,12 +222,43 @@ class StreamToolOutputAvailable(StreamBaseResponse):
 
 
 class StreamUsage(StreamBaseResponse):
-    """Token usage statistics."""
+    """Token usage statistics.
+
+    Emitted as an SSE comment so the Vercel AI SDK parser ignores it
+    (it uses z.strictObject() and rejects unknown event types).
+    Usage data is recorded server-side (session DB + Redis counters).
+    """
 
     type: ResponseType = ResponseType.USAGE
-    promptTokens: int = Field(..., description="Number of prompt tokens")
-    completionTokens: int = Field(..., description="Number of completion tokens")
-    totalTokens: int = Field(..., description="Total number of tokens")
+    prompt_tokens: int = Field(
+        ...,
+        serialization_alias="promptTokens",
+        description="Number of uncached prompt tokens",
+    )
+    completion_tokens: int = Field(
+        ...,
+        serialization_alias="completionTokens",
+        description="Number of completion tokens",
+    )
+    total_tokens: int = Field(
+        ...,
+        serialization_alias="totalTokens",
+        description="Total number of tokens (raw, not weighted)",
+    )
+    cache_read_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheReadTokens",
+        description="Prompt tokens served from cache (10% cost)",
+    )
+    cache_creation_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheCreationTokens",
+        description="Prompt tokens written to cache (25% cost)",
+    )
+
+    def to_sse(self) -> str:
+        """Emit as SSE comment so the AI SDK parser ignores it."""
+        return f": usage {self.model_dump_json(exclude_none=True, by_alias=True)}\n\n"
 
 
 class StreamError(StreamBaseResponse):
@@ -201,10 +276,18 @@ class StreamError(StreamBaseResponse):
 
         The AI SDK uses z.strictObject({type, errorText}) which rejects
         any extra fields like `code` or `details`.
+
+        When ``code`` is set we prefix ``errorText`` with ``[code:<id>]`` so
+        the frontend can still parse a machine-readable code out of the
+        otherwise opaque text. Idempotent: if the caller already embedded
+        the prefix, we don't double it.
         """
+        text = self.errorText
+        if self.code and not text.lstrip().startswith(f"[code:{self.code}]"):
+            text = f"[code:{self.code}] {text}"
         data = {
             "type": self.type.value,
-            "errorText": self.errorText,
+            "errorText": text,
         }
         return f"data: {json_dumps(data)}\n\n"
 
@@ -224,3 +307,48 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
+
+
+class StreamCursor(StreamBaseResponse):
+    """Deprecated Redis-stream cursor data part.
+
+    Kept so older stored chunks or tests can still be reconstructed, but new
+    stream subscriptions no longer emit it. AI SDK resume needs a full replay
+    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
+    """
+
+    type: ResponseType = ResponseType.CURSOR
+    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {
+            "type": self.type.value,
+            "data": {"chunkId": self.chunkId},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamStatus(StreamBaseResponse):
+    """Transient status notification shown to the user during long operations.
+
+    Emitted when the backend is about to enter a phase that would otherwise
+    leave the user staring at a silent "Thinking…" bubble — e.g. the first
+    LLM call, the continuation after a tool result, compacting conversation
+    context on retry, or activating a fallback model. The frontend reads
+    the latest `data-status` part on the current assistant message and uses
+    its `message` in place of the generic "Thinking…" copy.
+    """
+
+    type: ResponseType = ResponseType.STATUS
+    message: str = Field(..., description="Human-readable status message")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part so the client surfaces it as
+        `type="data-status"` on `message.parts` instead of dropping it as
+        an unknown chunk type."""
+        data = {
+            "type": self.type.value,
+            "data": {"message": self.message},
+        }
+        return f"data: {json.dumps(data)}\n\n"

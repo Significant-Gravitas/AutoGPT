@@ -5,14 +5,20 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
+from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.util.json import SafeJson
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +81,7 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
-    Uses upsert to handle race conditions when multiple concurrent requests
-    attempt to create a workspace for the same user.
+    Uses upsert to atomically handle concurrent creation attempts.
 
     Args:
         user_id: The user's ID
@@ -84,13 +89,19 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": {"userId": user_id},
-            "update": {},  # No updates needed if exists
-        },
-    )
+    try:
+        workspace = await UserWorkspace.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id},
+                "update": {},  # No-op update; workspace already exists
+            },
+        )
+    except UniqueViolationError:
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
+        workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+        if workspace is None:
+            raise
 
     return Workspace.from_db(workspace)
 
@@ -122,6 +133,13 @@ async def create_workspace_file(
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
+
+    Raises ``UniqueViolationError`` if a record with the same
+    ``(workspaceId, path)`` already exists.  The caller
+    (``WorkspaceManager._persist_db_record``) relies on this to trigger
+    its delete-old-file-then-retry flow, which cleans up the old storage
+    blob before re-creating the DB record.  Using ``upsert`` here would
+    silently overwrite ``storagePath`` and orphan the old blob in storage.
 
     Args:
         workspace_id: The workspace ID
@@ -183,6 +201,22 @@ async def get_workspace_file(
     }
 
     file = await UserWorkspaceFile.prisma().find_first(where=where_clause)
+    return WorkspaceFile.from_db(file) if file else None
+
+
+async def get_workspace_file_by_id(
+    file_id: str,
+) -> Optional[WorkspaceFile]:
+    """
+    Get a workspace file by ID without workspace scoping.
+
+    Only use this when access has already been validated through another
+    mechanism (e.g. SharedExecutionFile allowlist). For user-facing
+    endpoints, use get_workspace_file() which enforces workspace scoping.
+    """
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "isDeleted": False}
+    )
     return WorkspaceFile.from_db(file) if file else None
 
 
@@ -323,9 +357,54 @@ async def soft_delete_workspace_file(
     return WorkspaceFile.from_db(updated) if updated else None
 
 
+async def resolve_workspace_files(
+    user_id: str,
+    file_ids: list[str],
+) -> list[UserWorkspaceFile]:
+    """Return workspace-scoped file records for the given IDs.
+
+    Filters out non-UUID entries, then queries only IDs that belong to the
+    caller's workspace and are not soft-deleted.  Safe to call with
+    untrusted input — invalid IDs and cross-user IDs are silently dropped.
+    """
+    valid_ids = [fid for fid in file_ids if _UUID_RE.fullmatch(fid)]
+    if not valid_ids:
+        return []
+    workspace = await get_or_create_workspace(user_id)
+    return await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": valid_ids},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+
+
+def build_files_block(files: list[UserWorkspaceFile]) -> str:
+    """Return a formatted ``[Attached files]`` block for injection into a message.
+
+    Returns an empty string when *files* is empty so callers can do a simple
+    ``message += build_files_block(files)`` without an extra ``if`` check.
+    """
+    if not files:
+        return ""
+    lines = [
+        f"- {f.name} ({f.mimeType}, {round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
+        for f in files
+    ]
+    return (
+        "\n\n[Attached files]\n"
+        + "\n".join(lines)
+        + "\nUse read_workspace_file with the file_id to access file contents."
+    )
+
+
 async def get_workspace_total_size(workspace_id: str) -> int:
     """
     Get the total size of all files in a workspace.
+
+    Queries Prisma directly (skipping Pydantic model conversion) and only
+    fetches the ``sizeBytes`` column to minimise data transfer.
 
     Args:
         workspace_id: The workspace ID
@@ -333,5 +412,7 @@ async def get_workspace_total_size(workspace_id: str) -> int:
     Returns:
         Total size in bytes
     """
-    files = await list_workspace_files(workspace_id)
-    return sum(file.size_bytes for file in files)
+    files = await UserWorkspaceFile.prisma().find_many(
+        where={"workspaceId": workspace_id, "isDeleted": False},
+    )
+    return sum(f.sizeBytes for f in files)

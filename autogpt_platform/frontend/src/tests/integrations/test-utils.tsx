@@ -1,7 +1,9 @@
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, RenderOptions } from "@testing-library/react";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactElement, ReactNode } from "react";
 
 function createTestQueryClient() {
@@ -18,9 +20,13 @@ function TestProviders({ children }: { children: ReactNode }) {
   const queryClient = createTestQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
-      <BackendAPIProvider>
-        <OnboardingProvider>{children}</OnboardingProvider>
-      </BackendAPIProvider>
+      <NuqsTestingAdapter>
+        <BackendAPIProvider>
+          <OnboardingProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </OnboardingProvider>
+        </BackendAPIProvider>
+      </NuqsTestingAdapter>
     </QueryClientProvider>
   );
 }

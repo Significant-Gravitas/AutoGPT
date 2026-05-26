@@ -478,16 +478,17 @@ export function CronScheduler({
         </div>
       )}
 
-      {frequency !== "hourly" && (
-        <div className="flex items-center gap-4 space-y-2">
-          <Label className="pt-2">At</Label>
-          <Input
-            type="time"
-            value={selectedTime}
-            onChange={(e) => setSelectedTime(e.target.value)}
-          />
-        </div>
-      )}
+      {frequency !== "hourly" &&
+        !(frequency === "custom" && customInterval.unit !== "days") && (
+          <div className="flex items-center gap-4 space-y-2">
+            <Label className="pt-2">At</Label>
+            <Input
+              type="time"
+              value={selectedTime}
+              onChange={(e) => setSelectedTime(e.target.value)}
+            />
+          </div>
+        )}
     </div>
   );
 }

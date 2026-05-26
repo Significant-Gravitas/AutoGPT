@@ -71,11 +71,15 @@ def sanitize_filename(filename: str) -> str:
 
     # Truncate if too long
     if len(sanitized) > MAX_FILENAME_LENGTH:
-        # Keep the extension if possible
+        # Keep the extension if possible, but only if it's reasonable length
         if "." in sanitized:
             name, ext = sanitized.rsplit(".", 1)
-            max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
-            sanitized = name[:max_name_length] + "." + ext
+            # If extension is too long, it's likely not a file extension but just text
+            if len(ext) <= 20:
+                max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
+                sanitized = name[:max_name_length] + "." + ext
+            else:
+                sanitized = sanitized[:MAX_FILENAME_LENGTH]
         else:
             sanitized = sanitized[:MAX_FILENAME_LENGTH]
 
@@ -129,7 +133,7 @@ async def store_media_file(
 
     Return format options:
     - "for_local_processing": Returns local file path - use with ffmpeg, MoviePy, PIL, etc.
-    - "for_external_api": Returns data URI (base64) - use when sending to external APIs
+    - "for_external_api": Returns data URI (base64) - use when sending content to external APIs
     - "for_block_output": Returns best format for output - workspace:// in CoPilot, data URI in graphs
 
     :param file:               Data URI, URL, workspace://, or local (relative) path.
@@ -275,13 +279,12 @@ async def store_media_file(
     # Process file
     elif file.startswith("data:"):
         # Data URI
-        match = re.match(r"^data:([^;]+);base64,(.*)$", file, re.DOTALL)
-        if not match:
+        parsed_uri = parse_data_uri(file)
+        if parsed_uri is None:
             raise ValueError(
                 "Invalid data URI format. Expected data:<mime>;base64,<data>"
             )
-        mime_type = match.group(1).strip().lower()
-        b64_content = match.group(2).strip()
+        mime_type, b64_content = parsed_uri
 
         # Generate filename and decode
         extension = _extension_from_mime(mime_type)
@@ -415,13 +418,70 @@ def get_dir_size(path: Path) -> int:
     return total
 
 
+async def resolve_media_content(
+    content: MediaFileType,
+    execution_context: "ExecutionContext",
+    *,
+    return_format: MediaReturnFormat,
+) -> MediaFileType:
+    """Resolve a ``MediaFileType`` value if it is a media reference, pass through otherwise.
+
+    Convenience wrapper around :func:`is_media_file_ref` + :func:`store_media_file`.
+    Plain text content (source code, filenames) is returned unchanged.  Media
+    references (``data:``, ``workspace://``, ``http(s)://``) are resolved via
+    :func:`store_media_file` using *return_format*.
+
+    Use this when a block field is typed as ``MediaFileType`` but may contain
+    either literal text or a media reference.
+    """
+    if not content or not is_media_file_ref(content):
+        return content
+    return await store_media_file(
+        content, execution_context, return_format=return_format
+    )
+
+
+def is_media_file_ref(value: str) -> bool:
+    """Return True if *value* looks like a ``MediaFileType`` reference.
+
+    Detects data URIs, workspace:// references, and HTTP(S) URLs — the
+    formats accepted by :func:`store_media_file`.  Plain text content
+    (e.g. source code, filenames) returns False.
+
+    Known limitation: HTTP(S) URL detection is heuristic.  Any string that
+    starts with ``http://`` or ``https://`` is treated as a media URL, even
+    if it appears as a URL inside source-code comments or documentation.
+    Blocks that produce source code or Markdown as output may therefore
+    trigger false positives.  Callers that need higher precision should
+    inspect the string further (e.g. verify the URL is reachable or has a
+    media-friendly extension).
+
+    Note: this does *not* match local file paths, which are ambiguous
+    (could be filenames or actual paths).  Blocks that need to resolve
+    local paths should check for them separately.
+    """
+    return value.startswith(("data:", "workspace://", "http://", "https://"))
+
+
+def parse_data_uri(value: str) -> tuple[str, str] | None:
+    """Parse a ``data:<mime>;base64,<payload>`` URI.
+
+    Returns ``(mime_type, base64_payload)`` if *value* is a valid data URI,
+    or ``None`` if it is not.
+    """
+    match = re.match(r"^data:([^;]+);base64,(.*)$", value, re.DOTALL)
+    if not match:
+        return None
+    return match.group(1).strip().lower(), match.group(2).strip()
+
+
 def get_mime_type(file: str) -> str:
     """
     Get the MIME type of a file, whether it's a data URI, URL, or local path.
     """
     if file.startswith("data:"):
-        match = re.match(r"^data:([^;]+);base64,", file)
-        return match.group(1) if match else "application/octet-stream"
+        parsed_uri = parse_data_uri(file)
+        return parsed_uri[0] if parsed_uri else "application/octet-stream"
 
     elif file.startswith(("http://", "https://")):
         parsed_url = urlparse(file)

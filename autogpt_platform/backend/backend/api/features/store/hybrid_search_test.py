@@ -14,8 +14,26 @@ from backend.api.features.store.hybrid_search import (
     HybridSearchWeights,
     UnifiedSearchWeights,
     hybrid_search,
+    tokenize,
     unified_hybrid_search,
 )
+
+# ---------------------------------------------------------------------------
+# tokenize (BM25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "input_text, expected",
+    [
+        ("AITextGeneratorBlock", ["aitextgeneratorblock"]),
+        ("hello world", ["hello", "world"]),
+        ("", []),
+        ("HTTPRequest", ["httprequest"]),
+    ],
+)
+def test_tokenize(input_text: str, expected: list[str]):
+    assert tokenize(input_text) == expected
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -549,6 +567,36 @@ async def test_unified_hybrid_search_with_user_id():
 
             assert 'uce."userId"' in sql_template
             assert "user-123" in params
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_excludes_null_user_library_agents():
+    """Defense-in-depth: the SQL filter must NEVER let a LIBRARY_AGENT row
+    with NULL userId match an authenticated query — that would leak private
+    library data across users. Sentry's HIGH-severity bug-prediction on
+    hybrid_search.py:259."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = []
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            await unified_hybrid_search(
+                query="email summarizer",
+                user_id="user-123",
+                page=1,
+                page_size=20,
+            )
+
+            sql_template = mock_query.call_args[0][0]
+            assert (
+                "NOT (uce.\"contentType\" = 'LIBRARY_AGENT'::{schema_prefix}"
+                '"ContentType" AND uce."userId" IS NULL)' in sql_template
+            )
 
 
 @pytest.mark.asyncio(loop_scope="session")

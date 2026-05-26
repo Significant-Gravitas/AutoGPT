@@ -112,6 +112,7 @@ def get_latest_bulletin() -> tuple[str, bool]:
         )
 
     if new_bulletin and is_new_news:
+        Path("data").mkdir(parents=True, exist_ok=True)
         open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8").write(new_bulletin)
         current_bulletin = f"{Fore.RED}::NEW BULLETIN::{Fore.RESET}\n\n{new_bulletin}"
 

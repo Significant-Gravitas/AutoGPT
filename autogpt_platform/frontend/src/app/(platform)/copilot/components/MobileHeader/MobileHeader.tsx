@@ -2,12 +2,10 @@ import { AgentActivityDropdown } from "@/components/layout/Navbar/components/Age
 import { Button } from "@/components/atoms/Button/Button";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { ListIcon } from "@phosphor-icons/react";
+import { useCopilotUIStore } from "../../store";
 
-interface Props {
-  onOpenDrawer: () => void;
-}
-
-export function MobileHeader({ onOpenDrawer }: Props) {
+export function MobileHeader() {
+  const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
   return (
     <div
       className="fixed z-50 flex gap-2"
@@ -17,7 +15,7 @@ export function MobileHeader({ onOpenDrawer }: Props) {
         variant="icon"
         size="icon"
         aria-label="Open sessions"
-        onClick={onOpenDrawer}
+        onClick={() => setDrawerOpen(true)}
         className="bg-white shadow-md"
       >
         <ListIcon width="1.25rem" height="1.25rem" />

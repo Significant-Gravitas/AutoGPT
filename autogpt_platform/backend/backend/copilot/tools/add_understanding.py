@@ -22,13 +22,12 @@ class AddUnderstandingTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Capture and store information about the user's business context,
-workflows, pain points, and automation goals. Call this tool whenever the user
-shares information about their business. Each call incrementally adds to the
-existing understanding - you don't need to provide all fields at once.
-
-Use this to build a comprehensive profile that helps recommend better agents
-and automations for the user's specific needs."""
+        return (
+            "Store user's business context, workflows, pain points, and automation goals. "
+            "Call whenever the user shares business info. Each call incrementally merges "
+            "with existing data — provide only the fields you have. "
+            "Builds a profile that helps recommend better agents for the user's needs."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -69,6 +68,9 @@ and automations for the user's specific needs."""
         Each call merges new data with existing understanding:
         - String fields are overwritten if provided
         - List fields are appended (with deduplication)
+
+        Note: This tool accepts **kwargs because its parameters are derived
+        dynamically from the BusinessUnderstandingInput model schema.
         """
         session_id = session.session_id
 
@@ -78,23 +80,21 @@ and automations for the user's specific needs."""
                 session_id=session_id,
             )
 
+        # Build input model from kwargs (only include fields defined in the model)
+        valid_fields = set(BusinessUnderstandingInput.model_fields.keys())
+        filtered = {k: v for k, v in kwargs.items() if k in valid_fields}
+
         # Check if any data was provided
-        if not any(v is not None for v in kwargs.values()):
+        if not any(v is not None for v in filtered.values()):
             return ErrorResponse(
                 message="Please provide at least one field to update.",
                 session_id=session_id,
             )
 
-        # Build input model from kwargs (only include fields defined in the model)
-        valid_fields = set(BusinessUnderstandingInput.model_fields.keys())
-        input_data = BusinessUnderstandingInput(
-            **{k: v for k, v in kwargs.items() if k in valid_fields}
-        )
+        input_data = BusinessUnderstandingInput(**filtered)
 
         # Track which fields were updated
-        updated_fields = [
-            k for k, v in kwargs.items() if k in valid_fields and v is not None
-        ]
+        updated_fields = [k for k, v in filtered.items() if v is not None]
 
         # Upsert with merge
         understanding = await understanding_db().upsert_business_understanding(

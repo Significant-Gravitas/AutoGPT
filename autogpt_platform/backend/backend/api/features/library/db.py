@@ -1,14 +1,14 @@
 import asyncio
 import itertools
 import logging
-from typing import Literal, Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional, cast
 
 import fastapi
 import prisma.errors
 import prisma.models
 import prisma.types
 
-import backend.api.features.store.exceptions as store_exceptions
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
 import backend.data.graph as graph_db
@@ -38,10 +38,70 @@ from backend.util.models import Pagination
 from backend.util.settings import Config
 
 from . import model as library_model
+from .embeddings import schedule_library_agent_embedding
 
 logger = logging.getLogger(__name__)
 config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
+
+
+async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
+    """Fetch execution counts per graph in a single batched query."""
+    if not graph_ids:
+        return {}
+    rows = await prisma.models.AgentGraphExecution.prisma().group_by(
+        by=["agentGraphId"],
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        count=True,
+    )
+    return {
+        row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
+        for row in rows
+    }
+
+
+async def _fetch_schedule_info(
+    user_id: str, graph_id: Optional[str] = None
+) -> dict[str, str]:
+    """Fetch a map of graph_id → earliest next_run_time ISO string.
+
+    When `graph_id` is provided, the scheduler query is narrowed to that graph,
+    which is cheaper for single-agent lookups (detail page, post-update, etc.).
+    """
+    try:
+        scheduler_client = get_scheduler_client()
+        schedules = await scheduler_client.get_graph_execution_schedules(
+            graph_id=graph_id,
+            user_id=user_id,
+        )
+        earliest: dict[str, tuple[datetime, str]] = {}
+        for s in schedules:
+            parsed = _parse_iso_datetime(s.next_run_time)
+            if parsed is None:
+                continue
+            current = earliest.get(s.graph_id)
+            if current is None or parsed < current[0]:
+                earliest[s.graph_id] = (parsed, s.next_run_time)
+        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
+    except Exception:
+        logger.warning("Failed to fetch schedules for library agents", exc_info=True)
+        return {}
+
+
+def _parse_iso_datetime(value: str) -> Optional[datetime]:
+    """Parse an ISO 8601 datetime, tolerating `Z` and naive forms (assumed UTC)."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("Failed to parse schedule next_run_time: %s", value)
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 async def list_library_agents(
@@ -53,6 +113,7 @@ async def list_library_agents(
     include_executions: bool = False,
     folder_id: Optional[str] = None,
     include_root_only: bool = False,
+    is_hidden: Optional[bool] = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -101,6 +162,10 @@ async def list_library_agents(
     elif include_root_only and not search_term:
         where_clause["folderId"] = None
 
+    # Apply isHidden filter
+    if is_hidden is not None:
+        where_clause["isHidden"] = is_hidden
+
     # Build search filter if applicable
     if search_term:
         where_clause["OR"] = [
@@ -138,12 +203,22 @@ async def list_library_agents(
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
+    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
+
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
 
     for agent in library_agents:
         try:
-            library_agent = library_model.LibraryAgent.from_db(agent)
+            library_agent = library_model.LibraryAgent.from_db(
+                agent,
+                execution_count_override=execution_counts.get(agent.agentGraphId),
+                schedule_info=schedule_info,
+            )
             valid_library_agents.append(library_agent)
         except Exception as e:
             # Skip this agent if there was an error
@@ -215,12 +290,22 @@ async def list_favorite_library_agents(
         f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
     )
 
+    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
+
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
 
     for agent in library_agents:
         try:
-            library_agent = library_model.LibraryAgent.from_db(agent)
+            library_agent = library_model.LibraryAgent.from_db(
+                agent,
+                execution_count_override=execution_counts.get(agent.agentGraphId),
+                schedule_info=schedule_info,
+            )
             valid_library_agents.append(library_agent)
         except Exception as e:
             # Skip this agent if there was an error
@@ -251,7 +336,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         The requested LibraryAgent.
 
     Raises:
-        AgentNotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent does not exist.
         DatabaseError: If there's an error during retrieval.
     """
     library_agent = await prisma.models.LibraryAgent.prisma().find_first(
@@ -286,6 +371,12 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 where={"userId": store_listing.owningUserId}
             )
 
+    schedule_info = (
+        await _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id)
+        if library_agent.AgentGraph
+        else {}
+    )
+
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=(
@@ -295,6 +386,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         ),
         store_listing=store_listing,
         profile=profile,
+        schedule_info=schedule_info,
     )
 
 
@@ -330,19 +422,25 @@ async def get_library_agent_by_store_version_id(
         },
         include=library_agent_include(user_id),
     )
-    return library_model.LibraryAgent.from_db(agent) if agent else None
+    if not agent:
+        return None
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
     graph_version: Optional[int] = None,
+    include_archived: bool = False,
 ) -> library_model.LibraryAgent | None:
     filter: prisma.types.LibraryAgentWhereInput = {
         "agentGraphId": graph_id,
         "userId": user_id,
         "isDeleted": False,
     }
+    if not include_archived:
+        filter["isArchived"] = False
     if graph_version is not None:
         filter["agentGraphVersion"] = graph_version
 
@@ -356,7 +454,10 @@ async def get_library_agent_by_graph_id(
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
     sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-    return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(
+        agent, sub_graphs=sub_graphs, schedule_info=schedule_info
+    )
 
 
 async def add_generated_agent_image(
@@ -398,6 +499,8 @@ async def create_library_agent(
     hitl_safe_mode: bool = True,
     sensitive_action_safe_mode: bool = False,
     create_library_agents_for_sub_graphs: bool = True,
+    folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -414,12 +517,18 @@ async def create_library_agent(
         If the graph has sub-graphs, the parent graph will always be the first entry in the list.
 
     Raises:
-        AgentNotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent does not exist.
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
         f"Creating library agent for graph #{graph.id} v{graph.version}; user:<redacted>"
     )
+
+    # Authorization: FK only checks existence, not ownership.
+    # Verify the folder belongs to this user to prevent cross-user nesting.
+    if folder_id:
+        await get_folder(folder_id, user_id)
+
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
     )
@@ -427,28 +536,60 @@ async def create_library_agent(
     async with transaction() as tx:
         library_agents = await asyncio.gather(
             *(
-                prisma.models.LibraryAgent.prisma(tx).create(
-                    data=prisma.types.LibraryAgentCreateInput(
-                        isCreatedByUser=(user_id == user_id),
-                        useGraphIsActiveVersion=True,
-                        User={"connect": {"id": user_id}},
-                        # Creator={"connect": {"id": user_id}},
-                        AgentGraph={
-                            "connect": {
-                                "graphVersionId": {
-                                    "id": graph_entry.id,
-                                    "version": graph_entry.version,
+                prisma.models.LibraryAgent.prisma(tx).upsert(
+                    where={
+                        "userId_agentGraphId_agentGraphVersion": {
+                            "userId": user_id,
+                            "agentGraphId": graph_entry.id,
+                            "agentGraphVersion": graph_entry.version,
+                        }
+                    },
+                    data={
+                        "create": prisma.types.LibraryAgentCreateInput(
+                            isCreatedByUser=(user_id == graph.user_id),
+                            isHidden=is_hidden,
+                            useGraphIsActiveVersion=True,
+                            User={"connect": {"id": user_id}},
+                            AgentGraph={
+                                "connect": {
+                                    "graphVersionId": {
+                                        "id": graph_entry.id,
+                                        "version": graph_entry.version,
+                                    }
                                 }
-                            }
-                        },
-                        settings=SafeJson(
-                            GraphSettings.from_graph(
-                                graph_entry,
-                                hitl_safe_mode=hitl_safe_mode,
-                                sensitive_action_safe_mode=sensitive_action_safe_mode,
-                            ).model_dump()
+                            },
+                            settings=SafeJson(
+                                GraphSettings.from_graph(
+                                    graph_entry,
+                                    hitl_safe_mode=hitl_safe_mode,
+                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
+                                ).model_dump()
+                            ),
+                            **(
+                                {"Folder": {"connect": {"id": folder_id}}}
+                                if folder_id and graph_entry is graph
+                                else {}
+                            ),
                         ),
-                    ),
+                        "update": {
+                            "isDeleted": False,
+                            "isArchived": False,
+                            "isHidden": is_hidden,
+                            "useGraphIsActiveVersion": True,
+                            "settings": SafeJson(
+                                GraphSettings.from_graph(
+                                    graph_entry,
+                                    hitl_safe_mode=hitl_safe_mode,
+                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
+                                ).model_dump()
+                            ),
+                            **(
+                                {"Folder": {"connect": {"id": folder_id}}}
+                                if folder_id and graph_entry is graph
+                                else {}
+                            ),
+                        },
+                    },
                     include=library_agent_include(
                         user_id, include_nodes=False, include_executions=False
                     ),
@@ -457,11 +598,18 @@ async def create_library_agent(
             )
         )
 
-    # Generate images for the main graph and sub-graphs
+    # Generate images for the main graph and sub-graphs, and refresh the
+    # library-agent embedding so the create-time similarity gate can find
+    # this agent next time the user describes a goal.
     for agent, graph in zip(library_agents, graph_entries):
         asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
+        schedule_library_agent_embedding(agent.id, user_id, graph)
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in library_agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in library_agents
+    ]
 
 
 async def update_agent_version_in_library(
@@ -523,12 +671,15 @@ async def update_agent_version_in_library(
             f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
         )
 
-    return library_model.LibraryAgent.from_db(lib)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent_graph_id)
+    return library_model.LibraryAgent.from_db(lib, schedule_info=schedule_info)
 
 
 async def create_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
+    folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new graph and add it to the user's library."""
     graph.version = 1
@@ -542,6 +693,8 @@ async def create_graph_in_library(
         user_id=user_id,
         sensitive_action_safe_mode=True,
         create_library_agents_for_sub_graphs=False,
+        folder_id=folder_id,
+        is_hidden=is_hidden,
     )
 
     if created_graph.is_active:
@@ -570,7 +723,9 @@ async def update_graph_in_library(
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    library_agent = await get_library_agent_by_graph_id(user_id, created_graph.id)
+    library_agent = await get_library_agent_by_graph_id(
+        user_id, created_graph.id, include_archived=True
+    )
     if not library_agent:
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
@@ -602,6 +757,7 @@ async def update_library_agent_version_and_settings(
         graph=agent_graph,
         hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
         sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
+        builder_chat_session_id=library.settings.builder_chat_session_id,
     )
     if updated_settings != library.settings:
         library = await update_library_agent(
@@ -609,6 +765,9 @@ async def update_library_agent_version_and_settings(
             user_id=user_id,
             settings=updated_settings,
         )
+    # Re-embed so name/description/instructions changes are reflected in
+    # similarity search results before the next create-time gate runs.
+    schedule_library_agent_embedding(library.id, user_id, agent_graph)
     return library
 
 
@@ -619,6 +778,7 @@ async def update_library_agent(
     graph_version: Optional[int] = None,
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
+    is_hidden: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
     settings: Optional[GraphSettings] = None,
     folder_id: Optional[str] = None,
@@ -655,6 +815,8 @@ async def update_library_agent(
         update_fields["isFavorite"] = is_favorite
     if is_archived is not None:
         update_fields["isArchived"] = is_archived
+    if is_hidden is not None:
+        update_fields["isHidden"] = is_hidden
     if is_deleted is not None:
         if is_deleted is True:
             raise RuntimeError(
@@ -751,7 +913,7 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
         user_id: The ID of the user
     """
     scheduler_client = get_scheduler_client()
-    schedules = await scheduler_client.get_execution_schedules(
+    schedules = await scheduler_client.get_graph_execution_schedules(
         graph_id=graph_id, user_id=user_id
     )
 
@@ -806,92 +968,38 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
 async def add_store_agent_to_library(
     store_listing_version_id: str, user_id: str
 ) -> library_model.LibraryAgent:
+    """Adds a marketplace agent to the user’s library.
+
+    See also: `add_store_agent_to_library_as_admin()` which uses
+    `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    Adds an agent from a store listing version to the user's library if they don't already have it.
+    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
 
-    Args:
-        store_listing_version_id: The ID of the store listing version containing the agent.
-        user_id: The user’s library to which the agent is being added.
-
-    Returns:
-        The newly created LibraryAgent if successfully added, the existing corresponding one if any.
-
-    Raises:
-        AgentNotFoundError: If the store listing or associated agent is not found.
-        DatabaseError: If there's an issue creating the LibraryAgent record.
-    """
     logger.debug(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-
-    store_listing_version = (
-        await prisma.models.StoreListingVersion.prisma().find_unique(
-            where={"id": store_listing_version_id}, include={"AgentGraph": True}
-        )
+    graph_model = await resolve_graph_for_library(
+        store_listing_version_id, user_id, admin=False
     )
-    if not store_listing_version or not store_listing_version.AgentGraph:
-        logger.warning(f"Store listing version not found: {store_listing_version_id}")
-        raise store_exceptions.AgentNotFoundError(
-            f"Store listing version {store_listing_version_id} not found or invalid"
-        )
+    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
 
-    graph = store_listing_version.AgentGraph
 
-    # Convert to GraphModel to check for HITL blocks
-    graph_model = await graph_db.get_graph(
-        graph_id=graph.id,
-        version=graph.version,
-        user_id=user_id,
-        include_subgraphs=False,
+async def add_store_agent_to_library_as_admin(
+    store_listing_version_id: str, user_id: str
+) -> library_model.LibraryAgent:
+    """Admin variant that uses `get_graph_as_admin` to bypass marketplace
+    APPROVED-only checks, allowing admins to add pending agents for review."""
+    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
+
+    logger.warning(
+        f"ADMIN adding agent from store listing version "
+        f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    if not graph_model:
-        raise store_exceptions.AgentNotFoundError(
-            f"Graph #{graph.id} v{graph.version} not found or accessible"
-        )
-
-    # Check if user already has this agent (non-deleted)
-    if existing := await get_library_agent_by_graph_id(
-        user_id, graph.id, graph.version
-    ):
-        return existing
-
-    # Check for soft-deleted version and restore it
-    deleted_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-        where={
-            "userId_agentGraphId_agentGraphVersion": {
-                "userId": user_id,
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-            }
-        },
+    graph_model = await resolve_graph_for_library(
+        store_listing_version_id, user_id, admin=True
     )
-    if deleted_agent and deleted_agent.isDeleted:
-        return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
-
-    # Create LibraryAgent entry
-    added_agent = await prisma.models.LibraryAgent.prisma().create(
-        data={
-            "User": {"connect": {"id": user_id}},
-            "AgentGraph": {
-                "connect": {
-                    "graphVersionId": {"id": graph.id, "version": graph.version}
-                }
-            },
-            "isCreatedByUser": False,
-            "useGraphIsActiveVersion": False,
-            "settings": SafeJson(GraphSettings.from_graph(graph_model).model_dump()),
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-    )
-    logger.debug(
-        f"Added graph #{graph.id} v{graph.version}"
-        f"for store listing version #{store_listing_version.id} "
-        f"to library for user #{user_id}"
-    )
-    return library_model.LibraryAgent.from_db(added_agent)
+    return await add_graph_to_library(store_listing_version_id, graph_model, user_id)
 
 
 ##############################################
@@ -1478,7 +1586,72 @@ async def bulk_move_agents_to_folder(
         ),
     )
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in agents
+    ]
+
+
+def collect_tree_ids(
+    nodes: list[library_model.LibraryFolderTree],
+    visited: set[str] | None = None,
+) -> list[str]:
+    """Collect all folder IDs from a folder tree."""
+    if visited is None:
+        visited = set()
+    ids: list[str] = []
+    for n in nodes:
+        if n.id in visited:
+            continue
+        visited.add(n.id)
+        ids.append(n.id)
+        ids.extend(collect_tree_ids(n.children, visited))
+    return ids
+
+
+async def get_folder_agent_summaries(
+    user_id: str, folder_id: str
+) -> list[dict[str, str | None]]:
+    """Get a lightweight list of agents in a folder (id, name, description)."""
+    all_agents: list[library_model.LibraryAgent] = []
+    for page in itertools.count(1):
+        resp = await list_library_agents(
+            user_id=user_id, folder_id=folder_id, page=page
+        )
+        all_agents.extend(resp.agents)
+        if page >= resp.pagination.total_pages:
+            break
+    return [
+        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
+    ]
+
+
+async def get_root_agent_summaries(
+    user_id: str,
+) -> list[dict[str, str | None]]:
+    """Get a lightweight list of root-level agents (folderId IS NULL)."""
+    all_agents: list[library_model.LibraryAgent] = []
+    for page in itertools.count(1):
+        resp = await list_library_agents(
+            user_id=user_id, include_root_only=True, page=page
+        )
+        all_agents.extend(resp.agents)
+        if page >= resp.pagination.total_pages:
+            break
+    return [
+        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
+    ]
+
+
+async def get_folder_agents_map(
+    user_id: str, folder_ids: list[str]
+) -> dict[str, list[dict[str, str | None]]]:
+    """Get agent summaries for multiple folders concurrently."""
+    results = await asyncio.gather(
+        *(get_folder_agent_summaries(user_id, fid) for fid in folder_ids)
+    )
+    return dict(zip(folder_ids, results))
 
 
 ##############################################
@@ -1651,7 +1824,7 @@ async def create_preset_from_graph_execution(
             raise NotFoundError(
                 f"Graph #{graph_execution.graph_id} not found or accessible"
             )
-        elif len(graph.aggregate_credentials_inputs()) > 0:
+        elif len(graph.regular_credentials_inputs) > 0:
             raise ValueError(
                 f"Graph execution #{graph_exec_id} can't be turned into a preset "
                 "because it was run before this feature existed "
@@ -1837,3 +2010,64 @@ async def fork_library_agent(
             sensitive_action_safe_mode=original_agent.settings.sensitive_action_safe_mode,
         )
     )[0]
+
+
+# ── Trigger agents ──────────────────────────────────────────────────
+
+_AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
+
+
+async def list_trigger_agents(
+    user_id: str,
+    library_agent_id: str,
+    *,
+    parent_graph_id: Optional[str] = None,
+) -> list[library_model.LibraryAgent]:
+    """List trigger agents for the given parent library agent.
+
+    Trigger agents are hidden LibraryAgents whose graph contains an
+    AgentExecutorBlock node referencing the parent's graph_id. The
+    relationship is derived from graph contents — no separate link
+    table — so it stays consistent when triggers are edited.
+
+    Pass ``parent_graph_id`` if the caller already has the parent
+    loaded — skips the redundant ``get_library_agent`` lookup.
+    """
+    if parent_graph_id is None:
+        parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        parent_graph_id = parent.graph_id
+
+    triggers, schedule_info = await asyncio.gather(
+        prisma.models.LibraryAgent.prisma().find_many(
+            where={
+                "userId": user_id,
+                "isHidden": True,
+                "isDeleted": False,
+                "isArchived": False,
+                "AgentGraph": {
+                    "is": {
+                        "Nodes": {
+                            "some": {
+                                "agentBlockId": _AGENT_EXECUTOR_BLOCK_ID,
+                                "constantInput": cast(
+                                    prisma.types.JsonFilter,
+                                    {
+                                        "path": ["graph_id"],
+                                        "equals": prisma.Json(parent_graph_id),
+                                    },
+                                ),
+                            }
+                        }
+                    }
+                },
+            },
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        ),
+        _fetch_schedule_info(user_id),
+    )
+    return [
+        library_model.LibraryAgent.from_db(t, schedule_info=schedule_info)
+        for t in triggers
+    ]

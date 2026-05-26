@@ -1,73 +1,79 @@
 "use client";
-import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+
+import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
+import Link from "next/link";
+import { ProgressBar } from "./components/ProgressBar";
+import { StepIndicator } from "./components/StepIndicator";
+import { PainPointsStep } from "./steps/PainPointsStep";
+import { PreparingStep } from "./steps/PreparingStep";
+import { RoleStep } from "./steps/RoleStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { WelcomeStep } from "./steps/WelcomeStep";
+import { useOnboardingWizardStore } from "./store";
+import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
-  const router = useRouter();
+  const {
+    currentStep,
+    isLoading,
+    handlePreparingComplete,
+    isPaymentEnabled,
+    preparingStep,
+    totalSteps,
+  } = useOnboardingPage();
+  const prevStep = useOnboardingWizardStore((s) => s.prevStep);
 
-  useEffect(() => {
-    async function redirectToStep() {
-      try {
-        // Check if onboarding is enabled (also gets chat flag for redirect)
-        const { shouldShowOnboarding } = await getOnboardingStatus();
+  if (isLoading) return null;
 
-        if (!shouldShowOnboarding) {
-          router.replace("/");
-          return;
-        }
+  // ProgressBar + StepIndicator track only the user-interactive steps.
+  // PreparingStep is a transition view that hides both indicators.
+  const showDots = currentStep <= totalSteps;
+  const showBack = currentStep > 1 && currentStep <= totalSteps;
+  const showProgressBar = currentStep <= totalSteps;
+  const showLogout = currentStep <= totalSteps;
 
-        const onboarding = await resolveResponse(getV1OnboardingState());
+  return (
+    <div className="flex min-h-screen w-full flex-col items-center">
+      {showProgressBar && (
+        <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
+      )}
 
-        // Handle completed onboarding
-        if (onboarding.completedSteps.includes("GET_RESULTS")) {
-          router.replace("/");
-          return;
-        }
+      {showBack && (
+        <button
+          type="button"
+          onClick={prevStep}
+          className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+        >
+          <CaretLeftIcon size={16} />
+          Back
+        </button>
+      )}
 
-        // Redirect to appropriate step based on completed steps
-        if (onboarding.completedSteps.includes("AGENT_INPUT")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
+      <div className="flex flex-1 items-center pb-8 pt-16">
+        {currentStep === 1 && <WelcomeStep />}
+        {currentStep === 2 && <RoleStep />}
+        {currentStep === 3 && <PainPointsStep />}
+        {isPaymentEnabled && currentStep === 4 && <SubscriptionStep />}
+        {currentStep === preparingStep && (
+          <PreparingStep onComplete={handlePreparingComplete} />
+        )}
+      </div>
 
-        if (onboarding.completedSteps.includes("AGENT_NEW_RUN")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
+      {showDots && (
+        <div className="pb-8">
+          <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
+        </div>
+      )}
 
-        if (onboarding.completedSteps.includes("AGENT_CHOICE")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("INTEGRATIONS")) {
-          router.push("/onboarding/4-agent");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("USAGE_REASON")) {
-          router.push("/onboarding/3-services");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("WELCOME")) {
-          router.push("/onboarding/2-reason");
-          return;
-        }
-
-        // Default: redirect to first step
-        router.push("/onboarding/1-welcome");
-      } catch (error) {
-        console.error("Failed to determine onboarding step:", error);
-        router.replace("/");
-      }
-    }
-
-    redirectToStep();
-  }, [router]);
-
-  return <LoadingSpinner size="large" cover />;
+      {showLogout && (
+        <Link
+          href="/logout"
+          className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+        >
+          <SignOutIcon size={16} />
+          Log out
+        </Link>
+      )}
+    </div>
+  );
 }

@@ -1,5 +1,14 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import {
+  Users,
+  CurrencyDollar,
+  MagnifyingGlass,
+  Gauge,
+  Receipt,
+  FileText,
+  Heartbeat,
+  CalculatorIcon,
+} from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -14,17 +23,37 @@ const sidebarLinkGroups = [
       {
         text: "User Spending",
         href: "/admin/spending",
-        icon: <DollarSign className="h-6 w-6" />,
+        icon: <CurrencyDollar className="h-6 w-6" />,
+      },
+      {
+        text: "System Diagnostics",
+        href: "/admin/diagnostics",
+        icon: <Heartbeat className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
         href: "/admin/impersonation",
-        icon: <UserSearch className="h-6 w-6" />,
+        icon: <MagnifyingGlass className="h-6 w-6" />,
+      },
+      {
+        text: "Rate Limits",
+        href: "/admin/rate-limits",
+        icon: <Gauge className="h-6 w-6" />,
+      },
+      {
+        text: "Platform Costs",
+        href: "/admin/platform-costs",
+        icon: <Receipt className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
         icon: <FileText className="h-6 w-6" />,
+      },
+      {
+        text: "Block Cost Estimates",
+        href: "/admin/block-cost-estimates",
+        icon: <CalculatorIcon className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",

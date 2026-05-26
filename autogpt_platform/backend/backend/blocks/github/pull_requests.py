@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from typing_extensions import TypedDict
 
@@ -19,6 +20,8 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+MergeMethod = Literal["merge", "squash", "rebase"]
 
 
 class GithubListPullRequestsBlock(Block):
@@ -558,12 +561,109 @@ class GithubListPRReviewersBlock(Block):
             yield "reviewer", reviewer
 
 
+class GithubMergePullRequestBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        pr_url: str = SchemaField(
+            description="URL of the GitHub pull request",
+            placeholder="https://github.com/owner/repo/pull/1",
+        )
+        merge_method: MergeMethod = SchemaField(
+            description="Merge method to use: merge, squash, or rebase",
+            default="merge",
+        )
+        commit_title: str = SchemaField(
+            description="Title for the merge commit (optional, used for merge and squash)",
+            default="",
+        )
+        commit_message: str = SchemaField(
+            description="Message for the merge commit (optional, used for merge and squash)",
+            default="",
+        )
+
+    class Output(BlockSchemaOutput):
+        sha: str = SchemaField(description="SHA of the merge commit")
+        merged: bool = SchemaField(description="Whether the PR was merged")
+        message: str = SchemaField(description="Merge status message")
+        error: str = SchemaField(description="Error message if the merge failed")
+
+    def __init__(self):
+        super().__init__(
+            id="77456c22-33d8-4fd4-9eef-50b46a35bb48",
+            description="This block merges a pull request using merge, squash, or rebase.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubMergePullRequestBlock.Input,
+            output_schema=GithubMergePullRequestBlock.Output,
+            test_input={
+                "pr_url": "https://github.com/owner/repo/pull/1",
+                "merge_method": "squash",
+                "commit_title": "",
+                "commit_message": "",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("sha", "abc123"),
+                ("merged", True),
+                ("message", "Pull Request successfully merged"),
+            ],
+            test_mock={
+                "merge_pr": lambda *args, **kwargs: (
+                    "abc123",
+                    True,
+                    "Pull Request successfully merged",
+                )
+            },
+            is_sensitive_action=True,
+        )
+
+    @staticmethod
+    async def merge_pr(
+        credentials: GithubCredentials,
+        pr_url: str,
+        merge_method: MergeMethod,
+        commit_title: str,
+        commit_message: str,
+    ) -> tuple[str, bool, str]:
+        api = get_api(credentials)
+        merge_url = prepare_pr_api_url(pr_url=pr_url, path="merge")
+        data: dict[str, str] = {"merge_method": merge_method}
+        if commit_title:
+            data["commit_title"] = commit_title
+        if commit_message:
+            data["commit_message"] = commit_message
+        response = await api.put(merge_url, json=data)
+        result = response.json()
+        return result["sha"], result["merged"], result["message"]
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            sha, merged, message = await self.merge_pr(
+                credentials,
+                input_data.pr_url,
+                input_data.merge_method,
+                input_data.commit_title,
+                input_data.commit_message,
+            )
+            yield "sha", sha
+            yield "merged", merged
+            yield "message", message
+        except Exception as e:
+            yield "error", str(e)
+
+
 def prepare_pr_api_url(pr_url: str, path: str) -> str:
     # Pattern to capture the base repository URL and the pull request number
-    pattern = r"^(?:https?://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
+    pattern = r"^(?:(https?)://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
     match = re.match(pattern, pr_url)
     if not match:
         return pr_url
 
-    base_url, pr_number = match.groups()
-    return f"{base_url}/pulls/{pr_number}/{path}"
+    scheme, base_url, pr_number = match.groups()
+    return f"{scheme or 'https'}://{base_url}/pulls/{pr_number}/{path}"

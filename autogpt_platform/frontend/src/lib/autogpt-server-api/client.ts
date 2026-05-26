@@ -1,11 +1,11 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
+import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
@@ -16,8 +16,6 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreatorDetails,
-  CreatorsResponse,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -43,26 +41,15 @@ import type {
   LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
-  MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
   OttoQuery,
   OttoResponse,
-  ProfileDetails,
   RefundRequest,
-  ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentsResponse,
-  StoreListingsWithVersionsResponse,
-  StoreReview,
-  StoreReviewCreate,
-  StoreSubmission,
-  StoreSubmissionRequest,
-  StoreSubmissionsResponse,
-  SubmissionStatus,
   TransactionHistory,
   User,
   UserPasswordCredentials,
@@ -82,6 +69,24 @@ export class LogoutInterruptError extends Error {
     super(message);
     this.name = "LogoutInterruptError";
   }
+}
+
+/**
+ * Build the query object for `oAuthLogin`.  Kept as a named helper so the
+ * shape — scopes-only vs credential_id-only vs both vs neither — can be
+ * pinned in tests without mocking the whole BackendAPI request layer.
+ *
+ * Returns `undefined` when neither argument is provided so callers can
+ * omit the query string entirely.
+ */
+export function buildOAuthLoginQuery(
+  scopes?: string[],
+  credentialID?: string,
+): Record<string, string> | undefined {
+  const query: Record<string, string> = {};
+  if (scopes && scopes.length > 0) query.scopes = scopes.join(",");
+  if (credentialID) query.credential_id = credentialID;
+  return Object.keys(query).length > 0 ? query : undefined;
 }
 
 export default class BackendAPI {
@@ -108,15 +113,7 @@ export default class BackendAPI {
   }
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient
-      ? createBrowserClient(
-          environment.getSupabaseUrl(),
-          environment.getSupabaseAnonKey(),
-          {
-            isSingleton: true,
-          },
-        )
-      : await getServerSupabase();
+    return isClient ? ensureSupabaseClient() : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -318,9 +315,12 @@ export default class BackendAPI {
   oAuthLogin(
     provider: string,
     scopes?: string[],
+    credentialID?: string,
   ): Promise<{ login_url: string; state_token: string }> {
-    const query = scopes ? { scopes: scopes.join(",") } : undefined;
-    return this._get(`/integrations/${provider}/login`, query);
+    return this._get(
+      `/integrations/${provider}/login`,
+      buildOAuthLoginQuery(scopes, credentialID),
+    );
   }
 
   oAuthCallback(
@@ -364,8 +364,14 @@ export default class BackendAPI {
     );
   }
 
-  listProviders(): Promise<string[]> {
-    return this._get("/integrations/providers");
+  async listProviders(): Promise<string[]> {
+    // The endpoint returns `ProviderMetadata[]` (`{ name, description }`) but
+    // legacy consumers (e.g. CredentialsProvider) still expect a flat string[]
+    // of provider names. Map down so we keep that contract.
+    const response: Array<{ name: string }> = await this._get(
+      "/integrations/providers",
+    );
+    return response.map((p) => p.name);
   }
 
   listSystemProviders(): Promise<string[]> {
@@ -445,86 +451,8 @@ export default class BackendAPI {
     return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
-  ////////////////////////////////////////
-  ///////////// V2 STORE API /////////////
-  ////////////////////////////////////////
-
-  async getStoreProfile(): Promise<ProfileDetails | null> {
-    try {
-      return await this._get("/store/profile");
-    } catch (error) {
-      if (!(error instanceof LogoutInterruptError)) {
-        Sentry.captureException(error);
-      }
-      return null;
-    }
-  }
-
-  getStoreAgents(params?: {
-    featured?: boolean;
-    creator?: string;
-    sorted_by?: string;
-    search_query?: string;
-    category?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreAgentsResponse> {
-    return this._get("/store/agents", params);
-  }
-
-  getGraphMetaByStoreListingVersionID(
-    storeListingVersionID: string,
-  ): Promise<GraphMeta> {
-    return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreCreators(params?: {
-    featured?: boolean;
-    search_query?: string;
-    sorted_by?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<CreatorsResponse> {
-    return this._get("/store/creators", params);
-  }
-
-  getStoreCreator(username: string): Promise<CreatorDetails> {
-    return this._get(`/store/creator/${encodeURIComponent(username)}`);
-  }
-
-  getStoreSubmissions(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreSubmissionsResponse> {
-    return this._get("/store/submissions", params);
-  }
-
-  createStoreSubmission(
-    submission: StoreSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request("POST", "/store/submissions", submission);
-  }
-
-  generateStoreSubmissionImage(
-    agent_id: string,
-  ): Promise<{ image_url: string }> {
-    return this._request(
-      "POST",
-      "/store/submissions/generate_image?agent_id=" + agent_id,
-    );
-  }
-
-  deleteStoreSubmission(submission_id: string): Promise<boolean> {
-    return this._request("DELETE", `/store/submissions/${submission_id}`);
-  }
-
-  uploadStoreSubmissionMedia(file: File): Promise<string> {
-    return this._uploadFile("/store/submissions/media", file);
-  }
-
-  uploadFile(
+  async uploadFile(
     file: File,
-    provider: string = "gcs",
     expiration_hours: number = 24,
     onProgress?: (progress: number) => void,
   ): Promise<{
@@ -534,81 +462,21 @@ export default class BackendAPI {
     content_type: string;
     expires_in_hours: number;
   }> {
-    return this._uploadFileWithProgress(
+    const response = await this._uploadFileWithProgress(
       "/files/upload",
       file,
-      {
-        provider,
-        expiration_hours,
-      },
+      { expiration_hours },
       onProgress,
-    ).then((response) => {
-      if (typeof response === "string") {
-        return JSON.parse(response);
-      }
-      return response;
-    });
-  }
-
-  updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
-    return this._request("POST", "/store/profile", profile);
-  }
-
-  reviewAgent(
-    username: string,
-    agentName: string,
-    review: StoreReviewCreate,
-  ): Promise<StoreReview> {
-    return this._request(
-      "POST",
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}/review`,
-      review,
     );
-  }
-
-  getMyAgents(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<MyAgentsResponse> {
-    return this._get("/store/myagents", params);
-  }
-
-  downloadStoreAgent(
-    storeListingVersionId: string,
-    version?: number,
-  ): Promise<BlobPart> {
-    const url = version
-      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
-      : `/store/download/agents/${storeListingVersionId}`;
-
-    return this._get(url);
+    if (typeof response === "string") {
+      return JSON.parse(response);
+    }
+    return response;
   }
 
   /////////////////////////////////////////
   /////////// Admin API ///////////////////
   /////////////////////////////////////////
-
-  getAdminListingsWithVersions(params?: {
-    status?: SubmissionStatus;
-    search?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreListingsWithVersionsResponse> {
-    return this._get("/store/admin/listings", params);
-  }
-
-  reviewSubmissionAdmin(
-    storeListingVersionId: string,
-    review: ReviewSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request(
-      "POST",
-      `/store/admin/submissions/${storeListingVersionId}/review`,
-      review,
-    );
-  }
 
   addUserCredits(
     user_id: string,
@@ -629,12 +497,6 @@ export default class BackendAPI {
     transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
-  }
-
-  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
-    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
-
-    return this._get(url);
   }
 
   ////////////////////////////////////////
@@ -815,19 +677,6 @@ export default class BackendAPI {
 
   private _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
-  }
-
-  private async getAuthToken(): Promise<string> {
-    // Only try client-side session (for WebSocket connections)
-    // This will return "no-token-found" with httpOnly cookies, which is expected
-    const supabaseClient = await this.getSupabaseClient();
-    const {
-      data: { session },
-    } = (await supabaseClient?.auth.getSession()) || {
-      data: { session: null },
-    };
-
-    return session?.access_token || "no-token-found";
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -1062,6 +911,12 @@ export default class BackendAPI {
       throw error;
     }
 
+    if (
+      response.status === 204 ||
+      response.headers.get("Content-Length") === "0"
+    ) {
+      return null;
+    }
     return await response.json();
   }
 

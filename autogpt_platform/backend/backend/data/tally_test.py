@@ -284,6 +284,7 @@ async def test_populate_understanding_full_flow():
         ],
     }
     mock_input = MagicMock()
+    mock_input.suggested_prompts = {"Learn": ["P1"], "Create": ["P2"]}
 
     with (
         patch(
@@ -397,15 +398,25 @@ def test_extraction_prompt_no_format_placeholders():
 
 
 @pytest.mark.asyncio
-async def test_extract_business_understanding_success():
-    """Happy path: LLM returns valid JSON that maps to BusinessUnderstandingInput."""
+async def test_extract_business_understanding_themed_prompts():
+    """Happy path: LLM returns themed prompts as dict."""
     mock_choice = MagicMock()
     mock_choice.message.content = json.dumps(
         {
             "user_name": "Alice",
             "business_name": "Acme Corp",
-            "industry": "Technology",
-            "pain_points": ["manual reporting"],
+            "suggested_prompts": {
+                "Learn": ["Learn 1", "Learn 2", "Learn 3", "Learn 4", "Learn 5"],
+                "Create": [
+                    "Create 1",
+                    "Create 2",
+                    "Create 3",
+                    "Create 4",
+                    "Create 5",
+                ],
+                "Automate": ["Auto 1", "Auto 2", "Auto 3", "Auto 4", "Auto 5"],
+                "Organize": ["Org 1", "Org 2", "Org 3", "Org 4", "Org 5"],
+            },
         }
     )
     mock_response = MagicMock()
@@ -414,13 +425,46 @@ async def test_extract_business_understanding_success():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
-    assert result.business_name == "Acme Corp"
-    assert result.industry == "Technology"
-    assert result.pain_points == ["manual reporting"]
+    assert result.suggested_prompts is not None
+    assert len(result.suggested_prompts) == 4
+    assert len(result.suggested_prompts["Learn"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_extract_themed_prompts_filters_long_and_unknown_keys():
+    """Long prompts are filtered, unknown keys are dropped, each theme capped at 5."""
+    long_prompt = " ".join(["word"] * 21)
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps(
+        {
+            "user_name": "Alice",
+            "suggested_prompts": {
+                "Learn": [long_prompt, "Valid learn 1", "Valid learn 2"],
+                "UnknownTheme": ["Should be dropped"],
+                "Automate": ["A1", "A2", "A3", "A4", "A5", "A6"],
+            },
+        }
+    )
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
+        result = await extract_business_understanding("Q: Name?\nA: Alice")
+
+    assert result.suggested_prompts is not None
+    # Unknown key dropped
+    assert "UnknownTheme" not in result.suggested_prompts
+    # Long prompt filtered
+    assert result.suggested_prompts["Learn"] == ["Valid learn 1", "Valid learn 2"]
+    # Capped at 5
+    assert result.suggested_prompts["Automate"] == ["A1", "A2", "A3", "A4", "A5"]
 
 
 @pytest.mark.asyncio
@@ -436,7 +480,7 @@ async def test_extract_business_understanding_filters_nulls():
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_response
 
-    with patch("backend.data.tally.AsyncOpenAI", return_value=mock_client):
+    with patch("backend.data.tally.get_openai_client", return_value=mock_client):
         result = await extract_business_understanding("Q: Name?\nA: Alice")
 
     assert result.user_name == "Alice"
@@ -456,7 +500,7 @@ async def test_extract_business_understanding_invalid_json():
     mock_client.chat.completions.create.return_value = mock_response
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         pytest.raises(json.JSONDecodeError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
@@ -469,11 +513,24 @@ async def test_extract_business_understanding_timeout():
     mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
 
     with (
-        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.get_openai_client", return_value=mock_client),
         patch("backend.data.tally._LLM_TIMEOUT", 0.001),
         pytest.raises(asyncio.TimeoutError),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
+
+
+@pytest.mark.asyncio
+async def test_extract_business_understanding_missing_openrouter_key():
+    """When OpenRouter is not configured, raise a clear RuntimeError."""
+    with (
+        patch(
+            "backend.data.tally.get_openai_client", return_value=None
+        ) as mock_get_client,
+        pytest.raises(RuntimeError, match="open_router_api_key not set"),
+    ):
+        await extract_business_understanding("Q: Name?\nA: Alice")
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────

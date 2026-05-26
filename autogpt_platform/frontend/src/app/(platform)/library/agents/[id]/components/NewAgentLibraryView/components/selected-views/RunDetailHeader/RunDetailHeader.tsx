@@ -1,7 +1,7 @@
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
-import { ClockClockwiseIcon } from "@phosphor-icons/react";
+import { ClockClockwiseIcon, FlaskIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
@@ -22,7 +22,21 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
           <div className="flex w-full flex-col flex-wrap items-start justify-between gap-1 md:flex-row md:items-center">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
               {run?.status ? (
-                <RunStatusBadge status={run.status} />
+                <div className="flex items-center gap-2">
+                  <RunStatusBadge status={run.status} />
+                  {run.is_dry_run && (
+                    <div className="inline-flex items-center gap-1 rounded-md bg-amber-50 p-1">
+                      <FlaskIcon
+                        size={16}
+                        className="text-amber-700"
+                        weight="fill"
+                      />
+                      <Text variant="small-medium" className="!text-amber-700">
+                        Simulated
+                      </Text>
+                    </div>
+                  )}
+                </div>
               ) : scheduleRecurrence ? (
                 <div className="inline-flex items-center gap-1 rounded-md bg-yellow-50 p-1">
                   <ClockClockwiseIcon

@@ -1,15 +1,3 @@
-export enum SubmissionStatus {
-  DRAFT = "DRAFT",
-  PENDING = "PENDING",
-  APPROVED = "APPROVED",
-  REJECTED = "REJECTED",
-}
-export type ReviewSubmissionRequest = {
-  store_listing_version_id: string;
-  is_approved: boolean;
-  comments: string; // External comments visible to creator
-  internal_comments?: string; // Admin-only comments
-};
 export type Category = {
   category: string;
   description: string;
@@ -626,6 +614,7 @@ export type CredentialsMetaResponse = {
   username?: string;
   host?: string;
   is_system?: boolean;
+  is_managed?: boolean;
 };
 
 /* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
@@ -755,7 +744,7 @@ export enum BlockUIType {
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
   MCP_TOOL = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
-  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
+  TOOL_ORCHESTRATOR = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -776,102 +765,6 @@ export type Pagination = {
   total_pages: number;
   current_page: number;
   page_size: number;
-};
-
-export type StoreAgent = {
-  slug: string;
-  agent_name: string;
-  agent_image: string;
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  runs: number;
-  rating: number;
-  updated_at: string;
-};
-
-export type StoreAgentsResponse = {
-  agents: StoreAgent[];
-  pagination: Pagination;
-};
-
-export type Creator = {
-  name: string;
-  username: string;
-  description: string;
-  avatar_url: string;
-  num_agents: number;
-  agent_rating: number;
-  agent_runs: number;
-};
-
-export type CreatorsResponse = {
-  creators: Creator[];
-  pagination: Pagination;
-};
-
-export type CreatorDetails = {
-  name: string;
-  username: string;
-  description: string;
-  links: string[];
-  avatar_url: string;
-  agent_rating: number;
-  agent_runs: number;
-  top_categories: string[];
-};
-
-export type StoreSubmission = {
-  agent_id: string;
-  agent_version: number;
-  name: string;
-  sub_heading: string;
-  description: string;
-  instructions?: string;
-  image_urls: string[];
-  date_submitted: string;
-  status: SubmissionStatus;
-  runs: number;
-  rating: number;
-  slug: string;
-  store_listing_version_id?: string;
-  version?: number; // Actual version number from the database
-
-  // Review information
-  reviewer_id?: string;
-  review_comments?: string;
-  internal_comments?: string; // Admin-only comments
-  reviewed_at?: string;
-  changes_summary?: string;
-};
-
-export type StoreSubmissionsResponse = {
-  submissions: StoreSubmission[];
-  pagination: Pagination;
-};
-
-export type StoreSubmissionRequest = {
-  agent_id: string;
-  agent_version: number;
-  slug: string;
-  name: string;
-  sub_heading: string;
-  video_url?: string;
-  image_urls: string[];
-  description: string;
-  instructions?: string | null;
-  categories: string[];
-  changes_summary?: string;
-  recommended_schedule_cron?: string | null;
-};
-
-export type ProfileDetails = {
-  name: string;
-  username: string;
-  description: string;
-  links: string[];
-  avatar_url: string;
 };
 
 /* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
@@ -898,32 +791,6 @@ export type ScheduleCreatable = {
   cron: string;
   inputs: Record<string, any>;
   credentials?: Record<string, CredentialsMetaInput>;
-};
-
-export type MyAgent = {
-  agent_id: GraphID;
-  agent_version: number;
-  agent_name: string;
-  agent_image: string | null;
-  last_edited: string;
-  description: string;
-  recommended_schedule_cron: string | null;
-};
-
-export type MyAgentsResponse = {
-  agents: MyAgent[];
-  pagination: Pagination;
-};
-
-export type StoreReview = {
-  score: number;
-  comments?: string;
-};
-
-export type StoreReviewCreate = {
-  store_listing_version_id: string;
-  score: number;
-  comments?: string;
 };
 
 // API Key Types
@@ -1081,46 +948,6 @@ export interface OttoQuery {
   graph_id?: string;
 }
 
-export interface StoreListingWithVersions {
-  listing_id: string;
-  slug: string;
-  agent_id: string;
-  agent_version: number;
-  active_version_id: string | null;
-  has_approved_version: boolean;
-  creator_email: string | null;
-  latest_version: StoreSubmission | null;
-  versions: StoreSubmission[];
-}
-
-export interface StoreListingsWithVersionsResponse {
-  listings: StoreListingWithVersions[];
-  pagination: Pagination;
-}
-
-// Admin API Types
-export type AdminSubmissionsRequest = {
-  status?: SubmissionStatus;
-  search?: string;
-  page: number;
-  page_size: number;
-};
-
-export type AdminListingHistoryRequest = {
-  listing_id: string;
-  page: number;
-  page_size: number;
-};
-
-export type AdminSubmissionDetailsRequest = {
-  store_listing_version_id: string;
-};
-
-export type AdminPendingSubmissionsRequest = {
-  page: number;
-  page_size: number;
-};
-
 export enum CreditTransactionType {
   TOP_UP = "TOP_UP",
   USAGE = "USAGE",
@@ -1138,6 +965,7 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

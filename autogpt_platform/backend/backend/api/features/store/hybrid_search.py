@@ -31,12 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
+    """Tokenize text for BM25."""
     if not text:
         return []
-    # Lowercase and split on non-alphanumeric characters
-    tokens = re.findall(r"\b\w+\b", text.lower())
-    return tokens
+    return re.findall(r"\b\w+\b", text.lower())
 
 
 def bm25_rerank(
@@ -142,6 +140,7 @@ async def unified_hybrid_search(
     weights: UnifiedSearchWeights | None = None,
     min_score: float | None = None,
     user_id: str | None = None,
+    lexical_query: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Unified hybrid search across all content types.
@@ -149,7 +148,8 @@ async def unified_hybrid_search(
     Searches UnifiedContentEmbedding using both semantic (vector) and lexical (tsvector) signals.
 
     Args:
-        query: Search query string
+        query: Search query string (used for embedding + lexical unless
+            ``lexical_query`` is provided).
         content_types: List of content types to search. Defaults to all public types.
         category: Filter by category (for content types that support it)
         page: Page number (1-indexed)
@@ -157,6 +157,13 @@ async def unified_hybrid_search(
         weights: Custom weights for search signals
         min_score: Minimum relevance score threshold (0-1)
         user_id: User ID for searching private content (library agents)
+        lexical_query: Optional override for the tsvector ``@@`` candidate
+            selection and ``ts_rank_cd`` scoring. Use when the natural-
+            language query is too long for ``plainto_tsquery``'s
+            AND-of-terms semantics — typically a keyword-extracted form
+            of ``query`` (e.g. ``"youtube summarize video"`` for a goal
+            like ``"summarize a YouTube video..."``). Defaults to
+            ``query`` when None.
 
     Returns:
         Tuple of (results list, total count)
@@ -165,6 +172,11 @@ async def unified_hybrid_search(
     query = query.strip()
     if not query:
         return [], 0
+    # Default the lexical query to the semantic query for backwards-
+    # compatibility; callers (e.g. library similarity search) override
+    # when ``plainto_tsquery``'s AND semantics over a long natural goal
+    # would zero out every match.
+    lexical_query = (lexical_query or query).strip() or query
 
     if page < 1:
         page = 1
@@ -215,12 +227,15 @@ async def unified_hybrid_search(
     params: list[Any] = []
     param_idx = 1
 
-    # Query for lexical search
-    params.append(query)
+    # Query for lexical search (may differ from semantic ``query`` —
+    # see the ``lexical_query`` parameter doc).
+    params.append(lexical_query)
     query_param = f"${param_idx}"
     param_idx += 1
 
-    # Query lowercase for category matching
+    # Query lowercase for category matching — keep tied to the
+    # natural-language ``query`` so categories still match the user's
+    # intent words, not the stripped lexical form.
     params.append(query.lower())
     query_lower_param = f"${param_idx}"
     param_idx += 1
@@ -237,11 +252,18 @@ async def unified_hybrid_search(
     content_types_param = f"${param_idx}"
     param_idx += 1
 
-    # User ID filter (for private content)
+    # User ID filter (for private content).
+    # Defense-in-depth: a LIBRARY_AGENT row with NULL userId would be matched
+    # by the public ``OR userId IS NULL`` branch and leak across users.
+    # LIBRARY_AGENT rows are always per-user; explicitly exclude that combo.
     user_filter = ""
     if user_id is not None:
         params.append(user_id)
-        user_filter = f'AND (uce."userId" = ${param_idx} OR uce."userId" IS NULL)'
+        user_filter = (
+            f'AND (uce."userId" = ${param_idx} OR uce."userId" IS NULL) '
+            f'AND NOT (uce."contentType" = \'LIBRARY_AGENT\'::{{schema_prefix}}"ContentType" '
+            f'AND uce."userId" IS NULL)'
+        )
         param_idx += 1
     else:
         user_filter = 'AND uce."userId" IS NULL'
@@ -568,7 +590,7 @@ async def hybrid_search(
             SELECT uce."contentId" as "storeListingVersionId"
             FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
             INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                ON uce."contentId" = sa."storeListingVersionId"
+                ON uce."contentId" = sa.listing_version_id
             WHERE uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
             AND uce."userId" IS NULL
             AND uce.search @@ plainto_tsquery('english', {query_param})
@@ -582,7 +604,7 @@ async def hybrid_search(
                 SELECT uce."contentId", uce.embedding
                 FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                    ON uce."contentId" = sa."storeListingVersionId"
+                    ON uce."contentId" = sa.listing_version_id
                 WHERE uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
                 AND uce."userId" IS NULL
                 AND {where_clause}
@@ -605,7 +627,7 @@ async def hybrid_search(
                 sa.featured,
                 sa.is_available,
                 sa.updated_at,
-                sa."agentGraphId",
+                sa.graph_id,
                 -- Searchable text for BM25 reranking
                 COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
@@ -627,9 +649,9 @@ async def hybrid_search(
                 sa.runs as popularity_raw
             FROM candidates c
             INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                ON c."storeListingVersionId" = sa."storeListingVersionId"
+                ON c."storeListingVersionId" = sa.listing_version_id
             INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
-                ON sa."storeListingVersionId" = uce."contentId"
+                ON sa.listing_version_id = uce."contentId"
                 AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
         ),
         max_vals AS (
@@ -665,7 +687,7 @@ async def hybrid_search(
                 featured,
                 is_available,
                 updated_at,
-                "agentGraphId",
+                graph_id,
                 searchable_text,
                 semantic_score,
                 lexical_score,

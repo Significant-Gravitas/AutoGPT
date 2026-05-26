@@ -16,8 +16,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
+import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.credit_admin_routes
+import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.platform_cost_routes
+import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -29,7 +33,9 @@ import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
+import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
+import backend.api.features.push.routes as push_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
@@ -37,6 +43,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -46,6 +53,7 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -55,6 +63,7 @@ from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
+    PreconditionFailed,
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
@@ -90,6 +99,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await backend.data.redis_client.get_redis_async()
 
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
@@ -116,6 +127,11 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Register managed credential providers (e.g. AgentMail)
+    from backend.integrations.managed_providers import register_all
+
+    register_all()
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
@@ -136,7 +152,18 @@ async def lifespan_context(app: fastapi.FastAPI):
     except Exception as e:
         logger.warning(f"Error shutting down workspace storage: {e}")
 
-    await backend.data.db.disconnect()
+    # Each cleanup is wrapped so one failure doesn't block the rest. The
+    # Redis close in particular silences asyncio's "Unclosed ClusterNode"
+    # GC warning at interpreter shutdown.
+    try:
+        await backend.data.redis_client.disconnect_async()
+    except Exception:
+        logger.warning("redis_client.disconnect_async failed", exc_info=True)
+
+    try:
+        await backend.data.db.disconnect()
+    except Exception:
+        logger.warning("db.disconnect failed", exc_info=True)
 
 
 def custom_generate_unique_id(route: APIRoute):
@@ -209,13 +236,22 @@ instrument_fastapi(
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(
-                "%s %s failed. Investigate and resolve the underlying issue: %s",
-                request.method,
-                request.url.path,
-                exc,
-                exc_info=exc,
-            )
+            if status_code >= 500:
+                logger.exception(
+                    "%s %s failed. Investigate and resolve the underlying issue: %s",
+                    request.method,
+                    request.url.path,
+                    exc,
+                    exc_info=exc,
+                )
+            else:
+                logger.warning(
+                    "%s %s failed with %d: %s",
+                    request.method,
+                    request.url.path,
+                    status_code,
+                    exc,
+                )
 
         hint = (
             "Adjust the request and retry."
@@ -265,16 +301,21 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(
-    FolderAlreadyExistsError, handle_internal_http_error(409, False)
-)
-app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
-app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
-app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
+app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
+app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
+# UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
+# maps to HTTP 402. log_error=False because it's not an error from the
+# server's perspective — the user just lacks entitlement.
+app.add_exception_handler(
+    UserPaywalledError, handle_internal_http_error(402, log_error=False)
+)
+app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
@@ -305,9 +346,29 @@ app.include_router(
     prefix="/api/credits",
 )
 app.include_router(
+    backend.api.features.admin.diagnostics_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.rate_limit_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/copilot",
+)
+app.include_router(
+    backend.api.features.admin.platform_cost_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
+    backend.api.features.admin.block_cost_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,
@@ -345,6 +406,16 @@ app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    push_routes.router,
+    tags=["push"],
+    prefix="/api/push",
+)
+app.include_router(
+    backend.api.features.platform_linking.routes.router,
+    tags=["platform-linking"],
+    prefix="/api/platform-linking",
 )
 
 app.mount("/external-api", external_api)
@@ -519,8 +590,11 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
-    ) -> Credentials:
-        from .features.integrations.router import create_credentials, get_credential
+    ):
+        from backend.api.features.integrations.router import (
+            create_credentials,
+            get_credential,
+        )
 
         try:
             return await create_credentials(

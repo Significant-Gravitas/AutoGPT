@@ -76,7 +76,6 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
-            events=None,  # Ignore events for this lookup
         ):
             # Re-register with Telegram using the same URL but new allowed_updates
             ingress_url = webhook_ingress_url(self.PROVIDER_NAME, existing.id)
@@ -143,10 +142,6 @@ class TelegramWebhooksManager(BaseWebhooksManager):
             elif "video" in message:
                 event_type = "message.video"
             else:
-                logger.warning(
-                    "Unknown Telegram webhook payload type; "
-                    f"message.keys() = {message.keys()}"
-                )
                 event_type = "message.other"
         elif "edited_message" in payload:
             event_type = "message.edited_message"

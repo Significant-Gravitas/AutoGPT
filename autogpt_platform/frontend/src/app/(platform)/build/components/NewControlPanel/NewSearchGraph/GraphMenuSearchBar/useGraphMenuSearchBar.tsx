@@ -1,4 +1,4 @@
-import { useState, useMemo, useDeferredValue } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { CustomNode } from "../../../FlowEditor/nodes/CustomNode/CustomNode";
 import { beautifyString } from "@/lib/utils";
 import jaro from "jaro-winkler";
@@ -8,8 +8,7 @@ export type SearchableNode = CustomNode & {
   matchedFields?: string[];
 };
 
-export const useGraphSearch = (nodes: CustomNode[]) => {
-  const [open, setOpen] = useState(false);
+export function useGraphSearch(nodes: CustomNode[]) {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -42,13 +41,11 @@ export const useGraphSearch = (nodes: CustomNode[]) => {
   }, [nodes, deferredSearchQuery]);
 
   return {
-    open,
-    setOpen,
     searchQuery,
     setSearchQuery,
     filteredNodes,
   };
-};
+}
 
 function calculateNodeScore(
   node: CustomNode,
@@ -65,12 +62,15 @@ function calculateNodeScore(
 
   // Prepare searchable text with defensive checks
   const nodeTitle = (node.data?.title || "").toLowerCase(); // This includes the ID
-  const nodeId = (node.id || "").toLowerCase();
+  const nodeID = (node.id || "").toLowerCase();
   const nodeDescription = (node.data?.description || "").toLowerCase();
   const blockType = (node.data?.title || "").toLowerCase();
   const beautifiedBlockType = beautifyString(blockType).toLowerCase();
   const customizedName = String(
     node.data?.metadata?.customized_name || "",
+  ).toLowerCase();
+  const agentName = String(
+    node.data?.hardcodedValues?.agent_name || "",
   ).toLowerCase();
 
   // Get input and output names with defensive checks
@@ -84,8 +84,9 @@ function calculateNodeScore(
   // 1. Check exact match in customized name, title (includes ID), node ID, or block type (highest priority)
   if (
     customizedName.includes(query) ||
+    agentName.includes(query) ||
     nodeTitle.includes(query) ||
-    nodeId.includes(query) ||
+    nodeID.includes(query) ||
     blockType.includes(query) ||
     beautifiedBlockType.includes(query)
   ) {
@@ -98,6 +99,7 @@ function calculateNodeScore(
     queryWords.every(
       (word) =>
         customizedName.includes(word) ||
+        agentName.includes(word) ||
         nodeTitle.includes(word) ||
         beautifiedBlockType.includes(word),
     )
@@ -133,7 +135,7 @@ function calculateNodeScore(
     const titleSimilarity = Math.max(
       jaro(customizedName, query),
       jaro(nodeTitle, query),
-      jaro(nodeId, query),
+      jaro(nodeID, query),
       jaro(beautifiedBlockType, query),
     );
 

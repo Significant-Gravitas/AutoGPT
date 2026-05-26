@@ -1,4 +1,5 @@
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
+import type { AgentOutputResponse } from "@/app/api/__generated__/models/agentOutputResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
@@ -10,7 +11,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -25,6 +26,7 @@ export interface RunAgentInput {
 export type RunAgentToolOutput =
   | SetupRequirementsResponse
   | ExecutionStartedResponse
+  | AgentOutputResponse
   | AgentDetailsResponse
   | NeedLoginResponse
   | ErrorResponse;
@@ -32,6 +34,7 @@ export type RunAgentToolOutput =
 const RUN_AGENT_OUTPUT_TYPES = new Set<string>([
   ResponseType.setup_requirements,
   ResponseType.execution_started,
+  ResponseType.agent_output,
   ResponseType.agent_details,
   ResponseType.need_login,
   ResponseType.error,
@@ -52,6 +55,12 @@ export function isRunAgentExecutionStartedOutput(
   return (
     output.type === ResponseType.execution_started || "execution_id" in output
   );
+}
+
+export function isRunAgentAgentOutputResponse(
+  output: RunAgentToolOutput,
+): output is AgentOutputResponse {
+  return output.type === ResponseType.agent_output;
 }
 
 export function isRunAgentAgentDetailsOutput(
@@ -149,10 +158,10 @@ export function getAnimationText(part: {
       }
       if (isRunAgentNeedLoginOutput(output))
         return "Sign in required to run agent";
-      return "Error running agent";
+      return "Something went wrong";
     }
     case "output-error":
-      return "Error running agent";
+      return "Something went wrong";
     default:
       return actionPhrase;
   }
@@ -171,7 +180,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }
@@ -231,6 +240,14 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
         missingCredsCount > 0
           ? `Missing ${missingCredsCount} credential${missingCredsCount === 1 ? "" : "s"}`
           : output.message,
+    };
+  }
+
+  if (isRunAgentAgentOutputResponse(output)) {
+    return {
+      icon,
+      title: output.agent_name,
+      description: "Execution completed",
     };
   }
 

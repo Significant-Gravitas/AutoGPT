@@ -2,16 +2,26 @@
 
 import base64
 import logging
+import mimetypes
 import os
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    get_sdk_cwd,
+    get_workspace_manager,
+    is_allowed_local_path,
+    looks_like_sdk_tool_result_path,
+    resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
-from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -19,8 +29,14 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+_MAX_FILE_SIZE_MB = Config().max_file_size_mb
 
-def _resolve_write_content(
+# Sentinel file_id used when a tool-result file is read directly from the local
+# host filesystem (rather than from workspace storage).
+_LOCAL_TOOL_RESULT_FILE_ID = "local"
+
+
+async def _resolve_write_content(
     content_text: str | None,
     content_b64: str | None,
     source_path: str | None,
@@ -30,6 +46,9 @@ def _resolve_write_content(
 
     Returns the raw bytes on success, or an ``ErrorResponse`` on validation
     failure (wrong number of sources, invalid path, file not found, etc.).
+
+    When an E2B sandbox is active, ``source_path`` reads from the sandbox
+    filesystem instead of the local ephemeral directory.
     """
     # Normalise empty strings to None so counting and dispatch stay in sync.
     if content_text is not None and content_text == "":
@@ -54,24 +73,7 @@ def _resolve_write_content(
         )
 
     if source_path is not None:
-        validated = _validate_ephemeral_path(
-            source_path, param_name="source_path", session_id=session_id
-        )
-        if isinstance(validated, ErrorResponse):
-            return validated
-        try:
-            with open(validated, "rb") as f:
-                return f.read()
-        except FileNotFoundError:
-            return ErrorResponse(
-                message=f"Source file not found: {source_path}",
-                session_id=session_id,
-            )
-        except Exception as e:
-            return ErrorResponse(
-                message=f"Failed to read source file: {e}",
-                session_id=session_id,
-            )
+        return await _read_source_path(source_path, session_id)
 
     if content_b64 is not None:
         try:
@@ -89,6 +91,102 @@ def _resolve_write_content(
 
     assert content_text is not None
     return content_text.encode("utf-8")
+
+
+def _resolve_sandbox_path(
+    path: str, session_id: str | None, param_name: str
+) -> str | ErrorResponse:
+    """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
+
+    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools.resolve_sandbox_path`
+    and wraps any ``ValueError`` into an :class:`ErrorResponse`.
+    """
+    try:
+        return resolve_sandbox_path(path)
+    except ValueError:
+        return ErrorResponse(
+            message=f"{param_name} must be within {E2B_WORKDIR}",
+            session_id=session_id,
+        )
+
+
+async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
+    """Read *source_path* from E2B sandbox or local ephemeral directory."""
+
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        remote = _resolve_sandbox_path(source_path, session_id, "source_path")
+        if isinstance(remote, ErrorResponse):
+            return remote
+        try:
+            data = await sandbox.files.read(remote, format="bytes")
+            return bytes(data)
+        except Exception as exc:
+            return ErrorResponse(
+                message=f"Source file not found on sandbox: {source_path} ({exc})",
+                session_id=session_id,
+            )
+
+    # Local fallback: validate path stays within ephemeral directory.
+    validated = _validate_ephemeral_path(
+        source_path, param_name="source_path", session_id=session_id
+    )
+    if isinstance(validated, ErrorResponse):
+        return validated
+    try:
+        with open(validated, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ErrorResponse(
+            message=f"Source file not found: {source_path}",
+            session_id=session_id,
+        )
+    except Exception as e:
+        return ErrorResponse(
+            message=f"Failed to read source file: {e}",
+            session_id=session_id,
+        )
+
+
+async def _save_to_path(
+    path: str, content: bytes, session_id: str
+) -> str | ErrorResponse:
+    """Write *content* to *path* on E2B sandbox or local ephemeral directory.
+
+    Returns the resolved path on success, or an ``ErrorResponse`` on failure.
+    """
+
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        remote = _resolve_sandbox_path(path, session_id, "save_to_path")
+        if isinstance(remote, ErrorResponse):
+            return remote
+        try:
+            await sandbox.files.write(remote, content)
+        except Exception as exc:
+            return ErrorResponse(
+                message=f"Failed to write to sandbox: {path} ({exc})",
+                session_id=session_id,
+            )
+        return remote
+
+    validated = _validate_ephemeral_path(
+        path, param_name="save_to_path", session_id=session_id
+    )
+    if isinstance(validated, ErrorResponse):
+        return validated
+    try:
+        dir_path = os.path.dirname(validated)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        with open(validated, "wb") as f:
+            f.write(content)
+    except Exception as exc:
+        return ErrorResponse(
+            message=f"Failed to write to local path: {path} ({exc})",
+            session_id=session_id,
+        )
+    return validated
 
 
 def _validate_ephemeral_path(
@@ -129,12 +227,6 @@ _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
-
-
-async def _get_manager(user_id: str, session_id: str) -> WorkspaceManager:
-    """Create a session-scoped WorkspaceManager."""
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
 
 
 async def _resolve_file(
@@ -194,6 +286,93 @@ class WorkspaceFileContentResponse(ToolResponseBase):
     content_base64: str
 
 
+_MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _read_local_tool_result(
+    path: str,
+    char_offset: int,
+    char_length: Optional[int],
+    session_id: str,
+    sdk_cwd: str | None = None,
+) -> ToolResponseBase:
+    """Read an SDK tool-result file from local disk.
+
+    This is a fallback for when the model mistakenly calls
+    ``read_workspace_file`` with an SDK tool-result path that only exists on
+    the host filesystem, not in cloud workspace storage.
+
+    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    regardless of what the caller has already checked.
+    """
+    # TOCTOU: path validated then opened separately. Acceptable because
+    # the tool-results directory is server-controlled, not user-writable.
+    expanded = os.path.realpath(os.path.expanduser(path))
+    # Defence-in-depth: re-check with resolved path (caller checked raw path).
+    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+        return ErrorResponse(
+            message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
+        )
+    try:
+        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
+        # Pre-read size check prevents loading files far above the cap;
+        # the remaining TOCTOU gap is acceptable for server-controlled paths.
+        file_size = os.path.getsize(expanded)
+        if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
+            return ErrorResponse(
+                message=(f"File too large: {os.path.basename(path)}"),
+                session_id=session_id,
+            )
+
+        # Detect binary files: try strict UTF-8 first, fall back to
+        # base64-encoding the raw bytes for binary content.
+        with open(expanded, "rb") as fh:
+            raw = fh.read()
+        try:
+            text_content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # Binary file — return raw base64, ignore char_offset/char_length
+            return WorkspaceFileContentResponse(
+                file_id=_LOCAL_TOOL_RESULT_FILE_ID,
+                name=os.path.basename(path),
+                path=path,
+                mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
+                content_base64=base64.b64encode(raw).decode("ascii"),
+                message=(
+                    f"Read {file_size:,} bytes (binary) from local tool-result "
+                    f"{os.path.basename(path)}"
+                ),
+                session_id=session_id,
+            )
+
+        end = (
+            char_offset + char_length if char_length is not None else len(text_content)
+        )
+        slice_text = text_content[char_offset:end]
+    except FileNotFoundError:
+        return ErrorResponse(
+            message=f"File not found: {os.path.basename(path)}", session_id=session_id
+        )
+    except Exception as exc:
+        return ErrorResponse(
+            message=f"Error reading file: {type(exc).__name__}", session_id=session_id
+        )
+
+    return WorkspaceFileContentResponse(
+        file_id=_LOCAL_TOOL_RESULT_FILE_ID,
+        name=os.path.basename(path),
+        path=path,
+        mime_type=mimetypes.guess_type(path)[0] or "text/plain",
+        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("ascii"),
+        message=(
+            f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
+            f"of {len(text_content):,} chars from local tool-result "
+            f"{os.path.basename(path)}"
+        ),
+        session_id=session_id,
+    )
+
+
 class WorkspaceFileMetadataResponse(ToolResponseBase):
     """Response containing workspace file metadata and download URL (prevents context bloat)."""
 
@@ -240,13 +419,7 @@ class ListWorkspaceFilesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "List files in the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Read/Glob tools instead. "
-            "Returns file names, paths, sizes, and metadata. "
-            "Optionally filter by path prefix."
-        )
+        return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -255,24 +428,17 @@ class ListWorkspaceFilesTool(BaseTool):
             "properties": {
                 "path_prefix": {
                     "type": "string",
-                    "description": (
-                        "Optional path prefix to filter files "
-                        "(e.g., '/documents/' to list only files in documents folder). "
-                        "By default, only files from the current session are listed."
-                    ),
+                    "description": "Filter by path prefix (e.g. '/documents/').",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of files to return (default 50, max 100)",
+                    "description": "Max files to return (default 50, max 100).",
                     "minimum": 1,
                     "maximum": 100,
                 },
                 "include_all_sessions": {
                     "type": "boolean",
-                    "description": (
-                        "If true, list files from all sessions. "
-                        "Default is false (only current session's files)."
-                    ),
+                    "description": "Include files from all sessions (default: false).",
                 },
             },
             "required": [],
@@ -286,6 +452,9 @@ class ListWorkspaceFilesTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        path_prefix: Optional[str] = None,
+        limit: int = 50,
+        include_all_sessions: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -294,12 +463,10 @@ class ListWorkspaceFilesTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        path_prefix: Optional[str] = kwargs.get("path_prefix")
-        limit = min(kwargs.get("limit", 50), 100)
-        include_all_sessions: bool = kwargs.get("include_all_sessions", False)
+        limit = min(limit, 100)
 
         try:
-            manager = await _get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             files = await manager.list_files(
                 path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
             )
@@ -345,7 +512,7 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB
+    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
     PREVIEW_SIZE = 500
 
     @property
@@ -355,16 +522,11 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Read tool instead. "
-            "Specify either file_id or path to identify the file. "
-            "For small text files, returns content directly. "
-            "For large or binary files, returns metadata and a download URL. "
-            "Optionally use 'save_to_path' to copy the file to the ephemeral "
-            "working directory for processing with bash_exec or SDK tools. "
-            "Paths are scoped to the current session by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
+            "Read a file from persistent workspace. Specify file_id or path. "
+            "Small text/image files return inline; large/binary return metadata+URL. "
+            "Use save_to_path to copy to working dir for processing. "
+            "Use offset/length for paginated reads. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -374,33 +536,30 @@ class ReadWorkspaceFileTool(BaseTool):
             "properties": {
                 "file_id": {
                     "type": "string",
-                    "description": "The file's unique ID (from list_workspace_files)",
+                    "description": "File ID from list_workspace_files.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "The virtual file path (e.g., '/documents/report.pdf'). "
-                        "Scoped to current session by default."
-                    ),
+                    "description": "Virtual file path (e.g. '/documents/report.pdf').",
                 },
                 "save_to_path": {
                     "type": "string",
-                    "description": (
-                        "If provided, save the file to this path in the ephemeral "
-                        "working directory (e.g., '/tmp/copilot-.../data.csv') "
-                        "so it can be processed with bash_exec or SDK tools. "
-                        "The file content is still returned in the response."
-                    ),
+                    "description": "Copy file to this working directory path for processing.",
                 },
                 "force_download_url": {
                     "type": "boolean",
-                    "description": (
-                        "If true, always return metadata+URL instead of inline content. "
-                        "Default is false (auto-selects based on file size/type)."
-                    ),
+                    "description": "Always return metadata+URL instead of inline content.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Character offset for paginated reads (0-based).",
+                },
+                "length": {
+                    "type": "integer",
+                    "description": "Max characters to return for paginated reads.",
                 },
             },
-            "required": [],  # At least one must be provided
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property
@@ -411,6 +570,12 @@ class ReadWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        file_id: Optional[str] = None,
+        path: Optional[str] = None,
+        save_to_path: Optional[str] = None,
+        force_download_url: bool = False,
+        offset: int = 0,
+        length: Optional[int] = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -419,29 +584,57 @@ class ReadWorkspaceFileTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        file_id: Optional[str] = kwargs.get("file_id")
-        path: Optional[str] = kwargs.get("path")
-        save_to_path: Optional[str] = kwargs.get("save_to_path")
-        force_download_url: bool = kwargs.get("force_download_url", False)
+        char_offset: int = max(0, offset)
+        char_length: Optional[int] = length
 
         if not file_id and not path:
             return ErrorResponse(
                 message="Please provide either file_id or path", session_id=session_id
             )
 
-        # Validate and resolve save_to_path (use sanitized real path).
-        if save_to_path:
-            validated_save = _validate_ephemeral_path(
-                save_to_path, param_name="save_to_path", session_id=session_id
-            )
-            if isinstance(validated_save, ErrorResponse):
-                return validated_save
-            save_to_path = validated_save
-
         try:
-            manager = await _get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
+                # Fallback: if the path is an SDK tool-result on local disk,
+                # read it directly instead of failing.  The model sometimes
+                # calls read_workspace_file for these paths by mistake.
+                sdk_cwd = get_sdk_cwd()
+                # Relative SDK-tool-result shorthand must short-circuit
+                # *before* the ``is_allowed_local_path`` fallback: when
+                # ``sdk_cwd`` is set, the shorthand resolves under it and
+                # passes the allow check, but the file doesn't actually
+                # exist at that resolved path → ``_read_local_tool_result``
+                # returns a generic "Path not allowed" and the redirect
+                # branch below never runs. Catch relative shorthands here
+                # so the model sees the helpful redirect on the first try.
+                # Absolute SDK paths still take the local-read path below
+                # (legit fallback for ``read_workspace_file`` with an
+                # absolute SDK tool-results path).
+                if (
+                    path
+                    and not os.path.isabs(path)
+                    and not path.startswith("~")
+                    and looks_like_sdk_tool_result_path(path)
+                ):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
+                    )
+                if path and is_allowed_local_path(path, sdk_cwd):
+                    return _read_local_tool_result(
+                        path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
+                # Path looks like SDK tool-results but isn't reachable
+                # via the local-read path either (e.g. absolute SDK path
+                # not under sdk_cwd) — redirect to read_tool_result /
+                # @@agptfile rather than returning a generic
+                # "Path not allowed".
+                if path and looks_like_sdk_tool_result_path(path):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
+                    )
                 return resolved
             target_file_id, file_info = resolved
 
@@ -449,11 +642,38 @@ class ReadWorkspaceFileTool(BaseTool):
             cached_content: bytes | None = None
             if save_to_path:
                 cached_content = await manager.read_file_by_id(target_file_id)
-                dir_path = os.path.dirname(save_to_path)
-                if dir_path:
-                    os.makedirs(dir_path, exist_ok=True)
-                with open(save_to_path, "wb") as f:
-                    f.write(cached_content)
+                result = await _save_to_path(save_to_path, cached_content, session_id)
+                if isinstance(result, ErrorResponse):
+                    return result
+                save_to_path = result
+
+            # Ranged read: return a character slice directly.
+            if char_offset > 0 or char_length is not None:
+                raw = cached_content or await manager.read_file_by_id(target_file_id)
+                text = raw.decode("utf-8", errors="replace")
+                total_chars = len(text)
+                end = (
+                    char_offset + char_length
+                    if char_length is not None
+                    else total_chars
+                )
+                slice_text = text[char_offset:end]
+                return WorkspaceFileContentResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type="text/plain",
+                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
+                        "utf-8"
+                    ),
+                    message=(
+                        f"Read chars {char_offset}–"
+                        f"{char_offset + len(slice_text)} "
+                        f"of {total_chars:,} total "
+                        f"from {file_info.name}"
+                    ),
+                    session_id=session_id,
+                )
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
@@ -525,6 +745,33 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
 
+# Paths under ``/skills/`` are managed by the skills registry — the
+# ``store_skill`` / ``delete_skill`` tools enforce frontmatter validation,
+# the per-user cap, name regex, and content sanitisation. Allowing plain
+# write_workspace_file / delete_workspace_file there would bypass all of
+# that and let the model accidentally (or maliciously) corrupt the
+# registry. Reads stay open so the model can still inspect sibling
+# references inside a skill bundle.
+_SKILLS_REGISTRY_PREFIX = "skills/"
+_SKILLS_REGISTRY_ERROR = (
+    "Path is managed by the skills registry; use store_skill / "
+    "delete_skill instead. (read_workspace_file can still read "
+    "sibling files inside a skill bundle.)"
+)
+
+
+def _path_under_skills_registry(path: str | None) -> bool:
+    """Return ``True`` when *path* normalises to a location under
+    the skills-registry folder (``/skills/...`` or ``skills/...``,
+    case-insensitive)."""
+    if not path:
+        return False
+    # Strip leading slashes + whitespace, lower-case so case variants
+    # (``Skills/foo``) cannot bypass the check.
+    normalised = path.strip().lstrip("/").lower()
+    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
+
+
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
 
@@ -535,15 +782,10 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Write or create a file in the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Write tool instead. "
-            "Provide content as plain text via 'content', OR base64-encoded via "
-            "'content_base64', OR copy a file from the ephemeral working directory "
-            "via 'source_path'. Exactly one of these three is required. "
-            f"Maximum file size is {Config().max_file_size_mb}MB. "
-            "Files are saved to the current session's folder by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
+            "Write a file to persistent workspace (survives across sessions). "
+            "Provide exactly one of: content (text), content_base64 (binary), "
+            f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -553,51 +795,31 @@ class WriteWorkspaceFileTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Name for the file (e.g., 'report.pdf')",
+                    "description": "Filename (e.g. 'report.pdf').",
                 },
                 "content": {
                     "type": "string",
-                    "description": (
-                        "Plain text content to write. Use this for text files "
-                        "(code, configs, documents, etc.). "
-                        "Mutually exclusive with content_base64 and source_path."
-                    ),
+                    "description": "Plain text content. Mutually exclusive with content_base64/source_path.",
                 },
                 "content_base64": {
                     "type": "string",
-                    "description": (
-                        "Base64-encoded file content. Use this for binary files "
-                        "(images, PDFs, etc.). "
-                        "Mutually exclusive with content and source_path."
-                    ),
+                    "description": "Base64-encoded binary content. Mutually exclusive with content/source_path.",
                 },
                 "source_path": {
                     "type": "string",
-                    "description": (
-                        "Path to a file in the ephemeral working directory to "
-                        "copy to workspace (e.g., '/tmp/copilot-.../output.csv'). "
-                        "Use this to persist files created by bash_exec or SDK Write. "
-                        "Mutually exclusive with content and content_base64."
-                    ),
+                    "description": "Working directory path to copy to workspace. Mutually exclusive with content/content_base64.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Optional virtual path where to save the file "
-                        "(e.g., '/documents/report.pdf'). "
-                        "Defaults to '/{filename}'. Scoped to current session."
-                    ),
+                    "description": "Virtual path (e.g. '/documents/report.pdf'). Defaults to '/{filename}'.",
                 },
                 "mime_type": {
                     "type": "string",
-                    "description": (
-                        "Optional MIME type of the file. "
-                        "Auto-detected from filename if not provided."
-                    ),
+                    "description": "MIME type. Auto-detected from filename if omitted.",
                 },
                 "overwrite": {
                     "type": "boolean",
-                    "description": "Whether to overwrite if file exists at path (default: false)",
+                    "description": "Overwrite if file exists (default: false).",
                 },
             },
             "required": ["filename"],
@@ -611,6 +833,13 @@ class WriteWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        filename: str = "",
+        source_path: str | None = None,
+        content: str | None = None,
+        content_base64: str | None = None,
+        path: str | None = None,
+        mime_type: str | None = None,
+        overwrite: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -619,17 +848,46 @@ class WriteWorkspaceFileTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        filename: str = kwargs.get("filename", "")
         if not filename:
+            # When ALL parameters are missing, the most likely cause is
+            # output token truncation: the LLM tried to inline a very large
+            # file as `content`, the SDK silently truncated the tool call
+            # arguments to `{}`, and we receive nothing.  Return an
+            # actionable error instead of a generic "filename required".
+            has_any_content = any(
+                kwargs.get(k) for k in ("content", "content_base64", "source_path")
+            )
+            if not has_any_content:
+                return ErrorResponse(
+                    message=(
+                        "Tool call appears truncated (no arguments received). "
+                        "This happens when the content is too large for a "
+                        "single tool call. Instead of passing content inline, "
+                        "first write the file to the working directory using "
+                        "bash_exec (e.g. cat > /home/user/file.md << 'EOF'... "
+                        "EOF), then use source_path to copy it to workspace: "
+                        "write_workspace_file(filename='file.md', "
+                        "source_path='/home/user/file.md')"
+                    ),
+                    session_id=session_id,
+                )
             return ErrorResponse(
                 message="Please provide a filename", session_id=session_id
             )
 
-        source_path_arg: str | None = kwargs.get("source_path")
-        content_text: str | None = kwargs.get("content")
-        content_b64: str | None = kwargs.get("content_base64")
+        # Block writes to the skills registry folder — they would bypass
+        # store_skill's validation (cap, body limits, name regex,
+        # sanitisation of server-injected tags).  Either an explicit
+        # ``path`` or a ``filename`` defaulting to ``skills/...`` count.
+        candidate_path = path if path is not None else f"/{filename}"
+        if _path_under_skills_registry(candidate_path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
 
-        resolved = _resolve_write_content(
+        source_path_arg: str | None = source_path
+        content_text: str | None = content
+        content_b64: str | None = content_base64
+
+        resolved = await _resolve_write_content(
             content_text,
             content_b64,
             source_path_arg,
@@ -637,24 +895,24 @@ class WriteWorkspaceFileTool(BaseTool):
         )
         if isinstance(resolved, ErrorResponse):
             return resolved
-        content: bytes = resolved
+        content_bytes: bytes = resolved
 
-        max_size = Config().max_file_size_mb * 1024 * 1024
-        if len(content) > max_size:
+        max_size = _MAX_FILE_SIZE_MB * 1024 * 1024
+        if len(content_bytes) > max_size:
             return ErrorResponse(
-                message=f"File too large. Maximum size is {Config().max_file_size_mb}MB",
+                message=f"File too large. Maximum size is {_MAX_FILE_SIZE_MB}MB",
                 session_id=session_id,
             )
 
         try:
-            await scan_content_safe(content, filename=filename)
-            manager = await _get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
-                content=content,
+                content=content_bytes,
                 filename=filename,
-                path=kwargs.get("path"),
-                mime_type=kwargs.get("mime_type"),
-                overwrite=kwargs.get("overwrite", False),
+                path=path,
+                mime_type=mime_type,
+                overwrite=overwrite,
+                metadata={"origin": "agent-created"},
             )
 
             # Build informative source label and message.
@@ -678,8 +936,8 @@ class WriteWorkspaceFileTool(BaseTool):
             preview: str | None = None
             if _is_text_mime(rec.mime_type):
                 try:
-                    preview = content[:200].decode("utf-8", errors="replace")
-                    if len(content) > 200:
+                    preview = content_bytes[:200].decode("utf-8", errors="replace")
+                    if len(content_bytes) > 200:
                         preview += "..."
                 except Exception:
                     pass
@@ -704,8 +962,21 @@ class WriteWorkspaceFileTool(BaseTool):
                 message=msg,
                 session_id=session_id,
             )
-        except ValueError as e:
+        except VirusDetectedError as e:
+            logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
             return ErrorResponse(message=str(e), session_id=session_id)
+        except VirusScanError as e:
+            logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
+            return ErrorResponse(message=str(e), session_id=session_id)
+        except ValueError as e:
+            msg = str(e)
+            if msg.startswith("Storage limit exceeded"):
+                msg += (
+                    " Use list_workspace_files to find candidates, then "
+                    "delete_workspace_file to free space and retry — or ask "
+                    "the user to upgrade their plan."
+                )
+            return ErrorResponse(message=msg, session_id=session_id)
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
@@ -724,12 +995,7 @@ class DeleteWorkspaceFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Delete a file from the user's persistent workspace (cloud storage). "
-            "Specify either file_id or path to identify the file. "
-            "Paths are scoped to the current session by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
-        )
+        return "Delete a file from persistent workspace. Specify file_id or path. Paths scoped to current session; use /sessions/<id>/... for cross-session access."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -738,17 +1004,14 @@ class DeleteWorkspaceFileTool(BaseTool):
             "properties": {
                 "file_id": {
                     "type": "string",
-                    "description": "The file's unique ID (from list_workspace_files)",
+                    "description": "File ID from list_workspace_files.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "The virtual file path (e.g., '/documents/report.pdf'). "
-                        "Scoped to current session by default."
-                    ),
+                    "description": "Virtual file path.",
                 },
             },
-            "required": [],  # At least one must be provided
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property
@@ -759,6 +1022,8 @@ class DeleteWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        file_id: Optional[str] = None,
+        path: Optional[str] = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -766,20 +1031,34 @@ class DeleteWorkspaceFileTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
-
-        file_id: Optional[str] = kwargs.get("file_id")
-        path: Optional[str] = kwargs.get("path")
         if not file_id and not path:
             return ErrorResponse(
                 message="Please provide either file_id or path", session_id=session_id
             )
 
+        # Reject deletes targeting the skills registry by path up-front.
+        # file_id targets are checked AFTER resolution below, since the
+        # path is only known once the file is looked up.
+        if _path_under_skills_registry(path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
+
         try:
-            manager = await _get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
             target_file_id, file_info = resolved
+
+            # Fail closed: if the resolved file has no ``path`` attribute the
+            # workspace shape has drifted and we cannot verify the ACL, so
+            # refuse to delete rather than fall through with ``None``.
+            resolved_path = getattr(file_info, "path", None)
+            if not isinstance(resolved_path, str) or _path_under_skills_registry(
+                resolved_path
+            ):
+                return ErrorResponse(
+                    message=_SKILLS_REGISTRY_ERROR, session_id=session_id
+                )
 
             if not await manager.delete_file(target_file_id):
                 return ErrorResponse(

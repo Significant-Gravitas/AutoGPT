@@ -2,12 +2,12 @@
 
 import type { ToolUIPart } from "ai";
 import React from "react";
-import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -46,33 +46,26 @@ interface Props {
   part: ViewAgentOutputToolPart;
 }
 
-function isWorkspaceRef(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("workspace://");
-}
-
-function resolveForRenderer(value: unknown): {
+export function resolveForRenderer(value: unknown): {
   value: unknown;
   metadata?: OutputMetadata;
 } {
-  if (!isWorkspaceRef(value)) return { value };
+  if (!isWorkspaceURI(value)) return { value };
 
-  const withoutPrefix = value.replace("workspace://", "");
-  const fileId = withoutPrefix.split("#")[0];
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(fileId);
-  const url = `/api/proxy${apiPath}`;
+  const parsed = parseWorkspaceURI(value);
+  if (!parsed) return { value };
 
-  const hashIndex = value.indexOf("#");
-  const mimeHint =
-    hashIndex !== -1 ? value.slice(hashIndex + 1) || undefined : undefined;
-
+  // Pass workspace URIs through to the registry unchanged.
+  // WorkspaceFileRenderer (priority 50) matches workspace:// URIs and
+  // handles URL building, loading skeletons, and error states internally.
+  // Previously this converted to a proxy URL which bypassed
+  // WorkspaceFileRenderer, causing ImageRenderer (bare <img>) to match.
   const metadata: OutputMetadata = {};
-  if (mimeHint) {
-    metadata.mimeType = mimeHint;
-    if (mimeHint.startsWith("image/")) metadata.type = "image";
-    else if (mimeHint.startsWith("video/")) metadata.type = "video";
+  if (parsed.mimeType) {
+    metadata.mimeType = parsed.mimeType;
   }
 
-  return { value: url, metadata };
+  return { value, metadata };
 }
 
 function RenderOutputValue({ value }: { value: unknown }) {
@@ -89,16 +82,6 @@ function RenderOutputValue({ value }: { value: unknown }) {
         metadata={resolved.metadata}
         renderer={renderer}
       />
-    );
-  }
-
-  // Fallback for audio workspace refs
-  if (
-    isWorkspaceRef(value) &&
-    resolved.metadata?.mimeType?.startsWith("audio/")
-  ) {
-    return (
-      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
     );
   }
 

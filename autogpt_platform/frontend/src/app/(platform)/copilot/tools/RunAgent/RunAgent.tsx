@@ -2,7 +2,7 @@
 
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
   ContentGrid,
@@ -15,6 +15,7 @@ import {
   getAnimationText,
   getRunAgentToolOutput,
   isRunAgentAgentDetailsOutput,
+  isRunAgentAgentOutputResponse,
   isRunAgentErrorOutput,
   isRunAgentExecutionStartedOutput,
   isRunAgentNeedLoginOutput,
@@ -23,7 +24,7 @@ import {
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
-import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
+import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 
 export interface RunAgentToolPart {
@@ -60,12 +61,17 @@ export function RunAgentTool({ part }: Props) {
   const needLoginOutput =
     isOutputAvailable && isRunAgentNeedLoginOutput(output) ? output : null;
 
+  const agentOutputResponse =
+    isOutputAvailable && isRunAgentAgentOutputResponse(output) ? output : null;
+
   const hasExpandableContent =
     isOutputAvailable &&
     !setupRequirementsOutput &&
     !agentDetailsOutput &&
     !needLoginOutput &&
-    (isRunAgentExecutionStartedOutput(output) || isRunAgentErrorOutput(output));
+    (isRunAgentExecutionStartedOutput(output) ||
+      isRunAgentAgentOutputResponse(output) ||
+      isRunAgentErrorOutput(output));
 
   return (
     <div className="py-2">
@@ -86,7 +92,7 @@ export function RunAgentTool({ part }: Props) {
 
       {isStreaming && !output && (
         <ToolAccordion
-          icon={<OrbitLoader size={32} />}
+          icon={<ScaleLoader size={14} />}
           title="Running agent, this may take a few minutes. Play while you wait."
           expanded={true}
         >
@@ -101,7 +107,10 @@ export function RunAgentTool({ part }: Props) {
 
       {setupRequirementsOutput && (
         <div className="mt-2">
-          <SetupRequirementsCard output={setupRequirementsOutput} />
+          <SetupRequirementsCard
+            output={setupRequirementsOutput}
+            inputsMode="preview"
+          />
         </div>
       )}
 
@@ -121,6 +130,23 @@ export function RunAgentTool({ part }: Props) {
         <ToolAccordion {...getAccordionMeta(output)}>
           {isRunAgentExecutionStartedOutput(output) && (
             <ExecutionStartedCard output={output} />
+          )}
+
+          {agentOutputResponse && (
+            <ExecutionStartedCard
+              output={{
+                message: agentOutputResponse.message,
+                execution_id: agentOutputResponse.execution?.execution_id ?? "",
+                graph_id: agentOutputResponse.agent_id,
+                graph_name: agentOutputResponse.agent_name,
+                library_agent_link:
+                  agentOutputResponse.library_agent_link ?? undefined,
+                // Propagate the real terminal status (COMPLETED / FAILED /
+                // STOPPED …) so the card title matches what happened.
+                // Defaults to the "started" label when backend omits status.
+                status: agentOutputResponse.execution?.status ?? "COMPLETED",
+              }}
+            />
           )}
 
           {isRunAgentErrorOutput(output) && <ErrorCard output={output} />}

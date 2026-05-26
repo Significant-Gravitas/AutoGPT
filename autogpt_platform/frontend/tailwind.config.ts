@@ -175,13 +175,26 @@ const config = {
             boxShadow: "0 0 0 30px rgba(0, 0, 0, 0)",
           },
         },
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-4px)" },
+          "40%": { transform: "translateX(4px)" },
+          "60%": { transform: "translateX(-3px)" },
+          "80%": { transform: "translateX(3px)" },
+        },
+        aurora: {
+          "0%": { backgroundPosition: "50% 50%, 50% 50%" },
+          "100%": { backgroundPosition: "350% 50%, 350% 50%" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
-        shimmer: "shimmer 2s ease-in-out infinite",
+        shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
+        shake: "shake 0.5s ease-in-out",
+        aurora: "aurora 60s linear infinite",
       },
       transitionDuration: {
         "2000": "2000ms",

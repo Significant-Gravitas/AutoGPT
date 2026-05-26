@@ -55,7 +55,9 @@ class MCPClient:
         server_url: str,
         auth_token: str | None = None,
     ):
-        self.server_url = server_url.rstrip("/")
+        from backend.blocks.mcp.helpers import normalize_mcp_url
+
+        self.server_url = normalize_mcp_url(server_url)
         self.auth_token = auth_token
         self._request_id = 0
         self._session_id: str | None = None
@@ -275,6 +277,27 @@ class MCPClient:
         await self._send_notification("notifications/initialized")
 
         return result or {}
+
+    async def close(self) -> None:
+        """Terminate the MCP session on the server (Streamable HTTP spec).
+
+        The MCP transport spec asks clients to ``DELETE`` the session URL
+        with their ``Mcp-Session-Id`` header so the server can free its
+        session state immediately instead of waiting for a timeout sweep.
+        Best-effort: failures are swallowed so a flaky close can't poison
+        the caller's flow.  Resets ``self._session_id`` so a subsequent
+        ``initialize`` starts a fresh session.
+        """
+        if not self._session_id:
+            return
+        try:
+            headers = self._build_headers()
+            requests = Requests(raise_for_status=False, extra_headers=headers)
+            await requests.delete(self.server_url)
+        except Exception:
+            pass
+        finally:
+            self._session_id = None
 
     async def list_tools(self) -> list[MCPTool]:
         """

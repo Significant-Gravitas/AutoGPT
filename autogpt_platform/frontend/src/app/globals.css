@@ -183,7 +183,7 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 
 /* Streamdown external link dialog: "Open link" button */
 [data-streamdown="link-safety-modal"] button:last-of-type {
-  color: black;
+  color: white;
 }
 
 /* CoPilot chat table styling — remove left/right borders, increase padding */

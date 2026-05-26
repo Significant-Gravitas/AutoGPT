@@ -23,6 +23,7 @@ from .helpers import (
     HighlightSettings,
     LivecrawlTypes,
     SummarySettings,
+    merge_exa_cost,
 )
 
 
@@ -223,3 +224,4 @@ class ExaContentsBlock(Block):
 
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars
+        merge_exa_cost(self, response)

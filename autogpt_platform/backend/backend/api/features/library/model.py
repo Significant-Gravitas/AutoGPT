@@ -165,7 +165,6 @@ class LibraryAgent(pydantic.BaseModel):
     id: str
     graph_id: str
     graph_version: int
-    owner_user_id: str
 
     image_url: str | None
 
@@ -206,13 +205,25 @@ class LibraryAgent(pydantic.BaseModel):
         default_factory=list,
         description="List of recent executions with status, score, and summary",
     )
-    can_access_graph: bool
+    can_access_graph: bool = pydantic.Field(
+        description="Indicates whether the same user owns the corresponding graph"
+    )
     is_latest_version: bool
     is_favorite: bool
     folder_id: str | None = None
     folder_name: str | None = None  # Denormalized for display
 
+    is_hidden: bool = False
+
     recommended_schedule_cron: str | None = None
+    is_scheduled: bool = pydantic.Field(
+        default=False,
+        description="Whether this agent has active execution schedules",
+    )
+    next_scheduled_run: str | None = pydantic.Field(
+        default=None,
+        description="ISO 8601 timestamp of the next scheduled run, if any",
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
 
@@ -222,6 +233,8 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         profile: Optional[prisma.models.Profile] = None,
+        execution_count_override: Optional[int] = None,
+        schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -257,10 +270,14 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        execution_count = len(executions)
+        execution_count = (
+            execution_count_override
+            if execution_count_override is not None
+            else len(executions)
+        )
         success_rate: float | None = None
         avg_correctness_score: float | None = None
-        if execution_count > 0:
+        if executions and execution_count > 0:
             success_count = sum(
                 1
                 for e in executions
@@ -324,7 +341,6 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             graph_id=agent.agentGraphId,
             graph_version=agent.agentGraphVersion,
-            owner_user_id=agent.userId,
             image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,
@@ -351,9 +367,14 @@ class LibraryAgent(pydantic.BaseModel):
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
+            is_hidden=agent.isHidden,
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
+            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
+            next_scheduled_run=(
+                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
         )
@@ -560,6 +581,10 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    is_hidden: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Whether to hide the agent from the library listing",
     )
     settings: Optional[GraphSettings] = pydantic.Field(
         default=None, description="User-specific settings for this library agent"

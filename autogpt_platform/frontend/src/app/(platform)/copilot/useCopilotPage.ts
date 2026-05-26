@@ -1,420 +1,258 @@
-import {
-  getGetV2GetSessionQueryKey,
-  getGetV2ListSessionsQueryKey,
-  postV2CancelSessionTask,
-  useDeleteV2DeleteSession,
-  useGetV2ListSessions,
-} from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useChat } from "@ai-sdk/react";
-import { useQueryClient } from "@tanstack/react-query";
-import { DefaultChatTransport } from "ai";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { getLatestAssistantStatusMessage } from "./helpers";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import { useCopilotStreamStore } from "./copilotStreamStore";
+import { useCopilotPendingChips } from "./useCopilotPendingChips";
+import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
+import { useCopilotStream } from "./useCopilotStream";
+import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useSendMessage } from "./useSendMessage";
+import { useSessionTitlePoll } from "./useSessionTitlePoll";
+import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
-const RECONNECT_BASE_DELAY_MS = 1_000;
-const RECONNECT_MAX_DELAY_MS = 30_000;
-const RECONNECT_MAX_ATTEMPTS = 5;
-
-/** Mark any in-progress tool parts as completed/errored so spinners stop. */
-function resolveInProgressTools(
-  messages: UIMessage[],
-  outcome: "completed" | "cancelled",
-): UIMessage[] {
-  return messages.map((msg) => ({
-    ...msg,
-    parts: msg.parts.map((part) =>
-      "state" in part &&
-      (part.state === "input-streaming" || part.state === "input-available")
-        ? outcome === "cancelled"
-          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
-          : { ...part, state: "output-available" as const, output: "" }
-        : part,
-    ),
-  }));
+function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  if (lastUserIndex === -1 || lastUserIndex === messages.length - 1) {
+    return messages;
+  }
+  return messages.slice(0, lastUserIndex + 1);
 }
 
-/** Simple ID-based deduplication - trust backend for correctness */
-function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
-  const seenIds = new Set<string>();
-  return messages.filter((msg) => {
-    if (seenIds.has(msg.id)) return false;
-    seenIds.add(msg.id);
-    return true;
-  });
+function hasAssistantTail(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
 }
 
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const [sessionToDelete, setSessionToDelete] = useState<{
-    id: string;
-    title: string | null | undefined;
-  } | null>(null);
-  const queryClient = useQueryClient();
+  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+
+  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
 
   const {
     sessionId,
-    setSessionId,
     hydratedMessages,
+    rawSessionMessages,
+    historicalTurnStats,
     hasActiveStream,
+    activeStreamStartedAt,
+    hasMoreMessages,
+    oldestSequence,
     isLoadingSession,
     isSessionError,
     createSession,
     isCreatingSession,
     refetchSession,
-  } = useChatSession();
-
-  const { mutate: deleteSessionMutation, isPending: isDeleting } =
-    useDeleteV2DeleteSession({
-      mutation: {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListSessionsQueryKey(),
-          });
-          if (sessionToDelete?.id === sessionId) {
-            setSessionId(null);
-          }
-          setSessionToDelete(null);
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete chat",
-            description:
-              error instanceof Error ? error.message : "An error occurred",
-            variant: "destructive",
-          });
-          setSessionToDelete(null);
-        },
-      },
-    });
-
-  const breakpoint = useBreakpoint();
-  const isMobile = breakpoint === "base" || breakpoint === "sm";
-
-  const transport = useMemo(
-    () =>
-      sessionId
-        ? new DefaultChatTransport({
-            api: `/api/chat/sessions/${sessionId}/stream`,
-            prepareSendMessagesRequest: ({ messages }) => {
-              const last = messages[messages.length - 1];
-              return {
-                body: {
-                  message: (
-                    last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
-                    []
-                  ).join(""),
-                  is_user_message: last.role === "user",
-                  context: null,
-                },
-              };
-            },
-            // Resume: GET goes to the same URL as POST (backend uses
-            // method to distinguish).  Override the default formula which
-            // would append /{chatId}/stream to the existing path.
-            prepareReconnectToStreamRequest: () => ({
-              api: `/api/chat/sessions/${sessionId}/stream`,
-            }),
-          })
-        : null,
-    [sessionId],
-  );
-
-  // Reconnect state
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const hasShownDisconnectToast = useRef(false);
-
-  // Consolidated reconnect logic
-  function handleReconnect(sid: string) {
-    if (isReconnectScheduled || !sid) return;
-
-    const nextAttempt = reconnectAttempts + 1;
-    if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
-      toast({
-        title: "Connection lost",
-        description: "Unable to reconnect. Please refresh the page.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsReconnectScheduled(true);
-    setReconnectAttempts(nextAttempt);
-
-    if (!hasShownDisconnectToast.current) {
-      hasShownDisconnectToast.current = true;
-      toast({
-        title: "Connection lost",
-        description: "Reconnecting...",
-      });
-    }
-
-    const delay = Math.min(
-      RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempts,
-      RECONNECT_MAX_DELAY_MS,
-    );
-
-    reconnectTimerRef.current = setTimeout(() => {
-      setIsReconnectScheduled(false);
-      resumeStream();
-    }, delay);
-  }
+    sessionDryRun,
+    sessionChatStatus,
+  } = useChatSession({ dryRun: isDryRun });
 
   const {
-    messages: rawMessages,
+    messages: currentMessages,
+    setMessages,
     sendMessage,
-    stop: sdkStop,
+    stop,
     status,
     error,
-    setMessages,
-    resumeStream,
-  } = useChat({
-    id: sessionId ?? undefined,
-    transport: transport ?? undefined,
-    onFinish: async ({ isDisconnect, isAbort }) => {
-      if (isAbort || !sessionId) return;
+    isReconnecting,
+    isRestoringActiveSession,
+    isUserStoppingRef,
+    isUserStopping,
+    rateLimitMessage,
+    dismissRateLimit,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession,
+    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
+    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+  });
 
-      if (isDisconnect) {
-        handleReconnect(sessionId);
+  const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
+    useLoadMoreMessages({
+      sessionId,
+      initialOldestSequence: oldestSequence,
+      initialHasMore: hasMoreMessages,
+      initialPageRawMessages: rawSessionMessages,
+    });
+
+  // Merge the older-pages and current-page stat maps; current-page (historical)
+  // wins on overlap since it was persisted more recently.
+  const turnStats = useMemo(() => {
+    const merged = new Map(pagedTurnStats);
+    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedTurnStats, historicalTurnStats]);
+
+  // Ref that mirrors whether a stream turn is currently in-flight.
+  // Updated synchronously on every render so it always reflects the latest
+  // status — unlike reading `status` inside onSend (which captures the
+  // closure's render-cycle value and can be stale for a frame).
+  // Setting it to true *before* calling sendMessage prevents rapid
+  // double-presses from both routing to /stream before React can re-render
+  // with status="submitted".
+  const isInflightRef = useRef(false);
+  isInflightRef.current =
+    !isUserStopping && (status === "streaming" || status === "submitted");
+
+  // Combine paginated messages with current page messages, merging consecutive
+  // assistant UIMessages at the page boundary so reasoning + response parts
+  // stay in a single bubble. Paged messages are older history prepended before
+  // the current page.
+  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const cachedSessionMessages = useMemo(
+    () =>
+      sessionId
+        ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
+        : [],
+    [sessionId],
+  );
+  const cachedRawMessages = concatWithAssistantMerge(
+    pagedMessages,
+    cachedSessionMessages,
+  );
+
+  // Drop / trim assistant messages whose leading text is a replay of an
+  // earlier assistant (Claude Agent SDK's `--resume` behaviour). See
+  // helpers/stripReplayPrefix.ts for the three cases.
+  const messages = useMemo(() => stripReplayPrefix(rawMessages), [rawMessages]);
+  const cachedMessages = useMemo(
+    () => stripReplayPrefix(cachedRawMessages),
+    [cachedRawMessages],
+  );
+  const restoreStatusMessage = useMemo(
+    () =>
+      isRestoringActiveSession
+        ? getLatestAssistantStatusMessage(messages)
+        : null,
+    [isRestoringActiveSession, messages],
+  );
+  const displayMessages = useMemo(() => {
+    if (!isRestoringActiveSession) return messages;
+    if (hasAssistantTail(cachedMessages)) return cachedMessages;
+    return trimVisibleMessagesForActiveRestore(messages);
+  }, [isRestoringActiveSession, messages, cachedMessages]);
+
+  // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
+  // lives in a dedicated hook so this component is just glue.
+  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+    sessionId,
+    status,
+    messages,
+    setMessages,
+  });
+
+  useCopilotNotifications(sessionId);
+
+  const {
+    onSend: sendNewMessage,
+    isUploadingFiles,
+    setPendingFileParts,
+  } = useSendMessage({
+    sessionId,
+    sendMessage,
+    createSession,
+    isUserStoppingRef,
+  });
+
+  // Wrap sendNewMessage with queue-in-flight routing: if a session is active
+  // and a turn is already running, POST the follow-up text to the pending
+  // endpoint so the backend buffers it; otherwise fall through to normal send.
+  async function onSend(message: string, files?: File[]) {
+    const trimmed = message.trim();
+    if (!trimmed && (!files || files.length === 0)) return;
+
+    if (sessionId && isInflightRef.current) {
+      if (files && files.length > 0) {
+        toast({
+          title: "Please wait to attach files",
+          description:
+            "File attachments can't be queued until the current response finishes.",
+          variant: "destructive",
+        });
         return;
       }
 
-      // Check if backend executor is still running after clean close
-      const result = await refetchSession();
-      const backendActive =
-        result.data?.status === 200 && !!result.data.data.active_stream;
-
-      if (backendActive) {
-        handleReconnect(sessionId);
-      }
-    },
-    onError: (error) => {
-      if (!sessionId) return;
-      // Only reconnect on network errors (not HTTP errors)
-      const isNetworkError =
-        error.name === "TypeError" || error.name === "AbortError";
-      if (isNetworkError) {
-        handleReconnect(sessionId);
-      }
-    },
-  });
-
-  // Deduplicate messages continuously to prevent duplicates when resuming streams
-  const messages = useMemo(
-    () => deduplicateMessages(rawMessages),
-    [rawMessages],
-  );
-
-  // Wrap AI SDK's stop() to also cancel the backend executor task.
-  // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
-  // the cancel API to actually stop the executor and wait for confirmation.
-  async function stop() {
-    sdkStop();
-    setMessages((prev) => resolveInProgressTools(prev, "cancelled"));
-
-    if (!sessionId) return;
-    try {
-      const res = await postV2CancelSessionTask(sessionId);
-      if (
-        res.status === 200 &&
-        "reason" in res.data &&
-        res.data.reason === "cancel_published_not_confirmed"
-      ) {
+      try {
+        await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.name === "QueueFollowUpNotActiveError"
+        ) {
+          await sendNewMessage(message, files);
+          return;
+        }
         toast({
-          title: "Stop may take a moment",
-          description:
-            "The cancel was sent but not yet confirmed. The task should stop shortly.",
+          title: "Could not queue message",
+          description: "Please wait for the current response to finish.",
+          variant: "destructive",
         });
+        throw err;
       }
-    } catch {
-      toast({
-        title: "Could not stop the task",
-        description: "The task may still be running in the background.",
-        variant: "destructive",
-      });
-    }
-  }
-
-  // Hydrate messages from REST API when not actively streaming
-  useEffect(() => {
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    if (isReconnectScheduled) return;
-    setMessages((prev) => {
-      if (prev.length >= hydratedMessages.length) return prev;
-      return deduplicateMessages(hydratedMessages);
-    });
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
-
-  // Track resume state per session
-  const hasResumedRef = useRef<Map<string, boolean>>(new Map());
-
-  // Clean up reconnect state on session switch
-  useEffect(() => {
-    clearTimeout(reconnectTimerRef.current);
-    reconnectTimerRef.current = undefined;
-    setReconnectAttempts(0);
-    setIsReconnectScheduled(false);
-    hasShownDisconnectToast.current = false;
-    prevStatusRef.current = status; // Reset to avoid cross-session state bleeding
-  }, [sessionId, status]);
-
-  // Invalidate session cache when stream completes
-  const prevStatusRef = useRef(status);
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = status;
-
-    const wasActive = prev === "streaming" || prev === "submitted";
-    const isIdle = status === "ready" || status === "error";
-
-    if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2GetSessionQueryKey(sessionId),
-      });
-      if (status === "ready") {
-        setReconnectAttempts(0);
-        hasShownDisconnectToast.current = false;
-      }
-    }
-  }, [status, sessionId, queryClient, isReconnectScheduled]);
-
-  // Resume an active stream AFTER hydration completes.
-  // IMPORTANT: Only runs when page loads with existing active stream (reconnection).
-  // Does NOT run when new streams start during active conversation.
-  useEffect(() => {
-    if (!sessionId) return;
-    if (!hasActiveStream) return;
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-
-    // Never resume if currently streaming
-    if (status === "streaming" || status === "submitted") return;
-
-    // Only resume once per session
-    if (hasResumedRef.current.get(sessionId)) return;
-
-    // Mark as resumed immediately to prevent race conditions
-    hasResumedRef.current.set(sessionId, true);
-    resumeStream();
-  }, [sessionId, hasActiveStream, hydratedMessages, status, resumeStream]);
-
-  // Clear messages when session is null
-  useEffect(() => {
-    if (!sessionId) setMessages([]);
-  }, [sessionId, setMessages]);
-
-  useEffect(() => {
-    if (!sessionId || !pendingMessage) return;
-    const msg = pendingMessage;
-    setPendingMessage(null);
-    sendMessage({ text: msg });
-  }, [sessionId, pendingMessage, sendMessage]);
-
-  async function onSend(message: string) {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-
-    if (sessionId) {
-      sendMessage({ text: trimmed });
       return;
     }
 
-    setPendingMessage(trimmed);
-    await createSession();
-  }
-
-  const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions(
-      { limit: 50 },
-      { query: { enabled: !isUserLoading && isLoggedIn } },
-    );
-
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
-
-  function handleOpenDrawer() {
-    setIsDrawerOpen(true);
-  }
-
-  function handleCloseDrawer() {
-    setIsDrawerOpen(false);
-  }
-
-  function handleDrawerOpenChange(open: boolean) {
-    setIsDrawerOpen(open);
-  }
-
-  function handleSelectSession(id: string) {
-    setSessionId(id);
-    if (isMobile) setIsDrawerOpen(false);
-  }
-
-  function handleNewChat() {
-    setSessionId(null);
-    if (isMobile) setIsDrawerOpen(false);
-  }
-
-  const handleDeleteClick = useCallback(
-    (id: string, title: string | null | undefined) => {
-      if (isDeleting) return;
-      setSessionToDelete({ id, title });
-    },
-    [isDeleting],
-  );
-
-  const handleConfirmDelete = useCallback(() => {
-    if (sessionToDelete) {
-      deleteSessionMutation({ sessionId: sessionToDelete.id });
+    // Mark in-flight synchronously before dispatching so a rapid second
+    // press sees isInflightRef.current=true and routes to the queue path
+    // instead of triggering a duplicate /stream POST.
+    if (sessionId) {
+      isInflightRef.current = true;
     }
-  }, [sessionToDelete, deleteSessionMutation]);
+    await sendNewMessage(message, files);
+  }
 
-  const handleCancelDelete = useCallback(() => {
-    if (!isDeleting) {
-      setSessionToDelete(null);
-    }
-  }, [isDeleting]);
+  useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
 
-  // True while reconnecting or backend has active stream but we haven't connected yet
-  const isReconnecting =
-    isReconnectScheduled ||
-    (hasActiveStream && status !== "streaming" && status !== "submitted");
+  useSessionTitlePoll({ sessionId, status, isReconnecting });
 
   return {
     sessionId,
-    messages,
+    messages: displayMessages,
     status,
-    error: isReconnecting ? undefined : error,
+    error,
     stop,
     isReconnecting,
+    isRestoringActiveSession,
+    restoreStatusMessage,
+    activeStreamStartedAt,
+    isUserStopping,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
+    isUploadingFiles,
     isUserLoading,
     isLoggedIn,
     createSession,
     onSend,
-    // Mobile drawer
-    isMobile,
-    isDrawerOpen,
-    sessions,
-    isLoadingSessions,
-    handleOpenDrawer,
-    handleCloseDrawer,
-    handleDrawerOpenChange,
-    handleSelectSession,
-    handleNewChat,
-    // Delete functionality
-    sessionToDelete,
-    isDeleting,
-    handleDeleteClick,
-    handleConfirmDelete,
-    handleCancelDelete,
+    // onEnqueue delegates to onSend, which internally routes to the queue
+    // endpoint when isInflightRef.current is true.
+    onEnqueue: onSend,
+    queuedMessages,
+    hasMoreMessages: hasMore,
+    isLoadingMore,
+    loadMore,
+    turnStats,
+    rateLimitMessage,
+    dismissRateLimit,
+    // sessionDryRun is the CURRENT session's immutable dry_run flag from API,
+    // used to render the banner. The global `isDryRun` preference (for new
+    // sessions) lives in the store and is consumed by the toggle button.
+    sessionDryRun,
+    sessionChatStatus,
   };
 }

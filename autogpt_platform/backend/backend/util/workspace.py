@@ -5,6 +5,7 @@ This module provides a high-level interface for workspace file operations,
 combining the storage backend and database layer.
 """
 
+import asyncio
 import logging
 import mimetypes
 import uuid
@@ -12,11 +13,27 @@ from typing import Optional
 
 from prisma.errors import UniqueViolationError
 
+from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+
+
+def format_bytes(n: int) -> str:
+    """Format bytes as a human-readable string (e.g. 250 MB, 1.0 GB)."""
+    KB, MB, GB = 1024, 1024**2, 1024**3
+    if n < KB:
+        return f"{n} B"
+    if n < MB:
+        kb = round(n / KB)
+        return f"{n / MB:.1f} MB" if kb >= 1024 else f"{kb} KB"
+    if n < GB:
+        mb = round(n / MB)
+        return f"{n / GB:.1f} GB" if mb >= 1024 else f"{mb} MB"
+    return f"{n / GB:.1f} GB"
+
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +172,7 @@ class WorkspaceManager:
         path: Optional[str] = None,
         mime_type: Optional[str] = None,
         overwrite: bool = False,
+        metadata: Optional[dict] = None,
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -168,12 +186,21 @@ class WorkspaceManager:
             path: Virtual path (defaults to "/{filename}", session-scoped if session_id set)
             mime_type: MIME type (auto-detected if not provided)
             overwrite: Whether to overwrite existing file at path
+            metadata: Optional metadata dict (e.g., origin tracking)
 
         Returns:
             Created WorkspaceFile instance
 
         Raises:
-            ValueError: If file exceeds size limit or path already exists
+            ValueError: If file exceeds size limit, exceeds the user's
+                tier-based storage quota, or path already exists.
+            VirusDetectedError: If the virus scanner flagged the content as
+                malicious. Callers that want a generic failure should still
+                catch ``Exception``, but a specific handler lets you log this
+                as a security event rather than a generic write failure.
+            VirusScanError: If the virus scanner is unreachable or otherwise
+                fails. Distinct from ``VirusDetectedError`` — typically maps
+                to a 5xx response (infrastructure issue, retry-able).
         """
         # Enforce file size limit
         max_file_size = Config().max_file_size_mb * 1024 * 1024
@@ -183,10 +210,7 @@ class WorkspaceManager:
                 f"{Config().max_file_size_mb}MB limit"
             )
 
-        # Virus scan content before persisting (defense in depth)
-        await scan_content_safe(content, filename=filename)
-
-        # Determine path with session scoping
+        # Determine path with session scoping (needed before quota check for overwrites)
         if path is None:
             path = f"/{filename}"
         elif not path.startswith("/"):
@@ -195,16 +219,41 @@ class WorkspaceManager:
         # Resolve path with session prefix
         path = self._resolve_path(path)
 
-        # Check if file exists at path (only error for non-overwrite case)
-        # For overwrite=True, we let the write proceed and handle via UniqueViolationError
-        # This ensures the new file is written to storage BEFORE the old one is deleted,
-        # preventing data loss if the new write fails
+        # Enforce per-user workspace storage quota (tier-based).
+        # For overwrites, subtract the existing file's size so replacing a file
+        # with a same-size or smaller file is not rejected near the cap.
+        storage_limit, current_usage = await asyncio.gather(
+            get_workspace_storage_limit_bytes(self.user_id),
+            workspace_db().get_workspace_total_size(self.workspace_id),
+        )
+        if overwrite:
+            db = workspace_db()
+            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+            if existing is not None:
+                current_usage = max(0, current_usage - existing.size_bytes)
+
+        projected_usage = current_usage + len(content)
+        if storage_limit > 0 and projected_usage > storage_limit:
+            raise ValueError(
+                f"Storage limit exceeded. "
+                f"You've used {format_bytes(current_usage)} of your "
+                f"{format_bytes(storage_limit)} quota. "
+                f"Delete some files or upgrade your plan for more storage."
+            )
+
+        # Check if file exists at path (only error for non-overwrite case).
+        # Done before virus scanning so a cheap duplicate-path check isn't
+        # blocked by a potentially slow or unavailable scanner.
         db = workspace_db()
 
         if not overwrite:
             existing = await db.get_workspace_file_by_path(self.workspace_id, path)
             if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
+
+        # Scan here — callers must NOT duplicate this scan.
+        # WorkspaceManager owns virus scanning for all persisted files.
+        await scan_content_safe(content, filename=filename)
 
         # Auto-detect MIME type if not provided
         if mime_type is None:
@@ -228,52 +277,44 @@ class WorkspaceManager:
 
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
-        try:
-            file = await db.create_workspace_file(
-                workspace_id=self.workspace_id,
-                file_id=file_id,
-                name=filename,
-                path=path,
-                storage_path=storage_path,
-                mime_type=mime_type,
-                size_bytes=len(content),
-                checksum=checksum,
-            )
-        except UniqueViolationError:
-            # Race condition: another request created a file at this path
-            if overwrite:
-                # Re-fetch and delete the conflicting file, then retry
-                existing = await db.get_workspace_file_by_path(self.workspace_id, path)
-                if existing:
-                    await self.delete_file(existing.id)
-                # Retry the create - if this also fails, clean up storage file
-                try:
-                    file = await db.create_workspace_file(
-                        workspace_id=self.workspace_id,
-                        file_id=file_id,
-                        name=filename,
-                        path=path,
-                        storage_path=storage_path,
-                        mime_type=mime_type,
-                        size_bytes=len(content),
-                        checksum=checksum,
+        async def _persist_db_record(
+            retries: int = 2 if overwrite else 0,
+        ) -> WorkspaceFile:
+            """Create DB record, retrying on conflict if overwrite=True.
+
+            Cleans up the orphaned storage file on any failure.
+            """
+            try:
+                return await db.create_workspace_file(
+                    workspace_id=self.workspace_id,
+                    file_id=file_id,
+                    name=filename,
+                    path=path,
+                    storage_path=storage_path,
+                    mime_type=mime_type,
+                    size_bytes=len(content),
+                    checksum=checksum,
+                    metadata=metadata,
+                )
+            except UniqueViolationError:
+                if retries > 0:
+                    # Delete conflicting file and retry
+                    existing = await db.get_workspace_file_by_path(
+                        self.workspace_id, path
                     )
-                except Exception:
-                    # Clean up orphaned storage file on retry failure
-                    try:
-                        await storage.delete(storage_path)
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up orphaned storage file: {e}")
-                    raise
-            else:
-                # Clean up the orphaned storage file before raising
-                try:
-                    await storage.delete(storage_path)
-                except Exception as e:
-                    logger.warning(f"Failed to clean up orphaned storage file: {e}")
+                    if existing:
+                        await self.delete_file(existing.id)
+                    return await _persist_db_record(retries=retries - 1)
+                if overwrite:
+                    raise ValueError(
+                        f"Unable to overwrite file at path: {path} "
+                        f"(concurrent write conflict)"
+                    ) from None
                 raise ValueError(f"File already exists at path: {path}")
+
+        try:
+            file = await _persist_db_record()
         except Exception:
-            # Any other database error (connection, validation, etc.) - clean up storage
             try:
                 await storage.delete(storage_path)
             except Exception as e:
