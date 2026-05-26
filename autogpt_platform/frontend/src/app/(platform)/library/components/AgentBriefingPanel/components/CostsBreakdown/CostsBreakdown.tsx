@@ -111,9 +111,9 @@ function ExpandedBody({
             label: "Total this month",
             value: formatCents(summary.total_cents),
           },
-          { label: "Runs", value: String(summary.run_count) },
+          { label: "Tasks", value: String(summary.run_count) },
           {
-            label: "Avg / run",
+            label: "Avg / task",
             value: formatCents(Math.round(avgCostCents)),
           },
           {
