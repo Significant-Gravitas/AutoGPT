@@ -143,7 +143,7 @@ class TestHandleUnlink:
         assert sent.kwargs["ephemeral"] is True
         view = sent.kwargs["view"]
         assert any(
-            getattr(child, "url", "").endswith("/settings/integrations")
+            getattr(child, "url", "").endswith("/settings/bots")
             for child in view.children
         )
 
@@ -180,4 +180,4 @@ class TestHandleUnlink:
 
         sent = interaction.response.send_message.await_args
         assert "view" not in sent.kwargs or sent.kwargs.get("view") is None
-        assert "Integrations" in sent.args[0]
+        assert "Bots" in sent.args[0]
