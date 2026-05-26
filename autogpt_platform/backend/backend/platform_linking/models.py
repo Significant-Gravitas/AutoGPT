@@ -154,6 +154,21 @@ class PlatformUserLinkInfo(BaseModel):
     linked_at: datetime
 
 
+class BotPlatformInfo(BaseModel):
+    """A bot platform enabled on this deployment plus the caller's links to it.
+
+    Platforms whose adapter isn't configured (missing token/credentials) are
+    omitted from the response entirely — the Bots settings page hides them.
+    """
+
+    platform: str
+    display_name: str
+    icon: str
+    add_bot_url: str | None = None
+    dm_link: PlatformUserLinkInfo | None = None
+    server_links: list[PlatformLinkInfo] = Field(default_factory=list)
+
+
 class ConfirmLinkResponse(BaseModel):
     success: bool
     link_type: LinkType = LinkType.SERVER
