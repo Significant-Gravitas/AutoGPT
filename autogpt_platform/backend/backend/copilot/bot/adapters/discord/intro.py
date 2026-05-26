@@ -31,5 +31,5 @@ def intro_message() -> str:
         "thread for our chat.\n\n"
         "You can also **DM me** to chat 1:1 — send any message and I'll "
         "walk you through linking your own DMs.\n\n"
-        "Commands: `/help` `/setup` `/new` `/resume`"
+        "Commands: `/help` `/setup` `/new`"
     )
