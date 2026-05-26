@@ -163,7 +163,16 @@ async def _handle_new(interaction: discord.Interaction) -> None:
         )
         return
 
-    await sessions.clear_session("discord", str(interaction.channel_id))
+    try:
+        await sessions.clear_session("discord", str(interaction.channel_id))
+    except Exception:
+        logger.exception("Failed to clear copilot session for /new")
+        await interaction.response.send_message(
+            "Couldn't reset the conversation right now. Please try again in a moment.",
+            ephemeral=True,
+        )
+        return
+
     await interaction.response.send_message(
         "Started a fresh conversation — send a message to begin.",
         ephemeral=True,

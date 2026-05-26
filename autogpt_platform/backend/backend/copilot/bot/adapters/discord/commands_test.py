@@ -221,3 +221,21 @@ class TestHandleNew:
 
         mock_clear.assert_not_awaited()
         interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_failure_sends_fallback_message(self):
+        """A Redis outage during /new must never leave the interaction
+        hanging. We must send an ephemeral fallback instead of bubbling up."""
+        interaction = _interaction(guild=False)
+        interaction.channel = MagicMock()
+        interaction.channel_id = 999
+        with patch(
+            "backend.copilot.bot.sessions.clear_session",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            await _handle_new(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+        assert "try again" in sent.args[0].lower()
