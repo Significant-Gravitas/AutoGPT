@@ -25,3 +25,18 @@ async def test_clear_session_deletes_key():
         await sessions.clear_session("discord", "123")
 
     redis.delete.assert_awaited_once_with("copilot-bot:session:discord:123")
+
+
+@pytest.mark.asyncio
+async def test_set_session_writes_with_ttl():
+    redis = MagicMock()
+    redis.set = AsyncMock()
+    with patch(
+        "backend.copilot.bot.sessions.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        await sessions.set_session("discord", "123", "sess-9")
+
+    redis.set.assert_awaited_once_with(
+        "copilot-bot:session:discord:123", "sess-9", ex=sessions.SESSION_TTL
+    )
