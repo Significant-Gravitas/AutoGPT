@@ -416,6 +416,15 @@ async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
     file via ``workspace://``, ``[Attached files] file_id=``, or JSON
     tool output all qualify.
     """
+    candidate_rows = await PrismaChatMessage.prisma().find_many(
+        where={"sessionId": session_id, "content": {"contains": file_id}},
+    )
+    for row in candidate_rows:
+        if row.content is not None and file_id in extract_workspace_file_ids(
+            row.content
+        ):
+            return True
+
     rows = await PrismaChatMessage.prisma().find_many(
         where={"sessionId": session_id},
     )

@@ -14,11 +14,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import SharedVia
 from prisma.models import AgentGraphExecution, ChatLinkedShare
+from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import SharedChatFile, SharedExecutionFile
+from prisma.models import (
+    SharedChatFile,
+    SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
+)
 
 from backend.copilot.sharing.db import (
     _collect_execution_ids_from_messages,
+    _file_referenced_in_session,
     disable_chat_session_share,
     enable_chat_session_share,
     get_chat_share_state,
@@ -119,7 +126,14 @@ def mock_prisma_calls():
         patch.object(AgentGraphExecution, "prisma") as exec_prisma,
         patch.object(SharedChatFile, "prisma") as file_prisma,
         patch.object(SharedExecutionFile, "prisma") as exec_file_prisma,
+        patch.object(PrismaChatMessage, "prisma") as msg_prisma,
+        patch.object(UserWorkspace, "prisma") as workspace_prisma,
+        patch.object(UserWorkspaceFile, "prisma") as workspace_file_prisma,
     ):
+        msg_prisma.return_value.count = AsyncMock(return_value=0)
+        msg_prisma.return_value.find_many = AsyncMock(return_value=[])
+        workspace_prisma.return_value.find_unique = AsyncMock(return_value=None)
+        workspace_file_prisma.return_value.find_many = AsyncMock(return_value=[])
         # Default no-op for the execution-file allowlist so tests that
         # don't exercise the file-build / cascade-cleanup paths still see
         # an awaitable.  Tests that DO exercise those paths override.
@@ -141,6 +155,9 @@ def mock_prisma_calls():
             "execution": exec_prisma,
             "file": file_prisma,
             "exec_file": exec_file_prisma,
+            "message": msg_prisma,
+            "workspace": workspace_prisma,
+            "workspace_file": workspace_file_prisma,
         }
 
 
@@ -476,6 +493,46 @@ def _mock_tool_msg(content: str):
         toolCallId="call-1",
         refusal=None,
     )
+
+
+class TestFileReferencedInSession:
+    @pytest.mark.asyncio
+    async def test_uses_content_contains_candidate_query_for_workspace_uri(self):
+        file_id = "11111111-2222-3333-4444-555555555555"
+        msg = _mock_tool_msg(f"![chart](workspace://{file_id}#image/png)")
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            find_many = AsyncMock(return_value=[msg])
+            msg_mock.prisma.return_value.find_many = find_many
+
+            found = await _file_referenced_in_session(
+                session_id=SESSION_ID, file_id=file_id
+            )
+
+        assert found is True
+        find_many.assert_awaited_once_with(
+            where={"sessionId": SESSION_ID, "content": {"contains": file_id}},
+        )
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_full_scan_for_json_fields(self):
+        file_id = "11111111-2222-3333-4444-555555555555"
+        msg = _mock_tool_msg("")
+        msg.toolCalls = {"result": f"workspace://{file_id}#text/plain"}
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            find_many = AsyncMock(side_effect=[[], [msg]])
+            msg_mock.prisma.return_value.find_many = find_many
+
+            found = await _file_referenced_in_session(
+                session_id=SESSION_ID, file_id=file_id
+            )
+
+        assert found is True
+        assert find_many.await_args_list[0].kwargs == {
+            "where": {"sessionId": SESSION_ID, "content": {"contains": file_id}},
+        }
+        assert find_many.await_args_list[1].kwargs == {
+            "where": {"sessionId": SESSION_ID},
+        }
 
 
 class TestCollectExecutionIdsFromMessages:
