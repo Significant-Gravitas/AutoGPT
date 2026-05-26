@@ -27,12 +27,12 @@ from backend.api.features.store.db import (
     get_store_agent_details,
     get_store_agents,
 )
-from backend.api.features.store.embeddings import (
-    backfill_missing_embeddings,
+from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
 )
-from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.data import db
 from backend.data.analytics import (

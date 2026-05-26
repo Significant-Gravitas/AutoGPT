@@ -18,7 +18,7 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.store.hybrid_search import UnifiedSearchWeights
+from backend.api.features.search.hybrid_search import UnifiedSearchWeights
 from backend.data.db_accessors import search
 
 logger = logging.getLogger(__name__)

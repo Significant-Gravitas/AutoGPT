@@ -92,7 +92,7 @@ class StoreAgentHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch approved store listings without embeddings."""
-        from backend.api.features.store.embeddings import build_searchable_text
+        from backend.api.features.search.embeddings import build_searchable_text
 
         missing = await query_raw_with_schema(
             """
@@ -730,10 +730,197 @@ class LibraryAgentHandler(ContentHandler):
         }
 
 
+class WorkspaceFileHandler(ContentHandler):
+    """Handler for user-scoped workspace files.
+
+    Files are private per workspace owner. ``searchable_text`` is the
+    user-visible ``name`` (plus the path stem when it adds extra signal —
+    e.g. files renamed to a generic name still match against their path)
+    so search results surface meaningful matches without us having to
+    embed file contents.
+    """
+
+    @property
+    def content_type(self) -> ContentType:
+        return ContentType.WORKSPACE_FILE
+
+    @staticmethod
+    def _build_text(name: str, path: str) -> str:
+        # Strip the leading slash and extension from the path stem so the
+        # token "report" from "/documents/report.pdf" reinforces a rename
+        # to "Final.pdf" without polluting the text with directory noise.
+        from pathlib import PurePosixPath
+
+        stem = PurePosixPath(path).stem if path else ""
+        parts = [name or "", stem]
+        # Dedup while preserving order: a freshly-created file usually has
+        # ``name == stem`` and we don't want the same token weighted twice.
+        seen: set[str] = set()
+        out: list[str] = []
+        for p in parts:
+            p = p.strip()
+            if p and p.lower() not in seen:
+                seen.add(p.lower())
+                out.append(p)
+        return " ".join(out)
+
+    async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        missing = await query_raw_with_schema(
+            """
+            SELECT
+                uwf.id,
+                uwf.name,
+                uwf.path,
+                uwf."mimeType",
+                uw."userId"
+            FROM {schema_prefix}"UserWorkspaceFile" uwf
+            JOIN {schema_prefix}"UserWorkspace" uw ON uw.id = uwf."workspaceId"
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = uwf.id
+              AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
+              AND uce."userId" = uw."userId"
+            WHERE uwf."isDeleted" = false
+              AND uce."contentId" IS NULL
+            LIMIT $1
+            """,
+            batch_size,
+        )
+
+        items: list[ContentItem] = []
+        for row in missing:
+            text = self._build_text(row["name"] or "", row["path"] or "")
+            if not text:
+                continue
+            items.append(
+                ContentItem(
+                    content_id=row["id"],
+                    content_type=ContentType.WORKSPACE_FILE,
+                    searchable_text=text,
+                    metadata={
+                        "name": row["name"] or "",
+                        "path": row["path"] or "",
+                        "mime_type": row["mimeType"] or "",
+                    },
+                    user_id=row["userId"],
+                )
+            )
+        return items
+
+    async def get_stats(self) -> dict[str, int]:
+        total_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"UserWorkspaceFile"
+            WHERE "isDeleted" = false
+            """
+        )
+        total = total_result[0]["count"] if total_result else 0
+
+        with_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"UserWorkspaceFile" uwf
+            JOIN {schema_prefix}"UserWorkspace" uw ON uw.id = uwf."workspaceId"
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = uwf.id
+              AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
+              AND uce."userId" = uw."userId"
+            WHERE uwf."isDeleted" = false
+            """
+        )
+        with_embeddings = with_result[0]["count"] if with_result else 0
+
+        return {
+            "total": total,
+            "with_embeddings": with_embeddings,
+            "without_embeddings": total - with_embeddings,
+        }
+
+
+class ChatSessionHandler(ContentHandler):
+    """Handler for user-scoped chat sessions.
+
+    Only sessions with a non-empty ``title`` are embedded — untitled
+    sessions are noise for search and CoPilot auto-fills the title within
+    the first turn anyway.
+    """
+
+    @property
+    def content_type(self) -> ContentType:
+        return ContentType.CHAT_SESSION
+
+    async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        missing = await query_raw_with_schema(
+            """
+            SELECT
+                cs.id,
+                cs."userId",
+                cs.title
+            FROM {schema_prefix}"ChatSession" cs
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = cs.id
+              AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
+              AND uce."userId" = cs."userId"
+            WHERE cs.title IS NOT NULL
+              AND cs.title <> ''
+              AND uce."contentId" IS NULL
+            LIMIT $1
+            """,
+            batch_size,
+        )
+
+        items: list[ContentItem] = []
+        for row in missing:
+            title = (row["title"] or "").strip()
+            if not title:
+                continue
+            items.append(
+                ContentItem(
+                    content_id=row["id"],
+                    content_type=ContentType.CHAT_SESSION,
+                    searchable_text=title,
+                    metadata={"title": title},
+                    user_id=row["userId"],
+                )
+            )
+        return items
+
+    async def get_stats(self) -> dict[str, int]:
+        total_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"ChatSession"
+            WHERE title IS NOT NULL AND title <> ''
+            """
+        )
+        total = total_result[0]["count"] if total_result else 0
+
+        with_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"ChatSession" cs
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = cs.id
+              AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
+              AND uce."userId" = cs."userId"
+            WHERE cs.title IS NOT NULL AND cs.title <> ''
+            """
+        )
+        with_embeddings = with_result[0]["count"] if with_result else 0
+
+        return {
+            "total": total,
+            "with_embeddings": with_embeddings,
+            "without_embeddings": total - with_embeddings,
+        }
+
+
 # Content handler registry
 CONTENT_HANDLERS: dict[ContentType, ContentHandler] = {
     ContentType.STORE_AGENT: StoreAgentHandler(),
     ContentType.BLOCK: BlockHandler(),
     ContentType.DOCUMENTATION: DocumentationHandler(),
     ContentType.LIBRARY_AGENT: LibraryAgentHandler(),
+    ContentType.WORKSPACE_FILE: WorkspaceFileHandler(),
+    ContentType.CHAT_SESSION: ChatSessionHandler(),
 }

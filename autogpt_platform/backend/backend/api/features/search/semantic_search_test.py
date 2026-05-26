@@ -3,7 +3,7 @@
 import pytest
 from prisma.enums import ContentType
 
-from backend.api.features.store.embeddings import EMBEDDING_DIM, semantic_search
+from backend.api.features.search.embeddings import EMBEDDING_DIM, semantic_search
 
 
 @pytest.mark.asyncio
@@ -12,7 +12,7 @@ async def test_search_blocks_only(mocker):
     # Mock embed_query to return a test embedding
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
@@ -27,7 +27,7 @@ async def test_search_blocks_only(mocker):
         }
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_results,
     )
 
@@ -47,7 +47,7 @@ async def test_search_multiple_content_types(mocker):
     """Test searching multiple content types simultaneously."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
@@ -68,7 +68,7 @@ async def test_search_multiple_content_types(mocker):
         },
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_results,
     )
 
@@ -87,7 +87,7 @@ async def test_search_with_min_similarity_threshold(mocker):
     """Test that results below min_similarity are filtered out."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
@@ -102,7 +102,7 @@ async def test_search_with_min_similarity_threshold(mocker):
         }
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_results,
     )
 
@@ -121,7 +121,7 @@ async def test_search_fallback_to_lexical(mocker):
     """Test fallback to lexical search when embeddings fail."""
     # Mock embed_query to return None (embeddings unavailable)
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=None,
     )
 
@@ -135,7 +135,7 @@ async def test_search_fallback_to_lexical(mocker):
         }
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_lexical_results,
     )
 
@@ -163,7 +163,7 @@ async def test_search_with_user_id_filter(mocker):
     """Test searching with user_id filter for private content."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
@@ -177,7 +177,7 @@ async def test_search_with_user_id_filter(mocker):
         }
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_results,
     )
 
@@ -196,7 +196,7 @@ async def test_search_limit_parameter(mocker):
     """Test that limit parameter correctly limits results."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
@@ -212,7 +212,7 @@ async def test_search_limit_parameter(mocker):
         for i in range(5)
     ]
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=mock_results,
     )
 
@@ -230,12 +230,12 @@ async def test_search_default_content_types(mocker):
     """Test that default content_types includes BLOCK, STORE_AGENT, and DOCUMENTATION."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
     mock_query_raw = mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         return_value=[],
     )
 
@@ -253,13 +253,13 @@ async def test_search_handles_database_error(mocker):
     """Test that database errors are handled gracefully."""
     mock_embedding = [0.1] * EMBEDDING_DIM
     mocker.patch(
-        "backend.api.features.store.embeddings.embed_query",
+        "backend.api.features.search.embeddings.embed_query",
         return_value=mock_embedding,
     )
 
     # Simulate database error
     mocker.patch(
-        "backend.api.features.store.embeddings.query_raw_with_schema",
+        "backend.api.features.search.embeddings.query_raw_with_schema",
         side_effect=Exception("Database connection failed"),
     )
 

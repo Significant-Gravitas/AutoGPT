@@ -27,7 +27,7 @@ const defaultFlags = {
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
-  [Flag.CHAT_SEARCH]: false,
+  [Flag.CHAT_SEARCH]: true,
 };
 
 type FlagValues = typeof defaultFlags;

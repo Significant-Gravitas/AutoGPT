@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from prisma.enums import ContentType
 
-from backend.api.features.store.content_handlers import (
+from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
     DocumentationHandler,
@@ -70,7 +70,7 @@ def test_get_enabled_blocks_filters_disabled():
         "disabled": _make_block_class(name="D", disabled=True),
     }
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         result = _get_enabled_blocks()
     assert list(result.keys()) == ["enabled"]
@@ -83,7 +83,7 @@ def test_get_enabled_blocks_skips_broken():
         "bad": _make_block_class(raise_on_init=RuntimeError("boom")),
     }
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         result = _get_enabled_blocks()
     assert list(result.keys()) == ["good"]
@@ -93,7 +93,7 @@ def test_get_enabled_blocks_cached():
     """_get_enabled_blocks() calls get_blocks() only once across multiple calls."""
     blocks = {"b1": _make_block_class(name="B1")}
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ) as mock_get_blocks:
         result1 = _get_enabled_blocks()
         result2 = _get_enabled_blocks()
@@ -122,7 +122,7 @@ async def test_store_agent_handler_get_missing_items(mocker):
     ]
 
     with patch(
-        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
         return_value=mock_missing,
     ):
         items = await handler.get_missing_items(batch_size=10)
@@ -145,7 +145,7 @@ async def test_store_agent_handler_get_stats(mocker):
     mock_embedded = [{"count": 30}]
 
     with patch(
-        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
         side_effect=[mock_approved, mock_embedded],
     ):
         stats = await handler.get_stats()
@@ -175,10 +175,10 @@ async def test_block_handler_get_missing_items():
     }
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -205,10 +205,10 @@ async def test_block_handler_get_missing_items_splits_camelcase():
     }
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -225,10 +225,10 @@ async def test_block_handler_get_missing_items_batch_size_zero():
     blocks = {"b1": _make_block_class(name="B1")}
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ) as mock_query:
             items = await handler.get_missing_items(batch_size=0)
@@ -252,10 +252,10 @@ async def test_block_handler_disabled_dont_exhaust_batch():
     }
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=2)
@@ -278,10 +278,10 @@ async def test_block_handler_get_stats():
     mock_embedded = [{"count": 2}]
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=mock_embedded,
         ):
             stats = await handler.get_stats()
@@ -304,10 +304,10 @@ async def test_block_handler_get_stats_skips_broken():
     mock_embedded = [{"count": 1}]
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=mock_embedded,
         ):
             stats = await handler.get_stats()
@@ -332,10 +332,10 @@ async def test_block_handler_handles_none_name():
     blocks["none-name-block"].return_value.name = None
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -357,10 +357,10 @@ async def test_block_handler_handles_empty_attributes():
     blocks = {"block-minimal": _make_block_class(name="Minimal Block")}
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -380,10 +380,10 @@ async def test_block_handler_skips_failed_blocks():
     }
 
     with patch(
-        "backend.api.features.store.content_handlers.get_blocks", return_value=blocks
+        "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
     ):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -409,7 +409,7 @@ async def test_documentation_handler_get_missing_items(tmp_path, mocker):
 
     with patch.object(handler, "_get_docs_root", return_value=docs_root):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=[],
         ):
             items = await handler.get_missing_items(batch_size=10)
@@ -448,7 +448,7 @@ async def test_documentation_handler_get_stats(tmp_path, mocker):
 
     with patch.object(handler, "_get_docs_root", return_value=docs_root):
         with patch(
-            "backend.api.features.store.content_handlers.query_raw_with_schema",
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
             return_value=mock_embedded,
         ):
             stats = await handler.get_stats()
@@ -585,7 +585,7 @@ async def test_library_agent_handler_emits_user_scoped_items():
         },
     ]
     with patch(
-        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
         return_value=rows,
     ):
         handler = LibraryAgentHandler()
@@ -614,7 +614,7 @@ async def test_library_agent_handler_stats():
         return [{"count": 10}]
 
     with patch(
-        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
         side_effect=fake_query_raw,
     ):
         stats = await LibraryAgentHandler().get_stats()
