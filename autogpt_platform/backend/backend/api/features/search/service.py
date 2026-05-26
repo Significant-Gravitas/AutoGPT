@@ -21,10 +21,7 @@ from typing import Any
 
 from prisma.enums import ContentType
 
-from backend.api.features.search.model import (
-    GlobalSearchResponse,
-    SearchResultItem,
-)
+from backend.api.features.search.model import GlobalSearchResponse, SearchResultItem
 from backend.data.db_accessors import library_db, search
 from backend.util.cache import cached
 

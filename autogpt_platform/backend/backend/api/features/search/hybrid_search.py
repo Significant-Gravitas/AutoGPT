@@ -395,7 +395,12 @@ async def unified_hybrid_search(
             WHERE combined_score >= {min_score_param}
         )
         SELECT * FROM filtered
-        ORDER BY combined_score DESC
+        -- ``content_id`` is the deterministic tiebreaker: when several
+        -- rows tie on ``combined_score`` (common with identical
+        -- embeddings or repeated text), Postgres is free to return any
+        -- order absent a secondary key, which lets the same row land on
+        -- multiple pages under ``LIMIT/OFFSET`` paging.
+        ORDER BY combined_score DESC, content_id ASC
         LIMIT {limit_param} OFFSET {offset_param}
     """
 

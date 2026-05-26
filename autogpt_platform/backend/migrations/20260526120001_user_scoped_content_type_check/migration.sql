@@ -1,13 +1,12 @@
--- Add WORKSPACE_FILE and CHAT_SESSION to the ContentType enum and extend the
--- defense-in-depth CHECK constraint so these per-user types can never be
--- inserted with a NULL userId (which would otherwise leak across users via
--- the public branch of hybrid_search's user filter).
+-- Step 2/2: tighten the per-user CHECK constraint on UnifiedContentEmbedding
+-- to cover WORKSPACE_FILE and CHAT_SESSION (added in the preceding
+-- migration). The split is required because Postgres errors with
+-- "unsafe use of new value" if a CHECK / DELETE in the same transaction
+-- as `ALTER TYPE ... ADD VALUE` references the new enum values.
 
-ALTER TYPE "ContentType" ADD VALUE IF NOT EXISTS 'WORKSPACE_FILE';
-ALTER TYPE "ContentType" ADD VALUE IF NOT EXISTS 'CHAT_SESSION';
-
--- Sweep any stray null-userId rows first (none expected) so the constraint
--- swap doesn't fail in environments where rows were hand-inserted.
+-- Sweep any stray rows with NULL userId for the per-user types so the
+-- new CHECK doesn't fail in environments where someone hand-inserted
+-- (no rows are expected in practice).
 DELETE FROM "UnifiedContentEmbedding"
 WHERE "contentType" IN ('WORKSPACE_FILE', 'CHAT_SESSION')
   AND "userId" IS NULL;
