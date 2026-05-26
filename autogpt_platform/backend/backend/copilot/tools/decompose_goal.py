@@ -30,11 +30,9 @@ class DecomposeGoalTool(BaseTool):
     def description(self) -> str:
         return (
             "Show the user a plain-English plan of what the agent will do, "
-            "as a step-by-step card before constructing it. Each step's "
-            "description must read to a non-technical user — describe the "
-            "user-facing behaviour, not internal block names or wiring. "
-            "Display-only — the build continues in the same turn without "
-            "pausing for user input."
+            "as a step-by-step card before constructing it. Display-only — "
+            "the build continues in the same turn without pausing for user "
+            "input."
         )
 
     @property
@@ -54,16 +52,11 @@ class DecomposeGoalTool(BaseTool):
                             "description": {
                                 "type": "string",
                                 "description": (
-                                    "Plain-English description of what this "
-                                    "step accomplishes for the user. Must "
-                                    "read to a non-technical user. Do not "
-                                    "reference block class names "
-                                    '("AgentInputBlock", '
-                                    '"AgentOutputBlock", etc.) or wiring '
-                                    'verbs ("wire", "connect", "link") '
-                                    "— the block_name and action fields "
-                                    "below carry that technical detail "
-                                    "separately."
+                                    "Plain-English description of what "
+                                    "this step does for the user. Do not "
+                                    "put block class names or wiring verbs "
+                                    "here — block_name and action carry "
+                                    "that technical detail."
                                 ),
                             },
                             "action": {

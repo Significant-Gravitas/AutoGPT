@@ -11761,7 +11761,7 @@
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "Human-readable step description"
+            "description": "Plain-English description of what this step does for the user. Do not put block class names or wiring verbs here — block_name and action carry that technical detail."
           },
           "action": {
             "type": "string",

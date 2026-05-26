@@ -850,10 +850,9 @@ class DecompositionStepModel(BaseModel):
     step_id: str = Field(description="Unique step identifier, e.g. 'step_1'")
     description: str = Field(
         description=(
-            "Plain-English description of what this step accomplishes for "
-            "the user — must read to a non-technical user. Do not reference "
-            "block class names or wiring verbs; the block_name and action "
-            "fields carry that technical detail separately."
+            "Plain-English description of what this step does for the user. "
+            "Do not put block class names or wiring verbs here — block_name "
+            "and action carry that technical detail."
         )
     )
     action: str = Field(
