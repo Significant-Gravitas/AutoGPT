@@ -98,6 +98,9 @@ async def _search_bucket(
             # use a slightly more permissive floor for the global top-N so
             # we still return *something* on short queries.
             min_score=0.05,
+            # Search-as-you-type: the trailing token is usually a partial
+            # word, so prefix-match the lexical signal ("se" -> "se:*").
+            prefix_match=True,
         )
     except Exception as e:
         logger.warning(

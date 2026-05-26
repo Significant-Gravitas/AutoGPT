@@ -146,6 +146,7 @@ async def unified_hybrid_search(
     min_score: float | None = None,
     user_id: str | None = None,
     lexical_query: str | None = None,
+    prefix_match: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Unified hybrid search across all content types.
@@ -182,6 +183,21 @@ async def unified_hybrid_search(
     # when ``plainto_tsquery``'s AND semantics over a long natural goal
     # would zero out every match.
     lexical_query = (lexical_query or query).strip() or query
+
+    # Lexical matching mode. ``plainto_tsquery`` matches whole words only,
+    # which is wrong for search-as-you-type callers (e.g. /search/global):
+    # the last token is usually a partial word ("se", "fir"). With
+    # ``prefix_match`` we build a prefix ``to_tsquery`` (``term:*``) from the
+    # query's word tokens so partial words still match. ``to_tsquery`` drops
+    # stopwords gracefully, so an all-stopword fragment simply yields no
+    # lexical hits and falls back to the semantic signal.
+    lexical_fn = "plainto_tsquery"
+    lexical_tsquery = lexical_query
+    if prefix_match:
+        tokens = tokenize(lexical_query)
+        if tokens:
+            lexical_fn = "to_tsquery"
+            lexical_tsquery = " & ".join(f"{t}:*" for t in tokens)
 
     if page < 1:
         page = 1
@@ -233,8 +249,9 @@ async def unified_hybrid_search(
     param_idx = 1
 
     # Query for lexical search (may differ from semantic ``query`` —
-    # see the ``lexical_query`` parameter doc).
-    params.append(lexical_query)
+    # see the ``lexical_query`` parameter doc). Carries the prefix
+    # ``to_tsquery`` form when ``prefix_match`` is set.
+    params.append(lexical_tsquery)
     query_param = f"${param_idx}"
     param_idx += 1
 
@@ -321,7 +338,7 @@ async def unified_hybrid_search(
             FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
             WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
             {user_filter}
-            AND uce.search @@ plainto_tsquery('english', {query_param})
+            AND uce.search @@ {lexical_fn}('english', {query_param})
 
             UNION
 
@@ -345,7 +362,7 @@ async def unified_hybrid_search(
                 -- Semantic score: cosine similarity (1 - distance)
                 COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score: ts_rank_cd
-                COALESCE(ts_rank_cd(uce.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
+                COALESCE(ts_rank_cd(uce.search, {lexical_fn}('english', {query_param})), 0) as lexical_raw,
                 -- Category match from metadata
                 CASE
                     WHEN uce.metadata ? 'categories' AND EXISTS (
