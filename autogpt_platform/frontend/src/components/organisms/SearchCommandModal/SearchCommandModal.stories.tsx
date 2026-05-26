@@ -140,9 +140,7 @@ function SearchCommandModalDemo({
         inputAriaLabel={inputAriaLabel}
         idleEmptyLabel={idleEmptyLabel}
         searchingEmptyLabel={searchingEmptyLabel}
-        onSelectItem={(item) => {
-          // eslint-disable-next-line no-console
-          console.log("Selected:", item);
+        onSelectItem={() => {
           setIsOpen(false);
         }}
       />

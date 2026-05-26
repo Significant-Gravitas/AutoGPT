@@ -33,9 +33,16 @@ const BUCKET_LABEL: Record<BucketKey, string> = {
 
 const BUCKET_ORDER: BucketKey[] = ["chats", "agents", "files"];
 
+// Namespace the key by type: raw IDs can collide across buckets (e.g. a
+// library agent and a chat session sharing an ID), which would clobber
+// ``itemsById`` and route a click to the wrong target.
+function itemKey(item: SearchResultItem): string {
+  return `${item.type}:${item.id}`;
+}
+
 function toCommandItem(item: SearchResultItem): SearchCommandItem {
   return {
-    id: item.id,
+    id: itemKey(item),
     title: item.title,
     subtitle: item.subtitle ?? null,
     icon: ICON_BY_TYPE[item.type],
@@ -60,7 +67,7 @@ export function buildBucketsFromResponse(
 
   const buckets: SearchCommandBucket[] = BUCKET_ORDER.map((key) => {
     const apiItems = response[key] ?? [];
-    for (const apiItem of apiItems) itemsById.set(apiItem.id, apiItem);
+    for (const apiItem of apiItems) itemsById.set(itemKey(apiItem), apiItem);
     return {
       key,
       label: BUCKET_LABEL[key],
