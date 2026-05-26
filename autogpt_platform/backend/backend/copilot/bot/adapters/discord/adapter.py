@@ -21,7 +21,7 @@ from ..base import (
     MessageHistoryEntry,
     PlatformAdapter,
 )
-from . import commands, config
+from . import commands, config, intro
 
 logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 20
@@ -186,6 +186,23 @@ class DiscordAdapter(PlatformAdapter):
                 logger.info(f"Synced {len(synced)} slash commands")
             except Exception:
                 logger.exception("Failed to sync slash commands")
+
+        @self._client.event
+        async def on_guild_join(guild: discord.Guild) -> None:
+            channel = intro.pick_intro_channel(guild)
+            if channel is None:
+                logger.info(
+                    "No sendable channel in guild %s for intro message", guild.id
+                )
+                return
+            try:
+                await channel.send(
+                    intro.intro_message(),
+                    tts=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except discord.HTTPException:
+                logger.exception("Failed to post intro message in guild %s", guild.id)
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
