@@ -49,4 +49,23 @@ describe("TopUpForm", () => {
     expect(await screen.findByText(/Top-ups start at \$5/i)).toBeDefined();
     expect(getBody()).toBeNull();
   });
+
+  test("disables the submit button while the checkout request is in flight", async () => {
+    // Hold the request open so the in-flight loading state is observable.
+    server.use(
+      getPostV1RequestCreditTopUpMockHandler(
+        () => new Promise((resolve) => setTimeout(resolve, 300)),
+      ),
+    );
+
+    render(<TopUpForm />);
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /top up/i }));
+
+    const button = await screen.findByRole("button", { name: /redirecting/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
 });
