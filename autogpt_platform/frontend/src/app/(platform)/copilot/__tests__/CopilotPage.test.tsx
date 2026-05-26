@@ -13,10 +13,10 @@ vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
   DeleteChatDialog: () => null,
 }));
 vi.mock("../components/MobileDrawer/MobileDrawer", () => ({
-  MobileDrawer: () => null,
+  MobileDrawer: () => <div data-testid="mobile-drawer" />,
 }));
 vi.mock("../components/MobileHeader/MobileHeader", () => ({
-  MobileHeader: () => null,
+  MobileHeader: () => <div data-testid="mobile-header" />,
 }));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
@@ -35,8 +35,9 @@ vi.mock("../components/FileDropZone/FileDropZone", () => ({
     <div>{children}</div>
   ),
 }));
+let mockIsMobile = false;
 vi.mock("../useIsMobile", () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => mockIsMobile,
 }));
 vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
   ScaleLoader: () => <div data-testid="scale-loader" />,
@@ -129,6 +130,7 @@ vi.mock("../useCopilotPage", () => ({
 
 afterEach(() => {
   cleanup();
+  mockIsMobile = false;
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
   mockSupabase.mockReset();
@@ -191,5 +193,23 @@ describe("CopilotPage test-mode banner", () => {
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();
+  });
+
+  it("renders desktop chat sidebar and hides mobile controls on desktop", () => {
+    render(<CopilotPage />);
+
+    expect(screen.getByTestId("chat-sidebar")).toBeDefined();
+    expect(screen.queryByTestId("mobile-header")).toBeNull();
+    expect(screen.queryByTestId("mobile-drawer")).toBeNull();
+  });
+
+  it("renders mobile controls and hides desktop sidebar on mobile", () => {
+    mockIsMobile = true;
+
+    render(<CopilotPage />);
+
+    expect(screen.queryByTestId("chat-sidebar")).toBeNull();
+    expect(screen.getByTestId("mobile-header")).toBeDefined();
+    expect(screen.getByTestId("mobile-drawer")).toBeDefined();
   });
 });
