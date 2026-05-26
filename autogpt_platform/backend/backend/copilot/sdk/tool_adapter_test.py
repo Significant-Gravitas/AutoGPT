@@ -218,6 +218,49 @@ class TestTruncationAndStashIntegration:
             sdk_cwd="/tmp/test",
         )
 
+    @pytest.mark.asyncio
+    async def test_empty_args_triggers_guard_when_required_args_present(self):
+        """Tools with at least one required arg should reject empty-args calls."""
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(
+            handler,
+            "tool_with_required",
+            input_schema={"type": "object", "properties": {"file_path": {}}},
+            required_args=["file_path"],
+        )
+        result = await wrapper({})
+        assert called is False
+        assert result.get("isError") is True
+        assert "empty arguments" in _text_from_mcp_result(result)
+
+    @pytest.mark.asyncio
+    async def test_empty_args_allowed_when_no_required_args(self):
+        """Tools whose params are all optional (filters-only) accept empty args."""
+        called = False
+
+        async def handler(args):
+            nonlocal called
+            called = True
+            assert args == {}
+            return {"content": [{"type": "text", "text": "listed"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(
+            handler,
+            "list_only_optional_filters",
+            input_schema={"type": "object", "properties": {"graph_id": {}}},
+            required_args=[],
+        )
+        result = await wrapper({})
+        assert called is True
+        assert result.get("isError") is not True
+        assert _text_from_mcp_result(result) == "listed"
+
     def test_small_output_stashed(self):
         """Non-error output is stashed for the response adapter."""
         result = {

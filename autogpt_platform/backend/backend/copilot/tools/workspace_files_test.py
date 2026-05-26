@@ -856,3 +856,66 @@ class TestReadWorkspaceFileSdkToolResultRedirect:
         # The local-read fallback must NOT have run — that's the bug
         # this test guards against.
         mock_local_read.assert_not_called()
+
+
+class TestSkillsRegistryACL:
+    """Writes and deletes targeting ``/skills/`` must go through the
+    skills registry (``store_skill`` / ``delete_skill``) which enforces
+    frontmatter validation, the per-user cap, and content sanitisation.
+    A direct workspace write would bypass all of that."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "skills/foo/SKILL.md",
+            "/skills/foo/SKILL.md",
+            "  /Skills/foo/SKILL.md  ",  # case + whitespace tolerance
+            "skills",
+            "/skills/",
+        ],
+    )
+    async def test_write_workspace_file_rejects_skills_path(self, path):
+        tool = WriteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            filename="SKILL.md",
+            content="---\nname: foo\ndescription: x\n---\nbody",
+            path=path,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message
+        assert "store_skill" in result.message
+
+    @pytest.mark.asyncio
+    async def test_write_workspace_file_rejects_skills_filename_default_path(self):
+        """When ``path`` is omitted the default path is ``/{filename}``,
+        so a filename like ``skills`` (or starting with ``skills/``)
+        must still be blocked."""
+        tool = WriteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        # Filename like ``skills/SKILL.md`` would default to path ``/skills/SKILL.md``.
+        # WorkspaceManager typically forbids slashes in filename, but the
+        # ACL must reject this before we ever reach the manager.
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            filename="skills/SKILL.md",
+            content="x",
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message
+
+    @pytest.mark.asyncio
+    async def test_delete_workspace_file_rejects_skills_path(self):
+        tool = DeleteWorkspaceFileTool()
+        session = make_session("user-acl-test")
+        result = await tool._execute(
+            user_id="user-acl-test",
+            session=session,
+            path="/skills/foo/SKILL.md",
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "skills registry" in result.message

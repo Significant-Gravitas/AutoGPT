@@ -49,6 +49,16 @@ class Flag(str, Enum):
     CHAT_SHARING = "chat-sharing"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
+    # Self-distilled skills registry (store_skill / read_skill /
+    # delete_skill / list_skills + the per-turn <available_skills>
+    # context block).  Default-on — flip off in LaunchDarkly to disable
+    # the feature without a redeploy.
+    COPILOT_SKILLS = "copilot-skills"
+    # Scheduled copilot turn followups (schedule_followup MCP tool +
+    # the pending_followups awareness inside <session_context>).  The
+    # current_session_id line stays regardless — only the followup
+    # surface is gated.  Default-on.
+    COPILOT_SCHEDULED_FOLLOWUPS = "copilot-scheduled-followups"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"

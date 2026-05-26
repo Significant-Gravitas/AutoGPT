@@ -1295,7 +1295,10 @@ model UnifiedContentEmbedding {
   // Content identification
   contentType ContentType
   contentId   String // DB ID (storeListingVersionId) or file identifier (block.id, file_path)
-  userId      String? // NULL for public content (store, blocks, docs), userId for private content (library agents)
+  // NULL for public content (store, blocks, docs); userId for private content (library agents).
+  // A SQL CHECK constraint enforces ``contentType != 'LIBRARY_AGENT' OR userId IS NOT NULL``
+  // (see migration ``20260525120000_library_agent_userid_check``).
+  userId      String?
 
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
