@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV1GetUserCreditsMockHandler,
@@ -8,6 +13,7 @@ import {
 import { Key } from "@/services/storage/local-storage";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
+import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
 // `Flag` enum and let each test toggle whether the flag resolves true.
@@ -96,6 +102,56 @@ describe("TopUpPromptProvider daily auto-opener", () => {
     await screen.findByText(/out of automation credits/i);
 
     expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+  });
+});
+
+describe("LowCreditBanner dismissal", () => {
+  test("hides the banner for the day and records the dismissal date", async () => {
+    // Suppress the daily auto-opener so only the banner dismissal is under test.
+    localStorage.setItem(
+      Key.TOP_UP_MODAL_LAST_SHOWN,
+      new Date().toDateString(),
+    );
+    setupCredits({ credits: 0, amount: 0, threshold: 0 });
+
+    renderProvider();
+
+    await screen.findByText(/out of automation credits/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/out of automation credits/i)).toBeNull(),
+    );
+    expect(localStorage.getItem(Key.LOW_CREDIT_BANNER_DISMISSED)).toBe(
+      new Date().toDateString(),
+    );
+  });
+});
+
+describe("useTopUpPrompt without a provider", () => {
+  test("falls back to an inert value instead of throwing", () => {
+    function Consumer() {
+      const { isOutOfCredits, openTopUp, closeTopUp } = useTopUpPrompt();
+      return (
+        <button
+          onClick={() => {
+            openTopUp();
+            closeTopUp();
+          }}
+        >
+          {isOutOfCredits ? "out of credits" : "has credits"}
+        </button>
+      );
+    }
+
+    render(<Consumer />);
+
+    const button = screen.getByRole("button");
+    expect(button.textContent).toBe("has credits");
+    // The inert openTopUp/closeTopUp must be safe no-ops.
+    fireEvent.click(button);
+    expect(button.textContent).toBe("has credits");
   });
 });
 
