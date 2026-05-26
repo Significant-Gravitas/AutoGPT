@@ -9,6 +9,7 @@ drill-in into a shared execution.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,7 +24,9 @@ from prisma.models import (
     UserWorkspaceFile,
 )
 
+from backend.blocks._base import BlockType
 from backend.copilot.sharing.db import (
+    _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
     _file_referenced_in_session,
     disable_chat_session_share,
@@ -232,6 +235,12 @@ class TestDisableCascade:
 
         # CRITICAL: execution was NOT revoked because chat B still depends on it.
         mock_prisma_calls["execution"].return_value.update.assert_not_called()
+        mock_prisma_calls["linked"].return_value.find_first.assert_awaited_once_with(
+            where={
+                "executionId": EXECUTION_ID,
+                "sessionId": {"not": SESSION_ID},
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_preserves_user_shared_execution_even_with_no_other_links(
@@ -611,6 +620,27 @@ class TestCollectExecutionIdsFromMessages:
         assert ids == {"exec-sync"}
 
     @pytest.mark.asyncio
+    async def test_extracts_execution_id_from_error_response(self):
+        """Failed / terminated real executions can be recovered on re-share
+        when the runtime hook missed the original link attempt."""
+        msg = _mock_tool_msg('{"type":"error","execution_id":"exec-failed"}')
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+            ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
+        assert ids == {"exec-failed"}
+
+    @pytest.mark.asyncio
+    async def test_ignores_scheduled_execution_started_response(self):
+        """Schedule setup responses carry a schedule id, not a graph execution id."""
+        msg = _mock_tool_msg(
+            '{"type":"execution_started","execution_id":"schedule-id","status":"SCHEDULED"}'
+        )
+        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
+            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+            ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
+        assert ids == set()
+
+    @pytest.mark.asyncio
     async def test_ignores_agent_output_with_missing_execution_block(self):
         """An agent_output without a nested execution block is a no-op."""
         msg = _mock_tool_msg('{"type":"agent_output","message":"done"}')
@@ -618,6 +648,70 @@ class TestCollectExecutionIdsFromMessages:
             msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
+
+
+class TestSharedExecutionFileAllowlist:
+    @pytest.mark.asyncio
+    async def test_uses_public_output_blocks_not_all_node_outputs(
+        self, mock_prisma_calls
+    ):
+        """CHAT_LINK execution shares should expose only files visible in
+        the public execution viewer, matching normal execution shares."""
+        hidden_file = "11111111-2222-3333-4444-555555555555"
+        public_file = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        hidden_node = SimpleNamespace(
+            Node=SimpleNamespace(agentBlockId="standard-block"),
+            executionData={
+                "result": f"workspace://{hidden_file}#text/csv",
+            },
+            Input=None,
+        )
+        output_node = SimpleNamespace(
+            Node=SimpleNamespace(agentBlockId="output-block"),
+            executionData={
+                "name": "Final report",
+                "value": f"workspace://{public_file}#text/markdown",
+            },
+            Input=None,
+        )
+        execution = SimpleNamespace(NodeExecutions=[hidden_node, output_node])
+
+        mock_prisma_calls["execution"].return_value.find_unique = AsyncMock(
+            return_value=execution
+        )
+        mock_prisma_calls["workspace"].return_value.find_unique = AsyncMock(
+            return_value=SimpleNamespace(id="workspace-1")
+        )
+        mock_prisma_calls["workspace_file"].return_value.find_many = AsyncMock(
+            return_value=[SimpleNamespace(id=public_file)]
+        )
+        mock_prisma_calls["exec_file"].return_value.create = AsyncMock()
+
+        def get_block(block_id: str):
+            block_type = (
+                BlockType.OUTPUT if block_id == "output-block" else BlockType.STANDARD
+            )
+            return SimpleNamespace(block_type=block_type)
+
+        with patch("backend.copilot.sharing.db.get_block", side_effect=get_block):
+            created = await _build_shared_execution_file_allowlist(
+                execution_id=EXECUTION_ID,
+                share_token="share-token",
+                user_id=USER_ID,
+            )
+
+        assert created == 1
+        find_many_call = mock_prisma_calls[
+            "workspace_file"
+        ].return_value.find_many.call_args.kwargs
+        assert find_many_call["where"]["id"] == {"in": [public_file]}
+        mock_prisma_calls["exec_file"].return_value.create.assert_awaited_once_with(
+            data={
+                "executionId": EXECUTION_ID,
+                "fileId": public_file,
+                "shareToken": "share-token",
+            }
+        )
 
 
 class TestLinkNewExecutionToChatShare:

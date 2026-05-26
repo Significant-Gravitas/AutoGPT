@@ -12201,6 +12201,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Id"
           },
+          "execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Id"
+          },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"

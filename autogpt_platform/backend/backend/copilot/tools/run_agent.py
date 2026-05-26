@@ -83,6 +83,7 @@ async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
 # Constants for response messages
 MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
 MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
+SCHEDULED_STATUS = "SCHEDULED"
 MSG_ASK_USER_FOR_VALUES = (
     "Ask the user what values to use, or call again with use_defaults=true "
     "to run with default values."
@@ -781,6 +782,7 @@ class RunAgentTool(BaseTool):
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
@@ -797,6 +799,7 @@ class RunAgentTool(BaseTool):
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
@@ -852,6 +855,7 @@ class RunAgentTool(BaseTool):
             graph_name=library_agent.name,
             library_agent_id=library_agent.id,
             library_agent_link=library_agent_link,
+            status=SCHEDULED_STATUS,
         )
 
     async def _schedule_agent(

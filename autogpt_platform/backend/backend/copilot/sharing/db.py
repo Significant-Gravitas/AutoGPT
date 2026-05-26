@@ -26,6 +26,8 @@ from prisma.models import (
     UserWorkspaceFile,
 )
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
@@ -35,9 +37,11 @@ from backend.copilot.sharing.models import (
     sanitize_chat_message,
     sanitize_chat_session,
 )
+from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
+from backend.util import type as type_utils
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +49,17 @@ logger = logging.getLogger(__name__)
 # rows) for run_agent tool payloads that reference an execution.
 #
 # Two response shapes can result from a run_agent invocation:
-#   * ExecutionStartedResponse — async / still-running / REVIEW / schedule;
+#   * ExecutionStartedResponse — async / still-running / REVIEW;
 #     ``execution_id`` lives at the top level of the JSON payload.
 #   * AgentOutputResponse — sync-complete (``wait_for_result``); the
 #     execution_id lives nested under ``execution.execution_id``.
-# Both shapes are emitted by ``backend.copilot.tools.models``.
+#   * ErrorResponse — failed / terminated actual runs; execution_id is
+#     optional because generic tool errors do not have a run to link.
+# These shapes are emitted by ``backend.copilot.tools.models``.
 _EXECUTION_STARTED_TYPE = "execution_started"
 _AGENT_OUTPUT_TYPE = "agent_output"
+_ERROR_TYPE = "error"
+_SCHEDULED_STATUS = "SCHEDULED"
 
 
 # ---------- Enable / disable -------------------------------------------------
@@ -620,7 +628,7 @@ async def _cascade_revoke_chat_linked_executions(
         other_link = await ChatLinkedShare.prisma(tx).find_first(
             where={
                 "executionId": execution.id,
-                "NOT": {"sessionId": session_id},
+                "sessionId": {"not": session_id},
             },
         )
         if other_link is not None:
@@ -714,32 +722,28 @@ async def _build_shared_execution_file_allowlist(
 
     Mirrors :func:`backend.data.execution.create_shared_execution_files` but
     is transaction-aware so the allowlist commits with the same atomic
-    boundary as the share-state flip.  Scans the execution's node-execution
-    outputs for ``workspace://`` references AND ``file_id`` JSON refs and
-    creates one allowlist row per file the user actually owns.  Without
-    this, the chat-link execution's public viewer renders the run card but
-    every workspace file 404s because the public file-download endpoint
-    consults this exact allowlist.
+    boundary as the share-state flip.  It intentionally scans only the
+    public execution outputs rendered by the shared execution viewer, not
+    every intermediate node output.  That keeps CHAT_LINK shares from
+    authorising file downloads the normal execution-share path would not
+    expose.
     """
-    # Pull only the node-execution outputs (no I/O for cancelled / running
-    # nodes, no metadata we don't need).  Each ``AgentNodeExecution`` row's
-    # ``Outputs`` are the structured block outputs that may carry
-    # ``workspace://`` URIs or ``file_id`` JSON tokens.
     node_rows = await AgentGraphExecution.prisma(tx).find_unique(
         where={"id": execution_id},
-        include={"NodeExecutions": {"include": {"Output": True}}},
+        include={
+            "NodeExecutions": {
+                "include": {
+                    "Input": True,
+                    "Node": {"include": {"AgentBlock": True}},
+                }
+            }
+        },
     )
     if node_rows is None or node_rows.NodeExecutions is None:
         return 0
 
-    file_ids: set[str] = set()
-    for ne in node_rows.NodeExecutions:
-        if ne.Output is None:
-            continue
-        for out in ne.Output:
-            if out.data is not None:
-                file_ids |= extract_workspace_file_ids(out.data)
-
+    outputs = _collect_public_execution_outputs(node_rows)
+    file_ids = extract_workspace_file_ids(outputs)
     if not file_ids:
         return 0
 
@@ -818,17 +822,57 @@ async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
             continue
         payload_type = payload.get("type")
         if payload_type == _EXECUTION_STARTED_TYPE:
+            if payload.get("status") == _SCHEDULED_STATUS:
+                continue
             execution_id = payload.get("execution_id")
         elif payload_type == _AGENT_OUTPUT_TYPE:
             execution = payload.get("execution")
             execution_id = (
                 execution.get("execution_id") if isinstance(execution, dict) else None
             )
+        elif payload_type == _ERROR_TYPE:
+            execution_id = payload.get("execution_id")
         else:
             continue
         if isinstance(execution_id, str) and execution_id:
             execution_ids.add(execution_id)
     return execution_ids
+
+
+def _collect_public_execution_outputs(
+    execution: AgentGraphExecution,
+) -> CompletedBlockOutput:
+    outputs: CompletedBlockOutput = {}
+    if execution.NodeExecutions is None:
+        return outputs
+
+    for node_exec in execution.NodeExecutions:
+        node = getattr(node_exec, "Node", None)
+        block_id = getattr(node, "agentBlockId", None)
+        if not block_id:
+            continue
+        block = get_block(block_id)
+        if block is None or block.block_type != BlockType.OUTPUT:
+            continue
+        input_data = _node_execution_input_data(node_exec)
+        if "name" not in input_data:
+            continue
+        name = input_data["name"]
+        value = input_data.get("value")
+        outputs.setdefault(name, []).append(value)
+    return outputs
+
+
+def _node_execution_input_data(node_exec: Any) -> BlockInput:
+    execution_data = getattr(node_exec, "executionData", None)
+    if execution_data:
+        return type_utils.convert(execution_data, BlockInput)
+
+    input_data: BlockInput = {}
+    for data in getattr(node_exec, "Input", None) or []:
+        if data.name and data.data is not None:
+            input_data[data.name] = type_utils.convert(data.data, Any)
+    return input_data
 
 
 def _graph_name(graph: "AgentGraph | None") -> str | None:

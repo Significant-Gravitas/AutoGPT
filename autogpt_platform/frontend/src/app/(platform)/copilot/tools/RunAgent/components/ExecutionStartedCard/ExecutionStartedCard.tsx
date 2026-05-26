@@ -30,6 +30,7 @@ export function titleForStatus(status: string | undefined): string {
     return "Execution stopped";
   if (s === "TIMED_OUT" || s === "INCOMPLETE") return "Execution incomplete";
   if (s === "RUNNING") return "Execution running";
+  if (s === "SCHEDULED") return "Execution scheduled";
   return "Execution started";
 }
 
