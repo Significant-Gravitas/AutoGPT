@@ -356,3 +356,24 @@ async def test_global_search_empty_query_untitled_chat_falls_back(mocker):
 
     result = await service.global_search(query="", user_id="u1")
     assert result.chats[0].title == "Untitled chat"
+
+
+def test_db_accessor_search_resolves_unified_hybrid_search():
+    """Regression: ``db_accessors.search()`` must expose
+    ``unified_hybrid_search`` on the in-process branch.
+
+    The unit tests above patch ``service.search`` so a wrong import in
+    the accessor wouldn't surface. This guards against a repeat of the
+    bug where the accessor was still pointing at
+    ``backend.api.features.store.hybrid_search`` after the engine moved
+    to ``backend.api.features.search.hybrid_search``.
+    """
+    from backend.data import db, db_accessors
+
+    with patch.object(db, "is_connected", return_value=True):
+        shim = db_accessors.search()
+        assert callable(getattr(shim, "unified_hybrid_search", None)), (
+            "db_accessors.search() must expose unified_hybrid_search; "
+            "service.global_search hits this attribute on every non-empty "
+            "query in production."
+        )
