@@ -345,6 +345,10 @@ export function extractWorkspaceArtifacts(
 
 export function getMessageArtifacts(
   message: UIMessage<unknown, UIDataTypes, UITools>,
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+  } = {},
 ): ArtifactRef[] {
   const byId = new Map<string, ArtifactRef>();
 
@@ -354,7 +358,7 @@ export function getMessageArtifacts(
   for (const part of message.parts) {
     if (part.type === "file") {
       const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin);
+      const artifact = filePartToArtifactRef(part, origin, options.filePattern);
       if (artifact) {
         byId.set(artifact.id, artifact);
       }
@@ -363,7 +367,10 @@ export function getMessageArtifacts(
 
   for (const part of message.parts) {
     if (part.type === "text") {
-      for (const artifact of extractWorkspaceArtifacts(part.text)) {
+      for (const artifact of extractWorkspaceArtifacts(
+        part.text,
+        options.fileUrlBuilder,
+      )) {
         if (!byId.has(artifact.id)) {
           byId.set(artifact.id, artifact);
         }
@@ -372,6 +379,61 @@ export function getMessageArtifacts(
   }
 
   return Array.from(byId.values());
+}
+
+export function getMostRecentArtifact(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  options: {
+    filePattern?: RegExp;
+    fileUrlBuilder?: (fileId: string) => string;
+    origin?: ArtifactRef["origin"];
+  } = {},
+): ArtifactRef | null {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    for (
+      let partIndex = message.parts.length - 1;
+      partIndex >= 0;
+      partIndex--
+    ) {
+      const part = message.parts[partIndex];
+      if (part.type === "file") {
+        const origin = message.role === "user" ? "user-upload" : "agent";
+        const artifact = filePartToArtifactRef(
+          part,
+          origin,
+          options.filePattern,
+        );
+        if (
+          artifact &&
+          (!options.origin || artifact.origin === options.origin)
+        ) {
+          return artifact;
+        }
+      }
+      if (part.type === "text") {
+        const artifacts = extractWorkspaceArtifacts(
+          part.text,
+          options.fileUrlBuilder,
+        );
+        for (
+          let artifactIndex = artifacts.length - 1;
+          artifactIndex >= 0;
+          artifactIndex--
+        ) {
+          const artifact = artifacts[artifactIndex];
+          if (!options.origin || artifact.origin === options.origin) {
+            return artifact;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**

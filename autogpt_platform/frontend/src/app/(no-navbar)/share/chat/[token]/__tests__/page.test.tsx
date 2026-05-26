@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
 import {
@@ -7,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { SharedChatMessagesPage } from "@/app/api/__generated__/models/sharedChatMessagesPage";
 import type { SharedChatSession } from "@/app/api/__generated__/models/sharedChatSession";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import SharedChatPage from "../page";
@@ -29,9 +31,24 @@ vi.mock("next/navigation", () => ({
 
 const TOKEN = "550e8400-e29b-41d4-a716-446655440000";
 
+function resetArtifactPanelStore() {
+  useCopilotUIStore.setState({
+    artifactPanel: {
+      isOpen: false,
+      isMinimized: false,
+      isMaximized: false,
+      width: 600,
+      activeArtifact: null,
+      history: [],
+    },
+  });
+  useCopilotUIStore.getState().resetAutoOpenState();
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseParams.mockReturnValue({ token: TOKEN });
+  resetArtifactPanelStore();
 });
 
 describe("SharedChatPage", () => {
@@ -88,6 +105,27 @@ describe("SharedChatPage", () => {
     expect(screen.getByText(/^Shared /)).toBeDefined();
     expect(await screen.findByText("How do I deploy?")).toBeDefined();
     expect(await screen.findByText("Use docker compose.")).toBeDefined();
+  });
+
+  test("centers the loading state across the shared chat chrome", () => {
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-loading",
+          title: "Loading",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          shared_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+    );
+
+    render(<SharedChatPage />);
+
+    const loadingState = screen.getByTestId("shared-chat-loading-state");
+    expect(loadingState.className).toContain("w-full");
+    expect(loadingState.className).toContain("flex-1");
   });
 
   test("surfaces the has_more notice when the chat is truncated", async () => {
@@ -205,6 +243,74 @@ describe("SharedChatPage", () => {
     const splitRow = container.querySelector("div.flex-row");
     expect(splitRow).not.toBeNull();
     expect(splitRow?.className).toContain("flex-row");
+    expect(
+      screen.getByTestId("shared-chat-content-column").className,
+    ).toContain("max-w-3xl");
+  });
+
+  test("auto-opens the most recent agent artifact in the shared chat", async () => {
+    const oldArtifactId = "11111111-1111-4111-8111-111111111111";
+    const latestArtifactId = "22222222-2222-4222-8222-222222222222";
+
+    server.use(
+      getGetV2GetSharedChatMockHandler200(
+        (): SharedChatSession => ({
+          id: "session-artifacts",
+          title: "Artifacts",
+          created_at: new Date("2026-05-12T00:00:00Z"),
+          updated_at: new Date("2026-05-12T00:00:00Z"),
+          shared_at: new Date("2026-05-12T00:00:00Z"),
+          linked_executions: [],
+        }),
+      ),
+      getGetV2GetSharedChatMessagesMockHandler200(
+        (): SharedChatMessagesPage => ({
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: `Older artifact [old.md](workspace://${oldArtifactId}#text/markdown)`,
+              name: null,
+              tool_call_id: null,
+              tool_calls: null,
+              function_call: null,
+              sequence: 0,
+              created_at: new Date("2026-05-12T00:00:01Z"),
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: `Latest artifact [latest.md](workspace://${latestArtifactId}#text/markdown)`,
+              name: null,
+              tool_call_id: null,
+              tool_calls: null,
+              function_call: null,
+              sequence: 1,
+              created_at: new Date("2026-05-12T00:00:02Z"),
+            },
+          ],
+          has_more: false,
+          oldest_sequence: 0,
+        }),
+      ),
+      http.get(
+        "*/api/proxy/api/public/shared/chats/:token/files/:fileId/download",
+        () => new HttpResponse("# artifact"),
+      ),
+    );
+
+    render(<SharedChatPage />);
+
+    await screen.findByText(/Latest artifact/);
+    await waitFor(() => {
+      const panel = useCopilotUIStore.getState().artifactPanel;
+      expect(panel.isOpen).toBe(true);
+      expect(panel.activeArtifact?.id).toBe(latestArtifactId);
+      expect(panel.activeArtifact?.title).toBe("latest.md");
+    });
+    expect(
+      screen.getByTestId("shared-chat-content-column").className,
+    ).not.toContain("max-w-3xl");
   });
 
   test("falls back to 'Shared chat' when the session has no title", async () => {

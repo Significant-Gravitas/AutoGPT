@@ -7,11 +7,13 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
+import { cn } from "@/lib/utils";
 import { ShareActions } from "../../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../../components/ShareHeader/ShareHeader";
 import { useSharedChatPage } from "./useSharedChatPage";
 import { SharedChatErrorState } from "./components/SharedChatErrorState";
 import { SharedChatLoadingState } from "./components/SharedChatLoadingState";
+import { useSharedChatArtifacts } from "./useSharedChatArtifacts";
 
 // Wraps every chat-share state — loading, error, success — in the
 // branded shell so a viewer never sees a raw card without the logo
@@ -82,6 +84,14 @@ export default function SharedChatPage() {
     error,
     retry,
   } = useSharedChatPage(token);
+
+  const { isArtifactPanelOpen } = useSharedChatArtifacts({
+    token,
+    uiMessages,
+    isLoading,
+    filePattern,
+    fileUrlBuilder,
+  });
 
   // execution_id → public share_token, so ExecutionStartedCard's
   // "View Execution" CTA routes to /share/{token} instead of the
@@ -157,7 +167,13 @@ export default function SharedChatPage() {
             is not visible in this shared view.
           </div>
         )}
-        <div className="flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0">
+        <div
+          data-testid="shared-chat-content-column"
+          className={cn(
+            "mx-auto flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0",
+            !isArtifactPanelOpen && "max-w-3xl",
+          )}
+        >
           <CopilotChatActionsProvider
             onSend={noopSend}
             chatSurface="share"
