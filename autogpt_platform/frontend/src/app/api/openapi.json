@@ -8156,8 +8156,8 @@
     "/api/search/global": {
       "get": {
         "tags": ["v2", "search", "search"],
-        "summary": "Global search (hybrid on query, recent on empty)",
-        "operationId": "getV2Global search (hybrid on query, recent on empty)",
+        "summary": "Global search",
+        "operationId": "getV2Global search",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {

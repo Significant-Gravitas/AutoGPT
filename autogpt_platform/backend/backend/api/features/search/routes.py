@@ -27,7 +27,7 @@ router = APIRouter(
 
 @router.get(
     "/global",
-    summary="Global search (hybrid on query, recent on empty)",
+    summary="Global search",
     response_model=GlobalSearchResponse,
 )
 async def global_search_endpoint(

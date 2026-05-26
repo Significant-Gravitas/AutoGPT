@@ -3,7 +3,7 @@ import {
   getDeleteV2DeleteSessionMockHandler422,
   getGetV2ListSessionsMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { getGetV2GlobalSearchHybridOnQueryRecentOnEmptyMockHandler200 } from "@/app/api/__generated__/endpoints/search/search.msw";
+import { getGetV2GlobalSearchMockHandler200 } from "@/app/api/__generated__/endpoints/search/search.msw";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { server } from "@/mocks/mock-server";
 import {
@@ -226,7 +226,7 @@ describe("ChatSidebar — global search modal", () => {
       // Search endpoint is filtered server-side by the ``q`` param. To
       // keep the test deterministic we narrow the chat bucket here
       // instead of relying on backend semantics.
-      getGetV2GlobalSearchHybridOnQueryRecentOnEmptyMockHandler200(
+      getGetV2GlobalSearchMockHandler200(
         ({ request }) => {
           const url = new URL(request.url);
           const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();

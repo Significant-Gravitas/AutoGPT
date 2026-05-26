@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGetV2GlobalSearchHybridOnQueryRecentOnEmpty } from "@/app/api/__generated__/endpoints/search/search";
+import { useGetV2GlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { buildBucketsFromResponse } from "./helpers";
 
@@ -25,7 +25,7 @@ export function useGlobalSearch(isOpen: boolean) {
   }, [query]);
 
   const { data, isFetching, isError } =
-    useGetV2GlobalSearchHybridOnQueryRecentOnEmpty(
+    useGetV2GlobalSearch(
       { q: debouncedQuery.trim(), per_type_limit: PER_TYPE_LIMIT },
       {
         query: {
