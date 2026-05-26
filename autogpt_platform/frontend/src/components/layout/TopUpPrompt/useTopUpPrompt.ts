@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 interface TopUpPromptContextValue {
   isOutOfCredits: boolean;
   openTopUp: () => void;
+  closeTopUp: () => void;
 }
 
 export const TopUpPromptContext = createContext<TopUpPromptContextValue | null>(
@@ -15,6 +16,7 @@ export const TopUpPromptContext = createContext<TopUpPromptContextValue | null>(
 const inertPrompt: TopUpPromptContextValue = {
   isOutOfCredits: false,
   openTopUp: () => {},
+  closeTopUp: () => {},
 };
 
 export function useTopUpPrompt() {

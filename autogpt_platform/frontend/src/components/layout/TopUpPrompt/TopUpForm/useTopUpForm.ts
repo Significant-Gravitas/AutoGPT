@@ -23,13 +23,9 @@ export function useTopUpForm() {
 
   async function submitTopUp(data: z.infer<typeof topUpSchema>) {
     setIsLoading(true);
-    try {
-      await requestTopUp(data.amount * 100).catch(
-        toastOnFail("request top-up"),
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    await requestTopUp(data.amount * 100)
+      .catch(toastOnFail("request top-up"))
+      .finally(() => setIsLoading(false));
   }
 
   return {

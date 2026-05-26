@@ -13,7 +13,7 @@ export function LowCreditBanner() {
   if (!visible) return null;
 
   return (
-    <Alert variant="warning">
+    <Alert variant="warning" aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
           You&apos;re out of automation credits — top up to keep your agents
@@ -27,6 +27,7 @@ export function LowCreditBanner() {
           size="icon"
           onClick={dismiss}
           aria-label="Dismiss"
+          title="Dismiss"
         >
           <XIcon className="h-4 w-4" />
         </Button>
