@@ -855,7 +855,6 @@ class RunAgentTool(BaseTool):
             graph_name=library_agent.name,
             library_agent_id=library_agent.id,
             library_agent_link=library_agent_link,
-            status=SCHEDULED_STATUS,
         )
 
     async def _schedule_agent(
@@ -966,4 +965,5 @@ class RunAgentTool(BaseTool):
             graph_name=library_agent.name,
             library_agent_id=library_agent.id,
             library_agent_link=library_agent_link,
+            status=SCHEDULED_STATUS,
         )
