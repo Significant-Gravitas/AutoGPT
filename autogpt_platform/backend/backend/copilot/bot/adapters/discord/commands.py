@@ -126,8 +126,7 @@ async def _handle_unlink(interaction: discord.Interaction) -> None:
 
     if not base_url:
         await interaction.response.send_message(
-            f"{message}\n\nOpen AutoGPT on the web and go to "
-            "Settings → Bots.",
+            f"{message}\n\nOpen AutoGPT on the web and go to " "Settings → Bots.",
             ephemeral=True,
         )
         return
