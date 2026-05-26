@@ -36,6 +36,19 @@ EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
 
+# Single source of truth for the content types the maintenance jobs
+# (backfill + orphan cleanup) walk. BLOCK is first so foundational content
+# is searchable soonest. Keep in sync with the handlers in
+# ``content_handlers.CONTENT_HANDLERS``.
+SEARCHABLE_EMBEDDING_TYPES = [
+    ContentType.BLOCK,
+    ContentType.STORE_AGENT,
+    ContentType.DOCUMENTATION,
+    ContentType.LIBRARY_AGENT,
+    ContentType.WORKSPACE_FILE,
+    ContentType.CHAT_SESSION,
+]
+
 
 def build_searchable_text(
     name: str,
@@ -379,8 +392,8 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     """
     Generate embeddings for all content types using registered handlers.
 
-    Processes content types in order: BLOCK → STORE_AGENT → DOCUMENTATION.
-    This ensures foundational content (blocks) are searchable first.
+    Walks ``SEARCHABLE_EMBEDDING_TYPES`` in order (BLOCK first) so
+    foundational content is searchable soonest.
 
     Args:
         batch_size: Number of embeddings to generate per content type
@@ -395,12 +408,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     all_errors: dict[str, int] = {}  # Aggregate errors across all content types
 
     # Process content types in explicit order
-    processing_order = [
-        ContentType.BLOCK,
-        ContentType.STORE_AGENT,
-        ContentType.DOCUMENTATION,
-        ContentType.LIBRARY_AGENT,
-    ]
+    processing_order = SEARCHABLE_EMBEDDING_TYPES
 
     for content_type in processing_order:
         handler = CONTENT_HANDLERS.get(content_type)
@@ -507,12 +515,7 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     total_deleted = 0
 
     # Cleanup orphaned embeddings for all content types
-    cleanup_types = [
-        ContentType.STORE_AGENT,
-        ContentType.BLOCK,
-        ContentType.DOCUMENTATION,
-        ContentType.LIBRARY_AGENT,
-    ]
+    cleanup_types = SEARCHABLE_EMBEDDING_TYPES
 
     for content_type in cleanup_types:
         try:

@@ -862,7 +862,7 @@ class ChatSessionHandler(ContentHandler):
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL
-              AND cs.title <> ''
+              AND btrim(cs.title) <> ''
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -890,7 +890,7 @@ class ChatSessionHandler(ContentHandler):
             """
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession"
-            WHERE title IS NOT NULL AND title <> ''
+            WHERE title IS NOT NULL AND btrim(title) <> ''
             """
         )
         total = total_result[0]["count"] if total_result else 0
@@ -903,7 +903,7 @@ class ChatSessionHandler(ContentHandler):
               ON uce."contentId" = cs.id
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
-            WHERE cs.title IS NOT NULL AND cs.title <> ''
+            WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
             """
         )
         with_embeddings = with_result[0]["count"] if with_result else 0
