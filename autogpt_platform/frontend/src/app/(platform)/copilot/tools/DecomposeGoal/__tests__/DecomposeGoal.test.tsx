@@ -19,21 +19,21 @@ vi.mock(
 const STEPS = [
   {
     step_id: "step_1",
-    description: "Add input block",
+    description: "Accept a topic from the user",
     action: "add_input",
     block_name: null,
     status: "pending",
   },
   {
     step_id: "step_2",
-    description: "Add AI summarizer",
+    description: "Summarize the topic with AI",
     action: "add_block",
     block_name: "AI Text Generator",
     status: "pending",
   },
   {
     step_id: "step_3",
-    description: "Connect blocks",
+    description: "Hand the result back to the user",
     action: "connect_blocks",
     block_name: null,
     status: "pending",
@@ -117,9 +117,11 @@ describe("DecomposeGoalTool", () => {
     expect(screen.getByText(/Build Plan — 3 steps/)).toBeDefined();
     expect(screen.getByText("Build a news summarizer")).toBeDefined();
     expect(screen.getByText(/Here's the plan/)).toBeDefined();
-    expect(screen.getByText(/1\. Add input block/)).toBeDefined();
-    expect(screen.getByText(/2\. Add AI summarizer/)).toBeDefined();
-    expect(screen.getByText(/3\. Connect blocks/)).toBeDefined();
+    expect(screen.getByText(/1\. Accept a topic from the user/)).toBeDefined();
+    expect(screen.getByText(/2\. Summarize the topic with AI/)).toBeDefined();
+    expect(
+      screen.getByText(/3\. Hand the result back to the user/),
+    ).toBeDefined();
   });
 
   it("renders block name badges for steps that have them", () => {

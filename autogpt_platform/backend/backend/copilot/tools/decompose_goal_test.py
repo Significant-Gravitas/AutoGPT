@@ -9,13 +9,13 @@ from .models import ErrorResponse, TaskDecompositionResponse
 _USER_ID = "test-user-decompose-goal"
 
 _VALID_STEPS = [
-    {"description": "Add input block", "action": "add_input"},
+    {"description": "Accept a topic from the user", "action": "add_input"},
     {
-        "description": "Add AI summarizer block",
+        "description": "Summarize the topic with AI",
         "action": "add_block",
         "block_name": "AI Text Generator",
     },
-    {"description": "Connect blocks together", "action": "connect_blocks"},
+    {"description": "Hand the result back to the user", "action": "connect_blocks"},
 ]
 
 
@@ -48,7 +48,7 @@ async def test_happy_path(tool: DecomposeGoalTool, session):
     assert len(result.steps) == 3
     assert result.step_count == 3
     assert result.steps[0].step_id == "step_1"
-    assert result.steps[0].description == "Add input block"
+    assert result.steps[0].description == "Accept a topic from the user"
     assert result.steps[1].block_name == "AI Text Generator"
 
 
@@ -206,3 +206,44 @@ async def test_step_ids_are_sequential(tool: DecomposeGoalTool, session):
     assert isinstance(result, TaskDecompositionResponse)
     for i, step in enumerate(result.steps):
         assert step.step_id == f"step_{i + 1}"
+
+
+# ---------------------------------------------------------------------------
+# Description / block_name separation of concerns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_plain_english_description_with_technical_block_name(
+    tool: DecomposeGoalTool, session
+):
+    """A plain-English description paired with a technical block_name must
+    round-trip without either field bleeding into the other.
+
+    The decomposition card is shown to non-technical users; the prompt
+    instructs the LLM to keep block class names out of ``description`` and
+    put them in ``block_name`` instead. This test pins that separation —
+    if a future refactor ever merges the two fields or starts mutating
+    ``description``, it will fail here before reaching production.
+    """
+    plain_english = "Fetch the video's transcript"
+    technical_name = "Transcribe Youtube Video"
+
+    result = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        goal="Build a YouTube summarizer",
+        steps=[
+            {
+                "description": plain_english,
+                "action": "add_block",
+                "block_name": technical_name,
+            }
+        ],
+    )
+
+    assert isinstance(result, TaskDecompositionResponse)
+    step = result.steps[0]
+    assert step.description == plain_english
+    assert step.block_name == technical_name
+    assert technical_name not in step.description

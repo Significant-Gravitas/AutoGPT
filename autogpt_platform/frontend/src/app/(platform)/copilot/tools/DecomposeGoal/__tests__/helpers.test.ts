@@ -26,21 +26,21 @@ const DECOMPOSITION: TaskDecompositionOutput = {
   steps: [
     {
       step_id: "step_1",
-      description: "Add input block",
+      description: "Accept a topic from the user",
       action: "add_input",
       block_name: null,
       status: "pending",
     },
     {
       step_id: "step_2",
-      description: "Add AI summarizer",
+      description: "Summarize the topic with AI",
       action: "add_block",
       block_name: "AI Text Generator",
       status: "pending",
     },
     {
       step_id: "step_3",
-      description: "Connect blocks",
+      description: "Hand the result back to the user",
       action: "connect_blocks",
       block_name: null,
       status: "pending",

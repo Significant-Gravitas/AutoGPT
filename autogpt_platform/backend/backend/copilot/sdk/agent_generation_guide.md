@@ -31,14 +31,26 @@ Steps:
 Start agent generation by calling `decompose_goal` once to display your
 build plan to the user as a step-by-step UI card.
 
-1. Analyze the user's request and break it into logical build steps (e.g.
-   "add input block", "add AI summarizer", "wire blocks together").
+1. Analyze the user's request and break it into plain-English steps
+   describing **what the agent will do for the user**, not which blocks
+   you will add or how they connect. For a YouTube summarizer that
+   might be: "Accept a YouTube URL from the user", "Fetch the video's
+   transcript", "Generate a timestamped summary", "Return the summary
+   to the user".
 2. Call `decompose_goal` with those steps. Do not write any text before
    or after the tool call — the platform renders the plan UI card
    automatically, so any extra text duplicates the display.
 3. Continue immediately with the workflow below in the same turn. The
    plan card is informational only — there is no approval step, no
    countdown, and no need to wait for the user.
+
+The `description` is user-facing and must read as plain English to a
+non-technical user. The platform records the block name and action on
+the same step via the separate `block_name` and `action` fields — those
+fields carry the technical detail. Do not put block class names
+("AgentInputBlock", "AgentOutputBlock", "TranscribeYoutubeVideoBlock"),
+internal types, or wiring verbs ("wire", "connect", "link") inside
+`description`.
 
 For simple goals (1-2 blocks), keep steps brief (2-3 steps).
 For complex goals, use as many steps as needed.

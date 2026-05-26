@@ -29,11 +29,12 @@ class DecomposeGoalTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Show the user your build plan as a step-by-step card before "
-            "constructing the agent. Each step maps to one task (e.g. add a "
-            "block, wire connections, configure settings). Display-only — "
-            "the build continues in the same turn without pausing for user "
-            "input."
+            "Show the user a plain-English plan of what the agent will do, "
+            "as a step-by-step card before constructing it. Each step's "
+            "description must read to a non-technical user — describe the "
+            "user-facing behaviour, not internal block names or wiring. "
+            "Display-only — the build continues in the same turn without "
+            "pausing for user input."
         )
 
     @property
@@ -52,7 +53,18 @@ class DecomposeGoalTool(BaseTool):
                         "properties": {
                             "description": {
                                 "type": "string",
-                                "description": "Human-readable step description.",
+                                "description": (
+                                    "Plain-English description of what this "
+                                    "step accomplishes for the user. Must "
+                                    "read to a non-technical user. Do not "
+                                    "reference block class names "
+                                    '("AgentInputBlock", '
+                                    '"AgentOutputBlock", etc.) or wiring '
+                                    'verbs ("wire", "connect", "link") '
+                                    "— the block_name and action fields "
+                                    "below carry that technical detail "
+                                    "separately."
+                                ),
                             },
                             "action": {
                                 "type": "string",

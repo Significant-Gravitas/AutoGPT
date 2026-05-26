@@ -848,7 +848,14 @@ class DecompositionStepModel(BaseModel):
     """A single step in a decomposed agent-building plan."""
 
     step_id: str = Field(description="Unique step identifier, e.g. 'step_1'")
-    description: str = Field(description="Human-readable step description")
+    description: str = Field(
+        description=(
+            "Plain-English description of what this step accomplishes for "
+            "the user — must read to a non-technical user. Do not reference "
+            "block class names or wiring verbs; the block_name and action "
+            "fields carry that technical detail separately."
+        )
+    )
     action: str = Field(
         description="Action type: 'add_block', 'connect_blocks', 'configure', etc."
     )
