@@ -440,6 +440,14 @@ class ChatShareState:
     is_shared: bool
     share_token: str | None
     auto_share_executions: bool = False
+    # Snapshot of what the owner is about to expose (or already exposes).
+    # Surfaced to the share modal so the consent step shows real numbers
+    # instead of a vague warning.  All three are cheap aggregate queries
+    # — message_count is a COUNT(*), the others reuse the same scanners
+    # the allowlist build runs at enable time.
+    message_count: int = 0
+    linked_run_count: int = 0
+    file_count: int = 0
 
 
 async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
@@ -457,11 +465,64 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
         return ChatShareState(
             is_shared=False, share_token=None, auto_share_executions=False
         )
+
+    # Counts the modal renders as informed-consent disclosure.  Computed
+    # at modal-open time (and again on each refetch) so they reflect the
+    # live state of the chat — sharing is live, not snapshot-at-enable
+    # (see the share-modal warning text), so the numbers under the
+    # toggle ARE the numbers that will be visible the moment the
+    # owner clicks "Enable sharing".
+    message_count = await PrismaChatMessage.prisma().count(
+        where={"sessionId": session_id},
+    )
+    linked_run_count = len(
+        await _collect_execution_ids_from_messages(session_id=session_id)
+    )
+    file_count = await _count_referenced_workspace_files(
+        session_id=session_id, user_id=user_id
+    )
+
     return ChatShareState(
         is_shared=row.isShared,
         share_token=row.shareToken,
         auto_share_executions=row.autoShareExecutions,
+        message_count=message_count,
+        linked_run_count=linked_run_count,
+        file_count=file_count,
     )
+
+
+async def _count_referenced_workspace_files(*, session_id: str, user_id: str) -> int:
+    """How many of the workspace files referenced by this chat's messages
+    the owner actually owns (and would land in the public allowlist if
+    the share were enabled right now).  Mirrors the ownership filter
+    ``_build_shared_chat_files`` applies at enable time so the count
+    matches what the public viewer can actually download.
+    """
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={"sessionId": session_id},
+    )
+    file_ids: set[str] = set()
+    for row in rows:
+        if row.content is not None:
+            file_ids |= extract_workspace_file_ids(row.content)
+        if row.toolCalls is not None:
+            file_ids |= extract_workspace_file_ids(_json_or_none(row.toolCalls))
+        if row.functionCall is not None:
+            file_ids |= extract_workspace_file_ids(_json_or_none(row.functionCall))
+    if not file_ids:
+        return 0
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    if not workspace:
+        return 0
+    owned = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": list(file_ids)},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+    return len(owned)
 
 
 # ---------- Helpers ----------------------------------------------------------

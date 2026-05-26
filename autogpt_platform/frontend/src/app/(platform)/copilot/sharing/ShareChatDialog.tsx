@@ -23,13 +23,47 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
             <Text variant="small" className="text-amber-900">
               Anyone with the link will see this conversation. Don&apos;t share
               if it contains secrets you pasted, personal details, or
               credentials you wouldn&apos;t want public.
             </Text>
+            <Text variant="small" className="text-amber-900">
+              Sharing is <strong>live</strong>: new messages, agent runs, and
+              files added after you enable sharing become visible too. Stop
+              sharing to revoke access.
+            </Text>
           </div>
+
+          {!state.isLoadingState && (
+            // Consent disclosure — exact numbers from the server's
+            // share-state snapshot.  Shown both before enable (so the
+            // owner knows what they're about to expose) and after
+            // enable (so they can audit what the public viewer sees
+            // right now).
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+              <Text variant="small" className="font-medium text-zinc-900">
+                {state.isShared ? "Currently sharing" : "About to share"}
+              </Text>
+              <ul className="mt-1 list-disc pl-5 text-xs text-zinc-700">
+                <li>
+                  {state.messageCount}{" "}
+                  {state.messageCount === 1 ? "message" : "messages"}
+                </li>
+                {state.autoShareExecutions && (
+                  <li>
+                    {state.linkedRunCount} agent{" "}
+                    {state.linkedRunCount === 1 ? "run" : "runs"}
+                  </li>
+                )}
+                <li>
+                  {state.fileCount} workspace{" "}
+                  {state.fileCount === 1 ? "file" : "files"}
+                </li>
+              </ul>
+            </div>
+          )}
 
           {/* Global execution-sharing toggle.  When ON, every agent
               run in this chat — past and future — is included in the
@@ -84,13 +118,24 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
         </div>
         <Dialog.Footer>
           {state.isShared ? (
-            <Button
-              variant="destructive"
-              onClick={state.disable}
-              loading={state.isDisabling}
-            >
-              Stop sharing
-            </Button>
+            // Two-step destructive confirmation.  First click flips
+            // confirmingStop so the button copy reads "Confirm stop";
+            // second click fires the DELETE.  A "Cancel" affordance
+            // appears alongside the confirm so a misclick is recoverable.
+            <>
+              {state.confirmingStop && (
+                <Button variant="secondary" onClick={state.cancelStop}>
+                  Cancel
+                </Button>
+              )}
+              <Button
+                variant="destructive"
+                onClick={state.requestStop}
+                loading={state.isDisabling}
+              >
+                {state.confirmingStop ? "Confirm stop sharing" : "Stop sharing"}
+              </Button>
+            </>
           ) : (
             <Button
               variant="primary"

@@ -140,7 +140,7 @@ describe("ShareChatDialog", () => {
     expect(screen.queryByRole("button", { name: /stop sharing/i })).toBeNull();
   });
 
-  test("clicking Stop sharing transitions the dialog back to unshared state", async () => {
+  test("Stop sharing requires a confirmation step before firing the DELETE", async () => {
     const TOKEN = "33333333-dddd-eeee-ffff-444444444444";
     mockShareState({
       is_shared: true,
@@ -154,14 +154,53 @@ describe("ShareChatDialog", () => {
     );
 
     const stopButton = await screen.findByRole("button", {
-      name: /stop sharing/i,
+      name: /^stop sharing$/i,
     });
     fireEvent.click(stopButton);
 
-    // The Enable button re-appears once the disable mutation resolves
-    // — pinning the post-revoke state reset in useShareChatDialog's
-    // onSuccess handler.
+    // After the first click the button copy switches to "Confirm
+    // stop sharing" and a Cancel button appears.  The DELETE has NOT
+    // fired yet — accidental click is recoverable.
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirm stop sharing/i,
+    });
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeDefined();
+    // Still in shared state — Enable hasn't appeared.
+    expect(
+      screen.queryByRole("button", { name: /enable sharing/i }),
+    ).toBeNull();
+
+    fireEvent.click(confirmButton);
+
+    // Second click is the authoritative DELETE; share-state flips
+    // and Enable comes back.
     await screen.findByRole("button", { name: /enable sharing/i });
+  });
+
+  test("clicking Cancel during stop-confirmation returns to the share view", async () => {
+    const TOKEN = "44444444-eeee-ffff-aaaa-555555555555";
+    mockShareState({
+      is_shared: true,
+      share_token: TOKEN,
+      auto_share_executions: true,
+    });
+
+    render(
+      <ShareChatDialog sessionId={SESSION_ID} open onOpenChange={vi.fn()} />,
+    );
+
+    const stopButton = await screen.findByRole("button", {
+      name: /^stop sharing$/i,
+    });
+    fireEvent.click(stopButton);
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    // The confirm-stop UI collapses back to the primary "Stop
+    // sharing" button — the share is still active.
+    await screen.findByRole("button", { name: /^stop sharing$/i });
+    expect(
+      screen.queryByRole("button", { name: /confirm stop sharing/i }),
+    ).toBeNull();
   });
 
   test("clicking Copy writes the share URL to the clipboard", async () => {

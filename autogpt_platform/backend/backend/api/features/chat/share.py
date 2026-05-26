@@ -41,11 +41,21 @@ owner_router = APIRouter(tags=["chat", "share"])
 class ChatShareStateResponse(BaseModel):
     """Surfaces the chat's current share state so the modal can open
     in the right mode (share-vs-revoke) without an extra round-trip.
+
+    The three counts power the consent-disclosure block above the
+    toggle so the owner sees exactly what they're about to expose.
+    They reflect live state — sharing is live (not snapshot-at-enable),
+    so these numbers are also a lower bound for what subsequent
+    viewers will see if more messages / runs / files land before
+    revocation.
     """
 
     is_shared: bool = False
     share_token: str | None = None
     auto_share_executions: bool = False
+    message_count: int = 0
+    linked_run_count: int = 0
+    file_count: int = 0
 
 
 class EnableShareRequest(BaseModel):
@@ -80,6 +90,9 @@ async def get_chat_share_state(
         is_shared=state.is_shared,
         share_token=state.share_token,
         auto_share_executions=state.auto_share_executions,
+        message_count=state.message_count,
+        linked_run_count=state.linked_run_count,
+        file_count=state.file_count,
     )
 
 

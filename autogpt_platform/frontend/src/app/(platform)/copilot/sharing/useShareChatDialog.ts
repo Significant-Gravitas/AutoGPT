@@ -25,6 +25,12 @@ export function useShareChatDialog({ sessionId, open }: Props) {
   // Server state overrides this once the share-state query resolves.
   const [autoShareExecutions, setAutoShareExecutions] = useState(true);
   const [copied, setCopied] = useState(false);
+  // Two-step confirmation for "Stop sharing".  A share may have been
+  // posted to social / email / Slack — an accidental click would dead-
+  // letter every external reference with no undo (the next re-enable
+  // mints a new token).  Flipped on first click; second click is the
+  // authoritative DELETE.
+  const [confirmingStop, setConfirmingStop] = useState(false);
 
   const { data: stateResponse, isLoading: isLoadingState } =
     useGetV2GetChatShareState(sessionId, {
@@ -87,9 +93,7 @@ export function useShareChatDialog({ sessionId, open }: Props) {
         onSuccess: () => {
           setIsShared(false);
           setShareToken(null);
-          // Reset the toggle to its default-on state so re-share
-          // works without an extra click.
-          setAutoShareExecutions(true);
+          setConfirmingStop(false);
           invalidateState();
           toast({
             title: "Chat sharing disabled",
@@ -122,6 +126,25 @@ export function useShareChatDialog({ sessionId, open }: Props) {
     }
   }
 
+  // Disclosure counts surfaced to the modal so the owner sees what
+  // they're about to expose.  Defaults to 0 while the share-state
+  // query is loading.  Values from the latest server snapshot.
+  const messageCount = stateResponse?.message_count ?? 0;
+  const linkedRunCount = stateResponse?.linked_run_count ?? 0;
+  const fileCount = stateResponse?.file_count ?? 0;
+
+  function requestStop() {
+    if (!confirmingStop) {
+      setConfirmingStop(true);
+      return;
+    }
+    disable({ sessionId });
+  }
+
+  function cancelStop() {
+    setConfirmingStop(false);
+  }
+
   return {
     isShared,
     shareToken,
@@ -136,9 +159,14 @@ export function useShareChatDialog({ sessionId, open }: Props) {
         data: { auto_share_executions: autoShareExecutions },
       }),
     isEnabling,
-    disable: () => disable({ sessionId }),
+    requestStop,
+    cancelStop,
+    confirmingStop,
     isDisabling,
     copyShareUrl,
+    messageCount,
+    linkedRunCount,
+    fileCount,
   };
 }
 

@@ -11389,11 +11389,26 @@
             "type": "boolean",
             "title": "Auto Share Executions",
             "default": false
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          },
+          "linked_run_count": {
+            "type": "integer",
+            "title": "Linked Run Count",
+            "default": 0
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
           }
         },
         "type": "object",
         "title": "ChatShareStateResponse",
-        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip."
+        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
       },
       "ClarificationNeededResponse": {
         "properties": {
