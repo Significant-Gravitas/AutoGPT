@@ -507,6 +507,8 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     - DOCUMENTATION: Removes embeddings for deleted doc files
     - LIBRARY_AGENT: Removes embeddings for soft-deleted/hidden library agents
       (matches the LibraryAgentHandler.get_missing_items filter)
+    - WORKSPACE_FILE: Removes embeddings for soft-deleted workspace files
+    - CHAT_SESSION: Removes embeddings for deleted/untitled chat sessions
 
     Returns:
         Dict with cleanup statistics per content type
@@ -572,6 +574,29 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                         current_ids = set()
                 else:
                     current_ids = set()
+            elif content_type == ContentType.WORKSPACE_FILE:
+                # Valid files mirror WorkspaceFileHandler.get_missing_items:
+                # non-deleted rows. A deleted file's embedding is orphaned.
+                valid_files = await query_raw_with_schema(
+                    """
+                    SELECT id
+                    FROM {schema_prefix}"UserWorkspaceFile"
+                    WHERE "isDeleted" = false
+                    """,
+                )
+                current_ids = {row["id"] for row in valid_files}
+            elif content_type == ContentType.CHAT_SESSION:
+                # Match ChatSessionHandler.get_missing_items: only sessions
+                # with a non-empty (trimmed) title are embedded, so a session
+                # that was deleted or lost its title is orphaned.
+                valid_sessions = await query_raw_with_schema(
+                    """
+                    SELECT id
+                    FROM {schema_prefix}"ChatSession"
+                    WHERE title IS NOT NULL AND btrim(title) <> ''
+                    """,
+                )
+                current_ids = {row["id"] for row in valid_sessions}
             else:
                 # Skip unknown content types to avoid accidental deletion
                 logger.warning(
