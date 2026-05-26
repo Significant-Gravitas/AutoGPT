@@ -226,20 +226,18 @@ describe("ChatSidebar — global search modal", () => {
       // Search endpoint is filtered server-side by the ``q`` param. To
       // keep the test deterministic we narrow the chat bucket here
       // instead of relying on backend semantics.
-      getGetV2GlobalSearchMockHandler200(
-        ({ request }) => {
-          const url = new URL(request.url);
-          const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-          const response = makeSearchResponse();
-          if (!q) {
-            return response;
-          }
-          response.chats = (response.chats ?? []).filter((chat) =>
-            chat.title.toLowerCase().includes(q),
-          );
+      getGetV2GlobalSearchMockHandler200(({ request }) => {
+        const url = new URL(request.url);
+        const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+        const response = makeSearchResponse();
+        if (!q) {
           return response;
-        },
-      ),
+        }
+        response.chats = (response.chats ?? []).filter((chat) =>
+          chat.title.toLowerCase().includes(q),
+        );
+        return response;
+      }),
     );
   });
 

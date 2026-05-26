@@ -80,11 +80,7 @@ describe("GlobalSearchModal", () => {
   });
 
   it("auto-focuses the search input when opened", async () => {
-    server.use(
-      getGetV2GlobalSearchMockHandler(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler(fixedResponse()));
     renderModal();
     const input = await screen.findByRole("textbox", {
       name: /global search/i,
@@ -93,11 +89,7 @@ describe("GlobalSearchModal", () => {
   });
 
   it("renders bucketed results from the API", async () => {
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     renderModal();
 
     expect(await screen.findByText("Alpha agent")).toBeDefined();
@@ -157,11 +149,7 @@ describe("GlobalSearchModal", () => {
 
   it("invokes onSelectItem and onClose when a result is clicked", async () => {
     const user = userEvent.setup();
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     const onClose = vi.fn();
     const onSelectItem = vi.fn();
     renderModal({ onClose, onSelectItem });
@@ -178,11 +166,7 @@ describe("GlobalSearchModal", () => {
   });
 
   it("navigates results with arrow keys and selects with Enter across buckets", async () => {
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     const onSelectItem = vi.fn();
     renderModal({ onSelectItem });
 
@@ -214,11 +198,7 @@ describe("GlobalSearchModal", () => {
   });
 
   it("closes when Escape is pressed", async () => {
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     const onClose = vi.fn();
     renderModal({ onClose });
 
@@ -230,11 +210,7 @@ describe("GlobalSearchModal", () => {
 
   it("clears the query when the clear button is pressed", async () => {
     const user = userEvent.setup();
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     renderModal();
 
     const input = (await screen.findByRole("textbox", {
@@ -253,11 +229,7 @@ describe("GlobalSearchModal", () => {
 
   it("highlights the matching query substring inside the title", async () => {
     const user = userEvent.setup();
-    server.use(
-      getGetV2GlobalSearchMockHandler200(
-        fixedResponse(),
-      ),
-    );
+    server.use(getGetV2GlobalSearchMockHandler200(fixedResponse()));
     renderModal();
 
     await screen.findByText("Alpha agent");

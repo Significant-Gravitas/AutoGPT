@@ -24,22 +24,21 @@ export function useGlobalSearch(isOpen: boolean) {
     return () => window.clearTimeout(timeout);
   }, [query]);
 
-  const { data, isFetching, isError } =
-    useGetV2GlobalSearch(
-      { q: debouncedQuery.trim(), per_type_limit: PER_TYPE_LIMIT },
-      {
-        query: {
-          enabled: isOpen,
-          // Keep the previous bucket of results visible while a new
-          // query is in-flight so the modal doesn't flash empty on every
-          // keystroke.
-          placeholderData: (prev) => prev,
-          // Recent-items (empty query) responses are cached server-side
-          // but a short client cache cuts the request on quick re-opens.
-          staleTime: 10_000,
-        },
+  const { data, isFetching, isError } = useGetV2GlobalSearch(
+    { q: debouncedQuery.trim(), per_type_limit: PER_TYPE_LIMIT },
+    {
+      query: {
+        enabled: isOpen,
+        // Keep the previous bucket of results visible while a new
+        // query is in-flight so the modal doesn't flash empty on every
+        // keystroke.
+        placeholderData: (prev) => prev,
+        // Recent-items (empty query) responses are cached server-side
+        // but a short client cache cuts the request on quick re-opens.
+        staleTime: 10_000,
       },
-    );
+    },
+  );
 
   const response =
     data?.status === 200 ? (data.data as GlobalSearchResponse) : undefined;
