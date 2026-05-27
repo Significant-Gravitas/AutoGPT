@@ -2,7 +2,12 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { MagicWand, PlusIcon, XIcon } from "@phosphor-icons/react";
+import {
+  CircleNotchIcon,
+  MagicWandIcon,
+  PlusIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import Image from "next/image";
 import { useThumbnailImages } from "./useThumbnailImages";
 import { cn } from "@/lib/utils";
@@ -26,6 +31,7 @@ export function ThumbnailImages({
     images,
     selectedImage,
     isGenerating,
+    isUploading,
     thumbnailsContainerRef,
     handleRemoveImage,
     handleAddImage,
@@ -65,26 +71,40 @@ export function ThumbnailImages({
           <div className="flex flex-col gap-2 sm:flex-row">
             <label
               htmlFor="image-upload"
-              className="inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950"
+              aria-disabled={isUploading}
+              data-testid="thumbnail-add-image-empty"
+              className={cn(
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 bg-transparent px-3 py-2 font-sans text-sm font-medium leading-snug text-black transition-colors hover:border-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
+                isUploading && "pointer-events-none opacity-60",
+              )}
             >
               <input
                 id="image-upload"
                 type="file"
                 accept="image/*"
                 onChange={handleFileChange}
+                disabled={isUploading}
                 className="hidden"
               />
-              <PlusIcon size={16} weight="bold" />
-              <span>Add image</span>
+              {isUploading ? (
+                <CircleNotchIcon
+                  size={16}
+                  weight="bold"
+                  className="animate-spin"
+                />
+              ) : (
+                <PlusIcon size={16} weight="bold" />
+              )}
+              <span>{isUploading ? "Uploading" : "Add image"}</span>
             </label>
             <Button
               type="button"
               variant="outline"
               size="small"
               onClick={handleGenerateImage}
-              disabled={isGenerating || images.length >= 5}
+              disabled={isGenerating || isUploading || images.length >= 5}
               loading={isGenerating}
-              leftIcon={<MagicWand className="h-4 w-4" />}
+              leftIcon={<MagicWandIcon className="h-4 w-4" />}
             >
               {isGenerating ? "Generating" : "Generate"}
             </Button>
@@ -115,11 +135,16 @@ export function ThumbnailImages({
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleRemoveImage(index)}
-                    className="absolute right-1.5 top-1.5 z-20 inline-flex size-6 items-center justify-center rounded-full bg-zinc-900/80 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-900"
-                    aria-label="Remove image"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRemoveImage(index);
+                    }}
+                    className="absolute right-1.5 top-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-zinc-900/85 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-900"
+                    aria-label={`Remove image ${index + 1}`}
+                    data-testid={`thumbnail-remove-${index}`}
                   >
-                    <XIcon size={12} weight="bold" />
+                    <XIcon size={14} weight="bold" />
                   </button>
                   {index === 0 ? (
                     <span className="mt-1 block text-center text-[11px] font-medium text-zinc-500">
@@ -137,9 +162,16 @@ export function ThumbnailImages({
                   onClick={handleAddImage}
                   variant="outline"
                   size="small"
-                  leftIcon={<PlusIcon size={16} weight="bold" />}
+                  disabled={isUploading || isGenerating}
+                  loading={isUploading}
+                  leftIcon={
+                    isUploading ? undefined : (
+                      <PlusIcon size={16} weight="bold" />
+                    )
+                  }
+                  data-testid="thumbnail-add-image"
                 >
-                  Add image
+                  {isUploading ? "Uploading" : "Add image"}
                 </Button>
               ) : null}
               <Button
@@ -147,9 +179,9 @@ export function ThumbnailImages({
                 variant="outline"
                 size="small"
                 onClick={handleGenerateImage}
-                disabled={isGenerating || images.length >= 5}
+                disabled={isGenerating || isUploading || images.length >= 5}
                 loading={isGenerating}
-                leftIcon={<MagicWand className="h-4 w-4" />}
+                leftIcon={<MagicWandIcon className="h-4 w-4" />}
               >
                 {isGenerating
                   ? "Generating"

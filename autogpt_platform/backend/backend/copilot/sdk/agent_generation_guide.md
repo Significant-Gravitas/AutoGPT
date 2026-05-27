@@ -5,41 +5,71 @@ generate the agent JSON yourself using block schemas, then validate and save.
 
 ### Workflow for Creating/Editing Agents
 
-1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+1. **If creating a new agent from a user goal (REQUIRED before `create_agent`)**:
+   First call
+   `find_library_agent(for_creation=true, goal_summary="<one-sentence summary of what the user wants>")`
+   to check whether the user already has a functionally similar agent. The
+   tool runs a hybrid semantic + lexical similarity search over the user's
+   library and returns either:
+   - `AgentsFoundResponse` with candidates whose descriptions are prefixed
+     with `[N% match]`. **Surface these to the user**, preserving the match
+     prefix, and ask whether they want to reuse one before you build a new
+     agent. If they pick an existing agent, run it with `run_agent` —
+     **do not** call `create_agent`.
+   - `NoResultsResponse` — no functionally similar agent exists, so you may
+     proceed with `create_agent`.
+
+   `create_agent` enforces this check as a hard gate (`require_library_check`)
+   and will refuse otherwise. If the user has been shown matches and
+   explicitly tells you to build a new one anyway, retry `create_agent`
+   with `library_check_ack=true` to bypass the gate for that call.
+   **Never set `library_check_ack=true` proactively** — only after the
+   user has seen the matches and chosen to build new.
+
+   Builder-bound sessions (when the user is already editing a specific
+   agent in the Builder) bypass this gate automatically — no
+   pre-flight call is needed there.
+
+2. **If editing**: First narrow to the specific agent by UUID, then fetch its
    graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
    returns the full graph structure (nodes + links). **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-2. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
+3. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas. The `for_agent_generation=true` flag is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
    in CoPilot outside agent generation, use `run_mcp_tool` instead.)
-3. **Find library agents**: Call `find_library_agent` to discover reusable
-   agents that can be composed as sub-agents via `AgentExecutorBlock`.
-4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
-   - Use block IDs from step 2 as `block_id` in nodes
+4. **Find library agents for sub-agent composition**: Call `find_library_agent`
+   (default mode, no `for_creation` flag) to discover reusable agents that
+   can be composed as sub-agents via `AgentExecutorBlock`. This is distinct
+   from the create-time similarity check in step 1 — here you're looking
+   for building blocks, not asking "does the user already have this?".
+5. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 3 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
    - When editing, apply targeted changes and preserve unchanged parts
-5. **Write to workspace**: Save the JSON to a workspace file so the user
+6. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+7. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+8. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-   the final `agent_json`
-8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
-   `wait_for_result=120` to verify the agent works end-to-end.
-9. **Inspect & fix**: Check the dry-run output for errors. If issues are
-   found, call `edit_agent` to fix and dry-run again. Repeat until the
-   simulation passes or the problems are clearly unfixable.
-   See "REQUIRED: Dry-Run Verification Loop" section below for details.
+9. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+   the final `agent_json`. For `create_agent`, the library similarity gate
+   from step 1 must have been satisfied (either matches were shown to the
+   user, or pass `library_check_ack=true` after explicit user confirmation).
+10. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+    `wait_for_result=120` to verify the agent works end-to-end.
+11. **Inspect & fix**: Check the dry-run output for errors. If issues are
+    found, call `edit_agent` to fix and dry-run again. Repeat until the
+    simulation passes or the problems are clearly unfixable.
+    See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
 

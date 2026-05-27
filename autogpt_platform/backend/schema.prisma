@@ -210,6 +210,7 @@ model UserWorkspaceFile {
   metadata Json @default("{}")
 
   SharedExecutionFiles SharedExecutionFile[]
+  SharedChatFiles      SharedChatFile[]
 
   @@unique([workspaceId, path])
   @@index([workspaceId, isDeleted])
@@ -297,9 +298,68 @@ model ChatSession {
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
+  // Sharing fields — mirrors AgentGraphExecution sharing
+  isShared   Boolean   @default(false)
+  shareToken String?   @unique
+  sharedAt   DateTime?
+
+  // When true (set at share-enable time), any run_agent execution in
+  // this chat is automatically linked into the share — both the
+  // existing history at enable-time and any new runs that land while
+  // the share is active.  When false, no executions are linked even
+  // if the chat itself is shared (cards in the viewer render in their
+  // "execution not shared" state).
+  autoShareExecutions Boolean @default(false)
+
+  SharedChatFiles  SharedChatFile[]
+  ChatLinkedShares ChatLinkedShare[]
+
+  // Single compound index covers (a) the cap-count (count by userId +
+  // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
+  // sidebar list (find_many WHERE userId ORDER BY updatedAt desc).
   @@index([userId, chatStatus, updatedAt], name: "ChatSession_user_status_idx")
   @@index([teamId, updatedAt])
   @@index([organizationId])
+  @@index([shareToken])
+}
+
+// Tracks which workspace files are exposed via a shared chat session.
+// Same allowlist defense as SharedExecutionFile: enumeration-resistant
+// downloads via uniform 404 + single allowlist lookup.
+model SharedChatFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  fileId String
+  File   UserWorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  shareToken String
+
+  @@unique([shareToken, fileId])
+  @@index([shareToken])
+  @@index([sessionId])
+}
+
+// Links a shared ChatSession to AgentGraphExecution rows that were
+// opted-in at share time so the public viewer can resolve drill-ins.
+// On chat-share revoke, only executions whose ``sharedVia=CHAT_LINK``
+// (no independent user share) get their share state cleared.
+model ChatLinkedShare {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  executionId String
+  Execution   AgentGraphExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, executionId])
+  @@index([sessionId])
+  @@index([executionId])
 }
 
 model ChatMessage {
@@ -702,7 +762,12 @@ model AgentGraphExecution {
   isShared             Boolean               @default(false)
   shareToken           String?               @unique
   sharedAt             DateTime?
+  // Provenance: USER = explicitly shared by owner, CHAT_LINK = enabled
+  // as part of a ChatSession share.  Drives cascade-revoke logic so that
+  // user-initiated shares survive chat-share revocation.
+  sharedVia            SharedVia?
   SharedExecutionFiles SharedExecutionFile[]
+  ChatLinkedShares     ChatLinkedShare[]
 
   // Tenancy (nullable until cutover migration backfills existing data)
   organizationId String?
@@ -718,6 +783,11 @@ model AgentGraphExecution {
   @@index([parentGraphExecutionId])
   @@index([teamId, isDeleted, createdAt])
   @@index([organizationId])
+}
+
+enum SharedVia {
+  USER
+  CHAT_LINK
 }
 
 // This model describes the execution of an AgentNode.
@@ -1387,7 +1457,10 @@ model UnifiedContentEmbedding {
   // Content identification
   contentType ContentType
   contentId   String // DB ID (storeListingVersionId) or file identifier (block.id, file_path)
-  userId      String? // NULL for public content (store, blocks, docs), userId for private content (library agents)
+  // NULL for public content (store, blocks, docs); userId for private content (library agents).
+  // A SQL CHECK constraint enforces ``contentType != 'LIBRARY_AGENT' OR userId IS NOT NULL``
+  // (see migration ``20260525120000_library_agent_userid_check``).
+  userId      String?
 
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)

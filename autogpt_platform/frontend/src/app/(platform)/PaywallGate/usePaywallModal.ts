@@ -6,6 +6,7 @@ import {
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
@@ -54,8 +55,9 @@ export function usePaywallModal() {
     query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
   const { mutateAsync: updateTier, isPending } = useUpdateSubscriptionTier();
+  const { logOut } = useSupabase();
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
-    "monthly",
+    "yearly",
   );
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   // When the user already has an active Stripe subscription (admin override
@@ -138,6 +140,10 @@ export function usePaywallModal() {
     setPendingTier(null);
   }
 
+  function handleLogout() {
+    void logOut();
+  }
+
   const pendingTierLabel = pendingTier
     ? (PLAN_LABEL[pendingTier] ?? pendingTier)
     : null;
@@ -156,5 +162,6 @@ export function usePaywallModal() {
     pendingTierLabel,
     confirmPendingTier,
     cancelPendingTier,
+    handleLogout,
   };
 }

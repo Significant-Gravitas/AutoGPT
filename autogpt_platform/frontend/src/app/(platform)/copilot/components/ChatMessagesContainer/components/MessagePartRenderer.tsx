@@ -1,7 +1,7 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ExclamationMarkIcon } from "@phosphor-icons/react";
+import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
@@ -68,17 +68,32 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
-function TextWithArtifactCards({ text }: { text: string }) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const artifacts = extractWorkspaceArtifacts(text);
-  const resolved = resolveWorkspaceUrls(text);
+function TextWithArtifactCards({
+  text,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
+}: {
+  text: string;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
+}) {
+  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
+  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
+  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
   return (
     <>
       {isArtifactsEnabled && artifacts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           {artifacts.map((artifact) => (
-            <ArtifactCard key={artifact.id} artifact={artifact} />
+            <ArtifactCard
+              key={artifact.id}
+              artifact={artifact}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       )}
@@ -94,6 +109,17 @@ interface Props {
   messageID: string;
   partIndex: number;
   onRetry?: () => void;
+  /** Override the URL emitted when rewriting workspace:// references
+   *  in markdown.  Owner side defaults to the workspace-file endpoint;
+   *  the public share viewer passes a token-aware builder so anonymous
+   *  readers can download via the public allowlist-gated route. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Force inline artifact-card rendering for workspace:// URIs in
+   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
+  forceArtifacts?: boolean;
+  /** Read-only mode — forwarded so embedded ``ArtifactCard``s
+   *  download on click instead of opening a panel. */
+  readOnly?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -101,6 +127,9 @@ export function MessagePartRenderer({
   messageID,
   partIndex,
   onRetry,
+  fileUrlBuilder,
+  forceArtifacts,
+  readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -109,8 +138,14 @@ export function MessagePartRenderer({
       const reasoningText =
         "text" in part && typeof part.text === "string" ? part.text : "";
       if (!reasoningText.trim()) return null;
+      // AI SDK reasoning parts carry an optional `state: "streaming" | "done"`.
+      // We pulse the indicator only while streaming so a finalized reasoning
+      // block doesn't keep looking like the model is still thinking.
+      const reasoningState =
+        "state" in part && typeof part.state === "string" ? part.state : null;
+      const isActive = reasoningState === "streaming";
       return (
-        <ReasoningCollapse key={key}>
+        <ReasoningCollapse key={key} isActive={isActive}>
           <pre className="whitespace-pre-wrap text-sm text-zinc-700">
             {reasoningText}
           </pre>
@@ -128,14 +163,7 @@ export function MessagePartRenderer({
           lowerMarker === "operation cancelled" ||
           lowerMarker === "execution stopped by user";
         if (isCancellation) {
-          return (
-            <div
-              key={key}
-              className="my-2 flex items-center gap-1 rounded-lg bg-neutral-200/50 px-3 py-2 text-sm text-neutral-600"
-            >
-              <ExclamationMarkIcon size={16} /> You manually stopped this chat
-            </div>
-          );
+          return <StoppedTaskCard key={key} />;
         }
         return (
           <ErrorCard
@@ -158,7 +186,15 @@ export function MessagePartRenderer({
         );
       }
 
-      return <TextWithArtifactCards key={key} text={cleanText} />;
+      return (
+        <TextWithArtifactCards
+          key={key}
+          text={cleanText}
+          fileUrlBuilder={fileUrlBuilder}
+          forceArtifacts={forceArtifacts}
+          readOnly={readOnly}
+        />
+      );
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;

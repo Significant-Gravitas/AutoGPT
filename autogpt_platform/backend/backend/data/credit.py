@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import posthog
 import stripe
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import (
@@ -47,6 +48,9 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if settings.secrets.posthog_api_key:
+    posthog.api_key = settings.secrets.posthog_api_key
+    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -1042,12 +1046,24 @@ class UserCredit(UserCreditBase):
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
             )
 
-        await self._enable_transaction(
+        activation = await self._enable_transaction(
             transaction_key=transaction_key,
             new_transaction_key=new_transaction_key,
             user_id=user_id,
             metadata=successful_transaction,
         )
+        # ``_enable_transaction`` returns None when the transaction is missing
+        # or already active — skip the conversion event in that no-op case so
+        # webhook/retry replays don't double-emit.
+        if activation is not None and amount > 0:
+            _track_billing_event(
+                "credit_topup_success",
+                user_id,
+                {
+                    "amount_credits": amount,
+                    "top_up_type": top_up_type.value,
+                },
+            )
 
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         if amount < 500 or amount % 100 != 0:
@@ -1164,12 +1180,21 @@ class UserCredit(UserCreditBase):
             else:
                 new_transaction_key = None
 
-            await self._enable_transaction(
+            activation = await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
+            if activation is not None:
+                _track_billing_event(
+                    "credit_topup_success",
+                    credit_transaction.userId,
+                    {
+                        "amount_credits": credit_transaction.amount,
+                        "top_up_type": "CHECKOUT",
+                    },
+                )
 
     async def get_credits(
         self, user_id: str, organization_id: str | None = None
@@ -1539,6 +1564,12 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         )
         if cancelled_count > 0:
             get_pending_subscription_change.cache_delete(user_id)
+            current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+            _track_billing_event(
+                "subscription_cancellation_scheduled",
+                user_id,
+                {"subscription_tier": current_tier.value},
+            )
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1983,8 +2014,10 @@ async def modify_stripe_subscription_for_tier(
         # Only catch actual DB/connection failures — letting KeyError,
         # AttributeError etc. propagate so programming errors surface in Sentry
         # instead of being silently masked as benign DB-write-swallow events.
+        db_flip_succeeded = False
         try:
             await set_subscription_tier(user_id, tier)
+            db_flip_succeeded = True
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
@@ -2000,6 +2033,19 @@ async def modify_stripe_subscription_for_tier(
             user_id,
             tier,
         )
+        # Only emit on real tier upgrade AND when the DB flip succeeded — the
+        # ``customer.subscription.updated`` webhook is the fallback emit when
+        # the DB flip fails, so gating here avoids double-firing on success.
+        if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
+            _track_billing_event(
+                "subscription_upgraded",
+                user_id,
+                {
+                    "previous_subscription_tier": current_tier.value,
+                    "subscription_tier": tier.value,
+                    "billing_cycle": billing_cycle,
+                },
+            )
         return True
     finally:
         get_pending_subscription_change.cache_delete(user_id)
@@ -2610,6 +2656,19 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    if is_tier_upgrade(current_tier, tier):
+        billing_cycle = (
+            metadata.get("billing_cycle") if isinstance(metadata, dict) else None
+        )
+        _track_billing_event(
+            "subscription_upgraded",
+            user.id,
+            {
+                "previous_subscription_tier": current_tier.value,
+                "subscription_tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
+        )
     # Tier changed — bust any cached pending-change view so the next
     # dashboard fetch reflects the new state immediately.
     get_pending_subscription_change.cache_delete(user.id)
@@ -2674,6 +2733,72 @@ def _invoice_subscription_id(invoice: dict) -> str:
                 return new_sub
     legacy = invoice.get("subscription")
     return legacy if isinstance(legacy, str) and legacy else ""
+
+
+def _track_billing_event(
+    event: str, distinct_id: str, properties: dict[str, Any]
+) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        posthog.capture(
+            event=event,
+            distinct_id=distinct_id,
+            properties=properties,
+        )
+    except Exception:
+        logger.warning(
+            "failed to track billing event %s for user %s",
+            event,
+            distinct_id,
+            exc_info=True,
+        )
+
+
+async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        metadata = _invoice_subscription_metadata(invoice)
+        tier = (
+            metadata.get("tier")
+            or (user.subscriptionTier or SubscriptionTier.NO_TIER).value
+        )
+        billing_cycle = metadata.get("billing_cycle") or (
+            await get_user_billing_cycle(user.id) or "monthly"
+        )
+
+        posthog.capture(
+            event="subscription_payment_success",
+            distinct_id=user.id,
+            properties={
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "handle_subscription_payment_success: failed to track payment event"
+            " for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
+def _invoice_subscription_metadata(invoice: dict) -> dict:
+    subscription_details = invoice.get("subscription_details")
+    if not isinstance(subscription_details, dict):
+        parent = invoice.get("parent") or {}
+        if isinstance(parent, dict):
+            subscription_details = parent.get("subscription_details")
+
+    if not isinstance(subscription_details, dict):
+        return {}
+
+    metadata = subscription_details.get("metadata") or {}
+    return metadata if isinstance(metadata, dict) else {}
 
 
 async def handle_subscription_payment_failure(invoice: dict) -> None:
@@ -2748,8 +2873,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         # paying via their AutoGPT balance, so a card retry here would
         # double-bill the user (card charge + balance debit). Stripe still
         # fires ``invoice.payment_succeeded`` on the transition; the success
-        # handler reads ``paid_out_of_band`` and skips the credit grant so
-        # the balance debit isn't reversed.
+        # handler reads ``paid_out_of_band`` and skips its grant path so the
+        # balance debit isn't reversed if the credit-grant flag is on.
         if invoice_id:
             try:
                 await run_in_threadpool(
@@ -2798,16 +2923,29 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
-    """Grant AutoGPT credits equal to the paid Stripe invoice amount.
+    """Optionally grant AutoGPT credits equal to the paid Stripe invoice amount.
 
-    Fires on every paid subscription invoice (initial signup, monthly renewal,
-    and prorated upgrade charges). Credits = ``invoice.amount_paid`` cents,
-    keyed by ``invoice_id`` for idempotency so Stripe retries don't double-grant.
+    Gated behind ``settings.config.enable_subscription_credit_grant`` which
+    is OFF by default — Pro Monthly subscribers should not receive a matching
+    automation-credit grant on every invoice, and prorated upgrade invoices
+    were producing surprise grants (each fresh invoice id slipped past the
+    per-invoice idempotency key). The handler stays wired into the webhook
+    so the config can be flipped on per environment if/when product wants
+    "$ paid == $ in AutoGPT balance"; turning it on without first revisiting
+    proration/renewal accounting will reintroduce the same surprise grants.
 
-    Skipped:
+    When enabled, grants ``invoice.amount_paid`` cents keyed by ``invoice_id``
+    so Stripe webhook retries for the *same* invoice don't double-grant.
+    Distinct invoices (e.g. prorated upgrade + monthly cycle) are *not*
+    deduplicated against each other — that's an intentional behaviour of the
+    paid-invoice grant, not a bug, and is why the flag should stay off until
+    the accounting model around proration is settled.
+
+    Skipped (even when the flag is on):
     - Non-subscription invoices (no ``subscription`` field).
     - Zero-amount invoices (e.g. card-validation checks, $0 trials).
     - ENTERPRISE users (admin-managed; they don't pay via self-service).
+    - Invoices already covered from balance via ``paid_out_of_band``.
     """
     customer_id = invoice.get("customer")
     if not customer_id:
@@ -2852,6 +2990,18 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             " (paid_out_of_band — covered by balance in failure handler)",
             invoice_id,
             user.id,
+        )
+        return
+
+    await _track_subscription_payment_success(user, invoice)
+
+    if not settings.config.enable_subscription_credit_grant:
+        logger.debug(
+            "handle_subscription_payment_success: credit grant disabled by config"
+            " for user %s (invoice %s, sub %s); skipping",
+            user.id,
+            invoice_id,
+            sub_id,
         )
         return
 

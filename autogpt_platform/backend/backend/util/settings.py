@@ -124,6 +124,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    enable_subscription_credit_grant: bool = Field(
+        default=False,
+        description=(
+            "If True, every paid Stripe subscription invoice grants AutoGPT"
+            " credits equal to invoice.amount_paid. OFF by default — there is"
+            " no product mandate for '$ paid == $ in credits', and prorated"
+            " upgrade invoices each produce a separate grant (distinct"
+            " invoice ids slip past the per-invoice idempotency key). Flip on"
+            " per environment intentionally if/when product wants that UX."
+        ),
+    )
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
@@ -446,6 +457,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between failed push subscription cleanup runs (1-168 hours)",
     )
 
+    platform_link_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -707,6 +725,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Discord bot token for the CoPilot chat bridge. When set, "
         "the bridge enables its Discord adapter.",
+    )
+    autopilot_bot_discord_client_id: str = Field(
+        default="",
+        description="Discord application client ID for the CoPilot bot. Used "
+        "to build the 'Add to server' invite URL on the Bots settings page; "
+        "the bot itself doesn't need it.",
+    )
+    autopilot_bot_discord_permissions: str = Field(
+        default="",
+        description="Discord permissions bitfield for the 'Add to server' "
+        "invite URL. Overrides the built-in default when non-empty.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

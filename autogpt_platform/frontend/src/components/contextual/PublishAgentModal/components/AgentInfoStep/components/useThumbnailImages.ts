@@ -26,6 +26,7 @@ export function useThumbnailImages({
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const thumbnailsContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
 
@@ -101,6 +102,7 @@ export function useThumbnailImages({
   }
 
   async function uploadImage(file: File) {
+    setIsUploading(true);
     try {
       const mediaRes = await resolveResponse(
         postV2UploadSubmissionMedia({ file }),
@@ -119,6 +121,8 @@ export function useThumbnailImages({
         description: detail,
         variant: "destructive",
       });
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -160,6 +164,7 @@ export function useThumbnailImages({
     images,
     selectedImage,
     isGenerating,
+    isUploading,
     thumbnailsContainerRef,
     handleRemoveImage,
     handleAddImage,

@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+import sentry_sdk
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -579,6 +580,39 @@ async def delete_chat_session(
         True if deleted successfully, False otherwise.
     """
     try:
+        # If the session is currently shared, run the share-cascade
+        # FIRST so CHAT_LINK execution shares get revoked + their file
+        # allowlists cleared.  ``ChatLinkedShare.Session`` has
+        # ``onDelete: Cascade`` so a flat ``delete_many`` would erase
+        # the linkage rows but leave the per-execution share tokens
+        # live with no owner-visible path to revoke them — orphan
+        # public shares.  Lazy import to avoid the copilot→sharing→
+        # copilot import cycle.
+        if user_id is not None:
+            existing = await PrismaChatSession.prisma().find_first(
+                where={"id": session_id, "userId": user_id}
+            )
+            if existing and existing.isShared:
+                from backend.copilot.sharing.db import disable_chat_session_share
+
+                try:
+                    await disable_chat_session_share(
+                        session_id=session_id, user_id=user_id
+                    )
+                except Exception as cascade_exc:
+                    # Cascade failure must not block the deletion path —
+                    # log + Sentry so an operator can manually clean up
+                    # the per-execution shares.  Better to delete the
+                    # chat (the user's clear intent) and leave a known
+                    # orphan to chase than to refuse the delete.
+                    logger.error(
+                        "Share cascade failed during chat delete for "
+                        "session=%s; deletion will proceed",
+                        session_id,
+                        exc_info=True,
+                    )
+                    sentry_sdk.capture_exception(cascade_exc)
+
         # Build typed where clause with optional user_id validation
         where_clause: ChatSessionWhereInput = {"id": session_id}
         if user_id is not None:
