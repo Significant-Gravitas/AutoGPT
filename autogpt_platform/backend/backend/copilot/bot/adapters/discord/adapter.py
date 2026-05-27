@@ -176,6 +176,11 @@ class DiscordAdapter(PlatformAdapter):
         @self._client.event
         async def on_ready() -> None:
             logger.info(f"Discord bot connected as {self._client.user}")
+            # Refresh display names for every guild we're currently in — keeps
+            # the Bots settings page in sync with renames and backfills any
+            # rows that pre-date name capture. Cheap: in-memory cache only,
+            # no Discord API calls.
+            await self._refresh_known_server_names()
             # Sync slash commands once per process — on_ready fires on every
             # gateway reconnect, but the command tree only needs uploading once.
             if self._commands_synced:
@@ -189,6 +194,7 @@ class DiscordAdapter(PlatformAdapter):
 
         @self._client.event
         async def on_guild_join(guild: discord.Guild) -> None:
+            await self._refresh_server_name(guild)
             channel = intro.pick_intro_channel(guild)
             if channel is None:
                 logger.info(
@@ -203,6 +209,11 @@ class DiscordAdapter(PlatformAdapter):
                 )
             except discord.HTTPException:
                 logger.exception("Failed to post intro message in guild %s", guild.id)
+
+        @self._client.event
+        async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
+            if before.name != after.name:
+                await self._refresh_server_name(after)
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
@@ -237,6 +248,23 @@ class DiscordAdapter(PlatformAdapter):
                 mentionable_users=self._collect_mentionable_users(message),
             )
             await self._on_message_callback(ctx, self)
+
+    async def _refresh_known_server_names(self) -> None:
+        """Push current display names for every guild the bot is in."""
+        for guild in self._client.guilds:
+            await self._refresh_server_name(guild)
+
+    async def _refresh_server_name(self, guild: discord.Guild) -> None:
+        if not guild.name:
+            return
+        try:
+            await self._api.refresh_server_name(
+                platform="discord",
+                platform_server_id=str(guild.id),
+                server_name=guild.name,
+            )
+        except Exception:
+            logger.exception("Failed to refresh display name for guild %s", guild.id)
 
     def _should_ignore_message(self, message: discord.Message) -> bool:
         if self._client.user is not None and message.author.id == self._client.user.id:

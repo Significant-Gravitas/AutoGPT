@@ -383,6 +383,7 @@ class DatabaseManager(AppService):
     confirm_user_link = _(platform_linking_db.confirm_user_link)
     list_server_links = _(platform_linking_db.list_server_links)
     list_user_links = _(platform_linking_db.list_user_links)
+    refresh_server_link_name = _(platform_linking_db.refresh_server_link_name)
     delete_server_link = _(platform_linking_db.delete_server_link)
     delete_user_link = _(platform_linking_db.delete_user_link)
     cleanup_expired_platform_link_tokens = _(
@@ -627,6 +628,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     confirm_user_link = d.confirm_user_link
     list_server_links = d.list_server_links
     list_user_links = d.list_user_links
+    refresh_server_link_name = d.refresh_server_link_name
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
