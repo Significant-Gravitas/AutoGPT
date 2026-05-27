@@ -4,6 +4,7 @@ import {
   useDeleteV1DisableExecutionSharing,
 } from "@/app/api/__generated__/endpoints/default/default";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { executionShareUrl } from "@/lib/share/routes";
 
 interface UseShareRunButtonProps {
   graphId: string;
@@ -29,11 +30,7 @@ export function useShareRunButton({
     setShareToken(initialShareToken || null);
   }, [initialIsShared, initialShareToken]);
 
-  // Generate the share URL from the token
-  const baseUrl =
-    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || window.location.origin;
-
-  const shareUrl = shareToken ? `${baseUrl}/share/${shareToken}` : "";
+  const shareUrl = shareToken ? executionShareUrl(shareToken) : "";
 
   const { mutateAsync: enableSharing, isPending: isEnabling } =
     usePostV1EnableExecutionSharing();
