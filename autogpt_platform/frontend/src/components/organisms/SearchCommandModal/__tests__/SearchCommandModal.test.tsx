@@ -135,9 +135,9 @@ describe("SearchCommandModal", () => {
     expect(screen.getByText("No results")).toBeDefined();
   });
 
-  it("renders the loading label", () => {
+  it("renders the loading skeleton", () => {
     render(<Harness buckets={[]} isLoading />);
-    expect(screen.getByLabelText("Loading")).toBeDefined();
+    expect(screen.getByTestId("search-command-skeleton")).toBeDefined();
   });
 
   it("renders the error label", () => {

@@ -13,6 +13,7 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
     <div
       role="presentation"
       aria-hidden="true"
+      data-testid="search-command-skeleton"
       className="flex flex-col gap-1 px-2"
     >
       <div className="px-3 pb-1 pt-2">
