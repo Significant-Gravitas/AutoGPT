@@ -143,10 +143,24 @@ class TestShouldIgnoreMessage:
 
         assert adapter._should_ignore_message(msg) is True
 
-    def test_allows_other_bot_message(self):
-        adapter, _ = _bare_adapter(bot_id=1000)
+    def test_ignores_unmentioned_bot_message(self):
+        # A bot that doesn't @mention us is skipped — otherwise two bots
+        # sharing a thread (our own dev + prod included) loop forever.
+        adapter, client = _bare_adapter(bot_id=1000)
         msg = _message("hi", [])
         msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = False
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_allows_mentioned_bot_message(self):
+        # Another bot can still reach us by explicitly @mentioning us.
+        adapter, client = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = True
 
         assert adapter._should_ignore_message(msg) is False
 
