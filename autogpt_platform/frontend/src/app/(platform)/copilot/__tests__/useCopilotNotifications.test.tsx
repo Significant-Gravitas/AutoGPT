@@ -94,6 +94,7 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
 
   it("does not fire a notification for unrelated event types", async () => {
     renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+    expect(capturedHandler).not.toBeNull();
 
     act(() => {
       capturedHandler!({
@@ -103,7 +104,8 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
       });
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(NotificationCtor).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(NotificationCtor).not.toHaveBeenCalled();
+    });
   });
 });
