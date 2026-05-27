@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
+from pydantic import BaseModel
+
 from backend.copilot import stream_registry
 from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
@@ -64,8 +66,7 @@ class LinkTokenResult:
     expires_at: str
 
 
-@dataclass
-class ChatSummary:
+class ChatSummary(BaseModel):
     session_id: str
     title: str | None
     updated_at: datetime
