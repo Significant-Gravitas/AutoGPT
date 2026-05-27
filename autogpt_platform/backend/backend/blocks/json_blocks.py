@@ -22,27 +22,16 @@ class JSONEncoderBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        """
-        Input schema for the JSON encoder block.
-        """
 
         data: Any = SchemaField(
             description="The data structure (dictionary, list, string, etc.) to encode into a JSON string.",
-            placeholder="eg. {'key':'value'}",
+            placeholder='e.g., {"key": "value"}',
         )
 
     class Output(BlockSchemaOutput):
-        """
-        Output schema for the JSON encoder block.
-        """
 
         json_str: str = SchemaField(
             description="The resulting JSON string representation."
-        )
-
-        error: str = SchemaField(
-            description="Error message if encoding fails.",
-            default="",
         )
 
     def __init__(self):
@@ -72,13 +61,12 @@ class JSONEncoderBlock(Block):
         Yields:
             tuple[str, str]:
                 - "json_str": Encoded JSON string on success.
-                - "error": Error message if encoding fails.
         """
         try:
             json_str = dumps(input_data.data)
             yield "json_str", json_str
         except Exception as e:
-            yield "error", f"JSON Encoding Error: {str(e)}"
+            raise ValueError(f"JSON Encoding Error: {str(e)}") from e
 
 
 class JSONDecoderBlock(Block):
@@ -101,10 +89,6 @@ class JSONDecoderBlock(Block):
         """Output schema for the JSON decoder block."""
 
         data: Any = SchemaField(description="The decoded Python dictionary or list.")
-        error: str = SchemaField(
-            description="Error message if decoding fails.",
-            default="",
-        )
 
     def __init__(self):
         super().__init__(
@@ -133,10 +117,9 @@ class JSONDecoderBlock(Block):
         Yields:
             tuple[str, Any]:
                 - "data": Parsed Python object on success.
-                - "error": Error message if decoding fails.
         """
         try:
             parsed_data = loads(input_data.json_str)
             yield "data", parsed_data
         except Exception as e:
-            yield "error", f"JSON Decoding Error: {str(e)}"
+            raise ValueError(f"JSON Decoding Error: {str(e)}") from e

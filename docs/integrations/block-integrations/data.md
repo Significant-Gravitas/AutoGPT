@@ -140,7 +140,7 @@ If the input string is malformed or contains invalid JSON syntax (such as missin
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if decoding fails. | str |
+| error | Error message if the operation failed | str |
 | data | The decoded Python dictionary or list. | Data |
 
 ### Possible use case
@@ -176,7 +176,7 @@ Before outputting, the block validates JSON-serializability. If an unsupported t
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if encoding fails. | str |
+| error | Error message if the operation failed | str |
 | json_str | The resulting JSON string representation. | str |
 
 ### Possible use case

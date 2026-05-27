@@ -1,5 +1,4 @@
 import json
-from unittest.mock import patch
 
 import pytest
 
@@ -25,20 +24,45 @@ async def test_json_encoder_success():
 
 
 @pytest.mark.asyncio
-@patch("backend.blocks.json_blocks.dumps")
-async def test_json_encoder_error(mock_dumps):
-    mock_dumps.side_effect = Exception("Mocked error")
+async def test_json_encoder_error():
     block = JSONEncoderBlock()
-    data = {"test": "data"}
+
+    data = {}
+    data["self"] = data
+
+    with pytest.raises(ValueError, match="JSON Encoding Error") as exc_info:
+        async for output in block.run(JSONEncoderBlock.Input(data=data)):
+            pass
+
+    error_message = str(exc_info.value)
+    assert "JSON Encoding Error" in error_message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_data",
+    [
+        "a string",
+        42,
+        None,
+        [1, 2, "three"],
+        {},
+        [],
+        "",
+    ],
+)
+async def test_json_encoder_primitives(input_data):
+    block = JSONEncoderBlock()
 
     outputs = []
-    async for output in block.run(JSONEncoderBlock.Input(data=data)):
+    async for output in block.run(JSONEncoderBlock.Input(data=input_data)):
         outputs.append(output)
 
     assert len(outputs) == 1
     name, value = outputs[0]
-    assert name == "error"
-    assert "JSON Encoding Error" in value
+    assert name == "json_str"
+    # Compare semantic equality instead of raw formatting
+    assert json.loads(value) == input_data
 
 
 @pytest.mark.asyncio
@@ -62,11 +86,64 @@ async def test_json_decoder_error():
     # Malformed JSON string missing closing bracket
     json_str = '{"a": 1, "b": [true, false,'
 
+    with pytest.raises(ValueError, match="JSON Decoding Error") as exc_info:
+        async for _ in block.run(JSONDecoderBlock.Input(json_str=json_str)):
+            pass
+    error_message = str(exc_info.value)
+    assert "JSON Decoding Error" in error_message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "json_str,expected_data",
+    [
+        ('"a string"', "a string"),
+        ("42", 42),
+        ("null", None),
+        ('[1, 2, "three"]', [1, 2, "three"]),
+        ("{}", {}),
+        ("[]", []),
+        ('""', ""),
+    ],
+)
+async def test_json_decoder_primitives(json_str, expected_data):
+    block = JSONDecoderBlock()
+
     outputs = []
+
     async for output in block.run(JSONDecoderBlock.Input(json_str=json_str)):
         outputs.append(output)
 
     assert len(outputs) == 1
     name, value = outputs[0]
-    assert name == "error"
-    assert "JSON Decoding Error" in value
+    assert name == "data"
+    assert value == expected_data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_float",
+    [
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+    ],
+)
+async def test_json_encoder_invalid_floats(invalid_float):
+    block = JSONEncoderBlock()
+    data = {"invalid": invalid_float}
+
+    try:
+        outputs = []
+
+        async for output in block.run(JSONEncoderBlock.Input(data=data)):
+            outputs.append(output)
+
+        assert len(outputs) == 1
+        name, value = outputs[0]
+        assert name == "json_str"
+        # Ensure produced JSON is valid
+        json.loads(value)
+    except ValueError as e:
+        # Also acceptable if serializer rejects invalid floats
+        assert "JSON Encoding Error" in str(e)
