@@ -203,6 +203,9 @@ class TestGetChatShareState:
             "is_shared": False,
             "share_token": None,
             "auto_share_executions": False,
+            "message_count": 0,
+            "linked_run_count": 0,
+            "file_count": 0,
         }
 
     def test_returns_shared_state_with_token_and_auto_share_flag(self, client):
