@@ -147,11 +147,11 @@ def _mock_recent_sources(
 
 
 @pytest.mark.asyncio
-async def test_global_search_buckets_results_by_content_type():
-    """One hybrid call per bucket; rows are sorted into the right list
-    via their ``content_type`` field."""
+async def test_global_search_buckets_results_by_content_type(mocker):
+    """One hybrid call for agents; files & chats use direct DB queries —
+    rows are sorted into the right bucket regardless of the source path."""
 
-    def side_effect(*, content_types, **_):
+    def hybrid_side_effect(*, content_types, **_):
         type_set = {ct.value for ct in content_types}
         if "LIBRARY_AGENT" in type_set or "STORE_AGENT" in type_set:
             return (
@@ -173,45 +173,27 @@ async def test_global_search_buckets_results_by_content_type():
                 ],
                 2,
             )
-        if "WORKSPACE_FILE" in type_set:
-            return (
-                [
-                    {
-                        "content_id": "file-1",
-                        "content_type": ContentType.WORKSPACE_FILE,
-                        "metadata": {"name": "report.pdf", "mime_type": "pdf"},
-                        "combined_score": 0.6,
-                        "updated_at": datetime.datetime(2024, 1, 3),
-                    }
-                ],
-                1,
-            )
-        if "CHAT_SESSION" in type_set:
-            return (
-                [
-                    {
-                        "content_id": "chat-1",
-                        "content_type": ContentType.CHAT_SESSION,
-                        "metadata": {"title": "My Chat"},
-                        "combined_score": 0.5,
-                        "updated_at": datetime.datetime(2024, 1, 4),
-                    }
-                ],
-                1,
-            )
         return ([], 0)
 
+    _mock_recent_sources(
+        mocker,
+        workspace=MagicMock(id="ws-1"),
+        files=[_fake_workspace_file("file-1")],
+        sessions=[_fake_chat_session("chat-1", title="My Chat")],
+    )
+
     mock_shim = MagicMock()
-    mock_shim.unified_hybrid_search = AsyncMock(side_effect=side_effect)
+    mock_shim.unified_hybrid_search = AsyncMock(side_effect=hybrid_side_effect)
     with patch("backend.api.features.search.service.search", return_value=mock_shim):
         result = await service.global_search(
             query="anything", user_id="u1", per_type_limit=4
         )
 
-    # 3 parallel calls — one per bucket
-    assert mock_shim.unified_hybrid_search.await_count == 3
+    # Only the agents bucket still goes through unified_hybrid_search;
+    # files and chats now route through direct DB queries (see
+    # _files_bucket / _chats_bucket).
+    assert mock_shim.unified_hybrid_search.await_count == 1
 
-    # Buckets carry the right rows
     assert [a.id for a in result.agents] == ["agent-1", "store-1"]
     assert [a.type for a in result.agents] == ["library_agent", "store_agent"]
     assert [f.id for f in result.files] == ["file-1"]
@@ -221,65 +203,53 @@ async def test_global_search_buckets_results_by_content_type():
 
 
 @pytest.mark.asyncio
-async def test_global_search_respects_per_type_limit():
-    """Bucket cap is enforced even when the hybrid call returns more rows."""
-    rows = [
-        {
-            "content_id": f"file-{i}",
-            "content_type": ContentType.WORKSPACE_FILE,
-            "metadata": {"name": f"file-{i}"},
-            "combined_score": 0.5,
-        }
-        for i in range(10)
-    ]
+async def test_global_search_respects_per_type_limit(mocker):
+    """Bucket cap is forwarded as the ``limit`` to the direct-DB file
+    listing so the underlying query only fetches what we need."""
+    files = [_fake_workspace_file(f"file-{i}") for i in range(10)]
 
-    def side_effect(*, content_types, **_):
-        if any(ct.value == "WORKSPACE_FILE" for ct in content_types):
-            return (rows, 10)
-        return ([], 0)
+    mock_manager = MagicMock()
+    mock_manager.list_files = AsyncMock(return_value=files[:3])
+    mocker.patch(
+        "backend.util.workspace.WorkspaceManager", return_value=mock_manager
+    )
+    mocker.patch(
+        "backend.data.workspace.get_workspace",
+        new=AsyncMock(return_value=MagicMock(id="ws-1")),
+    )
 
-    mock_shim = MagicMock()
-    mock_shim.unified_hybrid_search = AsyncMock(side_effect=side_effect)
-    with patch("backend.api.features.search.service.search", return_value=mock_shim):
+    # Agents/chats are out of scope here — stub them to empty so the
+    # gather() in global_search resolves cleanly.
+    patcher, _ = _patch_hybrid(([], 0))
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new=AsyncMock(return_value=([], 0)),
+    )
+
+    with patcher:
         result = await service.global_search(query="x", user_id="u1", per_type_limit=3)
 
     assert len(result.files) == 3
-
-    # The cap is also forwarded to the underlying call as page_size
-    file_call = next(
-        c
-        for c in mock_shim.unified_hybrid_search.await_args_list
-        if any(ct.value == "WORKSPACE_FILE" for ct in c.kwargs["content_types"])
-    )
-    assert file_call.kwargs["page_size"] == 3
+    # The bucket cap must reach the DB layer as the page-size guard.
+    assert mock_manager.list_files.await_args.kwargs["limit"] == 3
 
 
 @pytest.mark.asyncio
-async def test_global_search_bucket_failure_does_not_kill_other_buckets():
-    """If one bucket raises, the others still return their results."""
+async def test_global_search_bucket_failure_does_not_kill_other_buckets(mocker):
+    """If the files DB query raises, the chats & agents buckets still
+    return their results — fan-out failures must not 500 the response."""
 
-    async def side_effect(*, content_types, **_):
-        if any(ct.value == "WORKSPACE_FILE" for ct in content_types):
-            raise RuntimeError("simulated DB failure")
-        return (
-            (
-                [
-                    {
-                        "content_id": "chat-1",
-                        "content_type": ContentType.CHAT_SESSION,
-                        "metadata": {"title": "Hi"},
-                        "combined_score": 0.5,
-                    }
-                ]
-                if any(ct.value == "CHAT_SESSION" for ct in content_types)
-                else []
-            ),
-            1,
-        )
+    mocker.patch(
+        "backend.data.workspace.get_workspace",
+        new=AsyncMock(side_effect=RuntimeError("simulated DB failure")),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new=AsyncMock(return_value=([_fake_chat_session("chat-1", title="Hi")], 1)),
+    )
 
-    mock_shim = MagicMock()
-    mock_shim.unified_hybrid_search = AsyncMock(side_effect=side_effect)
-    with patch("backend.api.features.search.service.search", return_value=mock_shim):
+    patcher, _ = _patch_hybrid(([], 0))
+    with patcher:
         result = await service.global_search(query="x", user_id="u1")
 
     assert result.files == []  # failed bucket -> empty, not 500
