@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { environment } from "@/services/environment";
 import { PaywallModal } from "./PaywallModal";
 
 // Routes that bypass the paywall regardless of subscription state — primarily
@@ -45,6 +46,9 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     !!isPaymentEnabled &&
     !isLoading &&
     !isExempt &&
+    // Never gate local dev — running the stack locally shouldn't require a
+    // Stripe subscription to reach AutoPilot.
+    !environment.isLocal() &&
     !!subscription &&
     subscription.tier === "NO_TIER";
 
