@@ -108,6 +108,10 @@ def _setup_mocks(sink_node_id, params, masks):
         node_exec_result,
         {"name": "result", "value": "hello"},
     )
+    # Tool dispatch reads outputs back after on_node_execution and json.dumps()
+    # them; return a JSON-serializable dict so the post-execution path runs
+    # cleanly instead of recursing on an unmocked MagicMock.
+    mock_db.get_execution_outputs_by_node_exec_id.return_value = {"result": "ok"}
 
     mock_processor = MagicMock()
     mock_processor.nodes_input_masks = masks
@@ -115,6 +119,9 @@ def _setup_mocks(sink_node_id, params, masks):
     mock_processor.execution_stats = GraphExecutionStats()
     mock_processor.execution_stats_lock = threading.Lock()
     mock_processor.on_node_execution = AsyncMock(return_value=NodeExecutionStats())
+    # charge_node_usage is awaited after a successful tool run; it must be an
+    # AsyncMock or the await raises TypeError mid-flight.
+    mock_processor.charge_node_usage = AsyncMock(return_value=None)
 
     return mock_db, mock_processor
 
