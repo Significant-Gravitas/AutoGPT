@@ -7657,6 +7657,31 @@
         }
       }
     },
+    "/api/platform-linking/platforms": {
+      "get": {
+        "tags": ["platform-linking"],
+        "summary": "List bot platforms enabled on this deployment plus the caller's links",
+        "operationId": "list_bot_platforms",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/BotPlatformInfo" },
+                  "type": "array",
+                  "title": "Response List Bot Platforms"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/platform-linking/tokens/{token}/confirm": {
       "post": {
         "tags": ["platform-linking"],
@@ -11290,6 +11315,32 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
+      },
+      "BotPlatformInfo": {
+        "properties": {
+          "platform": { "type": "string", "title": "Platform" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "icon": { "type": "string", "title": "Icon" },
+          "add_bot_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Add Bot Url"
+          },
+          "dm_link": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
+              { "type": "null" }
+            ]
+          },
+          "server_links": {
+            "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
+            "type": "array",
+            "title": "Server Links"
+          }
+        },
+        "type": "object",
+        "required": ["platform", "display_name", "icon"],
+        "title": "BotPlatformInfo",
+        "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
       },
       "BulkMoveAgentsRequest": {
         "properties": {
