@@ -50,18 +50,20 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     """
     owner_user_id = await resolve_chat_owner(request)
 
+    session = None
     session_id = request.session_id
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if not session:
-            raise NotFoundError("Session not found.")
-    else:
+    if session is None:
+        # The bot caches session IDs across turns and a cached session can
+        # be deleted from the web app in between — fall back to a fresh one
+        # so the conversation self-heals instead of erroring every turn.
         session = await create_chat_session(
             owner_user_id,
             dry_run=False,
             source_platform=request.platform.value.lower(),
         )
-        session_id = session.session_id
+    session_id = session.session_id
 
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
