@@ -142,7 +142,9 @@ async def list_bot_platforms(
     db = platform_linking_db()
     user_links = await db.list_user_links(user_id)
     server_links = await db.list_server_links(user_id)
-    dm_by_platform = {link.platform: link for link in user_links}
+    dm_by_platform: dict[str, PlatformUserLinkInfo] = {}
+    for link in user_links:
+        dm_by_platform.setdefault(link.platform, link)
     servers_by_platform: dict[str, list[PlatformLinkInfo]] = {}
     for link in server_links:
         servers_by_platform.setdefault(link.platform, []).append(link)

@@ -354,6 +354,43 @@ class TestListBotPlatforms:
         assert [s.id for s in result[0].server_links] == ["srv-a", "srv-b"]
 
     @pytest.mark.asyncio
+    async def test_picks_newest_dm_link_when_multiple_for_same_platform(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        newer = PlatformUserLinkInfo(
+            id="dm-new",
+            platform="DISCORD",
+            platform_user_id="discord-user-2",
+            platform_username="newer-handle",
+            linked_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        older = PlatformUserLinkInfo(
+            id="dm-old",
+            platform="DISCORD",
+            platform_user_id="discord-user-1",
+            platform_username="older-handle",
+            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[newer, older]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[_discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result[0].dm_link is not None
+        assert result[0].dm_link.id == "dm-new"
+
+    @pytest.mark.asyncio
     async def test_omits_platforms_whose_adapter_isnt_configured(self):
         from backend.api.features.platform_linking.routes import list_bot_platforms
 
