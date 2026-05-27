@@ -115,9 +115,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         Notification.permission === "granted" &&
         isUserAway
       ) {
-        showBrowserNotification("AutoPilot is ready", {
-          body: "A response is waiting for you.",
-          icon: "/favicon.ico",
+        showBrowserNotification("AutoGPT", {
+          body: "Task completed",
+          icon: "/notification-icon-192.png",
           sessionID,
         });
       }
