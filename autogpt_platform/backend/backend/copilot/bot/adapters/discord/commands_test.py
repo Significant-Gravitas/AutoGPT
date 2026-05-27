@@ -4,6 +4,7 @@ Targets the ``_handle_*`` functions directly — sidesteps ``CommandTree``
 registration since it requires a live ``discord.Client``.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -11,8 +12,15 @@ import pytest
 
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from ...bot_backend import LinkTokenResult
-from .commands import _handle_help, _handle_new, _handle_setup, _handle_unlink
+from ...bot_backend import ChatSummary, LinkTokenResult
+from .commands import (
+    _handle_help,
+    _handle_new,
+    _handle_resume,
+    _handle_setup,
+    _handle_unlink,
+    _resume_to_session,
+)
 
 
 def _interaction(*, guild: bool = True, manage_guild: bool = True) -> MagicMock:
@@ -239,3 +247,100 @@ class TestHandleNew:
         sent = interaction.response.send_message.await_args
         assert sent.kwargs["ephemeral"] is True
         assert "try again" in sent.args[0].lower()
+
+
+def _chat(session_id: str, title: str | None = "A chat") -> ChatSummary:
+    return ChatSummary(
+        session_id=session_id,
+        title=title,
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+class TestHandleResume:
+    @pytest.mark.asyncio
+    async def test_rejected_in_a_server(self):
+        interaction = _interaction()
+        api = MagicMock()
+        api.list_user_chats = AsyncMock()
+        await _handle_resume(interaction, api)
+
+        interaction.response.send_message.assert_awaited_once()
+        api.list_user_chats.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_chats_shows_message(self):
+        interaction = _interaction(guild=False)
+        api = MagicMock()
+        api.list_user_chats = AsyncMock(return_value=[])
+        await _handle_resume(interaction, api)
+
+        interaction.response.defer.assert_awaited_once()
+        sent = interaction.followup.send.await_args
+        assert "view" not in sent.kwargs or sent.kwargs.get("view") is None
+        assert "conversations" in sent.args[0]
+
+    @pytest.mark.asyncio
+    async def test_lists_chats_in_a_picker(self):
+        interaction = _interaction(guild=False)
+        api = MagicMock()
+        api.list_user_chats = AsyncMock(return_value=[_chat("s1"), _chat("s2")])
+        await _handle_resume(interaction, api)
+
+        interaction.response.defer.assert_awaited_once()
+        api.list_user_chats.assert_awaited_once_with("discord", "456")
+        sent = interaction.followup.send.await_args
+        assert sent.kwargs["view"] is not None
+        assert sent.kwargs["ephemeral"] is True
+
+    @pytest.mark.asyncio
+    async def test_unlinked_user_gets_guidance(self):
+        interaction = _interaction(guild=False)
+        api = MagicMock()
+        api.list_user_chats = AsyncMock(side_effect=ValueError("not linked"))
+        await _handle_resume(interaction, api)
+
+        interaction.response.defer.assert_awaited_once()
+        sent = interaction.followup.send.await_args
+        assert "linked" in sent.args[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_resume_to_session_sets_the_dm_session_cache(self):
+        interaction = _interaction(guild=False)
+        interaction.channel_id = 999
+        with patch(
+            "backend.copilot.bot.sessions.set_session",
+            new=AsyncMock(),
+        ) as mock_set:
+            await _resume_to_session(interaction, "sess-pick")
+
+        mock_set.assert_awaited_once_with("discord", "999", "sess-pick")
+        interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resume_to_session_bails_when_channel_id_missing(self):
+        """If discord.py hands us a None channel_id, persisting to
+        `copilot-bot:session:discord:None` would silently break resume. We
+        must refuse the action and tell the user."""
+        interaction = _interaction(guild=False)
+        interaction.channel_id = None
+        with patch(
+            "backend.copilot.bot.sessions.set_session",
+            new=AsyncMock(),
+        ) as mock_set:
+            await _resume_to_session(interaction, "sess-pick")
+
+        mock_set.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+
+    def test_resume_select_caps_options_at_discord_limit(self):
+        """Discord's select menu hard-caps at 25 options. _ResumeSelect must
+        trim its input so a long chat history doesn't break the picker."""
+        from .commands import _ResumeSelect
+
+        too_many = [_chat(f"s{i}", f"Chat {i}") for i in range(40)]
+        select = _ResumeSelect(too_many)
+
+        assert len(select.options) == _ResumeSelect.DISCORD_SELECT_OPTION_LIMIT

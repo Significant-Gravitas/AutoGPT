@@ -180,3 +180,16 @@ class ChatTurnHandle(BaseModel):
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+
+
+class ChatSessionSummary(BaseModel):
+    """Minimal chat-session fields safe to send to a bot client."""
+
+    session_id: str
+    title: str | None = None
+    updated_at: datetime
+
+
+class ListUserChatsResponse(BaseModel):
+    sessions: list[ChatSessionSummary]
+    total: int
