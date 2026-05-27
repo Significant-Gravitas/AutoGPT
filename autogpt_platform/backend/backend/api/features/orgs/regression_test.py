@@ -1387,6 +1387,7 @@ class TestRegressionSchedules:
             cron="*/5 * * * *",
             input_data={},
         ).model_dump()
+        mock_job.id = "sched-123"
         mock_job.next_run_time = datetime(2025, 7, 1, tzinfo=timezone.utc)
         mock_job.trigger = MagicMock()
         mock_job.trigger.timezone = "UTC"
