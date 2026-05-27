@@ -44,6 +44,7 @@ async def test_get_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent2",
                 version=1,
@@ -176,6 +177,7 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=mock_store_listing_data.AgentGraph,
     )
 
@@ -457,6 +459,7 @@ async def test_list_favorite_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=True,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-fav",
                 version=1,
@@ -510,6 +513,7 @@ async def test_list_library_agents_skips_failed_agent(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-bad",
                 version=1,
@@ -593,6 +597,7 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,
@@ -713,6 +718,7 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,

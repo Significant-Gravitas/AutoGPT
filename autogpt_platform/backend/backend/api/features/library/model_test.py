@@ -26,6 +26,7 @@ def _make_library_agent(
         updatedAt=datetime.datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id=graph_id,
             version=1,
