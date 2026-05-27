@@ -12,14 +12,14 @@ import type { PlatformLinkInfo } from "@/app/api/__generated__/models/platformLi
 type Props = {
   platformName: string;
   serverLinks: PlatformLinkInfo[];
-  pendingId: string | null;
+  isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
 };
 
 export function BotCardServerList({
   platformName,
   serverLinks,
-  pendingId,
+  isPending,
   onUnlink,
 }: Props) {
   if (serverLinks.length === 0) {
@@ -40,7 +40,7 @@ export function BotCardServerList({
           key={link.id}
           link={link}
           platformName={platformName}
-          isPending={pendingId === link.id}
+          isPending={isPending(link.id)}
           onUnlink={() => onUnlink(link.id)}
         />
       ))}

@@ -7,14 +7,14 @@ import type { PlatformUserLinkInfo } from "@/app/api/__generated__/models/platfo
 type Props = {
   platformName: string;
   dmLink: PlatformUserLinkInfo | null;
-  pendingId: string | null;
+  isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
 };
 
 export function BotCardDmTile({
   platformName,
   dmLink,
-  pendingId,
+  isPending,
   onUnlink,
 }: Props) {
   const title = dmLink
@@ -42,7 +42,7 @@ export function BotCardDmTile({
           variant="outline"
           size="small"
           leftIcon={<TrashIcon size={16} />}
-          loading={pendingId === dmLink.id}
+          loading={isPending(dmLink.id)}
           onClick={() => onUnlink(dmLink.id)}
           aria-label={`Unlink DM on ${platformName}`}
         >

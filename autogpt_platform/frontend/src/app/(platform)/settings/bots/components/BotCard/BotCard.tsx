@@ -17,7 +17,7 @@ type Props = {
 };
 
 export function BotCard({ platform }: Props) {
-  const { pendingId, unlinkServerLink, unlinkDmLink } = useBotCard();
+  const { isPending, unlinkServerLink, unlinkDmLink } = useBotCard();
   const serverLinks = platform.server_links ?? [];
 
   return (
@@ -61,7 +61,7 @@ export function BotCard({ platform }: Props) {
         <BotCardDmTile
           platformName={platform.display_name}
           dmLink={platform.dm_link ?? null}
-          pendingId={pendingId}
+          isPending={isPending}
           onUnlink={unlinkDmLink}
         />
       </section>
@@ -77,7 +77,7 @@ export function BotCard({ platform }: Props) {
         <BotCardServerList
           platformName={platform.display_name}
           serverLinks={serverLinks}
-          pendingId={pendingId}
+          isPending={isPending}
           onUnlink={unlinkServerLink}
         />
       </section>
