@@ -599,6 +599,14 @@ async def prepare_block_for_execution(
             session_id=session_id,
         )
 
+    # LLMs sometimes pass `"credentials": null` instead of omitting the field.
+    # Treat null credential fields as absent so the injection path below can
+    # populate them, and so _base.validate_data doesn't reject null against a
+    # required object schema.
+    for field_name in block.input_schema.get_credentials_fields():
+        if field_name in input_data and input_data[field_name] is None:
+            input_data.pop(field_name)
+
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data
     )

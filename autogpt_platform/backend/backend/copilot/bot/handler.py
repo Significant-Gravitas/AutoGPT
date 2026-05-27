@@ -19,7 +19,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
-from . import threads
+from . import sessions, threads
 from .adapters.base import MessageContext, PlatformAdapter
 from .bot_backend import BotBackend
 from .config import SESSION_TTL
@@ -163,7 +163,7 @@ class MessageHandler:
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
-        cache_key = f"copilot-bot:session:{ctx.platform}:{target_id}"
+        cache_key = sessions.session_cache_key(ctx.platform, target_id)
         cached_session_id = await redis.get(cache_key)
         active_session_id = (
             cached_session_id.decode()

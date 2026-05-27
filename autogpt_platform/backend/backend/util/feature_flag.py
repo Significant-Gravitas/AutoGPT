@@ -41,6 +41,12 @@ class Flag(str, Enum):
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
     CHAT_MODE_OPTION = "chat-mode-option"
+    # Gates the "share chat results" feature end-to-end.  Backend create
+    # routes refuse when off so a stale frontend cannot enable shares;
+    # frontend share button hides when off so the UI doesn't tease a
+    # feature that won't take.  Existing public viewer routes stay on
+    # regardless so previously-shared URLs remain valid mid-flight.
+    CHAT_SHARING = "chat-sharing"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # Self-distilled skills registry (store_skill / read_skill /
