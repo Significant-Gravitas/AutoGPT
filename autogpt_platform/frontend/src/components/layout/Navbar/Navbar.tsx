@@ -10,6 +10,7 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
@@ -43,9 +44,12 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
+    ...(isArtifactsEnabled ? [{ name: "Artifacts", href: "/artifacts" }] : []),
     ...loggedInLinks,
   ];
 
@@ -135,9 +139,11 @@ export function Navbar() {
                                 ? IconType.Chat
                                 : link.href === "/library"
                                   ? IconType.Library
-                                  : link.href === "/monitor"
-                                    ? IconType.Library
-                                    : IconType.LayoutDashboard,
+                                  : link.href === "/artifacts"
+                                    ? IconType.UploadCloud
+                                    : link.href === "/monitor"
+                                      ? IconType.Library
+                                      : IconType.LayoutDashboard,
                         text: link.name,
                         href: link.href,
                       };

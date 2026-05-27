@@ -199,6 +199,10 @@ const config = {
           "0%": { backgroundPosition: "50% 50%, 50% 50%" },
           "100%": { backgroundPosition: "350% 50%, 350% 50%" },
         },
+        "marquee-x": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -214,6 +218,7 @@ const config = {
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
         aurora: "aurora 60s linear infinite",
+        "marquee-x": "marquee-x 40s linear infinite",
       },
       transitionDuration: {
         "2000": "2000ms",

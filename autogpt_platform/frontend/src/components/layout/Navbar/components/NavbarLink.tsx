@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
+import { FilesIcon, Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
@@ -76,6 +76,14 @@ export function NavbarLink({ name, href }: Props) {
         )}
         {href === "/library" && (
           <ListChecksIcon
+            className={cn(
+              "h-5 w-5 shrink-0",
+              isActive && "text-white dark:text-black",
+            )}
+          />
+        )}
+        {href === "/artifacts" && (
+          <FilesIcon
             className={cn(
               "h-5 w-5 shrink-0",
               isActive && "text-white dark:text-black",
