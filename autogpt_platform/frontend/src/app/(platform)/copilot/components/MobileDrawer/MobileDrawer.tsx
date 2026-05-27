@@ -1,12 +1,13 @@
-import { useGetV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { Button as ShadcnButton } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  CheckCircle,
-  CircleNotch,
+  MagnifyingGlass,
   PlusIcon,
   SpeakerHigh,
   SpeakerSlash,
@@ -14,40 +15,21 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { parseAsString, useQueryState } from "nuqs";
+import { useEffect, useRef } from "react";
 import { Drawer } from "vaul";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
+import { useSessionList } from "../../useSessionList";
+import { ChatSearchResults } from "../ChatSearchModal/ChatSearchResults";
+import { useChatSearch } from "../ChatSearchModal/useChatSearch";
+import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  const day = date.getDate();
-  const ordinal =
-    day % 10 === 1 && day !== 11
-      ? "st"
-      : day % 10 === 2 && day !== 12
-        ? "nd"
-        : day % 10 === 3 && day !== 13
-          ? "rd"
-          : "th";
-  const month = date.toLocaleDateString("en-US", { month: "short" });
-  const year = date.getFullYear();
-
-  return `${day}${ordinal} ${month} ${year}`;
-}
 
 export function MobileDrawer() {
   const { isUserLoading, isLoggedIn } = useSupabase();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [currentSessionId, setSessionId] = useQueryState(
     "sessionId",
     parseAsString,
@@ -59,27 +41,48 @@ export function MobileDrawer() {
     toggleSound,
     isDrawerOpen,
     setDrawerOpen,
+    isSearchOpen,
+    setSearchOpen,
   } = useCopilotUIStore();
+  const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
+  const isSearchActive = isChatSearchEnabled && isSearchOpen;
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
   );
 
-  const { data: sessionsResponse, isLoading } = useGetV2ListSessions(
-    { limit: 50 },
-    { query: { enabled: !isUserLoading && isLoggedIn } },
-  );
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+  const { sessions, isLoading, hasMore, isLoadingMore, loadMore } =
+    useSessionList({ enabled: !isUserLoading && isLoggedIn });
+  const {
+    query,
+    debouncedQuery,
+    setQuery,
+    results,
+    highlightedIndex,
+    setHighlightedIndex,
+    highlightedResultRef,
+  } = useChatSearch(sessions, isSearchOpen);
 
   const { sessionToDelete, isDeleting, confirmDelete, cancelDelete } =
     useSessionDeletion();
 
+  useEffect(() => {
+    if (!isSearchActive || !isDrawerOpen) return;
+    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, [isSearchActive, isDrawerOpen]);
+
+  function handleDrawerOpenChange(open: boolean) {
+    setDrawerOpen(open);
+    if (!open) setSearchOpen(false);
+  }
+
   function closeDrawer() {
     setDrawerOpen(false);
+    setSearchOpen(false);
   }
 
   function handleSelectSession(id: string) {
     setSessionId(id);
+    setSearchOpen(false);
     closeDrawer();
   }
 
@@ -92,7 +95,7 @@ export function MobileDrawer() {
     <>
       <Drawer.Root
         open={isDrawerOpen}
-        onOpenChange={setDrawerOpen}
+        onOpenChange={handleDrawerOpenChange}
         direction="left"
       >
         <Drawer.Portal>
@@ -119,6 +122,24 @@ export function MobileDrawer() {
                       <SpeakerSlash className="h-4 w-4" />
                     )}
                   </button>
+                  {isChatSearchEnabled ? (
+                    <ShadcnButton
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={
+                        isSearchOpen ? "Close search" : "Search chats"
+                      }
+                      onClick={() => setSearchOpen(!isSearchOpen)}
+                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    >
+                      {isSearchOpen ? (
+                        <X className="h-4 w-4" />
+                      ) : (
+                        <MagnifyingGlass className="h-4 w-4" />
+                      )}
+                    </ShadcnButton>
+                  ) : null}
                   <Button
                     variant="icon"
                     size="icon"
@@ -129,7 +150,7 @@ export function MobileDrawer() {
                   </Button>
                 </div>
               </div>
-              {currentSessionId ? (
+              {currentSessionId && !isSearchActive ? (
                 <div className="mt-2">
                   <Button
                     variant="primary"
@@ -149,7 +170,50 @@ export function MobileDrawer() {
                 scrollbarStyles,
               )}
             >
-              {isLoading ? (
+              {isSearchActive ? (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="px-1 pb-3">
+                    <div className="relative">
+                      <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                      <Input
+                        ref={searchInputRef}
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search chats..."
+                        aria-label="Search chats"
+                        autoComplete="off"
+                        className="h-10 bg-white pl-9 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <Separator className="mb-2" />
+                  <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                    {debouncedQuery.trim() ? "Results" : "Recent chats"}
+                  </div>
+                  {results.length > 0 ? (
+                    <ChatSearchResults
+                      results={results}
+                      query={debouncedQuery}
+                      highlightedIndex={highlightedIndex}
+                      highlightedResultRef={highlightedResultRef}
+                      currentSessionId={currentSessionId}
+                      completedSessionIDs={completedSessionIDs}
+                      sessionNeedsReload={sessionNeedsReload}
+                      onHighlight={setHighlightedIndex}
+                      onSelect={(id) => {
+                        handleSelectSession(id);
+                        if (completedSessionIDs.has(id)) {
+                          clearCompletedSession(id);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <p className="py-4 text-center text-sm text-neutral-500">
+                      No chats found
+                    </p>
+                  )}
+                </div>
+              ) : isLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <SpinnerGapIcon className="h-5 w-5 animate-spin text-neutral-400" />
                 </div>
@@ -174,48 +238,42 @@ export function MobileDrawer() {
                         : "hover:bg-zinc-50",
                     )}
                   >
-                    <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                      <div className="flex min-w-0 max-w-full items-center gap-1.5">
-                        <Text
-                          variant="body"
-                          className={cn(
-                            "truncate font-normal",
-                            session.id === currentSessionId
-                              ? "text-zinc-600"
-                              : "text-zinc-800",
-                          )}
-                        >
-                          {session.title || "Untitled chat"}
-                        </Text>
-                        {session.is_processing &&
-                          shouldShowSessionProcessingIndicator({
-                            sessionId: session.id,
-                            currentSessionId,
-                            isProcessing: session.is_processing,
-                            hasCompletedIndicator: completedSessionIDs.has(
-                              session.id,
-                            ),
-                            needsReload: !!sessionNeedsReload[session.id],
-                          }) && (
-                            <CircleNotch
-                              className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-                              weight="bold"
-                            />
-                          )}
-                        {completedSessionIDs.has(session.id) &&
-                          session.id !== currentSessionId && (
-                            <CheckCircle
-                              className="h-4 w-4 shrink-0 text-green-500"
-                              weight="fill"
-                            />
-                          )}
-                      </div>
-                      <Text variant="small" className="text-neutral-400">
-                        {formatDate(session.updated_at)}
-                      </Text>
-                    </div>
+                    <ChatSessionBlock
+                      title={session.title}
+                      updatedAt={session.updated_at}
+                      sourcePlatform={session.source_platform}
+                      isActive={session.id === currentSessionId}
+                      showProcessing={
+                        !!session.is_processing &&
+                        shouldShowSessionProcessingIndicator({
+                          sessionId: session.id,
+                          currentSessionId,
+                          isProcessing: session.is_processing,
+                          hasCompletedIndicator: completedSessionIDs.has(
+                            session.id,
+                          ),
+                          needsReload: !!sessionNeedsReload[session.id],
+                        })
+                      }
+                      showCompleted={
+                        completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId
+                      }
+                    />
                   </button>
                 ))
+              )}
+              {hasMore && (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => loadMore()}
+                  loading={isLoadingMore}
+                  disabled={isLoadingMore}
+                  className="mt-2 w-full justify-center text-neutral-500"
+                >
+                  {isLoadingMore ? "Loading…" : "Load older chats"}
+                </Button>
               )}
             </div>
           </Drawer.Content>

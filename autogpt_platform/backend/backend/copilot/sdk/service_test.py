@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import config as cfg_mod
+from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
@@ -17,6 +19,7 @@ from .service import (
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
@@ -387,10 +390,7 @@ class TestNormalizeModelName:
             aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
 
 class TestResolveSdkModel:
@@ -2167,3 +2167,56 @@ class TestStreamEndedWithoutResultMessage:
 
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_ERROR_MARKER not in contents, contents
+
+
+class TestHiddenShortNamesForPermissions:
+    """``_hidden_short_names_for_permissions`` is the pure function that
+    decides which MCP tools to skip at registration so the model never sees
+    permission-denied names — direct fix for the production trace where the
+    SDK's auto-deny string was narrated as a fake Allow/Deny UI."""
+
+    def test_none_permissions_hides_nothing(self):
+        assert _hidden_short_names_for_permissions(None) == frozenset()
+
+    def test_empty_permissions_hides_nothing(self):
+        # tools=[] makes is_empty() true regardless of the *_exclude flags.
+        perms = CopilotPermissions(tools=[], blocks=[])
+        assert _hidden_short_names_for_permissions(perms) == frozenset()
+
+    def test_blacklist_hides_listed_tools(self):
+        perms = CopilotPermissions(
+            tools=list(BUILDER_BLOCKED_TOOLS),
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert set(BUILDER_BLOCKED_TOOLS) <= hidden
+        # Everything else stays visible.
+        assert hidden == all_known_tool_names() - (
+            all_known_tool_names() - set(BUILDER_BLOCKED_TOOLS)
+        )
+
+    def test_whitelist_hides_everything_not_listed(self):
+        all_tools = all_known_tool_names()
+        # Pick one stable, well-known tool as the whitelist.
+        keep = "find_block"
+        assert keep in all_tools, "test relies on find_block being registered"
+        perms = CopilotPermissions(
+            tools=[keep],
+            tools_exclude=False,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        assert keep not in hidden
+        assert hidden == all_tools - {keep}
+
+    def test_unknown_tool_in_blacklist_is_ignored(self):
+        """Typos in the blacklist must not phantom-hide real tools — the
+        function operates on the intersection with the known-tool set."""
+        perms = CopilotPermissions(
+            tools=["this_tool_does_not_exist"],
+            tools_exclude=True,
+        )
+        hidden = _hidden_short_names_for_permissions(perms)
+        # No real tool gets hidden by an unknown name.
+        assert hidden == frozenset()
+        # Sanity: all real tools remain visible.
+        assert all_known_tool_names() - hidden == all_known_tool_names()

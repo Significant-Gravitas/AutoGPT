@@ -39,6 +39,11 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
+const mockLogOut = vi.fn();
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ logOut: mockLogOut }),
+}));
+
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -128,6 +133,20 @@ describe("PaywallModal — dynamic plan rendering", () => {
     expect(screen.getByText("Pro")).toBeDefined();
     expect(screen.queryByText("Max")).toBeNull();
     expect(screen.queryByText("Business")).toBeNull();
+  });
+});
+
+describe("PaywallModal — logout", () => {
+  it("logs out when the Log out button is clicked", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+
+    expect(mockLogOut).toHaveBeenCalled();
   });
 });
 

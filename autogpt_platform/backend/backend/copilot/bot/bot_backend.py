@@ -10,7 +10,10 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+
+from pydantic import BaseModel
 
 from backend.copilot import stream_registry
 from backend.copilot.model import get_chat_session
@@ -42,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BotBackend",
+    "ChatSummary",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -60,6 +64,12 @@ class LinkTokenResult:
     token: str
     link_url: str
     expires_at: str
+
+
+class ChatSummary(BaseModel):
+    session_id: str
+    title: str | None
+    updated_at: datetime
 
 
 SetupRequiredCallback = Callable[
@@ -94,6 +104,25 @@ class BotBackend:
             platform_user_id=platform_user_id,
         )
         return ResolveResult(linked=resp.linked)
+
+    async def refresh_server_name(
+        self, platform: str, platform_server_id: str, server_name: str
+    ) -> None:
+        """Push the bot's authoritative display name for a server into the DB.
+
+        Called by adapters whenever they learn or re-learn a server's name —
+        e.g. Discord's on_ready and on_guild_join. The Bots settings page
+        renders whatever is in the DB, so this keeps stale or missing names
+        in sync with what the bot is actually connected to. Best-effort:
+        failures are logged on the manager side, never raised.
+        """
+        if not server_name:
+            return
+        await self._client.refresh_server_link_name(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            server_name=server_name,
+        )
 
     async def create_link_token(
         self,
@@ -142,6 +171,23 @@ class BotBackend:
     async def get_session_title(self, session_id: str) -> str | None:
         session = await get_chat_session(session_id)
         return session.title if session else None
+
+    async def list_user_chats(
+        self, platform: str, platform_user_id: str, limit: int = 25
+    ) -> list[ChatSummary]:
+        resp = await self._client.list_user_chats(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            limit=limit,
+        )
+        return [
+            ChatSummary(
+                session_id=s.session_id,
+                title=s.title,
+                updated_at=s.updated_at,
+            )
+            for s in resp.sessions
+        ]
 
     async def stream_chat(
         self,
