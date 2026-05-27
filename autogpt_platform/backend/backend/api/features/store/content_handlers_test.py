@@ -12,6 +12,7 @@ from backend.api.features.store.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
     DocumentationHandler,
+    LibraryAgentHandler,
     StoreAgentHandler,
     _get_enabled_blocks,
 )
@@ -554,7 +555,70 @@ async def test_content_handlers_registry():
     assert ContentType.STORE_AGENT in CONTENT_HANDLERS
     assert ContentType.BLOCK in CONTENT_HANDLERS
     assert ContentType.DOCUMENTATION in CONTENT_HANDLERS
+    assert ContentType.LIBRARY_AGENT in CONTENT_HANDLERS
 
     assert isinstance(CONTENT_HANDLERS[ContentType.STORE_AGENT], StoreAgentHandler)
     assert isinstance(CONTENT_HANDLERS[ContentType.BLOCK], BlockHandler)
     assert isinstance(CONTENT_HANDLERS[ContentType.DOCUMENTATION], DocumentationHandler)
+    assert isinstance(CONTENT_HANDLERS[ContentType.LIBRARY_AGENT], LibraryAgentHandler)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_library_agent_handler_emits_user_scoped_items():
+    """get_missing_items must return one ContentItem per (user, library agent),
+    with non-null user_id and searchable_text combining name + description +
+    instructions."""
+    rows = [
+        {
+            "id": "la-1",
+            "userId": "user-a",
+            "name": "Email Bot",
+            "description": "Summarises emails",
+            "instructions": "Run nightly",
+        },
+        {
+            "id": "la-2",
+            "userId": "user-b",
+            "name": "Inbox Triage",
+            "description": "",
+            "instructions": None,
+        },
+    ]
+    with patch(
+        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        return_value=rows,
+    ):
+        handler = LibraryAgentHandler()
+        items = await handler.get_missing_items(batch_size=10)
+
+    assert len(items) == 2
+    assert items[0].content_id == "la-1"
+    assert items[0].user_id == "user-a"
+    assert items[0].content_type == ContentType.LIBRARY_AGENT
+    assert "Email Bot" in items[0].searchable_text
+    assert "Summarises emails" in items[0].searchable_text
+    assert "Run nightly" in items[0].searchable_text
+    assert items[1].content_id == "la-2"
+    assert items[1].user_id == "user-b"
+    assert items[1].searchable_text == "Inbox Triage"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_library_agent_handler_stats():
+    """get_stats counts total non-deleted/non-hidden library agents vs.
+    those with an embedding row."""
+
+    async def fake_query_raw(sql: str, *args, **kwargs):
+        if "uce" in sql or "UnifiedContentEmbedding" in sql:
+            return [{"count": 4}]
+        return [{"count": 10}]
+
+    with patch(
+        "backend.api.features.store.content_handlers.query_raw_with_schema",
+        side_effect=fake_query_raw,
+    ):
+        stats = await LibraryAgentHandler().get_stats()
+
+    assert stats["total"] == 10
+    assert stats["with_embeddings"] == 4
+    assert stats["without_embeddings"] == 6

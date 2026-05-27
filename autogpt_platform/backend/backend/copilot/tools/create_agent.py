@@ -5,10 +5,11 @@ import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
-from .helpers import require_guide_read
+from .helpers import require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, "
-            "auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "auto-fixes, and saves. Requires get_agent_building_guide and "
+            "find_library_agent(for_creation=true) first."
         )
 
     @property
@@ -66,6 +67,11 @@ class CreateAgentTool(BaseTool):
                     ),
                     "default": False,
                 },
+                "library_check_ack": {
+                    "type": "boolean",
+                    "description": "Bypass library-similarity gate after user declined.",
+                    "default": False,
+                },
             },
             "required": ["agent_json"],
         }
@@ -79,6 +85,7 @@ class CreateAgentTool(BaseTool):
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
         is_hidden: bool = False,
+        library_check_ack: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
@@ -86,6 +93,17 @@ class CreateAgentTool(BaseTool):
         guide_gate = require_guide_read(session, "create_agent")
         if guide_gate is not None:
             return guide_gate
+
+        if not library_check_ack:
+            library_gate = require_library_check(session, "create_agent")
+            if library_gate is not None:
+                return library_gate
+        elif user_id and not (session and session.metadata.builder_graph_id):
+            # Track the LLM-driven gate bypass so we can measure how often
+            # users were shown matches but chose to build new anyway.
+            track_library_check_outcome(
+                user_id=user_id, session_id=session_id, outcome="bypassed_ack"
+            )
 
         if not agent_json:
             return ErrorResponse(
