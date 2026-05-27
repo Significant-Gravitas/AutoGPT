@@ -29,6 +29,25 @@ from backend.util.cache import cached
 logger = logging.getLogger(__name__)
 
 
+# Minimum length of the trailing token before we enable
+# ``to_tsquery(... 'token:*')`` prefix matching for hybrid search.
+# A single-char prefix would match a large fraction of the embedding
+# table (the lexical candidate branch in ``unified_hybrid_search`` has
+# no LIMIT before scoring), so we wait for the user to type the second
+# character before turning prefix-match on.
+_PREFIX_MATCH_MIN_TAIL_LEN = 2
+
+
+def _should_prefix_match(query: str) -> bool:
+    """Whether to enable prefix-match for a search-as-you-type query.
+
+    Looks at the trailing token because that's the one the user is
+    actively typing — earlier tokens are assumed complete.
+    """
+    tail = query.rsplit(maxsplit=1)[-1] if query.strip() else ""
+    return len(tail) >= _PREFIX_MATCH_MIN_TAIL_LEN
+
+
 # ----- helpers ---------------------------------------------------------------
 
 
@@ -103,7 +122,14 @@ async def _search_bucket(
             min_score=hybrid_search.DEFAULT_STORE_AGENT_MIN_SCORE,
             # Search-as-you-type: the trailing token is usually a partial
             # word, so prefix-match the lexical signal ("se" -> "se:*").
-            prefix_match=True,
+            # Gated on the trailing token having >= 2 chars: a single
+            # letter ("s:*") would match a huge fraction of the embedding
+            # table and let the lexical candidate set explode before
+            # ts_rank_cd scoring (the lexical branch isn't capped like
+            # the semantic branch's LIMIT 200). For 1-char queries we
+            # fall back to whole-word plainto_tsquery, which usually
+            # yields no matches and lets the semantic signal take over.
+            prefix_match=_should_prefix_match(query),
         )
     except Exception as e:
         logger.warning(
