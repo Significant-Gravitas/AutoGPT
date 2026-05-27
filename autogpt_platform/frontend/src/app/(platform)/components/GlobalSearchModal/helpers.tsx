@@ -5,13 +5,19 @@ import type {
   SearchCommandBucket,
   SearchCommandItem,
 } from "@/components/organisms/SearchCommandModal/helpers";
+import { cn } from "@/lib/utils";
 import {
-  BookOpenIcon,
   ChatCircleIcon,
   FileIcon,
   StorefrontIcon,
+  TreeStructureIcon,
 } from "@phosphor-icons/react";
+import Image from "next/image";
 import type { ComponentType } from "react";
+import {
+  type PlatformLogo,
+  resolvePlatformLogo,
+} from "@/app/(platform)/copilot/components/ChatOriginIcon/platformLogos";
 
 export type BucketKey = "agents" | "files" | "chats";
 
@@ -19,11 +25,50 @@ const ICON_BY_TYPE: Record<
   SearchResultItemType,
   ComponentType<{ className?: string }>
 > = {
-  library_agent: BookOpenIcon,
+  // Workflow / node-graph cue maps better to "an agent" than a robot
+  // mascot — agents in this product are visual graphs of nodes, not
+  // anthropomorphic assistants.
+  library_agent: TreeStructureIcon,
   store_agent: StorefrontIcon,
   workspace_file: FileIcon,
   chat_session: ChatCircleIcon,
 };
+
+// Chat sessions opened from external platforms (Discord, Slack, …)
+// carry their origin in ``metadata.source_platform``. We reuse the
+// ChatOriginIcon platform-logo table so the search row shows the same
+// branded image as the sidebar / chat header — consistent visual
+// language across surfaces.
+function makePlatformIconComponent(
+  logo: PlatformLogo,
+): ComponentType<{ className?: string }> {
+  function PlatformIcon({ className }: { className?: string }) {
+    return (
+      <Image
+        src={logo.src}
+        alt={logo.name}
+        width={16}
+        height={16}
+        loading="lazy"
+        className={cn("size-4 object-contain", className)}
+      />
+    );
+  }
+  PlatformIcon.displayName = `PlatformIcon(${logo.name})`;
+  return PlatformIcon;
+}
+
+function resolveIcon(
+  item: SearchResultItem,
+): ComponentType<{ className?: string }> {
+  if (item.type === "chat_session") {
+    const logo = resolvePlatformLogo(
+      item.metadata?.source_platform as string | undefined,
+    );
+    if (logo) return makePlatformIconComponent(logo);
+  }
+  return ICON_BY_TYPE[item.type];
+}
 
 const BUCKET_LABEL: Record<BucketKey, string> = {
   agents: "Agents",
@@ -45,7 +90,7 @@ function toCommandItem(item: SearchResultItem): SearchCommandItem {
     id: itemKey(item),
     title: item.title,
     subtitle: item.subtitle ?? null,
-    icon: ICON_BY_TYPE[item.type],
+    icon: resolveIcon(item),
   };
 }
 

@@ -1,3 +1,4 @@
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +18,7 @@ import {
   type SearchCommandItem,
 } from "./helpers";
 import { SearchCommandResults } from "./SearchCommandResults";
+import { SearchCommandSkeleton } from "./SearchCommandSkeleton";
 import { useKeyboardNav } from "./useKeyboardNav";
 
 interface Props {
@@ -31,8 +33,6 @@ interface Props {
   idleEmptyLabel?: ReactNode;
   /** Shown when results are empty and ``query`` is non-empty. */
   searchingEmptyLabel?: ReactNode;
-  /** Shown while ``isLoading`` is true and there's nothing to display. */
-  loadingLabel?: ReactNode;
   /** Shown when ``isError`` is true. Replaces the result list entirely. */
   errorLabel?: ReactNode;
   isLoading?: boolean;
@@ -50,7 +50,6 @@ export function SearchCommandModal({
   onSelectItem,
   idleEmptyLabel = "No items",
   searchingEmptyLabel = "No results found",
-  loadingLabel = "Searching…",
   errorLabel = "Something went wrong. Try again.",
   isLoading = false,
   isError = false,
@@ -142,6 +141,13 @@ export function SearchCommandModal({
             autoComplete="off"
             className="h-9 border-0 bg-transparent px-0 text-base text-zinc-950 shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
           />
+          {isLoading && isSearching ? (
+            <LoadingSpinner
+              size="small"
+              aria-label="Searching"
+              className="shrink-0 text-zinc-500"
+            />
+          ) : null}
           {query ? (
             <Button
               type="button"
@@ -179,12 +185,12 @@ export function SearchCommandModal({
                 onSelect={onSelectItem}
               />
             ) : showLoading ? (
-              <div
-                aria-label="Loading"
-                className="px-3 py-8 text-center text-sm text-zinc-400"
-              >
-                {loadingLabel}
-              </div>
+              // Skeleton over text: the input-side spinner already
+              // signals "searching", so the body should mirror the
+              // shape of what's about to appear (staggered rows) rather
+              // than block the eye with a centred string. Emil
+              // Kowalski's strategy-feedback-immediate rule.
+              <SearchCommandSkeleton />
             ) : showEmptyState ? (
               <div className="px-3 py-8 text-center text-sm text-zinc-500">
                 {isSearching ? searchingEmptyLabel : idleEmptyLabel}

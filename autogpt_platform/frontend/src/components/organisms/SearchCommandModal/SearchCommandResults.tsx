@@ -63,6 +63,10 @@ export function SearchCommandResults({
                   }
                   onHighlight={() => onHighlight(entry.index)}
                   onSelect={() => onSelect(entry.item, entry.bucketKey)}
+                  // Absolute index across all buckets so the stagger
+                  // cascades naturally section-by-section instead of
+                  // restarting at each header.
+                  enterIndex={entry.index}
                 />
               ))}
             </div>
