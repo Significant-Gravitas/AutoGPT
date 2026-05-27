@@ -251,6 +251,15 @@ class ChatSession(ChatSessionInfo):
     # completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
+    # Optional argument capture for in-flight tool calls.  Some guards
+    # (e.g. ``require_guide_read``) discriminate by argument as well as
+    # by name — for ``read_skill(name="agent_building_guide")`` we need
+    # to know the *name* arg, not just that ``read_skill`` was called.
+    # Populated alongside the name set by
+    # :meth:`announce_inflight_tool_call`; mapping from tool name to a
+    # list of argument dicts (one entry per dispatched call).
+    _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
+
     @classmethod
     def new(
         cls,
@@ -289,7 +298,9 @@ class ChatSession(ChatSessionInfo):
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
 
-    def announce_inflight_tool_call(self, tool_name: str) -> None:
+    def announce_inflight_tool_call(
+        self, tool_name: str, arguments: Any = None
+    ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
         Called by the baseline tool executor **before** the tool actually
@@ -308,12 +319,31 @@ class ChatSession(ChatSessionInfo):
         particular because its aggressive tool-call chaining exercises
         this path much more than Sonnet does).  The buffer is cleared by
         :meth:`clear_inflight_tool_calls` at turn end.
+
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
         """
         self._inflight_tool_calls.add(tool_name)
+        if isinstance(arguments, dict):
+            self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
 
     def clear_inflight_tool_calls(self) -> None:
         """Reset the in-flight tool-call announcement buffer."""
         self._inflight_tool_calls.clear()
+        self._inflight_tool_call_args.clear()
+
+    def get_inflight_tool_call_args(self, tool_name: str) -> list[dict]:
+        """Return arg snapshots captured for *tool_name* in this turn.
+
+        Returns an empty list when no in-flight call recorded args
+        (anonymous-tool-name announcements with ``arguments=None``).
+        """
+        return list(self._inflight_tool_call_args.get(tool_name, ()))
 
     def has_tool_been_called(self, tool_name: str) -> bool:
         """True when *tool_name* has been called in this session.
