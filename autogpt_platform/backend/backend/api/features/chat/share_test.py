@@ -187,7 +187,7 @@ class TestDisableChatSharing:
 
 class TestGetChatShareState:
     def test_returns_unshared_state(self, client):
-        from backend.copilot.sharing.db import ChatShareState
+        from backend.copilot.sharing.models import ChatShareState
 
         with patch(
             "backend.api.features.chat.share.share_db.get_chat_share_state",
@@ -209,7 +209,7 @@ class TestGetChatShareState:
         }
 
     def test_returns_shared_state_with_token_and_auto_share_flag(self, client):
-        from backend.copilot.sharing.db import ChatShareState
+        from backend.copilot.sharing.models import ChatShareState
 
         with patch(
             "backend.api.features.chat.share.share_db.get_chat_share_state",

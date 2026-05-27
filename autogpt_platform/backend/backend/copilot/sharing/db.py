@@ -9,7 +9,6 @@ encoded here (see :func:`disable_chat_session_share`).
 
 import json
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,6 +30,7 @@ from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
+    ChatShareState,
     SharedChatLinkedExecution,
     SharedChatMessagesPage,
     SharedChatSession,
@@ -450,21 +450,6 @@ async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
 
 
 # ---------- Linked execution discovery (share-modal helper) ------------------
-
-
-@dataclass
-class ChatShareState:
-    is_shared: bool
-    share_token: str | None
-    auto_share_executions: bool = False
-    # Snapshot of what the owner is about to expose (or already exposes).
-    # Surfaced to the share modal so the consent step shows real numbers
-    # instead of a vague warning.  All three are cheap aggregate queries
-    # — message_count is a COUNT(*), the others reuse the same scanners
-    # the allowlist build runs at enable time.
-    message_count: int = 0
-    linked_run_count: int = 0
-    file_count: int = 0
 
 
 async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:

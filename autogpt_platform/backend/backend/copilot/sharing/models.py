@@ -121,6 +121,25 @@ class SharedChatMessagesPage(BaseModel):
     oldest_sequence: int | None
 
 
+class ChatShareState(BaseModel):
+    """Owner-facing share state for a chat session (not a public model).
+
+    Powers the share modal: ``is_shared`` / ``share_token`` decide the
+    share-vs-revoke mode, and the three counts drive the consent-disclosure
+    block above the toggle so the owner sees exactly what they're about to
+    expose.  The counts reflect live state — sharing is live, not
+    snapshot-at-enable — so they ARE the numbers visible the moment the
+    owner enables sharing.
+    """
+
+    is_shared: bool
+    share_token: str | None
+    auto_share_executions: bool = False
+    message_count: int = 0
+    linked_run_count: int = 0
+    file_count: int = 0
+
+
 def sanitize_chat_session(
     session: ChatSessionInfo,
     *,
