@@ -6,7 +6,7 @@ from backend.data.db_accessors import platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
-from .chat import start_chat_turn
+from .chat import list_user_chats, start_chat_turn
 from .models import (
     BotChatRequest,
     ChatTurnHandle,
@@ -14,6 +14,7 @@ from .models import (
     CreateUserLinkTokenRequest,
     LinkTokenResponse,
     LinkTokenStatusResponse,
+    ListUserChatsResponse,
     Platform,
     ResolveResponse,
 )
@@ -70,6 +71,16 @@ class PlatformLinkingManager(AppService):
             platform.value, platform_server_id, server_name
         )
 
+    @expose
+    async def list_user_chats(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> ListUserChatsResponse:
+        return await list_user_chats(platform, platform_user_id, limit, offset)
+
 
 class PlatformLinkingManagerClient(AppServiceClient):
     @classmethod
@@ -91,3 +102,4 @@ class PlatformLinkingManagerClient(AppServiceClient):
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name
     )
+    list_user_chats = endpoint_to_async(PlatformLinkingManager.list_user_chats)
