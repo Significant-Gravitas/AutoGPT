@@ -10,6 +10,7 @@ import logging
 import discord
 from discord import app_commands
 
+from backend.copilot.bot import sessions
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
@@ -38,6 +39,13 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
     )
     async def unlink_command(interaction: discord.Interaction) -> None:
         await _handle_unlink(interaction)
+
+    @tree.command(
+        name="new",
+        description="Start a fresh AutoPilot conversation in this DM or thread",
+    )
+    async def new_command(interaction: discord.Interaction) -> None:
+        await _handle_new(interaction)
 
 
 async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> None:
@@ -107,6 +115,7 @@ async def _handle_help(interaction: discord.Interaction) -> None:
         "Mention me in a server or DM me directly to chat.\n\n"
         "**Commands:**\n"
         "- `/setup` — Link this server to your AutoGPT account\n"
+        "- `/new` — Start a fresh conversation (DMs & threads)\n"
         "- `/help` — Show this message\n"
         "- `/unlink` — Manage linked accounts\n\n"
         "**How it works:**\n"
@@ -141,3 +150,30 @@ async def _handle_unlink(interaction: discord.Interaction) -> None:
         )
     )
     await interaction.response.send_message(message, ephemeral=True, view=view)
+
+
+async def _handle_new(interaction: discord.Interaction) -> None:
+    is_dm = interaction.guild is None
+    is_thread = isinstance(interaction.channel, discord.Thread)
+    if not is_dm and not is_thread:
+        await interaction.response.send_message(
+            "Use `/new` in a DM or a thread. Mentioning me in a channel "
+            "already starts a fresh thread.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        await sessions.clear_session("discord", str(interaction.channel_id))
+    except Exception:
+        logger.exception("Failed to clear copilot session for /new")
+        await interaction.response.send_message(
+            "Couldn't reset the conversation right now. Please try again in a moment.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        "Started a fresh conversation — send a message to begin.",
+        ephemeral=True,
+    )

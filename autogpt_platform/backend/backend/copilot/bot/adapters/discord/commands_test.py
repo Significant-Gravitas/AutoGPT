@@ -6,12 +6,13 @@ registration since it requires a live ``discord.Client``.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from backend.util.exceptions import LinkAlreadyExistsError
 
 from ...bot_backend import LinkTokenResult
-from .commands import _handle_help, _handle_setup, _handle_unlink
+from .commands import _handle_help, _handle_new, _handle_setup, _handle_unlink
 
 
 def _interaction(*, guild: bool = True, manage_guild: bool = True) -> MagicMock:
@@ -120,6 +121,7 @@ class TestHandleHelp:
         assert interaction.response.send_message.await_args.kwargs["ephemeral"] is True
         body = interaction.response.send_message.await_args.args[0]
         assert "/setup" in body
+        assert "/new" in body
         assert "/help" in body
         assert "/unlink" in body
 
@@ -176,3 +178,64 @@ class TestHandleUnlink:
         sent = interaction.response.send_message.await_args
         assert "view" not in sent.kwargs or sent.kwargs.get("view") is None
         assert "Profile" in sent.args[0]
+
+
+class TestHandleNew:
+    @pytest.mark.asyncio
+    async def test_dm_clears_session(self):
+        interaction = _interaction(guild=False)
+        interaction.channel = MagicMock()
+        interaction.channel_id = 555
+        with patch(
+            "backend.copilot.bot.sessions.clear_session",
+            new=AsyncMock(),
+        ) as mock_clear:
+            await _handle_new(interaction)
+
+        mock_clear.assert_awaited_once_with("discord", "555")
+        interaction.response.send_message.assert_awaited_once()
+        assert interaction.response.send_message.await_args.kwargs["ephemeral"] is True
+
+    @pytest.mark.asyncio
+    async def test_thread_clears_session(self):
+        interaction = _interaction()
+        interaction.channel = MagicMock(spec=discord.Thread)
+        interaction.channel_id = 777
+        with patch(
+            "backend.copilot.bot.sessions.clear_session",
+            new=AsyncMock(),
+        ) as mock_clear:
+            await _handle_new(interaction)
+
+        mock_clear.assert_awaited_once_with("discord", "777")
+
+    @pytest.mark.asyncio
+    async def test_plain_channel_is_rejected(self):
+        interaction = _interaction()
+        interaction.channel = MagicMock()
+        with patch(
+            "backend.copilot.bot.sessions.clear_session",
+            new=AsyncMock(),
+        ) as mock_clear:
+            await _handle_new(interaction)
+
+        mock_clear.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_failure_sends_fallback_message(self):
+        """A Redis outage during /new must never leave the interaction
+        hanging. We must send an ephemeral fallback instead of bubbling up."""
+        interaction = _interaction(guild=False)
+        interaction.channel = MagicMock()
+        interaction.channel_id = 999
+        with patch(
+            "backend.copilot.bot.sessions.clear_session",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            await _handle_new(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+        assert "try again" in sent.args[0].lower()
