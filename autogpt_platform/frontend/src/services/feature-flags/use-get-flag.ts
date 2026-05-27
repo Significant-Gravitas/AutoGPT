@@ -14,7 +14,7 @@ export enum Flag {
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
-  CONTEXT_PANEL = "context-panel",
+  CONTEXT_PANEL = "chat-context-panel",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
