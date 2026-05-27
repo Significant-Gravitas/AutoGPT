@@ -61,7 +61,7 @@ class TestNormalizeModelForTransport:
         )
 
     def test_unprefixed_claude_slug_passes(self):
-        # ``claude-sonnet-4-20250514`` (no vendor prefix) is the
+        # ``claude-sonnet-4-6`` (no vendor prefix) is the
         # Anthropic Messages / OpenAI-compat form — must pass through.
         cfg = _make_cfg(
             use_openrouter=False,
@@ -70,8 +70,8 @@ class TestNormalizeModelForTransport:
             use_claude_code_subscription=False,
         )
         assert (
-            normalize_model_for_transport("claude-sonnet-4-20250514", cfg)
-            == "claude-sonnet-4-20250514"
+            normalize_model_for_transport("claude-sonnet-4-6", cfg)
+            == "claude-sonnet-4-6"
         )
 
     def test_unprefixed_non_anthropic_slug_rejected(self):
