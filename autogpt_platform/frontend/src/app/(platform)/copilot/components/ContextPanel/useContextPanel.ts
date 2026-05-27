@@ -14,7 +14,6 @@ export function useContextPanel() {
 
   return {
     isOpen: artifactPanel.isOpen,
-    width: artifactPanel.width,
     activeTab: artifactPanel.activeTab,
     view,
     setActiveTab,

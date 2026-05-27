@@ -75,7 +75,9 @@ export function CopilotPage() {
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
           {!isMobile && isContextPanelEnabled && <ContextPanelToggle />}
-          {isContextPanelEnabled && (
+          {/* Auto-open is desktop-only: on mobile the panel is a fullscreen
+              sheet, so opening it on first file would take over the chat. */}
+          {!isMobile && isContextPanelEnabled && (
             <ContextPanelAutoOpen
               key={sessionId ?? "new"}
               sessionId={sessionId}
