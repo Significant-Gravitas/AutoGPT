@@ -210,9 +210,7 @@ async def test_global_search_respects_per_type_limit(mocker):
 
     mock_manager = MagicMock()
     mock_manager.list_files = AsyncMock(return_value=files[:3])
-    mocker.patch(
-        "backend.util.workspace.WorkspaceManager", return_value=mock_manager
-    )
+    mocker.patch("backend.util.workspace.WorkspaceManager", return_value=mock_manager)
     mocker.patch(
         "backend.data.workspace.get_workspace",
         new=AsyncMock(return_value=MagicMock(id="ws-1")),
