@@ -433,7 +433,7 @@ export function ChatMessagesContainer({
   return (
     <Conversation
       key={sessionID ?? "new"}
-      resize={settled ? "smooth" : "instant"}
+      resize="instant"
       className={
         "min-h-0 flex-1 " +
         (hideForScroll

@@ -70,7 +70,7 @@ export function CopilotPage() {
           <LowCreditBanner />
           <NotificationBanner />
           <CopilotChatHost
-            key={sessionId ?? "new"}
+            key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
@@ -79,7 +79,7 @@ export function CopilotPage() {
               sheet, so opening it on first file would take over the chat. */}
           {!isMobile && isContextPanelEnabled && (
             <ContextPanelAutoOpen
-              key={sessionId ?? "new"}
+              key={`context-auto-open-${sessionId ?? "new"}`}
               sessionId={sessionId}
             />
           )}
