@@ -1,10 +1,12 @@
 "use client";
 
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
+import { SignOutIcon } from "@phosphor-icons/react";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";
 
@@ -25,12 +27,22 @@ export function PaywallModal() {
     pendingTierLabel,
     confirmPendingTier,
     cancelPendingTier,
+    handleLogout,
   } = usePaywallModal();
 
   return (
     <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
       <Dialog.Content>
-        <div className="flex w-full flex-col items-center gap-4 px-2 py-2">
+        <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={handleLogout}
+            leftIcon={<SignOutIcon size={16} />}
+            className="absolute right-0 top-0 text-zinc-500 hover:text-zinc-700"
+          >
+            Log out
+          </Button>
           <div className="flex flex-col items-center gap-1 text-center">
             <Text
               variant="h3"
