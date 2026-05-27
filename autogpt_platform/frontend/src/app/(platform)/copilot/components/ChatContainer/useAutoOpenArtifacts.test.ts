@@ -49,6 +49,7 @@ function resetStore() {
       width: 600,
       activeArtifact: null,
       history: [],
+      activeTab: "files",
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();

@@ -14,6 +14,7 @@ export enum Flag {
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
+  CONTEXT_PANEL = "context-panel",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -28,6 +29,7 @@ const defaultFlags = {
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
+  [Flag.CONTEXT_PANEL]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -69,6 +71,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
+    case Flag.CONTEXT_PANEL:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CONTEXT_PANEL;
   }
 }
 

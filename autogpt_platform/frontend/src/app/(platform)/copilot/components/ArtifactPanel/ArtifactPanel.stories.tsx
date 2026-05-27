@@ -26,6 +26,7 @@ function openPanelWith(artifact: ArtifactRef) {
       width: 600,
       activeArtifact: artifact,
       history: [],
+      activeTab: "files",
     },
   });
 }
@@ -156,6 +157,7 @@ export const MinimizedStrip: Story = {
           width: 600,
           activeArtifact: makeArtifact(),
           history: [],
+          activeTab: "files",
         },
       });
       return <Story />;
@@ -207,6 +209,7 @@ export const Closed: Story = {
           width: 600,
           activeArtifact: null,
           history: [],
+          activeTab: "files",
         },
       });
       return <Story />;
