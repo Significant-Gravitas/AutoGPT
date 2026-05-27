@@ -8,7 +8,6 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
-  getDeletePlatformLinkingUnlinkADmUserLinkMockHandler,
   getDeletePlatformLinkingUnlinkADmUserLinkMockHandler401,
   getDeletePlatformLinkingUnlinkAPlatformServerMockHandler,
   getListBotPlatformsMockHandler,
@@ -180,9 +179,12 @@ describe("SettingsBotsPage", () => {
       await screen.findByRole("button", { name: /unlink dm on discord/i }),
     );
 
-    // Use a fresh handler that no longer returns the DM link so we can
-    // assert the row is NOT refreshed away — only the failing call ran.
-    server.use(getDeletePlatformLinkingUnlinkADmUserLinkMockHandler());
-    expect(screen.getByText("bently")).toBeDefined();
+    // Swap the GET handler so a refetch would drop the DM row. If the failed
+    // mutation wrongly invalidated platforms, "bently" would vanish. Asserting
+    // it stays proves no refetch fired.
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+    await waitFor(() => {
+      expect(screen.getByText("bently")).toBeDefined();
+    });
   });
 });
