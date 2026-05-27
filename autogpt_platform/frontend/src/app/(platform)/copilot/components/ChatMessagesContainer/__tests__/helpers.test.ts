@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  WORKSPACE_FILE_PATTERN,
   buildRenderSegments,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
@@ -7,9 +8,11 @@ import {
   isInteractiveToolPart,
   isReasoningToolPart,
   parseSpecialMarkers,
+  resolveWorkspaceUrls,
   splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
+import type { FileUIPart } from "ai";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -620,5 +623,95 @@ describe("splitReasoningAndResponse", () => {
     expect(reasoning).toHaveLength(2);
     expect(reasoning[1]).toBe(genericTool);
     expect(response).toHaveLength(1);
+  });
+});
+
+// ----- Custom fileUrlBuilder threading -----------------------------------
+// The public-share viewer threads a token-aware URL builder through
+// these helpers so anonymous readers can render file references that
+// hit the public allowlist-gated download endpoint instead of the
+// auth'd workspace one.  These tests pin the contract.
+
+describe("extractWorkspaceArtifacts with custom fileUrlBuilder", () => {
+  const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("routes sourceUrl through the supplied builder", () => {
+    const text = `See [report](workspace://${FILE_ID}) for details.`;
+    const builder = (id: string) => `/share/files/${id}.dl`;
+    const out = extractWorkspaceArtifacts(text, builder);
+    expect(out).toHaveLength(1);
+    expect(out[0].sourceUrl).toBe(`/share/files/${FILE_ID}.dl`);
+  });
+
+  it("default builder produces the workspace-file URL", () => {
+    const text = `[report](workspace://${FILE_ID})`;
+    const out = extractWorkspaceArtifacts(text);
+    expect(out[0].sourceUrl).toContain(`/files/${FILE_ID}/download`);
+  });
+});
+
+describe("resolveWorkspaceUrls with custom fileUrlBuilder", () => {
+  const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("rewrites image syntax using the supplied builder", () => {
+    const text = `![pic](workspace://${FILE_ID}#image/png)`;
+    const builder = (id: string) => `/share/files/${id}.png`;
+    const out = resolveWorkspaceUrls(text, builder);
+    expect(out).toBe(`![pic](/share/files/${FILE_ID}.png)`);
+  });
+
+  it("rewrites link syntax to absolute URL with origin prefix", () => {
+    const text = `Open [the file](workspace://${FILE_ID}) here.`;
+    const builder = (id: string) => `/share/files/${id}.dl`;
+    const out = resolveWorkspaceUrls(text, builder);
+    // jsdom's window.location.origin is "http://localhost:3000".
+    expect(out).toContain(`(http://localhost:3000/share/files/${FILE_ID}.dl)`);
+  });
+
+  it("default builder rewrites workspace:// to the workspace endpoint", () => {
+    const text = `![pic](workspace://${FILE_ID})`;
+    const out = resolveWorkspaceUrls(text);
+    expect(out).toMatch(/api\/workspace\/files\/.*\/download/);
+  });
+
+  it("video MIME hint produces video: alt prefix", () => {
+    const text = `![demo](workspace://${FILE_ID}#video/mp4)`;
+    const builder = (id: string) => `/share/files/${id}.mp4`;
+    const out = resolveWorkspaceUrls(text, builder);
+    expect(out).toBe(`![video:demo](/share/files/${FILE_ID}.mp4)`);
+  });
+});
+
+describe("filePartToArtifactRef with custom pattern", () => {
+  const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
+  const file: FileUIPart = {
+    type: "file",
+    filename: "report.png",
+    mediaType: "image/png",
+    url: `/api/proxy/api/public/shared/chats/some-token/files/${FILE_ID}/download`,
+  };
+
+  it("default pattern (workspace-file) rejects public-share URL", () => {
+    expect(filePartToArtifactRef(file)).toBeNull();
+  });
+
+  it("custom pattern matching the public-share URL extracts the file ID", () => {
+    const pattern =
+      /\/api\/proxy\/api\/public\/shared\/chats\/[^/]+\/files\/([a-f0-9-]+)\/download/;
+    const ref = filePartToArtifactRef(file, "agent", pattern);
+    expect(ref?.id).toBe(FILE_ID);
+    expect(ref?.title).toBe("report.png");
+    expect(ref?.mimeType).toBe("image/png");
+  });
+
+  it("returns null when url has no file", () => {
+    expect(
+      filePartToArtifactRef({ ...file, url: "" } as FileUIPart),
+    ).toBeNull();
+  });
+
+  it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
+    const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
+    expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
   });
 });

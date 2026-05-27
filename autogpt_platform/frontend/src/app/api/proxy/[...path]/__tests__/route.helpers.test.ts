@@ -78,12 +78,42 @@ describe("isWorkspaceDownloadRequest", () => {
     ).toBe(true);
   });
 
+  it("matches api/public/shared/chats/{uuid}/files/{uuid}/download pattern", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "chats",
+        VALID_UUID,
+        "files",
+        VALID_UUID_2,
+        "download",
+      ]),
+    ).toBe(true);
+  });
+
   it("rejects public shared paths not ending with download", () => {
     expect(
       isWorkspaceDownloadRequest([
         "api",
         "public",
         "shared",
+        VALID_UUID,
+        "files",
+        VALID_UUID_2,
+        "metadata",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects public shared chat paths not ending with download", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "chats",
         VALID_UUID,
         "files",
         VALID_UUID_2,
@@ -124,6 +154,36 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "public",
         "shared",
+        VALID_UUID,
+        "files",
+        "not-a-uuid",
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID token in public shared chat path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "chats",
+        "not-a-uuid",
+        "files",
+        VALID_UUID,
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID file ID in public shared chat path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "chats",
         VALID_UUID,
         "files",
         "not-a-uuid",
