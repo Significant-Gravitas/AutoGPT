@@ -8079,6 +8079,34 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List copilot follow-up schedules for a user",
+        "description": "Return only copilot-turn schedules for the current user.\n\nSibling of :func:`list_all_graphs_execution_schedules`; one route per kind\nkeeps the generated frontend client typed to a single concrete return type\ninstead of a discriminated union.",
+        "operationId": "listCopilotFollowupSchedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CopilotTurnJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Listcopilotfollowupschedules"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -8114,6 +8142,121 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "List user-distilled copilot skills",
+        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "operationId": "listCopilotSkills",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
+                  "type": "array",
+                  "title": "Response Listcopilotskills"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skills/{name}": {
+      "delete": {
+        "tags": ["v1", "skills"],
+        "summary": "Delete a user-distilled copilot skill",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "operationId": "deleteCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to delete",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" },
+                  "title": "Response Deletecopilotskill"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v1", "skills"],
+        "summary": "Read a single copilot skill with its full SKILL.md body",
+        "description": "Return full SKILL.md content (name, description, triggers, body)\nfor the library UI's expand-to-view dialog.\n\nBuilt-in default skills are returned with ``is_default=True`` so the\nUI can hide destructive affordances; missing user skills return 404.",
+        "operationId": "readCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill to read",
+              "title": "Name"
+            },
+            "description": "Slug of the skill to read"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CopilotSkillDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9905,6 +10048,11 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
+          "match_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Match Score",
+            "description": "Combined relevance score in [0, 1] when this agent was returned from a similarity search (e.g. the create-time library check). Null for non-similarity sources."
+          },
           "input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -11082,6 +11230,106 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotSkillDetail": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          },
+          "body": { "type": "string", "title": "Body" },
+          "version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "sibling_files": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Sibling Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description", "body"],
+        "title": "CopilotSkillDetail",
+        "description": "Full SKILL.md content surfaced to the library expand-to-view UI."
+      },
+      "CopilotSkillInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["name", "description"],
+        "title": "CopilotSkillInfo",
+        "description": "User-distilled copilot skill metadata for the library UI.\n\nDefaults (built-in agent-building / MCP-tool guides) are intentionally\nexcluded — they cannot be edited or deleted, so surfacing them in the\nuser-facing list would add noise without affordances."
+      },
+      "CopilotTurnJobInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "copilot_turn",
+            "title": "Kind",
+            "default": "copilot_turn"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Run At"
+          },
+          "cap_retry_count": {
+            "type": "integer",
+            "title": "Cap Retry Count",
+            "default": 0
+          },
+          "user_timezone": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Timezone"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone used for scheduling",
+            "default": "UTC"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message", "id", "name", "next_run_time"],
+        "title": "CopilotTurnJobInfo"
       },
       "CopilotUsageExportResponse": {
         "properties": {
@@ -12320,6 +12568,12 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "graph",
+            "title": "Kind",
+            "default": "graph"
+          },
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
@@ -15517,6 +15771,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_created",
           "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
@@ -15547,7 +15802,11 @@
           "memory_forget_candidates",
           "memory_forget_confirm",
           "todo_write",
-          "platform_info"
+          "platform_info",
+          "skill_stored",
+          "skill_loaded",
+          "skill_deleted",
+          "skill_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -15921,25 +16180,49 @@
       "ScheduleSummary": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["graph", "copilot_turn"],
+            "title": "Kind"
+          },
           "name": { "type": "string", "title": "Name" },
-          "cron": { "type": "string", "title": "Cron" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "run_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Run At"
+          },
+          "graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Id"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
         },
         "type": "object",
         "required": [
           "schedule_id",
+          "kind",
           "name",
-          "cron",
           "timezone",
-          "next_run_time",
-          "graph_id",
-          "graph_version"
+          "next_run_time"
         ],
         "title": "ScheduleSummary",
-        "description": "Summary of a single schedule."
+        "description": "Summary of a single schedule (either a graph run or copilot turn)."
       },
       "SchedulesListResponse": {
         "properties": {

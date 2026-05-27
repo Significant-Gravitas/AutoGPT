@@ -5,7 +5,7 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
 import { cn } from "@/lib/utils";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
-import type { FleetSummary, AgentStatusFilter } from "../../types";
+import type { FleetSummary, AgentStatusFilter } from "../../../../types";
 
 interface Props {
   summary: FleetSummary;

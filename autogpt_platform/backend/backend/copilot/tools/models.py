@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
@@ -101,6 +102,12 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
+    # Skills (self-distilled procedure registry)
+    SKILL_STORED = "skill_stored"
+    SKILL_LOADED = "skill_loaded"
+    SKILL_DELETED = "skill_deleted"
+    SKILL_LIST = "skill_list"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -131,6 +138,14 @@ class AgentInfo(BaseModel):
     new_output: bool | None = None
     graph_id: str | None = None
     graph_version: int | None = None
+    match_score: float | None = Field(
+        default=None,
+        description=(
+            "Combined relevance score in [0, 1] when this agent was returned "
+            "from a similarity search (e.g. the create-time library check). "
+            "Null for non-similarity sources."
+        ),
+    )
     input_schema: dict[str, Any] | None = Field(
         default=None,
         description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",

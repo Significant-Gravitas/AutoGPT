@@ -222,9 +222,13 @@ class DiscordAdapter(PlatformAdapter):
             await self._on_message_callback(ctx, self)
 
     def _should_ignore_message(self, message: discord.Message) -> bool:
-        return (
-            self._client.user is not None and message.author.id == self._client.user.id
-        )
+        if self._client.user is not None and message.author.id == self._client.user.id:
+            return True
+        # Other bots reach us only by @mentioning us; without this gate two
+        # bots in a shared thread (our own dev + prod included) loop forever.
+        if message.author.bot:
+            return not self._is_mentioned(message)
+        return False
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:

@@ -112,9 +112,13 @@ class TestStartChatTurn:
         mock_enqueue.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_existing_session_id_wrong_user_raises_not_found(self):
+    async def test_stale_session_id_falls_back_to_fresh_session(self):
+        # The bot caches session IDs across turns; a cached session can be
+        # deleted from the web app in between. start_chat_turn must recover
+        # by creating a fresh session instead of raising.
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        session = MagicMock(session_id="sess-fresh")
 
         with (
             patch(
@@ -125,9 +129,27 @@ class TestStartChatTurn:
                 "backend.platform_linking.chat.get_chat_session",
                 new=AsyncMock(return_value=None),
             ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=session),
+            ) as mock_create,
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.platform_linking.chat.stream_registry"
+            ) as mock_stream_registry,
+            patch(
+                "backend.platform_linking.chat.enqueue_copilot_turn",
+                new=AsyncMock(),
+            ),
         ):
-            with pytest.raises(NotFoundError):
-                await start_chat_turn(_request(session_id="someone-elses"))
+            mock_stream_registry.create_session = AsyncMock()
+            handle = await start_chat_turn(_request(session_id="deleted-session"))
+
+        assert handle.session_id == "sess-fresh"
+        mock_create.assert_awaited_once()
 
 
 class TestListUserChats:
