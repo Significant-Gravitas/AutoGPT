@@ -1062,15 +1062,25 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
+    sessions = await db.get_user_chat_sessions(
+        user_id, limit, offset, title_contains=title_contains
+    )
+    # Total count ignores the filter — it's the user's overall session
+    # count, used by paginated listings. The /search/global caller
+    # discards it.
     total_count = await db.get_user_session_count(user_id)
 
     return sessions, total_count

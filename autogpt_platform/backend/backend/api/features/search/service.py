@@ -21,6 +21,7 @@ from typing import Any
 
 from prisma.enums import ContentType
 
+from backend.api.features.search import hybrid_search
 from backend.api.features.search.model import GlobalSearchResponse, SearchResultItem
 from backend.data.db_accessors import library_db, search
 from backend.util.cache import cached
@@ -94,10 +95,12 @@ async def _search_bucket(
             user_id=user_id,
             page=1,
             page_size=limit,
-            # The unified default (0.15) is calibrated for relevance pages;
-            # use a slightly more permissive floor for the global top-N so
-            # we still return *something* on short queries.
-            min_score=0.05,
+            # The command palette must return *nothing* for unrelated
+            # queries — cosine similarity between two embeddings is
+            # almost never 0, so a low floor lets the semantic UNION
+            # surface arbitrary recent rows for queries like
+            # "hello walhalla". Match the store-agent threshold (0.20).
+            min_score=hybrid_search.DEFAULT_STORE_AGENT_MIN_SCORE,
             # Search-as-you-type: the trailing token is usually a partial
             # word, so prefix-match the lexical signal ("se" -> "se:*").
             prefix_match=True,
@@ -159,8 +162,16 @@ async def _recent_agents(user_id: str, limit: int) -> list[SearchResultItem]:
     return items
 
 
-async def _recent_files(user_id: str, limit: int) -> list[SearchResultItem]:
-    """Most-recently-updated workspace files across all sessions."""
+async def _files_bucket(
+    user_id: str, limit: int, query: str | None = None
+) -> list[SearchResultItem]:
+    """Workspace files, filtered by ``query`` substring when provided.
+
+    Uses a direct ``ILIKE`` filter on ``name`` instead of the embedding
+    index so newly-written files are findable immediately. Workspace
+    file embeddings only encode the name anyway, so we lose nothing in
+    quality and gain freshness.
+    """
     from backend.data.workspace import get_workspace
     from backend.util.workspace import WorkspaceManager
 
@@ -171,9 +182,13 @@ async def _recent_files(user_id: str, limit: int) -> list[SearchResultItem]:
             # create one just for the recents view.
             return []
         manager = WorkspaceManager(user_id, workspace.id, session_id=None)
-        files = await manager.list_files(limit=limit, include_all_sessions=True)
+        files = await manager.list_files(
+            limit=limit,
+            include_all_sessions=True,
+            name_contains=query or None,
+        )
     except Exception as e:
-        logger.warning("Failed to list recent workspace files for %s: %s", user_id, e)
+        logger.warning("Failed to list workspace files for %s: %s", user_id, e)
         return []
 
     items: list[SearchResultItem] = []
@@ -195,16 +210,26 @@ async def _recent_files(user_id: str, limit: int) -> list[SearchResultItem]:
     return items
 
 
-async def _recent_chats(user_id: str, limit: int) -> list[SearchResultItem]:
-    """Most-recently-updated chat sessions for the user."""
+async def _chats_bucket(
+    user_id: str, limit: int, query: str | None = None
+) -> list[SearchResultItem]:
+    """Chat sessions, filtered by ``query`` substring when provided.
+
+    Uses a direct ``ILIKE`` filter on ``title`` instead of the embedding
+    index so newly-renamed sessions are findable immediately. Chat
+    session embeddings only encode the title anyway.
+    """
     from backend.copilot.model import get_user_sessions
 
     try:
         sessions, _total = await get_user_sessions(
-            user_id=user_id, limit=limit, offset=0
+            user_id=user_id,
+            limit=limit,
+            offset=0,
+            title_contains=query or None,
         )
     except Exception as e:
-        logger.warning("Failed to list recent chat sessions for %s: %s", user_id, e)
+        logger.warning("Failed to list chat sessions for %s: %s", user_id, e)
         return []
 
     items: list[SearchResultItem] = []
@@ -216,6 +241,10 @@ async def _recent_chats(user_id: str, limit: int) -> list[SearchResultItem]:
                 title=session.title or "Untitled chat",
                 metadata={
                     "chat_status": session.chat_status,
+                    # Exposed so the search result UI can swap the generic
+                    # chat icon for a platform-specific one (e.g. Discord)
+                    # when the session originated from an external chat.
+                    "source_platform": session.metadata.source_platform,
                 },
                 updated_at=session.updated_at,
             )
@@ -230,8 +259,8 @@ async def _recent_chats(user_id: str, limit: int) -> list[SearchResultItem]:
 async def _cached_recent_buckets(user_id: str, limit: int) -> GlobalSearchResponse:
     agents, files, chats = await asyncio.gather(
         _recent_agents(user_id, limit),
-        _recent_files(user_id, limit),
-        _recent_chats(user_id, limit),
+        _files_bucket(user_id, limit),
+        _chats_bucket(user_id, limit),
     )
     return GlobalSearchResponse(agents=agents, files=files, chats=chats)
 
@@ -244,8 +273,13 @@ async def global_search(
 ) -> GlobalSearchResponse:
     """Bucketed search across agents (library + store), files, chat sessions.
 
-    - Non-empty ``query``: hybrid search (semantic + lexical) per bucket,
-      each capped at ``per_type_limit`` items.
+    - Non-empty ``query``:
+        - Agents: hybrid search (semantic + lexical) via the embedding
+          index — store agents have rich descriptions worth embedding.
+        - Files & chats: direct ``ILIKE`` on ``name`` / ``title`` so
+          freshly-created rows are findable without waiting on async
+          embedding generation. Their embeddings only encode the
+          name/title anyway, so we lose nothing in quality.
     - Empty/whitespace ``query``: most-recently-updated items per bucket,
       cached per-user for 60s.
     """
@@ -262,7 +296,10 @@ async def global_search(
             [ContentType.LIBRARY_AGENT, ContentType.STORE_AGENT],
             limit,
         ),
-        _search_bucket(query, user_id, [ContentType.WORKSPACE_FILE], limit),
-        _search_bucket(query, user_id, [ContentType.CHAT_SESSION], limit),
+        # Files & chats bypass the embedding index — see _files_bucket /
+        # _chats_bucket docstrings. Direct ILIKE keeps freshly-created
+        # rows findable without waiting on async embedding generation.
+        _files_bucket(user_id, limit, query=query),
+        _chats_bucket(user_id, limit, query=query),
     )
     return GlobalSearchResponse(agents=agents, files=files, chats=chats)

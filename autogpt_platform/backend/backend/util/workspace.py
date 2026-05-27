@@ -349,6 +349,7 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
+        name_contains: Optional[str] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -374,6 +375,7 @@ class WorkspaceManager:
             path_prefix=effective_path,
             limit=limit,
             offset=offset,
+            name_contains=name_contains,
         )
 
     async def delete_file(self, file_id: str) -> bool:

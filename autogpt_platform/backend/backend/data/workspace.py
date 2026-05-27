@@ -254,6 +254,7 @@ async def list_workspace_files(
     include_deleted: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
+    name_contains: Optional[str] = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -264,6 +265,9 @@ async def list_workspace_files(
         include_deleted: Whether to include soft-deleted files
         limit: Maximum number of files to return
         offset: Number of files to skip
+        name_contains: Case-insensitive substring filter applied to
+            ``name``. Used by /search/global so files are findable by
+            literal name match without waiting on async embedding.
 
     Returns:
         List of WorkspaceFile instances
@@ -278,6 +282,9 @@ async def list_workspace_files(
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
+
+    if name_contains:
+        where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
