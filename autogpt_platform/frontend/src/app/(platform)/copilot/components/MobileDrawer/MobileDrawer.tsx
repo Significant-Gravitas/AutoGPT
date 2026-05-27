@@ -9,8 +9,6 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   MagnifyingGlass,
   PlusIcon,
-  SpeakerHigh,
-  SpeakerSlash,
   SpinnerGapIcon,
   X,
 } from "@phosphor-icons/react";
@@ -25,7 +23,9 @@ import { useSessionList } from "../../useSessionList";
 import { ChatSearchResults } from "../ChatSearchModal/ChatSearchResults";
 import { useChatSearch } from "../ChatSearchModal/useChatSearch";
 import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
+import { NotificationToggle } from "../ChatSidebar/components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
+import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 
 export function MobileDrawer() {
   const { isUserLoading, isLoggedIn } = useSupabase();
@@ -37,8 +37,6 @@ export function MobileDrawer() {
   const {
     completedSessionIDs,
     clearCompletedSession,
-    isSoundEnabled,
-    toggleSound,
     isDrawerOpen,
     setDrawerOpen,
     isSearchOpen,
@@ -107,21 +105,8 @@ export function MobileDrawer() {
                   Your chats
                 </Drawer.Title>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={toggleSound}
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:text-zinc-600"
-                    aria-label={
-                      isSoundEnabled
-                        ? "Disable notification sound"
-                        : "Enable notification sound"
-                    }
-                  >
-                    {isSoundEnabled ? (
-                      <SpeakerHigh className="h-4 w-4" />
-                    ) : (
-                      <SpeakerSlash className="h-4 w-4" />
-                    )}
-                  </button>
+                  <UsagePopover />
+                  <NotificationToggle />
                   {isChatSearchEnabled ? (
                     <ShadcnButton
                       type="button"
