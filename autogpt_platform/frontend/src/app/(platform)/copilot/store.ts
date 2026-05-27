@@ -350,6 +350,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeTab: tab,
           activeArtifact: null,
           history: [],
+          isMinimized: false,
         },
       };
     }),

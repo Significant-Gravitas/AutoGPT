@@ -79,7 +79,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       <Sheet open={isOpen} onOpenChange={(open) => !open && closeArtifactPanel()}>
         <SheetContent side="right" className="flex w-full flex-col p-0 sm:max-w-full">
           <SheetHeader className="sr-only">
-            <SheetTitle>Workspace</SheetTitle>
+            <SheetTitle>{preview.activeArtifact?.title ?? "Workspace"}</SheetTitle>
           </SheetHeader>
           {body}
         </SheetContent>
@@ -100,6 +100,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   return (
     <AnimatePresence>
       {isOpen && (
+        // data-artifact-panel is required by the reused ArtifactDragHandle,
+        // which measures the panel via closest("[data-artifact-panel]").
         <motion.div
           key="context-panel"
           data-context-panel
