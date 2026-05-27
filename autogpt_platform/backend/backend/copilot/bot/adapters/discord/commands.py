@@ -240,14 +240,20 @@ class _ResumeView(discord.ui.View):
 
 
 class _ResumeSelect(discord.ui.Select):
+    # Discord caps select menus at 25 options — silently breaks the picker
+    # past that. _handle_resume already requests at most that many chats, but
+    # we re-slice here so any future caller is safe.
+    DISCORD_SELECT_OPTION_LIMIT = 25
+
     def __init__(self, chats: list[ChatSummary]) -> None:
+        capped_chats = chats[: self.DISCORD_SELECT_OPTION_LIMIT]
         options = [
             discord.SelectOption(
                 label=(chat.title or "Untitled conversation")[:100],
                 value=chat.session_id,
                 description=f"Last active {_relative_time(chat.updated_at)}"[:100],
             )
-            for chat in chats
+            for chat in capped_chats
         ]
         super().__init__(placeholder="Choose a conversation to resume", options=options)
 
@@ -256,6 +262,17 @@ class _ResumeSelect(discord.ui.Select):
 
 
 async def _resume_to_session(interaction: discord.Interaction, session_id: str) -> None:
+    # In a DM, discord.py types interaction.channel_id as Optional[int]; an
+    # unset value would silently route the session into the wrong cache key.
+    # Bail with an ephemeral error instead of corrupting state.
+    if interaction.channel_id is None:
+        logger.warning("/resume callback fired without channel_id; cannot resume")
+        await interaction.response.send_message(
+            "Couldn't resume that conversation right now. Please try `/resume` again.",
+            ephemeral=True,
+        )
+        return
+
     await sessions.set_session("discord", str(interaction.channel_id), session_id)
     await interaction.response.send_message(
         "Resumed that conversation — send a message to continue it.",

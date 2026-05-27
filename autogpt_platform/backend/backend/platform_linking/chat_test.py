@@ -195,3 +195,25 @@ class TestListUserChats:
         assert result.total == 1
         assert [s.session_id for s in result.sessions] == ["sess-1"]
         assert result.sessions[0].title == "My chat"
+
+    @pytest.mark.asyncio
+    async def test_clamps_pagination_inputs(self):
+        """Negative or oversized pagination args must be clamped before they
+        hit get_user_sessions — guards the DB and lines up with /resume's
+        Discord-imposed 25-option select-menu limit."""
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_user_sessions",
+                new=AsyncMock(return_value=([], 0)),
+            ) as mock_get_sessions,
+        ):
+            await list_user_chats(Platform.DISCORD, "pu1", limit=10_000, offset=-50)
+
+        mock_get_sessions.assert_awaited_once_with("owner-1", limit=25, offset=0)

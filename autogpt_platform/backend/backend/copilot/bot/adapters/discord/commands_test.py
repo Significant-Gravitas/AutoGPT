@@ -316,3 +316,31 @@ class TestHandleResume:
 
         mock_set.assert_awaited_once_with("discord", "999", "sess-pick")
         interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resume_to_session_bails_when_channel_id_missing(self):
+        """If discord.py hands us a None channel_id, persisting to
+        `copilot-bot:session:discord:None` would silently break resume. We
+        must refuse the action and tell the user."""
+        interaction = _interaction(guild=False)
+        interaction.channel_id = None
+        with patch(
+            "backend.copilot.bot.sessions.set_session",
+            new=AsyncMock(),
+        ) as mock_set:
+            await _resume_to_session(interaction, "sess-pick")
+
+        mock_set.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+
+    def test_resume_select_caps_options_at_discord_limit(self):
+        """Discord's select menu hard-caps at 25 options. _ResumeSelect must
+        trim its input so a long chat history doesn't break the picker."""
+        from .commands import _ResumeSelect
+
+        too_many = [_chat(f"s{i}", f"Chat {i}") for i in range(40)]
+        select = _ResumeSelect(too_many)
+
+        assert len(select.options) == _ResumeSelect.DISCORD_SELECT_OPTION_LIMIT

@@ -125,6 +125,9 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     )
 
 
+LIST_USER_CHATS_MAX_LIMIT = 25
+
+
 async def list_user_chats(
     platform: Platform,
     platform_user_id: str,
@@ -142,7 +145,15 @@ async def list_user_chats(
     if owner_user_id is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
 
-    sessions, total = await get_user_sessions(owner_user_id, limit=limit, offset=offset)
+    # Clamp pagination — negative values would crash the DB driver, and an
+    # unbounded `limit` would fan out into a giant query. The cap also lines
+    # up with Discord's 25-option select-menu limit used by /resume.
+    safe_limit = max(0, min(limit, LIST_USER_CHATS_MAX_LIMIT))
+    safe_offset = max(0, offset)
+
+    sessions, total = await get_user_sessions(
+        owner_user_id, limit=safe_limit, offset=safe_offset
+    )
     return ListUserChatsResponse(
         sessions=[
             ChatSessionSummary(
