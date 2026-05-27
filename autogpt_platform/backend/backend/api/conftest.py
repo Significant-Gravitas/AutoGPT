@@ -20,7 +20,6 @@ def configured_snapshot(snapshot: Snapshot) -> Snapshot:
 def mock_jwt_user(test_user_id):
     """Provide mock JWT payload for regular user testing."""
     import fastapi
-
     from autogpt_libs.auth.models import RequestContext
 
     def override_get_jwt_payload(request: fastapi.Request) -> dict[str, str]:
@@ -50,7 +49,6 @@ def mock_jwt_user(test_user_id):
 def mock_jwt_admin(admin_user_id):
     """Provide mock JWT payload for admin user testing."""
     import fastapi
-
     from autogpt_libs.auth.models import RequestContext
 
     def override_get_jwt_payload(request: fastapi.Request) -> dict[str, str]:

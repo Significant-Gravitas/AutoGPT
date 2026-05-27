@@ -37,9 +37,7 @@ def setup_app_auth(mock_jwt_user):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
-    app.dependency_overrides[get_request_context] = mock_jwt_user[
-        "get_request_context"
-    ]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -615,7 +613,15 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
     """Mock create_chat_session to return a fake session."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_create(user_id: str, *, dry_run: bool):
+    async def _fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        source_platform: str | None = None,
+    ):
         return ChatSession.new(user_id, dry_run=dry_run)
 
     return mocker.patch(
@@ -2065,7 +2071,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
     ``get_or_create_builder_session`` and returns a session bound to the graph."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
+    async def _fake_get_or_create(
+        user_id: str,
+        graph_id: str,
+        *,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
