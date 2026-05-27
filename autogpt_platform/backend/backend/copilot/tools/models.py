@@ -284,6 +284,7 @@ class ErrorResponse(ToolResponseBase):
     """Response for errors."""
 
     type: ResponseType = ResponseType.ERROR
+    execution_id: str | None = None
     error: str | None = None
     details: dict[str, Any] | None = None
 
