@@ -9,7 +9,12 @@ interface Props {
   onCancel: () => void;
 }
 
-export function DeleteFileDialog({ fileName, isDeleting, onConfirm, onCancel }: Props) {
+export function DeleteFileDialog({
+  fileName,
+  isDeleting,
+  onConfirm,
+  onCancel,
+}: Props) {
   return (
     <Dialog
       title="Delete file"
@@ -33,7 +38,11 @@ export function DeleteFileDialog({ fileName, isDeleting, onConfirm, onCancel }: 
           <Button variant="secondary" onClick={onCancel} disabled={isDeleting}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} loading={isDeleting}>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            loading={isDeleting}
+          >
             Delete
           </Button>
         </Dialog.Footer>

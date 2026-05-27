@@ -29,23 +29,27 @@ export function FilesTab({ sessionId }: Props) {
   const [pendingDelete, setPendingDelete] = useState<SessionFile | null>(null);
   const [isZipping, setIsZipping] = useState(false);
 
-  const { mutateAsync: deleteFile, isPending: isDeleting } = useDeleteWorkspaceFile({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getListWorkspaceFilesQueryKey({
-            session_id: sessionId ?? undefined,
-          }),
-        });
-        toast({ title: "File deleted", variant: "success" });
+  const { mutateAsync: deleteFile, isPending: isDeleting } =
+    useDeleteWorkspaceFile({
+      mutation: {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getListWorkspaceFilesQueryKey({
+              session_id: sessionId ?? undefined,
+            }),
+          });
+          toast({ title: "File deleted", variant: "success" });
+        },
+        onError: () =>
+          toast({ title: "Failed to delete file", variant: "destructive" }),
       },
-      onError: () => toast({ title: "Failed to delete file", variant: "destructive" }),
-    },
-  });
+    });
 
   function handleOpen(file: SessionFile) {
     if (file.messageID) {
-      const el = document.querySelector(`[data-message-id="${file.messageID}"]`);
+      const el = document.querySelector(
+        `[data-message-id="${file.messageID}"]`,
+      );
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         return;
@@ -159,7 +163,13 @@ export function FilesTab({ sessionId }: Props) {
   );
 }
 
-function FileSection({ title, children }: { title: string; children: React.ReactNode }) {
+function FileSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <section>
       <h3 className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">

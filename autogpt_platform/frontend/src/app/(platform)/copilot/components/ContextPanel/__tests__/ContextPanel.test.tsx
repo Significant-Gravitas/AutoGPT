@@ -7,7 +7,11 @@ import { ContextPanel } from "../ContextPanel";
 
 beforeEach(() => {
   server.use(
-    getListWorkspaceFilesMockHandler200({ files: [], offset: 0, has_more: false }),
+    getListWorkspaceFilesMockHandler200({
+      files: [],
+      offset: 0,
+      has_more: false,
+    }),
   );
   useCopilotUIStore.setState((s) => ({
     artifactPanel: {
@@ -47,7 +51,11 @@ describe("ContextPanel", () => {
 
   test("renders nothing when closed", () => {
     useCopilotUIStore.setState((s) => ({
-      artifactPanel: { ...s.artifactPanel, isOpen: false, activeArtifact: null },
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: false,
+        activeArtifact: null,
+      },
     }));
     const { container } = render(<ContextPanel sessionId="session-1" />);
     expect(container.querySelector("[data-context-panel]")).toBeNull();

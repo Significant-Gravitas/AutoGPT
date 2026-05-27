@@ -26,7 +26,9 @@ describe("FilesTab helpers", () => {
   });
   test("isUploadedFile splits by metadata.origin", () => {
     expect(isUploadedFile(baseItem)).toBe(true);
-    expect(isUploadedFile({ ...baseItem, metadata: { origin: "agent" } })).toBe(false);
+    expect(isUploadedFile({ ...baseItem, metadata: { origin: "agent" } })).toBe(
+      false,
+    );
     expect(isUploadedFile({ ...baseItem, metadata: {} })).toBe(false);
   });
   test("fileItemToArtifactRef builds a proxy download URL + origin", () => {
@@ -57,7 +59,13 @@ describe("downloadFilesAsZip", () => {
         { id: "a1", name: "a.txt" },
         { id: "b2", name: "b.txt" },
       ],
-      { fetchImpl, save: (blob, name) => { savedBlob = blob; savedName = name; } },
+      {
+        fetchImpl,
+        save: (blob, name) => {
+          savedBlob = blob;
+          savedName = name;
+        },
+      },
     );
     expect(fetched).toHaveLength(2);
     expect(savedName.endsWith(".zip")).toBe(true);

@@ -28,7 +28,10 @@ const ArtifactPanel = dynamic(
 );
 
 const ContextPanel = dynamic(
-  () => import("./components/ContextPanel/ContextPanel").then((m) => m.ContextPanel),
+  () =>
+    import("./components/ContextPanel/ContextPanel").then(
+      (m) => m.ContextPanel,
+    ),
   { ssr: false },
 );
 
@@ -73,7 +76,10 @@ export function CopilotPage() {
           />
           {!isMobile && isContextPanelEnabled && <ContextPanelToggle />}
           {isContextPanelEnabled && (
-            <ContextPanelAutoOpen key={sessionId ?? "new"} sessionId={sessionId} />
+            <ContextPanelAutoOpen
+              key={sessionId ?? "new"}
+              sessionId={sessionId}
+            />
           )}
         </FileDropZone>
         {!isMobile &&

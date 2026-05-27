@@ -55,7 +55,11 @@ describe("FilesTab", () => {
 
   test("shows empty state when the session has no files", async () => {
     server.use(
-      getListWorkspaceFilesMockHandler200({ files: [], offset: 0, has_more: false }),
+      getListWorkspaceFilesMockHandler200({
+        files: [],
+        offset: 0,
+        has_more: false,
+      }),
     );
     render(<FilesTab sessionId={SESSION} />);
     expect(await screen.findByText(/No files yet/i)).toBeDefined();
@@ -71,8 +75,6 @@ describe("FilesTab", () => {
     const dialog = await screen.findByRole("dialog");
     const confirm = within(dialog).getByRole("button", { name: /^Delete$/ });
     fireEvent.click(confirm);
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

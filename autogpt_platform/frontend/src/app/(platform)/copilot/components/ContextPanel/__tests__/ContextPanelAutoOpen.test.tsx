@@ -30,7 +30,11 @@ describe("ContextPanelAutoOpen", () => {
   beforeEach(() => {
     useCopilotUIStore.getState().resetAutoOpenState?.();
     useCopilotUIStore.setState((s) => ({
-      artifactPanel: { ...s.artifactPanel, isOpen: false, activeArtifact: null },
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: false,
+        activeArtifact: null,
+      },
     }));
   });
 

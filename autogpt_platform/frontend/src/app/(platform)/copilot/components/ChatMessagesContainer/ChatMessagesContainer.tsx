@@ -525,7 +525,11 @@ export function ChatMessagesContainer({
             : null;
 
           return (
-            <Message from={message.role} key={message.id} data-message-id={message.id}>
+            <Message
+              from={message.role}
+              key={message.id}
+              data-message-id={message.id}
+            >
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +

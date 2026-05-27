@@ -24,8 +24,14 @@ interface Props {
 }
 
 export function ContextPanel({ sessionId, mobile }: Props) {
-  const { isOpen, activeTab, view, setActiveTab, setArtifactPanelWidth, closeArtifactPanel } =
-    useContextPanel();
+  const {
+    isOpen,
+    activeTab,
+    view,
+    setActiveTab,
+    setArtifactPanelWidth,
+    closeArtifactPanel,
+  } = useContextPanel();
   const preview = useArtifactPanel();
 
   function renderTabs() {
@@ -76,10 +82,18 @@ export function ContextPanel({ sessionId, mobile }: Props) {
 
   if (mobile) {
     return (
-      <Sheet open={isOpen} onOpenChange={(open) => !open && closeArtifactPanel()}>
-        <SheetContent side="right" className="flex w-full flex-col p-0 sm:max-w-full">
+      <Sheet
+        open={isOpen}
+        onOpenChange={(open) => !open && closeArtifactPanel()}
+      >
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col p-0 sm:max-w-full"
+        >
           <SheetHeader className="sr-only">
-            <SheetTitle>{preview.activeArtifact?.title ?? "Workspace"}</SheetTitle>
+            <SheetTitle>
+              {preview.activeArtifact?.title ?? "Workspace"}
+            </SheetTitle>
           </SheetHeader>
           {body}
         </SheetContent>

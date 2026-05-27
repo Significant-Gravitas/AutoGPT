@@ -1,7 +1,11 @@
 import { DownloadSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
-import { formatFileSize, formatFileTimestamp, isUploadedFile } from "../helpers";
+import {
+  formatFileSize,
+  formatFileTimestamp,
+  isUploadedFile,
+} from "../helpers";
 import type { SessionFile } from "../useSessionFiles";
 
 interface Props {
@@ -28,7 +32,8 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-sm text-zinc-800">{item.name}</span>
           <span className="text-xs text-zinc-400">
-            {formatFileSize(item.size_bytes ?? 0)} · {formatFileTimestamp(item.created_at)}
+            {formatFileSize(item.size_bytes ?? 0)} ·{" "}
+            {formatFileTimestamp(item.created_at)}
           </span>
         </span>
       </button>
@@ -46,7 +51,9 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
             type="button"
             onClick={() => onRequestDelete(file)}
             aria-label={`Delete ${item.name}`}
-            className={cn("rounded p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600")}
+            className={cn(
+              "rounded p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600",
+            )}
           >
             <TrashIcon size={16} />
           </button>
