@@ -331,3 +331,32 @@ def test_malformed_nested_session_context_fully_consumed():
     assert SESSION_CONTEXT_TAG not in cleaned
     assert "extra</session_context>" not in cleaned
     assert "hello" in cleaned
+
+
+# ---------------------------------------------------------------------------
+# COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch — default-on; LD-off
+# must collapse ``<session_context>`` to the bare session_id line AND skip
+# the scheduler RPC entirely (cost half of the kill-switch).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_session_context_skips_scheduler_when_followups_disabled():
+    scheduler_spy = AsyncMock(
+        side_effect=AssertionError("scheduler must not be called when flag off")
+    )
+
+    class _FakeClient:
+        get_execution_schedules = scheduler_spy
+
+    with patch(
+        "backend.copilot.tools.session_context.is_followups_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ), patch(
+        "backend.copilot.tools.session_context.get_scheduler_client",
+        return_value=_FakeClient(),
+    ):
+        result = await build_session_context(session_id="sess-1", user_id="user-1")
+
+    assert result == "session_id: sess-1; pending_followups: 0"
+    scheduler_spy.assert_not_awaited()

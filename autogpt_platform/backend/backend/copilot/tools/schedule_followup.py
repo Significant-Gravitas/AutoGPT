@@ -31,6 +31,7 @@ from typing import Any
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
@@ -147,6 +148,16 @@ class ScheduleFollowupTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required.",
                 error="auth_required",
+                session_id=current_session_id,
+            )
+        if not await is_followups_feature_enabled(user_id):
+            return ErrorResponse(
+                message=(
+                    "Scheduled followups are currently disabled for this "
+                    "user. Re-enable the ``copilot-scheduled-followups`` "
+                    "LaunchDarkly flag to use ``schedule_followup``."
+                ),
+                error="feature_disabled",
                 session_id=current_session_id,
             )
 

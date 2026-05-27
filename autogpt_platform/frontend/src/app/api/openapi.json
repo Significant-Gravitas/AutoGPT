@@ -2580,6 +2580,124 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/share": {
+      "delete": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Disable Chat Sharing",
+        "description": "Revoke sharing for a chat session.\n\nCascade-revokes linked executions whose share originated here\n(``sharedVia == CHAT_LINK``).  User-initiated execution shares\nsurvive — see :func:`backend.copilot.sharing.db.disable_chat_session_share`.",
+        "operationId": "deleteV2DisableChatSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Enable Chat Sharing",
+        "description": "Enable sharing for a chat session.\n\nFlag-gated: refuses with 403 when ``chat-sharing`` is off so a stale\nfrontend cannot enable shares post-rollback.",
+        "operationId": "postV2EnableChatSharing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EnableShareRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__chat__share__ShareResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": { "description": "Chat sharing is not enabled for this user" },
+          "404": { "description": "Chat session not found for user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/share/state": {
+      "get": {
+        "tags": ["v2", "chat", "share", "chat", "share"],
+        "summary": "Get Chat Share State",
+        "description": "Return the chat's current share state.\n\nThe share modal calls this on open so it can render in the right\nmode (share-vs-revoke) and pre-select the auto-share toggle.",
+        "operationId": "getV2GetChatShareState",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatShareStateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -4592,7 +4710,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ShareResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__features__v1__ShareResponse"
+                }
               }
             }
           },
@@ -7537,6 +7657,31 @@
         }
       }
     },
+    "/api/platform-linking/platforms": {
+      "get": {
+        "tags": ["platform-linking"],
+        "summary": "List bot platforms enabled on this deployment plus the caller's links",
+        "operationId": "list_bot_platforms",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/BotPlatformInfo" },
+                  "type": "array",
+                  "title": "Response List Bot Platforms"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/platform-linking/tokens/{token}/confirm": {
       "post": {
         "tags": ["platform-linking"],
@@ -7720,6 +7865,147 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Get Shared Chat",
+        "operationId": "getV2GetSharedChat",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SharedChatSession" }
+              }
+            }
+          },
+          "404": { "description": "Shared chat not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}/files/{file_id}/download": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Download a file from a shared chat",
+        "description": "Download a workspace file allowlisted by a shared chat (no auth).\n\nReturns uniform 404 for every failure mode to prevent enumeration —\nindistinguishable from \"unknown token\" or \"wrong file id\".",
+        "operationId": "download_shared_chat_file",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "404": {
+            "description": "Uniform 404 for every failure mode (unknown token, wrong file id, file no longer present) — prevents enumeration."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/shared/chats/{share_token}/messages": {
+      "get": {
+        "tags": ["v2", "chat", "share", "public", "chat", "share", "public"],
+        "summary": "Get Shared Chat Messages",
+        "operationId": "getV2GetSharedChatMessages",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Limit" }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "title": "Before Sequence"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedChatMessagesPage"
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid limit (must be 1..200)" },
+          "404": { "description": "Shared chat not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -10048,6 +10334,11 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
+          "match_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Match Score",
+            "description": "Combined relevance score in [0, 1] when this agent was returned from a similarity search (e.g. the create-time library check). Null for non-similarity sources."
+          },
           "input_schema": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -11025,6 +11316,32 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "BotPlatformInfo": {
+        "properties": {
+          "platform": { "type": "string", "title": "Platform" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "icon": { "type": "string", "title": "Icon" },
+          "add_bot_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Add Bot Url"
+          },
+          "dm_link": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
+              { "type": "null" }
+            ]
+          },
+          "server_links": {
+            "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
+            "type": "array",
+            "title": "Server Links"
+          }
+        },
+        "type": "object",
+        "required": ["platform", "display_name", "icon"],
+        "title": "BotPlatformInfo",
+        "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -11107,6 +11424,42 @@
         "type": "object",
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
+      "ChatShareStateResponse": {
+        "properties": {
+          "is_shared": {
+            "type": "boolean",
+            "title": "Is Shared",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          },
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          },
+          "linked_run_count": {
+            "type": "integer",
+            "title": "Linked Run Count",
+            "default": 0
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ChatShareStateResponse",
+        "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -11876,6 +12229,18 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "EnableShareRequest": {
+        "properties": {
+          "auto_share_executions": {
+            "type": "boolean",
+            "title": "Auto Share Executions",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "EnableShareRequest",
+        "description": "Whether to auto-link every ``run_agent`` execution in this chat.\n\nWhen true, the backend creates ``ChatLinkedShare`` rows for every\nexisting agent run AND auto-links any new runs that land while the\nshare is active.  When false, only the chat messages are shared\n(cards in the viewer render in their \"execution not shared\" state)."
+      },
       "ErrorResponse": {
         "properties": {
           "type": {
@@ -11886,6 +12251,10 @@
           "session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Id"
+          },
+          "execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Id"
           },
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -16452,15 +16821,140 @@
         "title": "ShareRequest",
         "description": "Optional request body for share endpoint."
       },
-      "ShareResponse": {
+      "SharedChatLinkedExecution": {
         "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Name"
+          },
+          "share_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Share Token"
+          }
         },
         "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse",
-        "description": "Response from share endpoints."
+        "required": ["execution_id", "graph_id", "graph_name", "share_token"],
+        "title": "SharedChatLinkedExecution",
+        "description": "Drill-in pointer for an AgentGraphExecution shared alongside a chat."
+      },
+      "SharedChatMessage": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "role": { "type": "string", "title": "Role" },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "tool_call_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Tool Calls"
+          },
+          "function_call": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Function Call"
+          },
+          "sequence": { "type": "integer", "title": "Sequence" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "name",
+          "tool_call_id",
+          "tool_calls",
+          "function_call",
+          "sequence",
+          "created_at"
+        ],
+        "title": "SharedChatMessage",
+        "description": "Public-safe projection of a single chat message."
+      },
+      "SharedChatMessagesPage": {
+        "properties": {
+          "messages": {
+            "items": { "$ref": "#/components/schemas/SharedChatMessage" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "has_more": { "type": "boolean", "title": "Has More" },
+          "oldest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Oldest Sequence"
+          }
+        },
+        "type": "object",
+        "required": ["messages", "has_more", "oldest_sequence"],
+        "title": "SharedChatMessagesPage",
+        "description": "Paginated message window for the public viewer."
+      },
+      "SharedChatSession": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "shared_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Shared At"
+          },
+          "linked_executions": {
+            "items": {
+              "$ref": "#/components/schemas/SharedChatLinkedExecution"
+            },
+            "type": "array",
+            "title": "Linked Executions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "shared_at",
+          "linked_executions"
+        ],
+        "title": "SharedChatSession",
+        "description": "Public-safe projection of a chat session (header only)."
       },
       "SharedExecutionResponse": {
         "properties": {
@@ -19647,6 +20141,25 @@
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "backend__api__features__chat__share__ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse"
+      },
+      "backend__api__features__v1__ShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ShareResponse",
+        "description": "Response from share endpoints."
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

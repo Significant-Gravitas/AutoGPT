@@ -59,7 +59,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # sentinel — its description spends ~170 chars explaining the "fire
 # into a fresh chat" semantics so the model picks the right value
 # (null vs omit vs target_session_id) for autopilot-style flows.
-_CHAR_BUDGET = 39_000
+# Bumped 39000 -> 39500 for the create-time library-similarity gate:
+# find_library_agent's new ``for_creation`` and ``goal_summary``
+# parameters and create_agent's ``library_check_ack`` bypass — the
+# extra ~270 chars on CI (env-flagged tool registrations push CI
+# higher than local) carry the LLM-decision-critical copy for
+# "search the library before building new" + "user-confirmed bypass".
+_CHAR_BUDGET = 39_500
 
 
 @pytest.fixture(scope="module")
