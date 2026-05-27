@@ -34,6 +34,7 @@ from backend.api.features.store.embeddings import (
 )
 from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.copilot import db as chat_db
+from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -331,6 +332,13 @@ class DatabaseManager(AppService):
     # ============ Summary Data ============ #
     get_user_execution_summary_data = _(get_user_execution_summary_data)
 
+    # ============ Chat Sharing ============ #
+    # Exposed so the run_agent tool (running in the CoPilotExecutor
+    # worker, which doesn't keep its own connected Prisma client) can
+    # auto-link new executions into an already-shared chat without
+    # crashing when its local Prisma engine is unconnected.
+    link_new_execution_to_chat_share = _(link_new_execution_to_chat_share)
+
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
@@ -572,6 +580,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Summary Data ============ #
     get_user_execution_summary_data = d.get_user_execution_summary_data
+
+    # ============ Chat Sharing ============ #
+    link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
 
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
