@@ -5,15 +5,17 @@ enabled on this deployment, and how to build their "Add bot to your server"
 invite URL. New platforms slot in by adding a row + their config check below.
 """
 
-from dataclasses import dataclass
 from urllib.parse import urlencode
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.bot.adapters.discord import config as discord_config
 
 
-@dataclass(frozen=True)
-class PlatformMeta:
+class PlatformMeta(BaseModel):
     """Static + runtime metadata for one chat-bot platform."""
+
+    model_config = ConfigDict(frozen=True)
 
     platform: str  # canonical key, matches PlatformLinkInfo.platform (uppercase)
     display_name: str
