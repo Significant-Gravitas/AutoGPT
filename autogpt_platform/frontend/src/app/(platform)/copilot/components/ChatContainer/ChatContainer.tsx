@@ -86,11 +86,13 @@ export const ChatContainer = ({
   turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
   // When the flag is off we must not auto-open artifacts or let the panel's
   // open state drive layout width; an artifact generated in a stale session
   // state would otherwise shrink the chat column with no panel rendered.
-  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
+  const isArtifactOpen =
+    (isArtifactsEnabled || isContextPanelEnabled) && isArtifactPanelOpen;
   useAutoOpenArtifacts({
     sessionId,
     messages,

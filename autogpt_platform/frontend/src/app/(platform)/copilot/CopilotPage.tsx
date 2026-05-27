@@ -8,6 +8,8 @@ import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
+import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
+import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
@@ -25,10 +27,16 @@ const ArtifactPanel = dynamic(
   { ssr: false },
 );
 
+const ContextPanel = dynamic(
+  () => import("./components/ContextPanel/ContextPanel").then((m) => m.ContextPanel),
+  { ssr: false },
+);
+
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -63,10 +71,24 @@ export function CopilotPage() {
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
+          {!isMobile && isContextPanelEnabled && <ContextPanelToggle />}
+          {isContextPanelEnabled && (
+            <ContextPanelAutoOpen key={sessionId ?? "new"} sessionId={sessionId} />
+          )}
         </FileDropZone>
-        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
+        {!isMobile &&
+          (isContextPanelEnabled ? (
+            <ContextPanel sessionId={sessionId} />
+          ) : (
+            isArtifactsEnabled && <ArtifactPanel />
+          ))}
       </div>
-      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
+      {isMobile &&
+        (isContextPanelEnabled ? (
+          <ContextPanel sessionId={sessionId} mobile />
+        ) : (
+          isArtifactsEnabled && <ArtifactPanel mobile />
+        ))}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>

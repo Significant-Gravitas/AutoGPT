@@ -1,10 +1,13 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
-import { ListIcon } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { FolderIcon, ListIcon } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../store";
 
 export function MobileHeader() {
   const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
+  const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
+  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   return (
     <div
       className="fixed z-50 flex gap-2"
@@ -19,6 +22,17 @@ export function MobileHeader() {
       >
         <ListIcon width="1.25rem" height="1.25rem" />
       </Button>
+      {isContextPanelEnabled && (
+        <Button
+          variant="icon"
+          size="icon"
+          aria-label="Open workspace files"
+          onClick={toggleContextPanel}
+          className="bg-white shadow-md"
+        >
+          <FolderIcon width="1.25rem" height="1.25rem" />
+        </Button>
+      )}
     </div>
   );
 }
