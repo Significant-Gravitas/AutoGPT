@@ -123,19 +123,24 @@ def _mock_recent_sources(
         "backend.api.features.search.service.library_db", return_value=mock_lib
     )
 
+    # Mock at the *use* site (where ``service`` rebinds the imported
+    # symbol) rather than the *source* site. Service now imports these
+    # at module top level (per ``AGENTS.md``), so patching the source
+    # module no longer affects the already-bound name inside service.
     mocker.patch(
-        "backend.data.workspace.get_workspace",
+        "backend.api.features.search.service.get_workspace",
         new=AsyncMock(return_value=workspace),
     )
     if files is not None:
         mock_manager = MagicMock()
         mock_manager.list_files = AsyncMock(return_value=files)
         mocker.patch(
-            "backend.util.workspace.WorkspaceManager", return_value=mock_manager
+            "backend.api.features.search.service.WorkspaceManager",
+            return_value=mock_manager,
         )
 
     mocker.patch(
-        "backend.copilot.model.get_user_sessions",
+        "backend.api.features.search.service.get_user_sessions",
         new=AsyncMock(return_value=(list(sessions), len(sessions))),
     )
     return mock_lib
@@ -210,9 +215,12 @@ async def test_global_search_respects_per_type_limit(mocker):
 
     mock_manager = MagicMock()
     mock_manager.list_files = AsyncMock(return_value=files[:3])
-    mocker.patch("backend.util.workspace.WorkspaceManager", return_value=mock_manager)
     mocker.patch(
-        "backend.data.workspace.get_workspace",
+        "backend.api.features.search.service.WorkspaceManager",
+        return_value=mock_manager,
+    )
+    mocker.patch(
+        "backend.api.features.search.service.get_workspace",
         new=AsyncMock(return_value=MagicMock(id="ws-1")),
     )
 
@@ -220,7 +228,7 @@ async def test_global_search_respects_per_type_limit(mocker):
     # gather() in global_search resolves cleanly.
     patcher, _ = _patch_hybrid(([], 0))
     mocker.patch(
-        "backend.copilot.model.get_user_sessions",
+        "backend.api.features.search.service.get_user_sessions",
         new=AsyncMock(return_value=([], 0)),
     )
 
@@ -238,11 +246,11 @@ async def test_global_search_bucket_failure_does_not_kill_other_buckets(mocker):
     return their results — fan-out failures must not 500 the response."""
 
     mocker.patch(
-        "backend.data.workspace.get_workspace",
+        "backend.api.features.search.service.get_workspace",
         new=AsyncMock(side_effect=RuntimeError("simulated DB failure")),
     )
     mocker.patch(
-        "backend.copilot.model.get_user_sessions",
+        "backend.api.features.search.service.get_user_sessions",
         new=AsyncMock(return_value=([_fake_chat_session("chat-1", title="Hi")], 1)),
     )
 
