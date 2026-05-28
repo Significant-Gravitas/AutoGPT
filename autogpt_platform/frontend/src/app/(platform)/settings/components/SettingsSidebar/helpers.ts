@@ -1,5 +1,6 @@
 import {
   ChartLineUpIcon,
+  ChatsCircleIcon,
   CreditCardIcon,
   KeyIcon,
   PlugsConnectedIcon,
@@ -27,6 +28,7 @@ export const settingsNavItems: SettingsNavItem[] = [
     href: "/settings/integrations",
     Icon: PlugsConnectedIcon,
   },
+  { label: "Bots", href: "/settings/bots", Icon: ChatsCircleIcon },
   { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: KeyIcon },
   {
     label: "Creator Dashboard",
