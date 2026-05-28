@@ -60,6 +60,7 @@ from backend.data.execution import (
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
+    get_platform_error_samples,
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -240,6 +241,7 @@ class DatabaseManager(AppService):
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
+    get_platform_error_samples = _(get_platform_error_samples)
     get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
     get_frequently_executed_graphs = _(get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
@@ -446,6 +448,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+    get_platform_error_samples = _(d.get_platform_error_samples)
     # Execution accuracy monitoring
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)

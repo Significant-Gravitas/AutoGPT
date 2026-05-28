@@ -38,6 +38,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.exceptions import BlockUserCredentialsInvalidError
 from backend.util.logging import TruncatedLogger
 from backend.util.openai_responses import (
     convert_tools_to_responses_format,
@@ -57,6 +58,10 @@ fmt = TextFormatter(autoescape=False)
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
+# Subset of USER_ERROR_STATUS_CODES that indicate the credential itself is
+# invalid/unauthorized (vs. throttling). These get tagged so the block error
+# monitor can exclude them from platform-rate alerts.
+USER_CREDENTIALS_INVALID_STATUS_CODES = (401, 403)
 
 # Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
 # Messages calls finish in seconds; anything past this is almost certainly a
@@ -1542,6 +1547,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         error_feedback_message = ""
         llm_model = input_data.model
         total_provider_cost: float | None = None
+        user_credentials_invalid = False
 
         for retry_count in range(input_data.retry):
             logger.debug(f"LLM request: {prompt}")
@@ -1680,9 +1686,15 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
+                is_user_credentials_invalid = (
+                    isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
+                    and e.status_code in USER_CREDENTIALS_INVALID_STATUS_CODES
+                )
                 if is_user_error:
                     logger.warning(f"Error calling LLM: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
+                    if is_user_credentials_invalid:
+                        user_credentials_invalid = True
                     break
                 if isinstance(e, TimeoutError):
                     # A request that hung once will most likely hang again on
@@ -1716,6 +1728,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     provider_cost=total_provider_cost,
                     provider_cost_type="cost_usd",
                 )
+            )
+        if user_credentials_invalid:
+            raise BlockUserCredentialsInvalidError(
+                error_feedback_message, self.name, self.id
             )
         raise RuntimeError(error_feedback_message)
 

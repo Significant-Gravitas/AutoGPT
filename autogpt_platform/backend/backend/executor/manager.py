@@ -36,7 +36,11 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    GraphExecutionStats,
+    NodeExecutionStats,
+    _BaseCredentials,
+)
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
@@ -58,6 +62,7 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    BlockUserCredentialsInvalidError,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
@@ -137,6 +142,33 @@ def execute_graph(
 
 
 T = TypeVar("T")
+
+
+def classify_user_credentials_error(
+    exc: BaseException,
+    extra_exec_kwargs: dict,
+    input_model: type[BlockSchema],
+) -> bool:
+    """Return True if `exc` is a `BlockUserCredentialsInvalidError` raised
+    against a non-managed credential.
+
+    Returns False when:
+      * `exc` isn't a `BlockUserCredentialsInvalidError`, OR
+      * The block had no resolvable credential (no signal to classify), OR
+      * Any resolved credential for the block is platform-managed (in which
+        case the failure is a real platform incident, not a user error).
+    """
+    if not isinstance(exc, BlockUserCredentialsInvalidError):
+        return False
+    cred_fields = input_model.get_credentials_fields()
+    resolved_creds = [
+        v
+        for k, v in extra_exec_kwargs.items()
+        if k in cred_fields and isinstance(v, _BaseCredentials)
+    ]
+    if not resolved_creds:
+        return False
+    return not any(c.is_managed for c in resolved_creds)
 
 
 async def execute_node(
@@ -360,6 +392,14 @@ async def execute_node(
         if not is_expected:
             _sentry_capture_exception(error=ex, scope=scope)
             _sentry_flush()
+        # Tag user-credentials failures so the block error monitor can
+        # exclude them from platform alerts. Only honor the tag when none
+        # of the resolved credentials for this block are platform-managed
+        # — a managed-key failure is a real platform incident.
+        if execution_stats is not None and classify_user_credentials_error(
+            ex, extra_exec_kwargs, input_model
+        ):
+            execution_stats.error_type = "user_credentials_invalid"
         # Re-raise to maintain normal error flow
         raise
     finally:

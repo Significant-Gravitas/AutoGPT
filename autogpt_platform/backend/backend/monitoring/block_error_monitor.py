@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from backend.blocks import get_block
-from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.util.clients import (
     get_database_manager_client,
     get_notification_manager_client,
@@ -32,7 +31,7 @@ class BlockStatsWithSamples(BaseModel):
     @property
     def platform_failed_executions(self) -> int:
         """Failures not attributable to user-supplied API key errors."""
-        return self.failed_executions - self.user_api_key_error_executions
+        return max(0, self.failed_executions - self.user_api_key_error_executions)
 
     @property
     def error_rate(self) -> float:
@@ -182,14 +181,20 @@ class BlockErrorMonitor:
         start_time: datetime,
         end_time: datetime,
     ) -> str | None:
-        """Generate top blocks summary when no critical alerts exist."""
+        """Generate top blocks summary when no critical alerts exist.
+
+        Ranks by ``platform_failed_executions`` (mirroring the critical-alert
+        path) so a block dominated by user-key failures can't lead the daily
+        summary with a misleading rate. The excluded user-key count is shown
+        inline so the picture stays complete.
+        """
         top_error_blocks = sorted(
             [
                 (name, stats)
                 for name, stats in block_stats.items()
-                if stats.total_executions >= 10 and stats.failed_executions > 0
+                if stats.total_executions >= 10 and stats.platform_failed_executions > 0
             ],
-            key=lambda x: x[1].failed_executions,
+            key=lambda x: x[1].platform_failed_executions,
             reverse=True,
         )[: self.include_top_blocks]
 
@@ -208,7 +213,12 @@ class BlockErrorMonitor:
         )
         alert_msg = f"📊 Daily Error Summary - {count_text} blocks with most errors:"
         for block_name, stats in top_error_blocks:
-            alert_msg += f"\n• {block_name}: {stats.failed_executions} errors ({stats.error_rate:.1f}% of {stats.total_executions})"
+            alert_msg += (
+                f"\n• {block_name}: {stats.platform_failed_executions} errors "
+                f"({stats.platform_error_rate:.1f}% of {stats.total_executions})"
+            )
+            if stats.user_api_key_error_executions > 0:
+                alert_msg += f" — {stats.user_api_key_error_executions} user-key failure(s) excluded"
 
             if stats.error_samples:
                 error_groups = self._group_similar_errors(stats.error_samples)
@@ -222,37 +232,29 @@ class BlockErrorMonitor:
     def _get_error_samples_for_block(
         self, block_id: str, start_time: datetime, end_time: datetime, limit: int = 3
     ) -> list[str]:
-        """Get error samples for a specific block - just a few recent ones."""
-        # Only fetch a small number of recent failed executions for this specific block
-        executions = get_database_manager_client().get_node_executions(
-            block_ids=[block_id],
-            statuses=[ExecutionStatus.FAILED],
-            created_time_gte=start_time,
-            created_time_lte=end_time,
-            limit=limit,  # Just get the limit we need
+        """Get platform-failure error samples for a specific block.
+
+        Excludes failures the SQL classifier counted as user-credentials
+        errors so the displayed samples match the rate that triggered the
+        alert (avoids on-call seeing only ``invalid_api_key`` samples for an
+        alert that fired on the platform-rate calculation).
+        """
+        raw_samples = get_database_manager_client().get_platform_error_samples(
+            block_id=block_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
         )
 
-        error_samples = []
-        for execution in executions:
-            if error_message := self._extract_error_message(execution):
-                masked_error = self._mask_sensitive_data(error_message)
+        error_samples: list[str] = []
+        for raw in raw_samples:
+            masked_error = self._mask_sensitive_data(raw)
+            if masked_error:
                 error_samples.append(masked_error)
-
-            if len(error_samples) >= limit:  # Stop once we have enough samples
+            if len(error_samples) >= limit:
                 break
 
         return error_samples
-
-    def _extract_error_message(self, execution: NodeExecutionResult) -> str | None:
-        """Extract error message from execution output."""
-        try:
-            if execution.output_data and (
-                error_msg := execution.output_data.get("error")
-            ):
-                return str(error_msg[0])
-            return None
-        except Exception:
-            return None
 
     def _mask_sensitive_data(self, error_message):
         """Mask sensitive data in error messages to enable grouping."""

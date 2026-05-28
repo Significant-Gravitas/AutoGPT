@@ -41,6 +41,16 @@ class BlockUnknownError(BlockError):
         super().__init__(message, block_name, block_id)
 
 
+class BlockUserCredentialsInvalidError(BlockExecutionError):
+    """A user-supplied credential was rejected by the upstream provider.
+
+    Raise this (instead of bubbling a raw SDK exception) when the cause of
+    failure is clearly the user's own API key / token being invalid, revoked
+    or unauthorized. The block error monitor uses this typed class as the
+    classifier signal to exclude these failures from platform-rate alerts.
+    """
+
+
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 

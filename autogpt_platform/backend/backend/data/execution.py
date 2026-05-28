@@ -124,7 +124,7 @@ class BlockErrorStats(BaseModel):
     @property
     def platform_failed_executions(self) -> int:
         """Failures not attributable to user-supplied API key errors."""
-        return self.failed_executions - self.user_api_key_error_executions
+        return max(0, self.failed_executions - self.user_api_key_error_executions)
 
     @property
     def error_rate(self) -> float:
@@ -1601,18 +1601,24 @@ async def set_execution_kv_data(
 async def get_block_error_stats(
     start_time: datetime, end_time: datetime
 ) -> list[BlockErrorStats]:
-    """Get block execution stats using efficient SQL aggregation."""
+    """Get block execution stats using efficient SQL aggregation.
+
+    A failure is classified as ``user_api_key_error_executions`` when the
+    executor tagged it with ``stats.error_type = 'user_credentials_invalid'``
+    (see ``backend.executor.manager.execute_node``). This is a structured
+    signal raised by blocks via ``BlockUserCredentialsInvalidError`` and
+    only set when the underlying credential is **not** platform-managed —
+    so managed-key incidents still count as platform failures.
+    """
 
     query_template = """
-    SELECT 
+    SELECT
         n."agentBlockId" as block_id,
         COUNT(*) as total_executions,
         SUM(CASE WHEN ne."executionStatus" = 'FAILED' THEN 1 ELSE 0 END) as failed_executions,
         SUM(CASE
             WHEN ne."executionStatus" = 'FAILED'
-                AND ne."executionData"->>'credentials' IS NOT NULL
-                AND ne."stats"->>'error' LIKE '%invalid_api_key%'
-                AND (ne."executionData"->'credentials'->>'is_managed')::boolean IS NOT TRUE
+                AND ne."stats"->>'error_type' = 'user_credentials_invalid'
             THEN 1 ELSE 0
         END) as user_api_key_error_executions
     FROM {schema_prefix}"AgentNodeExecution" ne
@@ -1636,6 +1642,45 @@ async def get_block_error_stats(
         )
         for row in result
     ]
+
+
+async def get_platform_error_samples(
+    block_id: str,
+    start_time: datetime,
+    end_time: datetime,
+    limit: int = 3,
+) -> list[str]:
+    """Return error-message samples for a block, excluding user-credentials
+    failures so the displayed samples match the rate that triggered the alert.
+
+    Pulls the ``error`` output of recent FAILED executions whose
+    ``stats.error_type`` is NOT ``user_credentials_invalid``. Ordered by most
+    recent first.
+    """
+    query_template = """
+    SELECT eo."data" as error_data
+    FROM {schema_prefix}"AgentNodeExecution" ne
+    JOIN {schema_prefix}"AgentNode" n ON ne."agentNodeId" = n.id
+    JOIN {schema_prefix}"AgentNodeExecutionInputOutput" eo
+        ON eo."referencedByOutputExecId" = ne.id AND eo."name" = 'error'
+    WHERE n."agentBlockId" = $1
+        AND ne."executionStatus" = 'FAILED'
+        AND ne."addedTime" >= $2::timestamp
+        AND ne."addedTime" <= $3::timestamp
+        AND COALESCE(ne."stats"->>'error_type', '') <> 'user_credentials_invalid'
+    ORDER BY ne."addedTime" DESC
+    LIMIT $4
+    """
+    rows = await query_raw_with_schema(
+        query_template, block_id, start_time, end_time, limit
+    )
+    samples: list[str] = []
+    for row in rows:
+        data = row.get("error_data")
+        if data is None:
+            continue
+        samples.append(str(data))
+    return samples
 
 
 async def update_graph_execution_share_status(

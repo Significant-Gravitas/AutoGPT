@@ -852,6 +852,10 @@ class NodeExecutionStats(BaseModel):
     )
 
     error: Optional[BaseException | str] = None
+    # Structured tag for the kind of failure (e.g. "user_credentials_invalid").
+    # Set by the executor after the block raises; used by the block error
+    # monitor to filter user-caused failures out of platform alerts.
+    error_type: Optional[str] = None
     walltime: float = 0
     cputime: float = 0
     input_size: int = 0
