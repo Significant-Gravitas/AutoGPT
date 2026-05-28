@@ -37,6 +37,25 @@ def _wrap(value, model: str = "test-model") -> StructuredCompletion:
     return StructuredCompletion(value=value, usage=CompletionUsage(model=model))
 
 
+@pytest.fixture(autouse=True)
+def force_sync_baseline(mocker):
+    """Pin the orchestrator to the sync_baseline path for every test
+    in this file.
+
+    Step 5 of the plan routes dream pass to the Anthropic batch path
+    when an Anthropic key is configured; these tests mock
+    ``structured_completion`` directly to exercise the sync three-phase
+    flow, so we have to override the routing decision to keep them
+    valid. The batch path has its own dedicated test coverage in
+    ``batch_callbacks_test.py``.
+    """
+    mocker.patch.object(
+        orchestrator_mod,
+        "resolve_dream_execution_path",
+        return_value="sync_baseline",
+    )
+
+
 def _build_input(*, episodes=1, facts=1) -> DreamInput:
     return DreamInput(
         user_id="u",

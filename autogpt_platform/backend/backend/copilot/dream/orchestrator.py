@@ -212,6 +212,7 @@ async def _execute_dream_pass_async(
     *,
     transport_is_local: bool = False,
     config: ChatConfig | None = None,
+    status_id: str | None = None,
 ) -> DreamPassResult:
     config = config or ChatConfig()
     pass_id = str(uuidlib.uuid4())
@@ -219,9 +220,14 @@ async def _execute_dream_pass_async(
     monotonic_start = asyncio.get_event_loop().time()
 
     has_anthropic_key = bool(config.direct_anthropic_api_key)
+    # Step 5: when an Anthropic key is configured we route through the
+    # batch path — phase 1 submits via call_provider(execution_mode=
+    # "batch"); the BatchExecutor polls and dream's batch_callbacks
+    # chain phases 2 → 3 + apply when results land. The discount is
+    # ~50% off the rate card (see model_pricing.execution_path_discount).
     execution_path: ExecutionPath = resolve_dream_execution_path(
         has_anthropic_key=has_anthropic_key,
-        batch_processing_enabled=False,  # P-0.1 follow-up flips this on
+        batch_processing_enabled=has_anthropic_key,
     )
 
     ttl = _resolve_lock_ttl(transport_is_local)
@@ -266,6 +272,30 @@ async def _execute_dream_pass_async(
                     execution_path=execution_path,
                     skipped=True,
                     skip_reason="no_input",
+                )
+
+            # ---- Anthropic batch path -----------------------------------
+            #
+            # When routing picks ``anthropic_batch`` we persist the
+            # input bundle, submit phase 1 to Anthropic's Messages
+            # Batches API with forced tool_use structured output, and
+            # return ``status="submitted"`` immediately. The BatchExecutor
+            # polls; dream's batch_callbacks chain phases 2 → 3 + apply
+            # when each phase result lands. Total latency is provider-
+            # driven (typically <30min, hard cap 24h via
+            # BatchExecutor.MAX_BATCH_LIFETIME_SECONDS); the user sees
+            # JobStatus.current_phase advance through consolidate →
+            # recombine → sanitize → complete.
+            if execution_path == "anthropic_batch":
+                return await _submit_dream_pass_batch(
+                    user_id=user_id,
+                    pass_id=pass_id,
+                    started_at=started_at,
+                    monotonic_start=monotonic_start,
+                    execution_path=execution_path,
+                    config=config,
+                    input_bundle=input_bundle,
+                    status_id=status_id,
                 )
 
             step_usages: list[PhaseUsage] = []
@@ -425,6 +455,125 @@ def _failure_result(
     )
 
 
-async def execute_dream_pass(user_id: str) -> DreamPassResult:
-    """Public async entry point used by the scheduler + admin trigger."""
-    return await _execute_dream_pass_async(user_id)
+async def execute_dream_pass(
+    user_id: str, *, status_id: str | None = None
+) -> DreamPassResult:
+    """Public async entry point used by the scheduler + admin trigger.
+
+    ``status_id`` is the optional JobStatus row id when the caller is
+    the polling admin trigger (Step 2). The orchestrator threads it
+    into the batch path so the BatchExecutor callbacks can update the
+    user-visible status row as each phase lands. AgentProbe + other
+    sync callers pass ``None`` and never hit the batch path.
+    """
+    return await _execute_dream_pass_async(user_id, status_id=status_id)
+
+
+async def _submit_dream_pass_batch(
+    *,
+    user_id: str,
+    pass_id: str,
+    started_at: datetime,
+    monotonic_start: float,
+    execution_path: ExecutionPath,
+    config: ChatConfig,
+    input_bundle: DreamInput,
+    status_id: str | None,
+) -> DreamPassResult:
+    """Submit phase 1 of the dream pass via Anthropic batch + return.
+
+    The orchestrator hands control to the BatchExecutor here: phase 1
+    (consolidate) is enqueued; phases 2 (recombine) and 3 (sanitize)
+    fire from dream's batch_callbacks as each prior phase's result
+    lands. Apply + cost log + JobStatus complete run when sanitize
+    lands. This function only does the kickoff.
+
+    The job_id link to JobStatus comes from the scheduler's
+    ``execute_dream_pass_with_status`` wrapper (Step 2). When the
+    orchestrator is invoked outside that path (e.g. AgentProbe eval),
+    ``job_id`` is empty and the callback skips the JobStatus updates —
+    apply still runs, cost still logs.
+    """
+    from .batch_submit import persist_input_bundle, submit_phase
+
+    api_key = config.direct_anthropic_api_key
+    if not api_key:
+        # Shouldn't happen — routing.py only picks anthropic_batch when
+        # the key is present. Guard for type-narrowing + future safety.
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            "anthropic_batch: no Anthropic API key (routing bug)",
+        )
+
+    # Persist DreamInput so the per-phase callbacks can rebuild the
+    # next phase's prompt without re-fetching from Postgres + FalkorDB.
+    try:
+        await persist_input_bundle(pass_id, input_bundle)
+    except Exception as exc:
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            f"anthropic_batch: input persist failed: {exc}",
+        )
+
+    # ``status_id`` ties the per-phase callback updates back to the
+    # JobStatus row the admin trigger created. Empty string when no
+    # caller wired it (AgentProbe eval, ad-hoc invocation) — the
+    # callback skips status writes in that case but apply still runs.
+    try:
+        submission = await submit_phase(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=status_id or "",
+            phase="consolidate",
+            model=_strip_provider_prefix(config.fast_standard_model),
+            api_key=api_key,
+            input_bundle=input_bundle,
+        )
+    except Exception as exc:
+        return _failure_result(
+            user_id,
+            pass_id,
+            started_at,
+            monotonic_start,
+            execution_path,
+            f"anthropic_batch: phase 1 submit failed: {exc}",
+        )
+
+    completed_at = datetime.now(timezone.utc)
+    logger.info(
+        "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
+        pass_id,
+        submission.provider_batch_id,
+    )
+    return DreamPassResult(
+        user_id=user_id,
+        pass_id=pass_id,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_seconds=asyncio.get_event_loop().time() - monotonic_start,
+        execution_path=execution_path,
+        skipped=False,
+        # The pass is async-pending — no usage / ops / session_id yet.
+        # The BatchExecutor + dream callbacks deliver those when phase
+        # 3 lands and apply runs.
+    )
+
+
+def _strip_provider_prefix(model: str) -> str:
+    """``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
+
+    OpenRouter aliases include the provider prefix; native Anthropic
+    rejects that form. The orchestrator's config carries the
+    OpenRouter alias for portability, so strip when sending direct.
+    """
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model

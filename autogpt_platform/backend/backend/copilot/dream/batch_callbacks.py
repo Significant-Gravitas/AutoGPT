@@ -1,40 +1,50 @@
-"""Dream-pass batch result handlers.
+"""Dream-pass batch result handler — sequential phase chain.
 
 Registered with the BatchExecutor service under namespace
-``"dream_pass"`` at module-import time. When the BatchExecutor finishes
-polling a batch the dream pass submitted (via
-``providers.call_provider(execution_mode="batch")``), it calls
+``"dream_pass"`` at module-import time. When a batch the dream pass
+submitted finishes, the BatchExecutor calls
 ``handle_dream_batch_result`` with the per-``custom_id`` result rows
-plus the pending entry's ``payload`` (which the orchestrator wrote at
-submit time: user_id, pass_id, job_id, dream_pass_id, phase mapping).
+plus the pending entry's ``payload``.
 
-The handler:
+Dream's three phases are sequentially dependent:
 
-  1. Parses each row's content into a Pydantic phase-output model
-     (``ConsolidationOutput`` / ``RecombinationOutput`` /
-     ``DreamOperations``). Empty / errored rows mark the phase failed.
-  2. Once all three phases of a pass have landed, calls
-     ``apply_operations`` to write the sanitized result to Graphiti +
-     Postgres. (Today the dream pass orchestrator submits one batch
-     per phase; the handler waits for all three batch entries to
-     resolve before applying. Future grouping — all three phases in
-     one batch — would land here too.)
-  3. Logs per-phase token cost via ``record_phase_cost`` with
-     ``execution_path="anthropic_batch"`` so the 50% discount is
-     applied and the cost ledger reflects what actually shipped.
-  4. Updates the JobStatus row (state: complete / errored,
-     current_phase, result).
+  consolidate → recombine (needs consolidate output)
+              → sanitize  (needs both)
 
-This module is dream-specific; future namespaces (P2 dedup, P3 self-
-model refresh) each get their own callbacks module + namespace
-registration.
+That means a phase can only be submitted once the prior phase's
+result lands. The orchestrator kicks off phase 1; this handler chains
+phase 2 from phase 1's result, phase 3 from phase 2's result, then
+runs the apply step + cost log + JobStatus complete when phase 3 lands.
+
+Per-pass state lives in two Redis keys:
+
+  * ``dream:batch:input:{pass_id}`` — the serialized ``DreamInput``
+    (so we can rebuild each phase's prompt without re-fetching from
+    Postgres / FalkorDB)
+  * ``dream:batch:state:{pass_id}`` — accumulated phase outputs +
+    per-phase token usage so the apply step has everything it needs
+    and the cost log can record all three rows at once
+
+Both are TTL'd to 24h (Anthropic's batch SLA) so a forgotten pass
+naturally falls off the radar.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import ValidationError
+
+from .batch_submit import (
+    PHASE_RESPONSE_MODELS,
+    delete_input_bundle,
+    read_input_bundle,
+    submit_phase,
+)
+from .billing import record_phase_cost
+from .schemas import DreamOperations, PhaseUsage
 
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
@@ -45,96 +55,59 @@ logger = logging.getLogger(__name__)
 
 NAMESPACE = "dream_pass"
 
+DreamPhase = Literal["consolidate", "recombine", "sanitize"]
+
+NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
+    "consolidate": "recombine",
+    "recombine": "sanitize",
+    "sanitize": None,  # terminal — apply runs from here
+}
+
 
 # ---------------------------------------------------------------------------
-# Handler entry point
+# State persistence
 # ---------------------------------------------------------------------------
 
 
-async def handle_dream_batch_result(
-    entry: "PendingEntry", rows: list["BatchResultRow"]
-) -> None:
-    """BatchExecutor entry — called once per finished batch.
+def _state_key(pass_id: str) -> str:
+    return f"dream:batch:state:{pass_id}"
 
-    Today the dream orchestrator submits one batch per phase so each
-    ``rows`` list has exactly one item. We aggregate across batches
-    via Redis: phase results are written to
-    ``dream:batch:phase_results:{pass_id}`` and the apply step fires
-    when all three phases are present (or any phase errored — fail
-    fast).
+
+# 24h matches Anthropic's batch SLA; if no phase has landed in that
+# window the BatchExecutor has already issued a timeout error via
+# ``MAX_BATCH_LIFETIME_SECONDS``.
+STATE_TTL_SECONDS = 24 * 60 * 60
+
+
+async def _read_state(pass_id: str) -> dict[str, dict[str, Any]]:
+    """Per-pass accumulator: phase → {content, usage tokens, error}.
+
+    Returns a ``dict[str, ...]`` rather than ``dict[DreamPhase, ...]``
+    because Redis hash keys are plain strings and we lose the
+    ``Literal`` narrowing the moment we read them back. Callers
+    re-narrow at the boundary (e.g. via ``NEXT_PHASE`` lookups) when
+    they need the phase ordering.
     """
-    payload = entry.payload or {}
-    user_id = payload.get("user_id") or ""
-    pass_id = payload.get("pass_id") or ""
-    job_id = payload.get("job_id") or ""
-    phase_for_custom_id = payload.get("phase_for_custom_id") or {}
+    from backend.data.redis_client import get_redis_async
 
-    if not user_id or not pass_id:
-        logger.warning(
-            "Dream batch handler missing user_id/pass_id — payload=%s; "
-            "dropping batch %s",
-            payload,
-            entry.provider_batch_id,
-        )
-        return
-
-    for row in rows:
-        phase = phase_for_custom_id.get(row.custom_id)
-        if not phase:
-            logger.warning(
-                "Unknown custom_id=%s for dream pass=%s — skipping",
-                row.custom_id,
-                pass_id,
-            )
-            continue
-        await _record_phase_result(
-            pass_id=pass_id,
-            phase=phase,
-            row=row,
-        )
-
-    state = await _read_phase_results(pass_id)
-    if _has_terminal_error(state):
-        await _finalize_errored(
-            user_id=user_id,
-            pass_id=pass_id,
-            job_id=job_id,
-            state=state,
-        )
-        return
-
-    if not _all_phases_present(state):
-        # Still waiting on later batches in this pass — leave the
-        # accumulator in place. The next phase's handler call will
-        # fire ``apply`` once the last one lands.
-        return
-
-    await _finalize_complete(
-        user_id=user_id,
-        pass_id=pass_id,
-        job_id=job_id,
-        state=state,
-    )
+    redis = await get_redis_async()
+    raw = await redis.hgetall(_state_key(pass_id))  # type: ignore[misc]
+    out: dict[str, dict[str, Any]] = {}
+    for phase, body in (raw or {}).items():
+        if isinstance(phase, bytes):
+            phase = phase.decode("utf-8")
+        if isinstance(body, bytes):
+            body = body.decode("utf-8")
+        try:
+            out[phase] = json.loads(body)
+        except Exception:
+            logger.warning("Corrupted state row for pass=%s phase=%s", pass_id, phase)
+    return out
 
 
-# ---------------------------------------------------------------------------
-# Per-pass Redis accumulator
-# ---------------------------------------------------------------------------
-
-
-def _accumulator_key(pass_id: str) -> str:
-    return f"dream:batch:phase_results:{pass_id}"
-
-
-# 6h TTL on the accumulator — matches the JobStatus TTL so a stalled
-# pass naturally falls off the radar without manual cleanup.
-ACCUMULATOR_TTL_SECONDS = 6 * 60 * 60
-
-
-async def _record_phase_result(
-    *, pass_id: str, phase: str, row: "BatchResultRow"
+async def _write_phase_to_state(
+    *, pass_id: str, phase: DreamPhase, row: "BatchResultRow"
 ) -> None:
-    """Persist one phase's result as a JSON blob under ``pass_id``."""
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
@@ -149,50 +122,210 @@ async def _record_phase_result(
             "error": row.error,
         }
     )
-    # redis-py's typed stubs flag hash ops as returning bare values
-    # rather than awaitables on AsyncRedisCluster — same workaround
-    # used in ``copilot/stream_registry.py``.
-    await redis.hset(_accumulator_key(pass_id), phase, body)  # type: ignore[misc]
-    await redis.expire(_accumulator_key(pass_id), ACCUMULATOR_TTL_SECONDS)
+    await redis.hset(_state_key(pass_id), phase, body)  # type: ignore[misc]
+    await redis.expire(_state_key(pass_id), STATE_TTL_SECONDS)
 
 
-async def _read_phase_results(pass_id: str) -> dict[str, dict[str, Any]]:
-    """Fetch the per-phase accumulator for one pass."""
+async def _delete_state(pass_id: str) -> None:
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    raw = await redis.hgetall(_accumulator_key(pass_id))  # type: ignore[misc]
-    decoded: dict[str, dict[str, Any]] = {}
-    for phase, body in (raw or {}).items():
-        if isinstance(phase, bytes):
-            phase = phase.decode("utf-8")
-        if isinstance(body, bytes):
-            body = body.decode("utf-8")
+    await redis.delete(_state_key(pass_id))
+
+
+# ---------------------------------------------------------------------------
+# Handler entry point
+# ---------------------------------------------------------------------------
+
+
+async def handle_dream_batch_result(
+    entry: "PendingEntry", rows: list["BatchResultRow"]
+) -> None:
+    """BatchExecutor entry — called once per finished phase batch.
+
+    Reads the phase label off ``entry.payload``, validates the
+    response shape, persists it to the per-pass accumulator, then
+    decides what to do next:
+
+      * If error → mark JobStatus errored, clean up state + input
+      * If non-terminal phase → submit next phase batch, leave job
+        in ``submitted`` state with updated ``current_phase``
+      * If terminal phase (sanitize) → run apply, log costs for all
+        three phases, mark JobStatus complete, clean up
+    """
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    pass_id = str(payload.get("pass_id") or "")
+    job_id = str(payload.get("job_id") or "")
+    model = str(payload.get("model") or "claude-sonnet-4-6")
+    phase = payload.get("phase")
+
+    if not user_id or not pass_id or not phase:
+        logger.warning(
+            "Dream batch handler missing user_id/pass_id/phase — payload=%s",
+            payload,
+        )
+        return
+
+    if phase not in NEXT_PHASE:
+        logger.warning("Dream batch handler unknown phase=%r", phase)
+        return
+
+    if not rows:
+        logger.warning("Dream batch handler got empty rows for pass=%s", pass_id)
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{phase}: provider returned no rows",
+        )
+        return
+
+    # Single-request-per-batch today; the first (and only) row is the
+    # phase result. When we group batches in the future the BatchExecutor
+    # will already split by custom_id before calling us.
+    row = rows[0]
+    if row.error:
+        await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{phase}: {row.error}",
+        )
+        return
+
+    # Validate the row's content matches the phase's Pydantic schema
+    # BEFORE persisting — corrupted content shouldn't pollute the
+    # accumulator for the next phase to read back.
+    try:
+        PHASE_RESPONSE_MODELS[phase].model_validate(json.loads(row.content))
+    except (json.JSONDecodeError, ValidationError) as exc:
+        await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{phase}: invalid output shape — {type(exc).__name__}",
+        )
+        return
+
+    await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
+
+    next_phase = NEXT_PHASE[phase]
+    if next_phase is not None:
+        await _chain_next_phase(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            model=model,
+            next_phase=next_phase,
+        )
+        return
+
+    # Terminal phase landed — apply + finalize.
+    await _finalize_complete(
+        user_id=user_id,
+        pass_id=pass_id,
+        job_id=job_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase chaining
+# ---------------------------------------------------------------------------
+
+
+async def _chain_next_phase(
+    *,
+    user_id: str,
+    pass_id: str,
+    job_id: str,
+    model: str,
+    next_phase: DreamPhase,
+) -> None:
+    """Submit the next phase in the chain.
+
+    Reads the persisted ``DreamInput`` + accumulated prior phase
+    outputs from Redis, builds the next phase's prompt, fires another
+    batch submission. On any failure to submit, marks the JobStatus
+    errored — silent submission failures are unrecoverable.
+    """
+    input_bundle = await read_input_bundle(pass_id)
+    if input_bundle is None:
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{next_phase}: DreamInput missing from Redis (TTL expired?)",
+        )
+        return
+
+    state = await _read_state(pass_id)
+    consolidated_json = _content_for(state, "consolidate")
+    recombined_json = _content_for(state, "recombine")
+
+    api_key = _anthropic_api_key()
+    if api_key is None:
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{next_phase}: no Anthropic API key configured",
+        )
+        return
+
+    try:
+        submission = await submit_phase(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            phase=next_phase,
+            model=model,
+            api_key=api_key,
+            input_bundle=input_bundle,
+            consolidated_json=consolidated_json,
+            recombined_json=recombined_json,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to submit %s phase for pass=%s — marking errored",
+            next_phase,
+            pass_id,
+        )
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"{next_phase}: submit failed: {type(exc).__name__}: {exc}",
+        )
+        return
+
+    if job_id:
         try:
-            decoded[phase] = json.loads(body)
-        except Exception:
-            logger.warning(
-                "Corrupted phase result for pass=%s phase=%s", pass_id, phase
+            from .job_status import update_status_phase
+
+            await update_status_phase(
+                kind="dream_pass",
+                job_id=job_id,
+                state="submitted",
+                current_phase=next_phase,
+                batch_id=submission.provider_batch_id,
             )
-    return decoded
+        except Exception:
+            logger.exception(
+                "Failed to update status for next phase=%s pass=%s",
+                next_phase,
+                pass_id,
+            )
 
 
-async def _delete_accumulator(pass_id: str) -> None:
-    from backend.data.redis_client import get_redis_async
-
-    redis = await get_redis_async()
-    await redis.delete(_accumulator_key(pass_id))
-
-
-def _has_terminal_error(state: dict[str, dict[str, Any]]) -> bool:
-    return any(row.get("error") for row in state.values())
-
-
-REQUIRED_PHASES = ("consolidate", "recombine", "sanitize")
-
-
-def _all_phases_present(state: dict[str, dict[str, Any]]) -> bool:
-    return all(phase in state for phase in REQUIRED_PHASES)
+def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
+    row = state.get(phase)
+    if row is None:
+        return None
+    content = row.get("content")
+    return content if isinstance(content, str) else None
 
 
 # ---------------------------------------------------------------------------
@@ -200,98 +333,92 @@ def _all_phases_present(state: dict[str, dict[str, Any]]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _finalize_errored(
-    *,
-    user_id: str,
-    pass_id: str,
-    job_id: str,
-    state: dict[str, dict[str, Any]],
-) -> None:
-    """Mark the JobStatus row errored and clear the accumulator.
-
-    Picks the first error string off any failed phase row for the
-    status message — sufficient for the admin UI to surface; the per-
-    phase logs already have the full trace.
-    """
-    error_phase, error_msg = _first_error(state)
-    logger.warning(
-        "Dream batch pass=%s errored on phase=%s: %s",
-        pass_id,
-        error_phase,
-        error_msg,
-    )
-    if job_id:
-        try:
-            from backend.copilot.dream.job_status import mark_errored
-
-            await mark_errored(
-                kind="dream_pass",
-                job_id=job_id,
-                error=f"{error_phase}: {error_msg}",
-            )
-        except Exception:
-            logger.exception("Failed to mark dream pass job %s errored", job_id)
-    await _delete_accumulator(pass_id)
-
-
-async def _finalize_complete(
-    *,
-    user_id: str,
-    pass_id: str,
-    job_id: str,
-    state: dict[str, dict[str, Any]],
-) -> None:
-    """Run the apply step + cost log + JobStatus complete + cleanup.
-
-    Apply is the only place batch results actually mutate the graph;
-    everything before this is metadata pipeline.
-    """
+async def _finalize_complete(*, user_id: str, pass_id: str, job_id: str) -> None:
+    """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
-        from backend.copilot.dream.apply import apply_operations
-        from backend.copilot.dream.schemas import DreamOperations
+        from .apply import apply_operations
+    except Exception:
+        logger.exception("Failed to import dream apply for pass=%s", pass_id)
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error="apply: import failed",
+        )
+        return
 
-        sanitize_row = state["sanitize"]
+    state = await _read_state(pass_id)
+    sanitize_row = state.get("sanitize")
+    if sanitize_row is None or not sanitize_row.get("content"):
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error="sanitize: missing terminal phase content",
+        )
+        return
+
+    try:
         ops = DreamOperations.model_validate(json.loads(sanitize_row["content"]))
-        stats = await apply_operations(user_id, pass_id, ops)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"sanitize: shape validation failed: {type(exc).__name__}",
+        )
+        return
+
+    try:
+        apply_stats = await apply_operations(user_id, pass_id, ops)
     except Exception as exc:
         logger.exception(
             "apply_operations crashed for batch pass=%s — marking errored",
             pass_id,
         )
-        if job_id:
-            try:
-                from backend.copilot.dream.job_status import mark_errored
-
-                await mark_errored(
-                    kind="dream_pass",
-                    job_id=job_id,
-                    error=f"apply: {type(exc).__name__}: {exc}",
-                )
-            except Exception:
-                pass
-        await _delete_accumulator(pass_id)
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            error=f"apply: {type(exc).__name__}: {exc}",
+        )
         return
 
     # Per-phase cost log — applied AFTER apply succeeds so a failed
     # apply doesn't double-bill the user.
-    await _log_phase_costs(user_id=user_id, pass_id=pass_id, state=state)
+    await _log_all_phase_costs(user_id=user_id, pass_id=pass_id, state=state)
 
     if job_id:
         try:
-            from backend.copilot.dream.job_status import mark_complete
+            from .job_status import mark_complete
 
             await mark_complete(
                 kind="dream_pass",
                 job_id=job_id,
                 result={
                     "pass_id": pass_id,
-                    "stats": {k: v for k, v in stats.items() if k != "snapshot"},
+                    "stats": {k: v for k, v in apply_stats.items() if k != "snapshot"},
                 },
             )
         except Exception:
             logger.exception("Failed to mark dream pass job %s complete", job_id)
 
-    await _delete_accumulator(pass_id)
+    await _delete_state(pass_id)
+    await delete_input_bundle(pass_id)
+
+
+async def _fail_pass(*, user_id: str, pass_id: str, job_id: str, error: str) -> None:
+    """Mark JobStatus errored + clean up per-pass state."""
+    logger.warning("Dream batch pass=%s failed: %s", pass_id, error)
+    if job_id:
+        try:
+            from .job_status import mark_errored
+
+            await mark_errored(kind="dream_pass", job_id=job_id, error=error)
+        except Exception:
+            logger.exception("Failed to mark dream pass job %s errored", job_id)
+    await _delete_state(pass_id)
+    await delete_input_bundle(pass_id)
 
 
 # ---------------------------------------------------------------------------
@@ -299,20 +426,14 @@ async def _finalize_complete(
 # ---------------------------------------------------------------------------
 
 
-async def _log_phase_costs(
+async def _log_all_phase_costs(
     *, user_id: str, pass_id: str, state: dict[str, dict[str, Any]]
 ) -> None:
-    """Write a PlatformCostLog row per phase, tagged anthropic_batch."""
-    try:
-        from backend.copilot.dream.billing import record_phase_cost
-        from backend.copilot.dream.schemas import PhaseUsage
-    except Exception:
-        logger.exception(
-            "Failed to import dream billing — skipping cost log for pass=%s",
-            pass_id,
-        )
-        return
+    """One PlatformCostLog row per phase, tagged ``anthropic_batch``.
 
+    No-ops on failure — apply already wrote the user-facing memory
+    operations; a cost-log blip shouldn't take that down.
+    """
     for phase, row in state.items():
         try:
             usage = PhaseUsage(
@@ -322,7 +443,7 @@ async def _log_phase_costs(
                 output_tokens=int(row.get("output_tokens") or 0),
                 cache_read_tokens=int(row.get("cache_read_tokens") or 0),
                 cache_creation_tokens=int(row.get("cache_creation_tokens") or 0),
-                cost_usd=None,  # rate card computes it with batch discount
+                cost_usd=None,  # let model_pricing apply the batch discount
             )
             await record_phase_cost(
                 user_id=user_id,
@@ -336,12 +457,34 @@ async def _log_phase_costs(
             )
 
 
-def _first_error(state: dict[str, dict[str, Any]]) -> tuple[str, str]:
-    for phase, row in state.items():
-        err = row.get("error")
-        if err:
-            return phase, str(err)
-    return "unknown", "no error captured"
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _anthropic_api_key() -> str | None:
+    """Look up the Anthropic key from the copilot config first, then
+    fall back to the shared settings key.
+
+    Mirrors what ``backend/executor/batch_executor.py::_default_api_key_for``
+    does — callbacks live in their own subprocess so they need to
+    re-resolve the key on their own.
+    """
+    try:
+        from backend.copilot.config import ChatConfig
+
+        cfg = ChatConfig()
+        if cfg.direct_anthropic_api_key:
+            return cfg.direct_anthropic_api_key
+    except Exception:
+        logger.debug("ChatConfig unavailable during dream batch callback")
+    try:
+        from backend.util.settings import Settings
+
+        key = Settings().secrets.anthropic_api_key
+        return key or None
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------

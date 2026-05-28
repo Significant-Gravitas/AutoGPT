@@ -27,11 +27,14 @@ from .provider import BatchProvider, NullBatchProvider
 logger = logging.getLogger(__name__)
 
 
-# Flip to False when both batch provider stubs are filled in. Kept as
-# a module constant (not an env var) so the test suite is
-# deterministic across environments — the stub failure mode is
-# observable in the orchestrator's per-path tests.
-USE_STUB_BATCH_PROVIDERS = True
+# The orchestrator's Anthropic batch path now goes directly through
+# ``backend/util/llm/providers.call_provider(execution_mode="batch")``;
+# this factory is preserved only for callers that still want the
+# Protocol-shaped provider abstraction (P-0.1 stub callers, future
+# OpenAI batch path). Flipped to ``False`` as of Step 5 of the
+# plan in ``plans/idempotent-launching-moth.md`` so the orchestrator
+# isn't confused into thinking the providers are stubbed.
+USE_STUB_BATCH_PROVIDERS = False
 
 
 def get_batch_provider(execution_path: ExecutionPath) -> BatchProvider:

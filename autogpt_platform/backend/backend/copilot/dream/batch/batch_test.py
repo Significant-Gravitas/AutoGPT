@@ -102,19 +102,31 @@ def test_factory_returns_null_for_sync_baseline():
     assert isinstance(provider, NullBatchProvider)
 
 
-def test_factory_returns_null_for_anthropic_batch_while_provider_stubbed():
-    """Until the Anthropic adapter is real, ``anthropic_batch`` falls
-    back to Null so the orchestrator short-circuits to sync_baseline."""
-    assert USE_STUB_BATCH_PROVIDERS is True
+def test_use_stub_batch_providers_flag_is_off():
+    """Step 5 of the rollout flipped this off: the orchestrator's
+    Anthropic batch path now goes directly through
+    ``backend/util/llm/providers.call_provider(execution_mode="batch")``.
+    The legacy factory + stub providers are kept around only for
+    callers that still want the Protocol-shaped abstraction (P-0.1
+    callers and the future OpenAI batch path)."""
+    assert USE_STUB_BATCH_PROVIDERS is False
+
+
+def test_factory_returns_anthropic_provider_when_unstubbed():
+    """With the stub flag off the factory hands back the real
+    AnthropicBatchProvider for ``anthropic_batch`` paths. Today this
+    is unused by the orchestrator (which calls ``call_provider``
+    directly) but kept for adapter symmetry once OpenAI batch lands."""
     provider = get_batch_provider("anthropic_batch")
-    assert isinstance(provider, NullBatchProvider)
+    # Specifically NOT NullBatchProvider — the stub-gated test above
+    # would catch a regression flipping the flag back to True.
+    assert not isinstance(provider, NullBatchProvider)
 
 
-def test_factory_returns_null_for_openai_batch_while_provider_stubbed():
+def test_factory_returns_openai_provider_when_unstubbed():
     """Same contract for OpenAI."""
-    assert USE_STUB_BATCH_PROVIDERS is True
     provider = get_batch_provider("openai_batch")
-    assert isinstance(provider, NullBatchProvider)
+    assert not isinstance(provider, NullBatchProvider)
 
 
 # ---------------------------------------------------------------------------

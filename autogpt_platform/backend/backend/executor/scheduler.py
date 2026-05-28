@@ -472,7 +472,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id),
+            execute_dream_pass(user_id, status_id=job_id),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:
