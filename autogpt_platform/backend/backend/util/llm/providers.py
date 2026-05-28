@@ -637,10 +637,14 @@ async def _call_openai_compat(
     if not response.choices:
         raise ValueError(f"{base_url} returned empty choices in response")
 
+    cache_read, cache_creation = _extract_openai_compat_cache_tokens(response)
+
     return ProviderResponse(
         content=response.choices[0].message.content or "",
         prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
         completion_tokens=(response.usage.completion_tokens if response.usage else 0),
+        cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_creation,
         tool_calls=extract_openai_tool_calls(response),
         reasoning=extract_openai_reasoning(response),
         cost_usd=(
@@ -648,3 +652,32 @@ async def _call_openai_compat(
         ),
         raw_response=response.choices[0].message,
     )
+
+
+def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
+    """Extract (cache_read, cache_creation) from an OpenAI-compat usage block.
+
+    Provider quirks this navigates:
+      * Standard OpenAI: ``usage.prompt_tokens_details.cached_tokens``
+      * OpenRouter routing to Anthropic: cache writes surface as
+        ``prompt_tokens_details.model_extra["cache_write_tokens"]``
+      * Anthropic-via-OpenAI-compat (rare): writes under
+        ``cache_creation_input_tokens`` on the same ``model_extra`` blob
+
+    Returns ``(0, 0)`` when no usage object is present so cost
+    computation degrades gracefully on providers that don't return it.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0, 0
+    ptd = getattr(usage, "prompt_tokens_details", None)
+    if ptd is None:
+        return 0, 0
+    cache_read = int(getattr(ptd, "cached_tokens", 0) or 0)
+    ptd_extras = getattr(ptd, "model_extra", None) or {}
+    cache_creation = int(
+        ptd_extras.get("cache_write_tokens")
+        or ptd_extras.get("cache_creation_input_tokens")
+        or 0
+    )
+    return cache_read, cache_creation
