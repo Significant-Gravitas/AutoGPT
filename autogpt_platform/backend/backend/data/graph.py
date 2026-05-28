@@ -1212,12 +1212,15 @@ async def get_graph(
         }
         if version is not None:
             graph_where_clause["version"] = version
-        # Prefer team_id scoping over user_id when both are available
+        # Scope to the caller's identity. Until the org-cutover migration
+        # makes organizationId NOT NULL on every graph (deferred), we
+        # filter by userId — the canonical creator/owner column. teamId
+        # is a separate FK and only adds to the predicate when set.
         if not skip_access_check:
+            if user_id is not None:
+                graph_where_clause["userId"] = user_id
             if team_id is not None:
-                graph_where_clause["organizationId"] = team_id
-            elif user_id is not None:
-                graph_where_clause["organizationId"] = user_id
+                graph_where_clause["teamId"] = team_id
 
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,

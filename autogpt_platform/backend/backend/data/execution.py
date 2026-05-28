@@ -569,13 +569,13 @@ async def get_graph_executions(
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Prefer team_id scoping over user_id when available
+    # Scope by user_id and optionally team_id. Don't conflate either with
+    # organizationId — those are separate columns in the schema and a
+    # team_id/user_id value is not a valid organizationId.
+    if user_id:
+        where_filter["userId"] = user_id
     if team_id:
         where_filter["teamId"] = team_id
-        where_filter["organizationId"] = team_id
-    elif user_id:
-        where_filter["userId"] = user_id
-        where_filter["organizationId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:

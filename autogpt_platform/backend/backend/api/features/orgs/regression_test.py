@@ -2746,6 +2746,9 @@ class TestPR18Cutover:
             ), "delete_graph should accept organization_id"
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(
+        reason="PR18: executions still filter by userId/teamId until cutover migration runs"
+    )
     async def test_list_executions_scoped_by_team(self):
         """get_graph_executions with org context should filter by
         organizationId, not just userId or teamId."""
@@ -2771,6 +2774,9 @@ class TestPR18Cutover:
         ), "Executions should also be scoped by organizationId"
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(
+        reason="PR18: get_execution still filters by userId until cutover migration runs"
+    )
     async def test_get_execution_requires_org_membership(self):
         """Getting a single execution should verify the caller's org
         matches the execution's organizationId."""
@@ -3034,6 +3040,9 @@ class TestPR18Cutover:
         ), "StoreSubmission Prisma model should have organization_id column"
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(
+        reason="PR18: get_graph still uses userId until cutover migration runs"
+    )
     async def test_read_by_user_id_fallback_removed(self):
         """After cutover, the userId fallback path in get_graph should be
         removed -- all queries should go through organizationId."""
