@@ -496,6 +496,34 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
             )
         return
 
+    # The Anthropic batch path returns ``DreamPassResult`` as soon as
+    # the first phase submission is queued — the actual apply step
+    # runs in the BatchExecutor's callback chain when phase 3 lands
+    # (anywhere from minutes to ~1h later). In that case the dream
+    # batch_callbacks own the final ``mark_complete`` / ``mark_errored``
+    # transition; this wrapper must NOT close the row out early or
+    # the GET status endpoint will report ``complete`` while the batch
+    # is still processing.
+    if result.execution_path == "anthropic_batch" and not result.skipped and not result.error:
+        try:
+            run_async(
+                update_status_phase(
+                    kind="dream_pass",
+                    job_id=job_id,
+                    state="submitted",
+                    current_phase="consolidate",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to flip dream pass %s to submitted for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(
