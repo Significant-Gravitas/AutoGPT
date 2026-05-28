@@ -292,9 +292,9 @@ class TestPrepareDryRun:
         # manager.py does before calling Input(**...).
         validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
         err = block.input_schema.validate_data(validation_input)
-        assert err is None, (
-            f"prepare_dry_run produced input that fails jsonschema validation: {err}"
-        )
+        assert (
+            err is None
+        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
