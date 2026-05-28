@@ -34,7 +34,7 @@ import asyncio
 import json as json_module
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anthropic
@@ -170,10 +170,22 @@ async def call_provider(
     own SLA and the poller's own timeout policy).
     """
     if execution_mode == "batch":
-        raise NotImplementedError(
-            "execution_mode='batch' lands in Step 4 of the rollout "
-            "(see plans/idempotent-launching-moth.md component E). "
-            "Today every caller falls back to sync."
+        if not custom_id:
+            raise ValueError(
+                "execution_mode='batch' requires a non-empty custom_id "
+                "for result routing once the batch completes."
+            )
+        sanitize_messages_for_utf8(messages)
+        return await _submit_batch_one_request(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            tool_choice=tool_choice,
+            custom_id=custom_id,
         )
     if execution_mode == "flex":
         raise NotImplementedError(
@@ -681,3 +693,299 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
         or 0
     )
     return cache_read, cache_creation
+
+
+# ---------------------------------------------------------------------------
+# Batch submission (Anthropic Messages Batches API)
+# ---------------------------------------------------------------------------
+
+
+async def _submit_batch_one_request(
+    *,
+    provider: ProviderLiteral,
+    model: str,
+    api_key: str,
+    messages: list[dict],
+    max_tokens: int,
+    temperature: float | None,
+    tools: list[dict] | None,
+    tool_choice: dict | None,
+    custom_id: str,
+) -> BatchSubmissionRef:
+    """Submit a single-request batch and return the provider's handle.
+
+    The shared helper takes one ``call_provider(execution_mode="batch")``
+    invocation = one batch submission with exactly one request. Callers
+    that want to group several requests into one batch (e.g. dream
+    submitting 3 phases together for a single ``custom_id`` namespace)
+    can layer their own grouping on top — for the in-process orchestrator
+    today, one request per submission is the right granularity because
+    each phase has its own ``custom_id`` and ``apply`` handler anyway.
+
+    Result apply is async — the BatchExecutor service polls Anthropic
+    every 30s → 5min backoff, downloads results when ``processing_status
+    == 'ended'``, and dispatches to a caller-registered callback keyed
+    on ``custom_id``.
+    """
+    if provider == "anthropic":
+        return await _submit_anthropic_batch(
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            tool_choice=tool_choice,
+            custom_id=custom_id,
+        )
+    if provider == "openai":
+        raise NotImplementedError(
+            "OpenAI batch submission is a follow-up to Step 4 "
+            "(Anthropic-first; OpenAI batch lands when we add OpenAI "
+            "models to the dream pass)."
+        )
+    raise NotImplementedError(
+        f"execution_mode='batch' is only supported for provider='anthropic' "
+        f"today; got provider={provider!r}. Callers should route to sync_baseline."
+    )
+
+
+async def _submit_anthropic_batch(
+    *,
+    model: str,
+    api_key: str,
+    messages: list[dict],
+    max_tokens: int,
+    temperature: float | None,
+    tools: list[dict] | None,
+    tool_choice: dict | None,
+    custom_id: str,
+) -> BatchSubmissionRef:
+    """Call ``client.messages.batches.create`` for a single-request batch.
+
+    Anthropic accepts ``requests=[{custom_id, params}]`` where ``params``
+    is a ``MessageCreateParams`` dict. We reuse the same message reshape
+    + system-prompt wrapping logic the sync Anthropic path uses, so a
+    batch request and its sync equivalent produce semantically identical
+    LLM behaviour.
+    """
+    an_tools = convert_openai_tool_fmt_to_anthropic(tools)
+    if isinstance(an_tools, list) and an_tools:
+        an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
+
+    system_messages = [p["content"] for p in messages if p["role"] == "system"]
+    sysprompt = " ".join(system_messages)
+
+    anth_messages: list[dict] = []
+    last_role: str | None = None
+    for p in messages:
+        if p["role"] in ("user", "assistant"):
+            if (
+                p["role"] == last_role
+                and anth_messages
+                and isinstance(anth_messages[-1]["content"], str)
+                and isinstance(p["content"], str)
+            ):
+                anth_messages[-1]["content"] += p["content"]
+            else:
+                anth_messages.append({"role": p["role"], "content": p["content"]})
+                last_role = p["role"]
+
+    params: dict[str, Any] = {
+        "model": model,
+        "messages": anth_messages,
+        "max_tokens": max_tokens,
+    }
+    if temperature is not None:
+        params["temperature"] = temperature
+    # Only attach tools / tool_choice when the caller actually passed
+    # them — Anthropic rejects empty arrays with HTTP 400.
+    if isinstance(an_tools, list) and an_tools:
+        params["tools"] = an_tools
+        if tool_choice is not None:
+            params["tool_choice"] = tool_choice
+    if sysprompt.strip():
+        params["system"] = [
+            {
+                "type": "text",
+                "text": sysprompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    # Anthropic's typed Request union is too strict for our dynamic
+    # params shape (we conditionally include ``system`` / ``tools`` /
+    # ``tool_choice``). The runtime contract accepts any dict matching
+    # ``MessageCreateParamsNonStreaming`` — cast to ``Any`` to bypass
+    # pyright's nominal check.
+    batch_requests: Any = [{"custom_id": custom_id, "params": params}]
+    batch = await client.messages.batches.create(requests=batch_requests)
+
+    return BatchSubmissionRef(
+        provider="anthropic",
+        provider_batch_id=batch.id,
+        custom_id=custom_id,
+        submitted_at=datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch poll + download (used by the BatchExecutor service)
+# ---------------------------------------------------------------------------
+
+
+BatchStatusLiteral = Literal["pending", "processing", "ended", "failed"]
+
+
+@dataclass(slots=True)
+class BatchResultRow:
+    """One row from a downloaded batch result.
+
+    Mirrors what ``dream/batch/models.BatchResult`` carries — kept as a
+    plain dataclass at this layer so callers don't have to pull the
+    dream-pass module into shared infrastructure.
+    """
+
+    custom_id: str
+    content: str
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    error: str | None = None
+    # Provider-native result object for callers that need raw access.
+    raw_result: Any = field(default=None, repr=False, compare=False)
+
+
+async def poll_batch(
+    *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
+) -> BatchStatusLiteral:
+    """Return the current normalized status of a submitted batch.
+
+    Maps Anthropic's ``processing_status`` (``in_progress`` /
+    ``canceling`` / ``ended``) onto a small four-state enum the
+    BatchExecutor switches on. ``canceling`` collapses to
+    ``processing`` because callers can't act on it differently — we
+    let Anthropic finish the cancellation and the next poll catches
+    ``ended`` / ``failed``.
+    """
+    if provider != "anthropic":
+        raise NotImplementedError(
+            f"poll_batch only supports provider='anthropic' today; "
+            f"got {provider!r}."
+        )
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    batch = await client.messages.batches.retrieve(provider_batch_id)
+    status = getattr(batch, "processing_status", None)
+    if status == "ended":
+        return "ended"
+    if status == "in_progress":
+        return "processing"
+    if status == "canceling":
+        return "processing"
+    # Unknown / future states → log + report pending so the caller polls again.
+    logger.warning(
+        "Unknown Anthropic batch processing_status=%r — reporting pending.",
+        status,
+    )
+    return "pending"
+
+
+async def download_batch_results(
+    *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
+) -> list[BatchResultRow]:
+    """Download all per-request rows for a completed batch.
+
+    Anthropic streams results as JSONL (one JSON object per line). For
+    each line we extract:
+
+      * ``custom_id`` — caller routing key
+      * Either ``message.content`` (succeeded) → flatten to a JSON
+        string for the dream parser, OR an error string
+      * Per-row usage (input/output/cache_read/cache_creation)
+
+    The downloaded rows are returned in submission order so callers
+    can correlate by index when they don't care about ``custom_id``.
+    """
+    if provider != "anthropic":
+        raise NotImplementedError(
+            f"download_batch_results only supports provider='anthropic' "
+            f"today; got {provider!r}."
+        )
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    rows: list[BatchResultRow] = []
+    async for entry in await client.messages.batches.results(provider_batch_id):
+        custom_id = getattr(entry, "custom_id", "") or ""
+        result = getattr(entry, "result", None)
+        result_type = getattr(result, "type", None) if result is not None else None
+        if result_type == "succeeded":
+            message = getattr(result, "message", None)
+            content_text = _anthropic_content_to_text(message)
+            usage = getattr(message, "usage", None) if message is not None else None
+            input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+            cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+            cache_creation = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+            rows.append(
+                BatchResultRow(
+                    custom_id=custom_id,
+                    content=content_text,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cache_read_tokens=cache_read,
+                    cache_creation_tokens=cache_creation,
+                    raw_result=entry,
+                )
+            )
+        else:
+            # ``errored`` / ``canceled`` / ``expired`` — surface the
+            # error string but keep token counts at 0 (the request
+            # didn't run, so we don't owe Anthropic anything for it).
+            error_obj = getattr(result, "error", None) if result is not None else None
+            error_str = (
+                str(error_obj) if error_obj is not None else (result_type or "errored")
+            )
+            rows.append(
+                BatchResultRow(
+                    custom_id=custom_id,
+                    content="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    error=error_str,
+                    raw_result=entry,
+                )
+            )
+    return rows
+
+
+def _anthropic_content_to_text(message: Any) -> str:
+    """Flatten an Anthropic ``message.content`` blob into a string.
+
+    Three shapes the BatchExecutor's downstream parser handles:
+      * Single ``text`` block → return its ``text``.
+      * Single ``tool_use`` block → return ``json.dumps(input)``. This
+        is the "structured output" path (forced ``tool_choice`` makes
+        Claude emit exactly one tool_use block; the dream pass parses
+        the JSON straight into a Pydantic model).
+      * Multi-block / unknown → join all ``text`` blocks with newlines.
+
+    Returns ``""`` when the message is missing or empty.
+    """
+    if message is None:
+        return ""
+    content = getattr(message, "content", None) or []
+    if not content:
+        return ""
+    first = content[0]
+    first_type = getattr(first, "type", None)
+    if first_type == "tool_use" and len(content) == 1:
+        return json_module.dumps(getattr(first, "input", {}) or {})
+    if first_type == "text" and len(content) == 1:
+        return getattr(first, "text", "") or ""
+    # Multi-block fallback — concatenate text blocks.
+    parts: list[str] = []
+    for block in content:
+        if getattr(block, "type", None) == "text":
+            parts.append(getattr(block, "text", "") or "")
+    return "\n".join(parts)

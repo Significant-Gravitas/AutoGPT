@@ -31,15 +31,43 @@ def _msg(role: str, content: str) -> dict:
 
 
 class TestExecutionModeStubs:
-    """Batch + flex modes raise NotImplementedError until Steps 4 / 8 land.
+    """Flex mode + batch-on-non-Anthropic raise NotImplementedError until
+    later steps land. Pinning this keeps the contract honest: callers
+    that opt in early get a loud failure, not silent fallback to sync.
 
-    Pinning this behavior keeps the contract honest: callers that opt in
-    early get a loud failure, not silent fallback to sync.
+    Anthropic batch lands in Step 4 (this commit) — see
+    ``TestBatchSubmission`` below for its tests.
     """
 
     @pytest.mark.asyncio
-    async def test_batch_mode_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError, match="Step 4"):
+    async def test_batch_mode_on_openai_raises_not_implemented(self):
+        with pytest.raises(NotImplementedError, match="OpenAI batch"):
+            await call_provider(
+                provider="openai",
+                model="gpt-4o",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                execution_mode="batch",
+                custom_id="probe",
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_mode_on_groq_raises_not_implemented(self):
+        with pytest.raises(NotImplementedError, match="provider='anthropic'"):
+            await call_provider(
+                provider="groq",
+                model="mixtral",
+                api_key="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                execution_mode="batch",
+                custom_id="probe",
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_mode_requires_custom_id(self):
+        with pytest.raises(ValueError, match="custom_id"):
             await call_provider(
                 provider="anthropic",
                 model="claude-sonnet-4-6",
@@ -555,3 +583,339 @@ class TestDefaults:
         # Pin the SLA — anything bigger and a stalled provider can park
         # an executor thread for too long.
         assert DEFAULT_REQUEST_TIMEOUT_SECONDS == 120
+
+
+# ---------------------------------------------------------------------------
+# Anthropic batch submission + poll + download
+# ---------------------------------------------------------------------------
+
+
+from backend.util.llm.providers import (  # noqa: E402
+    BatchResultRow,
+    BatchSubmissionRef,
+    download_batch_results,
+    poll_batch,
+)
+
+
+class TestBatchSubmission:
+    @pytest.mark.asyncio
+    async def test_submits_to_anthropic_batches_create(self):
+        fake_batch = SimpleNamespace(id="msgbatch_abc123")
+        async_create = AsyncMock(return_value=fake_batch)
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(create=async_create)),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            ref = await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-ant-test",
+                messages=[
+                    _msg("system", "be helpful"),
+                    _msg("user", "give me a fact"),
+                ],
+                max_tokens=200,
+                temperature=0.3,
+                execution_mode="batch",
+                custom_id="passid-1:consolidate",
+            )
+
+        assert isinstance(ref, BatchSubmissionRef)
+        assert ref.provider == "anthropic"
+        assert ref.provider_batch_id == "msgbatch_abc123"
+        assert ref.custom_id == "passid-1:consolidate"
+
+        async_create.assert_awaited_once()
+        kwargs = async_create.call_args.kwargs
+        requests = kwargs["requests"]
+        assert len(requests) == 1
+        req = requests[0]
+        assert req["custom_id"] == "passid-1:consolidate"
+        params = req["params"]
+        assert params["model"] == "claude-sonnet-4-6"
+        assert params["max_tokens"] == 200
+        assert params["temperature"] == 0.3
+        # System prompt landed as cache-controlled text block.
+        assert isinstance(params["system"], list)
+        assert params["system"][0]["text"] == "be helpful"
+        assert params["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    @pytest.mark.asyncio
+    async def test_submit_includes_tool_choice_for_structured_output(self):
+        """Step 5 leans on this: pin that ``tool_choice`` and ``tools``
+        make it into the batch ``params`` so the model is constrained to
+        emit one tool_use block. Without it, the model is free to write
+        prose and the dream's JSON parser does extra work."""
+        fake_batch = SimpleNamespace(id="msgbatch_xyz")
+        async_create = AsyncMock(return_value=fake_batch)
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(create=async_create)),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-ant-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                tools=[{"name": "x", "parameters": {}}],
+                tool_choice={"type": "tool", "name": "x"},
+                execution_mode="batch",
+                custom_id="x",
+            )
+        params = async_create.call_args.kwargs["requests"][0]["params"]
+        assert params["tool_choice"] == {"type": "tool", "name": "x"}
+        assert params["tools"][0]["name"] == "x"
+
+
+class TestPollBatch:
+    @pytest.mark.asyncio
+    async def test_maps_ended_status(self):
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(
+                    retrieve=AsyncMock(
+                        return_value=SimpleNamespace(processing_status="ended")
+                    )
+                )
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            assert (
+                await poll_batch(
+                    provider="anthropic",
+                    provider_batch_id="msgbatch_1",
+                    api_key="sk-ant-test",
+                )
+                == "ended"
+            )
+
+    @pytest.mark.asyncio
+    async def test_maps_in_progress_to_processing(self):
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(
+                    retrieve=AsyncMock(
+                        return_value=SimpleNamespace(processing_status="in_progress")
+                    )
+                )
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            assert (
+                await poll_batch(
+                    provider="anthropic",
+                    provider_batch_id="x",
+                    api_key="sk-ant-test",
+                )
+                == "processing"
+            )
+
+    @pytest.mark.asyncio
+    async def test_unknown_status_reports_pending(self):
+        """Future-proof: if Anthropic adds a new ``processing_status``
+        value we don't recognize, we keep polling rather than failing
+        the whole pass."""
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(
+                    retrieve=AsyncMock(
+                        return_value=SimpleNamespace(
+                            processing_status="some_future_state"
+                        )
+                    )
+                )
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            assert (
+                await poll_batch(
+                    provider="anthropic",
+                    provider_batch_id="x",
+                    api_key="sk-ant-test",
+                )
+                == "pending"
+            )
+
+    @pytest.mark.asyncio
+    async def test_openai_raises_not_implemented(self):
+        with pytest.raises(NotImplementedError, match="anthropic"):
+            await poll_batch(
+                provider="openai",
+                provider_batch_id="x",
+                api_key="x",
+            )
+
+
+class TestDownloadBatchResults:
+    @pytest.mark.asyncio
+    async def test_extracts_text_block_content(self):
+        """A succeeded result with a single text block flattens to the
+        text content. That's the most common dream-pass result shape
+        when tool_use isn't in play."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1:consolidate",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            content=[
+                                SimpleNamespace(type="text", text='{"facts": []}')
+                            ],
+                            usage=SimpleNamespace(
+                                input_tokens=10,
+                                output_tokens=20,
+                                cache_read_input_tokens=3,
+                                cache_creation_input_tokens=2,
+                            ),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="msgbatch_done",
+                api_key="sk-ant-test",
+            )
+        assert len(rows) == 1
+        row = rows[0]
+        assert isinstance(row, BatchResultRow)
+        assert row.custom_id == "passid-1:consolidate"
+        assert row.content == '{"facts": []}'
+        assert row.input_tokens == 10
+        assert row.output_tokens == 20
+        assert row.cache_read_tokens == 3
+        assert row.cache_creation_tokens == 2
+        assert row.error is None
+
+    @pytest.mark.asyncio
+    async def test_extracts_tool_use_input_as_json(self):
+        """Step 5 leans on this: when the dream pass uses
+        ``tool_choice={"type":"tool","name":...}`` to force structured
+        output, the result is one ``tool_use`` block whose ``input``
+        IS the structured payload. Flattening it to a JSON string is
+        what the dream parser then validates against the Pydantic
+        schema."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1:sanitize",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            content=[
+                                SimpleNamespace(
+                                    type="tool_use",
+                                    input={
+                                        "writes": [],
+                                        "summary_for_user": "ok",
+                                    },
+                                )
+                            ],
+                            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
+
+    @pytest.mark.asyncio
+    async def test_errored_row_carries_error_string_with_zero_tokens(self):
+        """Per-request errors do not fail the whole batch — they surface
+        as a row with ``error`` set and token counts at 0. The
+        BatchExecutor's dispatch handler reads this to mark the phase
+        failed in the JobStatus row."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1:recombine",
+                    result=SimpleNamespace(
+                        type="errored",
+                        error=SimpleNamespace(message="content moderation"),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].error is not None
+        assert "content moderation" in rows[0].error
+        assert rows[0].input_tokens == 0
+        assert rows[0].output_tokens == 0
+
+
+def _fake_async_iter(items):
+    """Build an awaitable that yields an async iterator over ``items``.
+
+    The Anthropic SDK's ``batches.results()`` returns an awaitable
+    yielding an async-iterable streamer; this helper mocks that shape
+    without dragging the real SDK into the tests.
+    """
+
+    class _Iter:
+        def __init__(self, items):
+            self._items = list(items)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._items:
+                raise StopAsyncIteration
+            return self._items.pop(0)
+
+    return _Iter(items)
