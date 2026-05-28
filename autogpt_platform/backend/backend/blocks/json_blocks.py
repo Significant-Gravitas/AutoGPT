@@ -1,5 +1,6 @@
 """JSON encode and decode blocks for processing structured data in workflows."""
 
+import math
 from typing import Any
 
 from backend.blocks._base import (
@@ -11,6 +12,43 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.json import dumps, loads
+
+
+def _validate_json_data(obj, seen=None):
+    if seen is None:
+        seen = set()
+
+    if isinstance(obj, float) and not math.isfinite(obj):
+        raise ValueError("Cannot serialize non-finite float")
+
+    if isinstance(obj, (str, int, bool, type(None))):
+        return
+
+    obj_id = id(obj)
+
+    if obj_id in seen:
+        raise ValueError("Circular reference detected")
+
+    if isinstance(obj, (dict, list, tuple, set)):
+        seen.add(obj_id)
+
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                _validate_json_data(k, seen)
+                _validate_json_data(v, seen)
+        else:
+            for item in obj:
+                _validate_json_data(item, seen)
+
+        seen.remove(obj_id)
+
+    elif hasattr(obj, "__dict__"):
+        seen.add(obj_id)
+
+        for value in vars(obj).values():
+            _validate_json_data(value, seen)
+
+        seen.remove(obj_id)
 
 
 class JSONEncoderBlock(Block):
@@ -47,6 +85,7 @@ class JSONEncoderBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
+            _validate_json_data(input_data.data)
             json_str = dumps(input_data.data)
             yield "json_str", json_str
         except Exception as e:

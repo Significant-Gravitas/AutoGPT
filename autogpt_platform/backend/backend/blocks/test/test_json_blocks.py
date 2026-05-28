@@ -24,18 +24,15 @@ async def test_json_encoder_success():
 
 
 @pytest.mark.asyncio
-async def test_json_encoder_error():
+async def test_json_encoder_circular_reference():
     block = JSONEncoderBlock()
 
     data = {}
     data["self"] = data
 
-    with pytest.raises(ValueError, match="JSON Encoding Error") as exc_info:
-        async for output in block.run(JSONEncoderBlock.Input(data=data)):
+    with pytest.raises(ValueError, match="Circular reference detected"):
+        async for _ in block.run(JSONEncoderBlock.Input(data=data)):
             pass
-
-    error_message = str(exc_info.value)
-    assert "JSON Encoding Error" in error_message
 
 
 @pytest.mark.asyncio
@@ -86,11 +83,9 @@ async def test_json_decoder_error():
     # Malformed JSON string missing closing bracket
     json_str = '{"a": 1, "b": [true, false,'
 
-    with pytest.raises(ValueError, match="JSON Decoding Error") as exc_info:
+    with pytest.raises(ValueError, match="JSON Decoding Error"):
         async for _ in block.run(JSONDecoderBlock.Input(json_str=json_str)):
             pass
-    error_message = str(exc_info.value)
-    assert "JSON Decoding Error" in error_message
 
 
 @pytest.mark.asyncio
@@ -133,12 +128,9 @@ async def test_json_encoder_invalid_floats(invalid_float):
     block = JSONEncoderBlock()
     data = {"invalid": invalid_float}
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="non-finite float"):
         async for _ in block.run(JSONEncoderBlock.Input(data=data)):
             pass
-
-    error_message = str(exc_info.value)
-    assert "JSON Encoding Error" in error_message
 
 
 @pytest.mark.asyncio
