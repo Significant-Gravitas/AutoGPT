@@ -1324,8 +1324,10 @@ async def add_graph_execution(
             ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
-            # Workspace (enables workspace:// file resolution in blocks)
-            team_id=workspace.id,
+            # File-storage workspace (UserWorkspace) — enables
+            # workspace:// file resolution in blocks. Distinct from the
+            # org/team tenancy ``team_id`` field on ExecutionContext.
+            workspace_id=workspace.id,
         )
 
     try:
