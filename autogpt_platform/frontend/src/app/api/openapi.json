@@ -8455,6 +8455,7 @@
             "required": false,
             "schema": {
               "type": "string",
+              "maxLength": 512,
               "description": "Free-form search query (semantic + lexical). When empty or omitted, the endpoint returns the most-recently-updated items per bucket instead.",
               "default": "",
               "title": "Q"
