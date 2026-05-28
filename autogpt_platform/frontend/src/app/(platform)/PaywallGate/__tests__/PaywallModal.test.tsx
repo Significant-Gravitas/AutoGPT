@@ -39,6 +39,11 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
+const mockLogOut = vi.fn();
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => ({ logOut: mockLogOut }),
+}));
+
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -131,6 +136,20 @@ describe("PaywallModal — dynamic plan rendering", () => {
   });
 });
 
+describe("PaywallModal — logout", () => {
+  it("logs out when the Log out button is clicked", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+
+    expect(mockLogOut).toHaveBeenCalled();
+  });
+});
+
 describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
   it("defaults to yearly billing with the monthly-equivalent price and the annual total", () => {
     setupMocks({
@@ -145,10 +164,10 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     // PRO yearly = 51000 cents → $42.50/mo primary, $510.00 charged today.
     // MAX yearly = 326400 cents → $272.00/mo primary, $3,264.00 charged today.
-    expect(screen.getByText("$42.50")).toBeDefined();
-    expect(screen.getByText("$272.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByText("Charged today: $3,264.00")).toBeDefined();
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
+    expect(screen.getByLabelText("$272.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
   });
 
   it("toggling Monthly switches displayed prices to the full monthly amounts", async () => {
@@ -166,10 +185,10 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     // PRO monthly = 5000 cents = $50.00 (primary), $50.00 charged today
     await waitFor(() => {
-      expect(screen.getByText("$50.00")).toBeDefined();
-      expect(screen.getByText("$320.00")).toBeDefined();
-      expect(screen.getByText("Charged today: $50.00")).toBeDefined();
-      expect(screen.getByText("Charged today: $320.00")).toBeDefined();
+      expect(screen.getByLabelText("$50.00")).toBeDefined();
+      expect(screen.getByLabelText("$320.00")).toBeDefined();
+      expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+      expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
     });
   });
 });

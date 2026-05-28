@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import posthog
 import stripe
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import (
@@ -47,6 +48,9 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
+if settings.secrets.posthog_api_key:
+    posthog.api_key = settings.secrets.posthog_api_key
+    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -1037,12 +1041,24 @@ class UserCredit(UserCreditBase):
                 f"Out of {len(payment_methods)} payment methods tried, none is supported"
             )
 
-        await self._enable_transaction(
+        activation = await self._enable_transaction(
             transaction_key=transaction_key,
             new_transaction_key=new_transaction_key,
             user_id=user_id,
             metadata=successful_transaction,
         )
+        # ``_enable_transaction`` returns None when the transaction is missing
+        # or already active — skip the conversion event in that no-op case so
+        # webhook/retry replays don't double-emit.
+        if activation is not None and amount > 0:
+            _track_billing_event(
+                "credit_topup_success",
+                user_id,
+                {
+                    "amount_credits": amount,
+                    "top_up_type": top_up_type.value,
+                },
+            )
 
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         if amount < 500 or amount % 100 != 0:
@@ -1159,12 +1175,21 @@ class UserCredit(UserCreditBase):
             else:
                 new_transaction_key = None
 
-            await self._enable_transaction(
+            activation = await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
+            if activation is not None:
+                _track_billing_event(
+                    "credit_topup_success",
+                    credit_transaction.userId,
+                    {
+                        "amount_credits": credit_transaction.amount,
+                        "top_up_type": "CHECKOUT",
+                    },
+                )
 
     async def get_credits(self, user_id: str) -> int:
         balance, _ = await self._get_credits(user_id)
@@ -1514,6 +1539,12 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         )
         if cancelled_count > 0:
             get_pending_subscription_change.cache_delete(user_id)
+            current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+            _track_billing_event(
+                "subscription_cancellation_scheduled",
+                user_id,
+                {"subscription_tier": current_tier.value},
+            )
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1958,8 +1989,10 @@ async def modify_stripe_subscription_for_tier(
         # Only catch actual DB/connection failures — letting KeyError,
         # AttributeError etc. propagate so programming errors surface in Sentry
         # instead of being silently masked as benign DB-write-swallow events.
+        db_flip_succeeded = False
         try:
             await set_subscription_tier(user_id, tier)
+            db_flip_succeeded = True
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
@@ -1975,6 +2008,19 @@ async def modify_stripe_subscription_for_tier(
             user_id,
             tier,
         )
+        # Only emit on real tier upgrade AND when the DB flip succeeded — the
+        # ``customer.subscription.updated`` webhook is the fallback emit when
+        # the DB flip fails, so gating here avoids double-firing on success.
+        if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
+            _track_billing_event(
+                "subscription_upgraded",
+                user_id,
+                {
+                    "previous_subscription_tier": current_tier.value,
+                    "subscription_tier": tier.value,
+                    "billing_cycle": billing_cycle,
+                },
+            )
         return True
     finally:
         get_pending_subscription_change.cache_delete(user_id)
@@ -2585,6 +2631,19 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    if is_tier_upgrade(current_tier, tier):
+        billing_cycle = (
+            metadata.get("billing_cycle") if isinstance(metadata, dict) else None
+        )
+        _track_billing_event(
+            "subscription_upgraded",
+            user.id,
+            {
+                "previous_subscription_tier": current_tier.value,
+                "subscription_tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
+        )
     # Tier changed — bust any cached pending-change view so the next
     # dashboard fetch reflects the new state immediately.
     get_pending_subscription_change.cache_delete(user.id)
@@ -2649,6 +2708,72 @@ def _invoice_subscription_id(invoice: dict) -> str:
                 return new_sub
     legacy = invoice.get("subscription")
     return legacy if isinstance(legacy, str) and legacy else ""
+
+
+def _track_billing_event(
+    event: str, distinct_id: str, properties: dict[str, Any]
+) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        posthog.capture(
+            event=event,
+            distinct_id=distinct_id,
+            properties=properties,
+        )
+    except Exception:
+        logger.warning(
+            "failed to track billing event %s for user %s",
+            event,
+            distinct_id,
+            exc_info=True,
+        )
+
+
+async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
+    if not settings.secrets.posthog_api_key:
+        return
+
+    try:
+        metadata = _invoice_subscription_metadata(invoice)
+        tier = (
+            metadata.get("tier")
+            or (user.subscriptionTier or SubscriptionTier.NO_TIER).value
+        )
+        billing_cycle = metadata.get("billing_cycle") or (
+            await get_user_billing_cycle(user.id) or "monthly"
+        )
+
+        posthog.capture(
+            event="subscription_payment_success",
+            distinct_id=user.id,
+            properties={
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "handle_subscription_payment_success: failed to track payment event"
+            " for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
+def _invoice_subscription_metadata(invoice: dict) -> dict:
+    subscription_details = invoice.get("subscription_details")
+    if not isinstance(subscription_details, dict):
+        parent = invoice.get("parent") or {}
+        if isinstance(parent, dict):
+            subscription_details = parent.get("subscription_details")
+
+    if not isinstance(subscription_details, dict):
+        return {}
+
+    metadata = subscription_details.get("metadata") or {}
+    return metadata if isinstance(metadata, dict) else {}
 
 
 async def handle_subscription_payment_failure(invoice: dict) -> None:
@@ -2842,6 +2967,8 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             user.id,
         )
         return
+
+    await _track_subscription_payment_success(user, invoice)
 
     if not settings.config.enable_subscription_credit_grant:
         logger.debug(

@@ -151,6 +151,11 @@ services:
     environment:
       GOTRUE_MAILER_AUTOCONFIRM: true
 
+  # db waits on rabbitmq:service_healthy to gate startup ordering:
+  # concurrent container creation in E2B's Docker races RabbitMQ's
+  # .erlang.cookie write, producing `eacces` at broker boot. Supabase's
+  # auth/meta/studio + migrate all depends_on db:service_healthy
+  # upstream, so gating db alone cascades to the rest of the stack.
   db:
     <<: *supabase-services
     extends:
@@ -158,6 +163,9 @@ services:
       service: db
     ports:
       - 5432:5432 # We don't use Supavisor locally, so we expose the db directly.
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   # Studio and its dependencies for local development only
   meta:
