@@ -22,7 +22,11 @@ from typing import Any
 from prisma.enums import ContentType
 
 from backend.api.features.search import hybrid_search
-from backend.api.features.search.model import GlobalSearchResponse, SearchResultItem
+from backend.api.features.search.model import (
+    GlobalSearchResponse,
+    SearchItemType,
+    SearchResultItem,
+)
 from backend.data.db_accessors import library_db, search
 from backend.util.cache import cached
 
@@ -64,9 +68,10 @@ def _hybrid_row_to_item(row: dict[str, Any]) -> SearchResultItem | None:
     type_str = getattr(raw_type, "value", raw_type)
     metadata = row.get("metadata") or {}
 
+    item_type: SearchItemType
     if type_str == ContentType.LIBRARY_AGENT.value:
         title = metadata.get("name") or row.get("searchable_text") or ""
-        item_type: Any = "library_agent"
+        item_type = "library_agent"
         subtitle = None
     elif type_str == ContentType.STORE_AGENT.value:
         title = metadata.get("name") or row.get("searchable_text") or ""

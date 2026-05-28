@@ -82,6 +82,12 @@ def build_searchable_text(
     return " ".join(parts)
 
 
+# Cached at module load: ``encoding_for_model`` loads a tokenizer file
+# from disk on every call (~10–20 ms). At backfill scale we run this on
+# every row, so amortising it module-level is a meaningful win.
+_ENCODER = encoding_for_model(EMBEDDING_MODEL)
+
+
 async def generate_embedding(text: str) -> list[float]:
     """
     Generate embedding for text using OpenAI API.
@@ -94,13 +100,13 @@ async def generate_embedding(text: str) -> list[float]:
 
     # Truncate text to token limit using tiktoken
     # Character-based truncation is insufficient because token ratios vary by content type
-    enc = encoding_for_model(EMBEDDING_MODEL)
-    tokens = enc.encode(text)
-    if len(tokens) > EMBEDDING_MAX_TOKENS:
+    tokens = _ENCODER.encode(text)
+    original_token_count = len(tokens)
+    if original_token_count > EMBEDDING_MAX_TOKENS:
         tokens = tokens[:EMBEDDING_MAX_TOKENS]
-        truncated_text = enc.decode(tokens)
+        truncated_text = _ENCODER.decode(tokens)
         logger.info(
-            f"Truncated text from {len(enc.encode(text))} to {len(tokens)} tokens"
+            f"Truncated text from {original_token_count} to {len(tokens)} tokens"
         )
     else:
         truncated_text = text

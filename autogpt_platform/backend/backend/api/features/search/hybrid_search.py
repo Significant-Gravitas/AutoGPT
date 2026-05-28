@@ -334,11 +334,17 @@ async def unified_hybrid_search(
     sql_query = f"""
         WITH candidates AS (
             -- Lexical matches (uses GIN index on search column)
-            SELECT uce.id, uce."contentType", uce."contentId"
-            FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
-            WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
-            {user_filter}
-            AND uce.search @@ {lexical_fn}('english', {query_param})
+            -- Bounded to 500 rows so a broad prefix like ``a:*`` can't
+            -- drag the whole table into ts_rank_cd scoring. Matches the
+            -- semantic branch's bounded design.
+            (
+                SELECT uce.id, uce."contentType", uce."contentId"
+                FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
+                WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
+                {user_filter}
+                AND uce.search @@ {lexical_fn}('english', {query_param})
+                LIMIT 500
+            )
 
             UNION
 
