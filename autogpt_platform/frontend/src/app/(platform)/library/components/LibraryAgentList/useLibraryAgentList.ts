@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { isAgentScheduled } from "../../hooks/executionHelpers";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -341,11 +342,7 @@ function filterAgentsByStatus<
   return agents.filter((agent) => {
     const isRunning = activeGraphIds.has(agent.graph_id);
     const hasError = errorGraphIds.has(agent.graph_id);
-    // Match the categorization used by useLibraryFleetSummary, useAgentStatus,
-    // and useSitrepItems: an agent is "scheduled" if it has an active schedule
-    // (`is_scheduled`) OR a recommended cron the user can promote into one.
-    const isScheduled =
-      !!agent.is_scheduled || !!agent.recommended_schedule_cron;
+    const isScheduled = isAgentScheduled(agent);
 
     if (statusFilter === "running") return isRunning;
     if (statusFilter === "attention") return hasError && !isRunning;
