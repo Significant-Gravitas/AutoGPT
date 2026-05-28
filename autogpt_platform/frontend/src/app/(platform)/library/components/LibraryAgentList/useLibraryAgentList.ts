@@ -327,6 +327,7 @@ function filterAgentsByStatus<
   T extends {
     graph_id: string;
     has_external_trigger: boolean;
+    is_scheduled?: boolean;
     recommended_schedule_cron?: string | null;
   },
 >(
@@ -340,6 +341,11 @@ function filterAgentsByStatus<
   return agents.filter((agent) => {
     const isRunning = activeGraphIds.has(agent.graph_id);
     const hasError = errorGraphIds.has(agent.graph_id);
+    // Match the categorization used by useLibraryFleetSummary, useAgentStatus,
+    // and useSitrepItems: an agent is "scheduled" if it has an active schedule
+    // (`is_scheduled`) OR a recommended cron the user can promote into one.
+    const isScheduled =
+      !!agent.is_scheduled || !!agent.recommended_schedule_cron;
 
     if (statusFilter === "running") return isRunning;
     if (statusFilter === "attention") return hasError && !isRunning;
@@ -349,17 +355,11 @@ function filterAgentsByStatus<
       return !isRunning && !hasError && agent.has_external_trigger;
     if (statusFilter === "scheduled")
       return (
-        !isRunning &&
-        !hasError &&
-        !agent.has_external_trigger &&
-        !!agent.recommended_schedule_cron
+        !isRunning && !hasError && !agent.has_external_trigger && isScheduled
       );
     if (statusFilter === "idle")
       return (
-        !isRunning &&
-        !hasError &&
-        !agent.has_external_trigger &&
-        !agent.recommended_schedule_cron
+        !isRunning && !hasError && !agent.has_external_trigger && !isScheduled
       );
     if (statusFilter === "healthy") return !hasError;
     return true;
