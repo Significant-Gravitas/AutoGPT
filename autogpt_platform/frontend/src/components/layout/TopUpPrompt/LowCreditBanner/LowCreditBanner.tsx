@@ -12,7 +12,9 @@ interface Props {
 }
 
 export function LowCreditBanner({ className }: Props) {
-  const { openTopUp, dismiss } = useLowCreditBanner();
+  const { visible, openTopUp, dismiss } = useLowCreditBanner();
+
+  if (!visible) return null;
 
   const alert = (
     <Alert variant="warning" aria-live="polite">
