@@ -904,10 +904,11 @@ class UserCredit(UserCreditBase):
         logger.warning(
             f"Adding extra info for dispute from {user_id} for ${amount / 100}"
         )
-        # Retrieve recent transaction history to support our evidence.
-        # This provides a concise timeline that shows service usage and proper credit application.
-        transaction_history = await self.get_transaction_history(
-            user_id, transaction_count_limit=None
+        # Retrieve recent transaction rows directly from prisma to preserve
+        # per-row runningBalance in the dispute evidence narrative.
+        dispute_transactions = await CreditTransaction.prisma().find_many(
+            where={"userId": user_id, "isActive": True},
+            order={"createdAt": "desc"},
         )
         user = await get_user_by_id(user_id)
 
@@ -920,17 +921,19 @@ class UserCredit(UserCreditBase):
             "were applied to the user’s account. Our records confirm that the funds were utilized for the intended services. "
             "Below is a summary of recent transaction activity:\n"
         )
-        for tx in transaction_history.transactions:
-            if tx.transaction_key == transaction.transactionKey:
+        for t in dispute_transactions:
+            if t.transactionKey == transaction.transactionKey:
                 additional_comment = (
                     " [This top-up transaction is the subject of the dispute]."
                 )
             else:
                 additional_comment = ""
 
+            tx_time = t.createdAt.replace(tzinfo=timezone.utc)
+            running_balance = t.runningBalance or 0
             evidence_text += (
-                f"- {tx.description}: Amount ${tx.amount / 100:.2f} on {tx.transaction_time.isoformat()}"
-                f"{additional_comment}\n"
+                f"- {t.type} Transaction: Amount ${t.amount / 100:.2f} on {tx_time.isoformat()}, "
+                f"resulting balance ${running_balance / 100:.2f}{additional_comment}\n"
             )
         evidence_text += (
             "\nThis evidence demonstrates that the transaction was authorized and that the charged amount was used to render the service as agreed."
@@ -1220,7 +1223,6 @@ class UserCredit(UserCreditBase):
             take=transaction_count_limit,
         )
 
-        # doesn't fill current_balance, reason, user_email, admin_email, or extra_data
         grouped_transactions: dict[str, CreditTransactionItem] = defaultdict(
             lambda: CreditTransactionItem(user_id=user_id)
         )

@@ -1074,6 +1074,7 @@ describe("TransactionHistoryCard", () => {
     expect(screen.getByText("Agent run")).toBeDefined();
     expect(screen.getByText("+$50.00")).toBeDefined();
     expect(screen.getByText("-$2.50")).toBeDefined();
+    expect(screen.queryByText(/^Balance$/)).toBeNull();
   });
 
   it("renders ErrorCard with a Retry button on a 500", async () => {
