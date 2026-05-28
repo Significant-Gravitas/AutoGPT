@@ -27,6 +27,7 @@ from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
+    CreditTransactionItem,
     RefundRequest,
     TopUpType,
     TransactionHistory,
@@ -928,8 +929,8 @@ class UserCredit(UserCreditBase):
                 additional_comment = ""
 
             evidence_text += (
-                f"- {tx.description}: Amount ${tx.amount / 100:.2f} on {tx.transaction_time.isoformat()}, "
-                f"resulting balance ${tx.running_balance / 100:.2f} {additional_comment}\n"
+                f"- {tx.description}: Amount ${tx.amount / 100:.2f} on {tx.transaction_time.isoformat()}"
+                f"{additional_comment}\n"
             )
         evidence_text += (
             "\nThis evidence demonstrates that the transaction was authorized and that the charged amount was used to render the service as agreed."
@@ -1220,8 +1221,8 @@ class UserCredit(UserCreditBase):
         )
 
         # doesn't fill current_balance, reason, user_email, admin_email, or extra_data
-        grouped_transactions: dict[str, UserTransaction] = defaultdict(
-            lambda: UserTransaction(user_id=user_id)
+        grouped_transactions: dict[str, CreditTransactionItem] = defaultdict(
+            lambda: CreditTransactionItem(user_id=user_id)
         )
         tx_time = None
         for t in transactions:
@@ -1251,7 +1252,6 @@ class UserCredit(UserCreditBase):
 
             if tx_time > gt.transaction_time:
                 gt.transaction_time = tx_time
-                gt.running_balance = t.runningBalance or 0
 
         return TransactionHistory(
             transactions=list(grouped_transactions.values()),

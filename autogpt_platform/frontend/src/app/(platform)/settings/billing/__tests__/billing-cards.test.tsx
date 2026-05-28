@@ -1005,7 +1005,6 @@ describe("UsageCard", () => {
             transaction_type: "USAGE",
             amount: -150,
             description: "Agent run",
-            running_balance: 850,
           },
         ],
         next_transaction_time: null,
@@ -1056,7 +1055,6 @@ describe("TransactionHistoryCard", () => {
             transaction_type: "TOP_UP",
             amount: 5000,
             description: "Top up",
-            running_balance: 5000,
           },
           {
             transaction_key: "TXN-B",
@@ -1064,7 +1062,6 @@ describe("TransactionHistoryCard", () => {
             transaction_type: "USAGE",
             amount: -250,
             description: "Agent run",
-            running_balance: 4750,
           },
         ],
         next_transaction_time: null,
