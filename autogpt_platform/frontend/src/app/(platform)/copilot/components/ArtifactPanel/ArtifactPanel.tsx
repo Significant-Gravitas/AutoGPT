@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { AnimatePresence, motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Drawer } from "vaul";
+import { useCopilotUIStore } from "../../store";
 import { ArtifactContent } from "./components/ArtifactContent";
-import { ArtifactDragHandle } from "./components/ArtifactDragHandle";
 import { ArtifactMinimizedStrip } from "./components/ArtifactMinimizedStrip";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { useArtifactPanel } from "./useArtifactPanel";
@@ -24,20 +19,18 @@ export function ArtifactPanel({ mobile }: Props) {
     isMaximized,
     activeArtifact,
     history,
-    effectiveWidth,
     isSourceView,
     classification,
     setIsSourceView,
-    closeArtifactPanel,
     minimizeArtifactPanel,
     maximizeArtifactPanel,
     restoreArtifactPanel,
-    setArtifactPanelWidth,
     goBackArtifact,
     canCopy,
     handleCopy,
     handleDownload,
   } = useArtifactPanel();
+  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
 
   if (!activeArtifact || !classification) return null;
 
@@ -51,7 +44,7 @@ export function ArtifactPanel({ mobile }: Props) {
     mobile: !!mobile,
     canCopy,
     onBack: goBackArtifact,
-    onClose: closeArtifactPanel,
+    onClose: clearArtifactPreview,
     onMinimize: minimizeArtifactPanel,
     onMaximize: maximizeArtifactPanel,
     onRestore: restoreArtifactPanel,
@@ -60,66 +53,63 @@ export function ArtifactPanel({ mobile }: Props) {
     onSourceToggle: setIsSourceView,
   };
 
-  // Mobile: fullscreen Sheet overlay
-  if (mobile) {
-    return (
-      <Sheet
-        open={isOpen}
-        onOpenChange={(open) => !open && closeArtifactPanel()}
-      >
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col p-0 sm:max-w-full"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>{activeArtifact.title}</SheetTitle>
-          </SheetHeader>
-          <ArtifactPanelHeader {...headerProps} />
-          <ArtifactContent
-            artifact={activeArtifact}
-            isSourceView={isSourceView}
-            classification={classification}
-          />
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  // Minimized strip
   if (isOpen && isMinimized) {
     return (
-      <ArtifactMinimizedStrip
-        artifact={activeArtifact}
-        classification={classification}
-        onExpand={restoreArtifactPanel}
-      />
+      <div className="fixed right-0 top-[72px] z-[60] h-[calc(100vh-72px)]">
+        <ArtifactMinimizedStrip
+          artifact={activeArtifact}
+          classification={classification}
+          onExpand={restoreArtifactPanel}
+        />
+      </div>
     );
   }
 
-  // Keep AnimatePresence mounted across the open→closed transition so the
-  // exit animation on the motion.div has a chance to run.
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          key="artifact-panel"
-          data-artifact-panel
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.25, ease: "easeInOut" }}
-          className="relative flex h-full flex-col overflow-hidden border-l border-zinc-200 bg-white"
-          style={{ width: effectiveWidth }}
+    <Drawer.Root
+      open={isOpen}
+      onOpenChange={(open) => !open && clearArtifactPreview()}
+      direction="right"
+      handleOnly
+      noBodyStyles
+      modal={false}
+    >
+      <Drawer.Portal>
+        {/* Manual backdrop — vaul's Drawer.Overlay wraps RemoveScroll, which
+            adds padding-right to compensate for scrollbar removal. Our layout
+            scrolls internally (no body scrollbar), so that padding visibly
+            shifts the underlying page. modal={false} disables RemoveScroll;
+            we render our own backdrop with click-to-close. */}
+        <div
+          onClick={clearArtifactPreview}
+          className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px]"
+          aria-hidden="true"
+        />
+        <Drawer.Content
+          className={cn(
+            "fixed right-0 top-0 z-[70] flex h-full flex-col bg-white shadow-xl outline-none",
+            mobile
+              ? "w-full"
+              : isMaximized
+                ? "w-[85vw]"
+                : "w-[640px] max-w-[90vw]",
+          )}
+          // Override vaul's `[data-vaul-drawer]{user-select:none}` rule so
+          // artifact text is selectable.
+          style={{ userSelect: "text" }}
+          aria-describedby={undefined}
         >
-          <ArtifactDragHandle onWidthChange={setArtifactPanelWidth} />
+          <Drawer.Title className="sr-only">
+            {activeArtifact.title}
+          </Drawer.Title>
           <ArtifactPanelHeader {...headerProps} />
           <ArtifactContent
             artifact={activeArtifact}
             isSourceView={isSourceView}
             classification={classification}
           />
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }

@@ -7,6 +7,11 @@ import {
   useDeleteWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
@@ -113,15 +118,20 @@ export function FilesTab({ sessionId }: Props) {
   }
 
   const downloadAllButton = (
-    <Button
-      variant="ghost"
-      size="small"
-      onClick={handleDownloadAll}
-      loading={isZipping}
-      leftIcon={<DownloadSimpleIcon size={16} />}
-    >
-      Download all
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleDownloadAll}
+          loading={isZipping}
+          aria-label="Download all"
+        >
+          <DownloadSimpleIcon size={16} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Download all</TooltipContent>
+    </Tooltip>
   );
 
   return (

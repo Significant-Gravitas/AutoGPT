@@ -26,7 +26,7 @@ export function ModelToggleButton({ model, onToggle }: Props) {
           className={cn(
             "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
             isAdvanced
-              ? "text-sky-900"
+              ? "text-emerald-500"
               : "text-neutral-500 hover:text-neutral-700",
           )}
           aria-label={

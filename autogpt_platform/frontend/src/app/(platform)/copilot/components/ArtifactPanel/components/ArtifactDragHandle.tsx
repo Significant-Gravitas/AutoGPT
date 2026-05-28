@@ -7,12 +7,14 @@ import { DEFAULT_PANEL_WIDTH } from "../../../store";
 interface Props {
   onWidthChange: (width: number) => void;
   minWidth?: number;
+  maxWidth?: number;
   maxWidthPercent?: number;
 }
 
 export function ArtifactDragHandle({
   onWidthChange,
   minWidth = 320,
+  maxWidth,
   maxWidthPercent = 85,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
@@ -22,9 +24,11 @@ export function ArtifactDragHandle({
   // latest values without having to detach/reattach between re-renders.
   const onWidthChangeRef = useRef(onWidthChange);
   const minWidthRef = useRef(minWidth);
+  const maxWidthRef = useRef(maxWidth);
   const maxWidthPercentRef = useRef(maxWidthPercent);
   onWidthChangeRef.current = onWidthChange;
   minWidthRef.current = minWidth;
+  maxWidthRef.current = maxWidth;
   maxWidthPercentRef.current = maxWidthPercent;
 
   // Track the captured pointer id so pointerup can release it even after
@@ -39,9 +43,13 @@ export function ArtifactDragHandle({
 
     function handlePointerMove(moveEvent: PointerEvent) {
       const delta = startXRef.current - moveEvent.clientX;
-      const maxWidth = window.innerWidth * (maxWidthPercentRef.current / 100);
+      const fromPercent =
+        window.innerWidth * (maxWidthPercentRef.current / 100);
+      const effectiveMax = maxWidthRef.current
+        ? Math.min(maxWidthRef.current, fromPercent)
+        : fromPercent;
       const newWidth = Math.min(
-        maxWidth,
+        effectiveMax,
         Math.max(minWidthRef.current, startWidthRef.current + delta),
       );
       onWidthChangeRef.current(newWidth);

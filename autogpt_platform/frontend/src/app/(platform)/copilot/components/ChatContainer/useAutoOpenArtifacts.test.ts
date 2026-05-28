@@ -24,22 +24,6 @@ function makeArtifact(
   };
 }
 
-function makeAgentMessage(
-  id: string,
-  artifactIds: string[],
-): UIMessage<unknown, UIDataTypes, UITools> {
-  return {
-    id,
-    role: "assistant",
-    parts: artifactIds.map((aid) => ({
-      type: "file" as const,
-      url: `/api/proxy/api/workspace/files/${aid}/download`,
-      filename: `${aid}.txt`,
-      mediaType: "text/plain",
-    })),
-  };
-}
-
 function resetStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
@@ -105,194 +89,24 @@ describe("useAutoOpenArtifacts (card-based)", () => {
     expect(s.isOpen).toBe(false);
     expect(s.activeArtifact).toBeNull();
   });
-
-  // ── Readiness gating ──────────────────────────────────────────────
-
-  it("sets auto-open ready after loading completes with a session", () => {
-    renderHook(() => useAutoOpenArtifacts(defaultProps));
-    // After the effect fires, registerArtifactForAutoOpen should auto-open
-    const ref = makeArtifact(A_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  it("does not set ready when sessionId is null", () => {
-    renderHook(() =>
-      useAutoOpenArtifacts({ ...defaultProps, sessionId: null }),
-    );
-    const ref = makeArtifact(A_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("does not set ready when artifacts feature flag is disabled", () => {
-    renderHook(() =>
-      useAutoOpenArtifacts({ ...defaultProps, isArtifactsEnabled: false }),
-    );
-    const ref = makeArtifact(A_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("defers readiness when session was loading and messages haven't hydrated", () => {
-    const { rerender } = renderHook(
-      ({ isLoadingSession, messages }) =>
-        useAutoOpenArtifacts({
-          ...defaultProps,
-          isLoadingSession,
-          messages,
-        }),
-      { initialProps: { isLoadingSession: true, messages: [] as Messages } },
-    );
-
-    // Loading done but messages still empty → should NOT be ready
-    act(() => {
-      rerender({ isLoadingSession: false, messages: [] as Messages });
-    });
-    const ref = makeArtifact(A_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-
-    // Once messages arrive → ready
-    resetStore();
-    act(() => {
-      rerender({
-        isLoadingSession: false,
-        messages: [makeAgentMessage("m1", [A_ID])],
-      });
-    });
-    const ref2 = makeArtifact(B_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref2);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  // ── User-close suppression ────────────────────────────────────────
-
-  it("suppresses auto-open after the user explicitly closes the panel", () => {
-    renderHook(() => useAutoOpenArtifacts(defaultProps));
-
-    // Open via store
-    act(() => {
-      useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID));
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    // User closes
-    act(() => {
-      useCopilotUIStore.getState().closeArtifactPanel();
-    });
-
-    // New registration should NOT auto-open
-    const ref = makeArtifact(B_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("resets close-suppression when session changes (remount)", () => {
-    renderHook(() => useAutoOpenArtifacts(defaultProps));
-
-    // Open + close → suppressed
-    act(() => {
-      useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID));
-    });
-    act(() => {
-      useCopilotUIStore.getState().closeArtifactPanel();
-    });
-
-    // Session change resets suppression
-    const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ ...defaultProps, sessionId }),
-      { initialProps: { sessionId: "s1" } },
-    );
-    act(() => {
-      rerender({ sessionId: "s2" });
-    });
-
-    // New registration should auto-open
-    const ref = makeArtifact(B_ID);
-    act(() => {
-      useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    });
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
 });
 
 // ── registerArtifactForAutoOpen (store unit tests) ────────────────
+//
+// Auto-open is disabled — registerArtifactForAutoOpen is only kept to track
+// known IDs and upgrade metadata when a richer ref arrives for the same id.
 
 describe("registerArtifactForAutoOpen", () => {
   beforeEach(resetStore);
 
-  it("does not auto-open when not ready", () => {
-    const ref = makeArtifact(A_ID);
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("auto-opens an agent artifact when ready", () => {
+  it("never auto-opens the panel, regardless of readiness", () => {
     useCopilotUIStore.getState().setAutoOpenReady();
-    const ref = makeArtifact(A_ID);
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
-      A_ID,
-    );
-  });
-
-  it("does not auto-open user-uploaded artifacts", () => {
-    useCopilotUIStore.getState().setAutoOpenReady();
-    const ref = makeArtifact(A_ID, "upload.txt", "user-upload");
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("does not auto-open the same artifact twice", () => {
-    useCopilotUIStore.getState().setAutoOpenReady();
-    const ref = makeArtifact(A_ID);
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    // Close, then re-register same ID
-    useCopilotUIStore.getState().closeArtifactPanel();
-    // Reset the user-closed flag so it doesn't interfere
-    useCopilotUIStore.getState().resetAutoOpenState();
-    useCopilotUIStore.getState().setAutoOpenReady();
-    // But A_ID is already known from the first registration — wait,
-    // resetAutoOpenState clears known IDs too. Let's re-add it as known.
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
-    // First call after reset → opens again (this is correct — reset clears known)
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    // NOW close and try again without reset — same ID, should not re-trigger
-    useCopilotUIStore.getState().closeArtifactPanel();
-    // Manually set ready again (close doesn't affect ready)
-    const ref2 = makeArtifact(A_ID);
-    useCopilotUIStore.getState().registerArtifactForAutoOpen(ref2);
-    // Already known, won't re-open
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
-
-  it("does not auto-open when user-closed flag is set", () => {
-    useCopilotUIStore.getState().setAutoOpenReady();
-    useCopilotUIStore.getState().markUserClosedForAutoOpen();
     const ref = makeArtifact(A_ID);
     useCopilotUIStore.getState().registerArtifactForAutoOpen(ref);
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("upgrades activeArtifact metadata when a richer ref arrives for a known ID", () => {
-    useCopilotUIStore.getState().setAutoOpenReady();
     const weakRef: ArtifactRef = {
       id: A_ID,
       title: "File " + A_ID.slice(0, 8),
@@ -300,7 +114,10 @@ describe("registerArtifactForAutoOpen", () => {
       sourceUrl: `/api/proxy/api/workspace/files/${A_ID}/download`,
       origin: "agent",
     };
+    // First registration tracks the ID but doesn't open the panel.
     useCopilotUIStore.getState().registerArtifactForAutoOpen(weakRef);
+    // Simulate the user explicitly opening this artifact afterwards.
+    useCopilotUIStore.getState().openArtifact(weakRef);
     expect(
       useCopilotUIStore.getState().artifactPanel.activeArtifact?.mimeType,
     ).toBeNull();

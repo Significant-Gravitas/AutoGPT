@@ -1,5 +1,11 @@
+import { Button } from "@/components/atoms/Button/Button";
+import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { DownloadSimpleIcon, TrashIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
 import { classifyArtifact } from "../../../../ArtifactPanel/helpers";
 import {
   formatFileSize,
@@ -28,35 +34,47 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
         title={file.messageID ? "Jump to chat" : item.name}
       >
-        <Icon size={18} className="shrink-0 text-zinc-400" />
+        <Icon size={24} className="shrink-0 text-zinc-400" />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm text-zinc-800">{item.name}</span>
+          <OverflowText
+            variant="body"
+            value={item.name}
+            className="text-zinc-800"
+          />
           <span className="text-xs text-zinc-400">
             {formatFileSize(item.size_bytes ?? 0)} ·{" "}
             {formatFileTimestamp(item.created_at)}
           </span>
         </span>
       </button>
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={() => onDownload(file)}
-          aria-label={`Download ${item.name}`}
-          className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-        >
-          <DownloadSimpleIcon size={16} />
-        </button>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDownload(file)}
+              aria-label={`Download ${item.name}`}
+            >
+              <DownloadSimpleIcon size={16} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Download</TooltipContent>
+        </Tooltip>
         {canDelete && (
-          <button
-            type="button"
-            onClick={() => onRequestDelete(file)}
-            aria-label={`Delete ${item.name}`}
-            className={cn(
-              "rounded p-1.5 text-zinc-500 hover:bg-red-50 hover:text-red-600",
-            )}
-          >
-            <TrashIcon size={16} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onRequestDelete(file)}
+                aria-label={`Delete ${item.name}`}
+              >
+                <TrashIcon size={16} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Delete</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>

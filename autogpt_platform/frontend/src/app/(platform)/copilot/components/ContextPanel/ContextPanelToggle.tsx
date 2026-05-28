@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../store";
 
@@ -11,15 +12,16 @@ export function ContextPanelToggle() {
 
   return (
     <div className="flex shrink-0 items-start p-3">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         onClick={toggleContextPanel}
         aria-label="Open workspace panel"
         aria-pressed={false}
-        className="rounded-md bg-white/80 p-2 text-zinc-500 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-zinc-700"
       >
-        <SidebarSimpleIcon size={18} />
-      </button>
+        <SidebarSimpleIcon className="!size-5 rotate-180" />
+      </Button>
     </div>
   );
 }

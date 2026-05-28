@@ -30,7 +30,7 @@ export function ModeToggleButton({ mode, onToggle }: Props) {
           onClick={onToggle}
           className={cn(
             "ml-2 inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-            isExtended ? "text-purple-900" : "text-amber-900",
+            isExtended ? "text-purple-500" : "text-amber-500",
           )}
           aria-label={
             isExtended

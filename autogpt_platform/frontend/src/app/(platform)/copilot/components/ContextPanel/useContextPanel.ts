@@ -10,12 +10,10 @@ export function useContextPanel() {
   );
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
 
-  const view = artifactPanel.activeArtifact ? "preview" : "tabs";
-
   return {
     isOpen: artifactPanel.isOpen,
     activeTab: artifactPanel.activeTab,
-    view,
+    width: artifactPanel.width,
     setActiveTab,
     setArtifactPanelWidth,
     closeArtifactPanel,

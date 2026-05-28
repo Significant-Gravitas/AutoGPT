@@ -48,7 +48,8 @@ interface ArtifactPanelState {
   activeTab: ContextPanelTab;
 }
 
-export const DEFAULT_PANEL_WIDTH = 600;
+export const DEFAULT_PANEL_WIDTH = 272; // 17rem
+export const MAX_PANEL_WIDTH = 280; // 17.5rem
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -66,11 +67,10 @@ function getPersistedWidth(): number {
   const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
   if (saved) {
     const parsed = parseInt(saved, 10);
-    // Match the drag-handle clamp so a stale/corrupt value can't open the
-    // panel wider than 85% of the viewport.
-    const maxWidth = window.innerWidth * 0.85;
-    if (!isNaN(parsed) && parsed >= 320) {
-      return Math.min(parsed, maxWidth);
+    // Clamp stale persisted values to the current MAX so a previously larger
+    // panel doesn't reopen above the new cap.
+    if (!isNaN(parsed) && parsed >= 240) {
+      return Math.min(parsed, MAX_PANEL_WIDTH);
     }
   }
   return DEFAULT_PANEL_WIDTH;
@@ -142,6 +142,7 @@ interface CopilotUIState {
   artifactPanel: ArtifactPanelState;
   openArtifact: (ref: ArtifactRef) => void;
   closeArtifactPanel: () => void;
+  clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   minimizeArtifactPanel: () => void;
   maximizeArtifactPanel: () => void;
@@ -286,6 +287,16 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  clearArtifactPreview: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        activeArtifact: null,
+        history: [],
+        isMinimized: false,
+        isMaximized: false,
+      },
+    })),
   resetArtifactPanel: () =>
     set((state) => ({
       artifactPanel: {
@@ -395,9 +406,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   // ── Card-based auto-open actions ─────────────────────────────────
   registerArtifactForAutoOpen: (ref) => {
+    // Auto-open is disabled — the drawer only opens on explicit click.
+    // We still track the ID so we can upgrade activeArtifact metadata when
+    // a richer ref (e.g. file-part with real MIME) arrives for the same id.
     if (_autoOpenKnownIds.has(ref.id)) {
-      // Already known — upgrade activeArtifact metadata if this ref is richer
-      // (e.g. file-part ref with real MIME replacing text-extracted null MIME).
       const active = get().artifactPanel.activeArtifact;
       if (active?.id === ref.id && !active.mimeType && ref.mimeType) {
         set((state) => ({
@@ -407,9 +419,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       return;
     }
     _autoOpenKnownIds.add(ref.id);
-    if (!_autoOpenReady || _autoOpenUserClosed || ref.origin !== "agent")
-      return;
-    get().openArtifact(ref);
   },
   setAutoOpenReady: () => {
     _autoOpenReady = true;
