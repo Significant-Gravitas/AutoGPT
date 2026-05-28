@@ -103,9 +103,11 @@ class TestListEntities:
         assert items[0]["name"] == "Alice"
         assert items[1]["summary"] is None
 
-    def test_limit_clamps_at_500(self) -> None:
-        resp = client.get("/admin/memory/abc/entities?limit=9999")
-        # 422 from FastAPI validation, NOT 500
+    def test_limit_above_cap_rejected_with_422(self) -> None:
+        """The entities route caps ``limit`` at 10000 via FastAPI Query
+        validation. Anything beyond gets a 422 — not a 500 from a runaway
+        Cypher LIMIT clause."""
+        resp = client.get("/admin/memory/abc/entities?limit=10001")
         assert resp.status_code == 422
 
 
