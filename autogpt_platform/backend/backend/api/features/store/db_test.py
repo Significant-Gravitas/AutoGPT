@@ -351,7 +351,7 @@ async def test_get_user_profile(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_with_search_parameterized(mocker):
+async def test_get_store_agents_with_search_parameterized():
     """Test that search query uses parameterized SQL - validates the fix works"""
 
     # Call function with search query containing potential SQL injection
