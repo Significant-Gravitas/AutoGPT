@@ -1,14 +1,25 @@
 import React from "react";
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { getGetV2GetChatShareStateMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
+import { server } from "@/mocks/mock-server";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatContainer } from "../ChatContainer";
 import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
 const mockArtifactsEnabled = vi.fn(() => false);
+const clipboardWrite = vi.fn(async (_text: string) => {});
 
 const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
 const ARTIFACT_B_ID = "22222222-0000-0000-0000-000000000000";
+const SHARED_TOKEN = "33333333-0000-0000-0000-000000000000";
 
 function makeArtifact(id: string, title = `${id}.txt`) {
   return {
@@ -32,6 +43,22 @@ function resetCopilotStore() {
       activeTab: "files",
     },
   });
+}
+
+function mockShareState(state: Partial<ChatShareStateResponse>) {
+  server.use(
+    getGetV2GetChatShareStateMockHandler200(
+      (): ChatShareStateResponse => ({
+        is_shared: false,
+        share_token: null,
+        auto_share_executions: false,
+        message_count: 0,
+        linked_run_count: 0,
+        file_count: 0,
+        ...state,
+      }),
+    ),
+  );
 }
 
 vi.mock("framer-motion", () => ({
@@ -160,7 +187,13 @@ describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
     mockArtifactsEnabled.mockReturnValue(false);
+    mockShareState({ is_shared: false });
     resetCopilotStore();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: clipboardWrite },
+    });
+    clipboardWrite.mockClear();
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
   });
 
@@ -189,6 +222,41 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not render the shared-chat notice for unshared chats", async () => {
+    render(<ChatContainer {...baseProps} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("This chat is shared")).toBeNull();
+    });
+  });
+
+  it("renders the shared-chat notice for chats the user has shared", async () => {
+    mockShareState({ is_shared: true, share_token: SHARED_TOKEN });
+
+    render(<ChatContainer {...baseProps} />);
+
+    expect(await screen.findByText("This chat is shared")).toBeDefined();
+    expect(screen.getByRole("button", { name: /copy link/i })).toBeDefined();
+  });
+
+  it("copies the shared-chat link from the owner notice", async () => {
+    mockShareState({ is_shared: true, share_token: SHARED_TOKEN });
+
+    render(<ChatContainer {...baseProps} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /copy link/i }));
+
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0][0]).toMatch(
+      new RegExp(`/share/chat/${SHARED_TOKEN}$`),
+    );
+    expect(
+      await screen.findByRole("button", { name: /copied/i }),
+    ).toBeDefined();
   });
 
   describe("auto-open artifact panel behavior", () => {
