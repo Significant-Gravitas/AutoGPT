@@ -397,6 +397,11 @@ async def create_submission(
     ),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
+    # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
+    # this function is invoked outside FastAPI's dependency-injection path
+    # (e.g. some integration tests). ``getattr`` with a default returns
+    # None instead of raising AttributeError on the sentinel.
+    org_id = getattr(ctx, "org_id", None)
     result = await store_db.create_store_submission(
         user_id=user_id,
         graph_id=submission_request.graph_id,
@@ -412,7 +417,7 @@ async def create_submission(
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary or "Initial Submission",
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
-        organization_id=ctx.org_id,
+        organization_id=org_id,
     )
     return result
 

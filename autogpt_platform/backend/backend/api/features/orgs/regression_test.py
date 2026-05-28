@@ -171,13 +171,14 @@ class TestGraphCrudUserIdIsolation:
 
             result = await get_graph(GRAPH_ID, version=None, user_id=USER_ID)
 
-        # The function must have queried Prisma with organizationId in the where clause
+        # Until the org-cutover migration backfills + enforces organizationId,
+        # get_graph filters by the canonical userId column (creator/owner).
         mock_actions.find_first.assert_called_once()
         where_arg = mock_actions.find_first.call_args.kwargs.get(
             "where", mock_actions.find_first.call_args[1].get("where")
         )
         assert where_arg["id"] == GRAPH_ID
-        assert where_arg["organizationId"] == USER_ID
+        assert where_arg["userId"] == USER_ID
         assert result is not None
 
     @pytest.mark.asyncio
@@ -211,11 +212,12 @@ class TestGraphCrudUserIdIsolation:
 
             result = await get_graph(GRAPH_ID, version=None, user_id=OTHER_USER_ID)
 
-        # First call is the ownership query — must filter by organizationId
+        # First call is the ownership query — must filter by userId (canonical
+        # owner column) until org-cutover migration runs.
         where_arg = mock_actions.find_first.call_args.kwargs.get(
             "where", mock_actions.find_first.call_args[1].get("where")
         )
-        assert where_arg["organizationId"] == OTHER_USER_ID
+        assert where_arg["userId"] == OTHER_USER_ID
         assert result is None
 
     @pytest.mark.asyncio
@@ -376,9 +378,10 @@ class TestExecutionUserIdIsolation:
         assert len(results) == 1
 
     @pytest.mark.asyncio
-    async def test_regression_list_executions_prefers_team_over_user(self):
-        """When both team_id and user_id are provided, team_id takes
-        precedence and userId is NOT in the where clause."""
+    async def test_regression_list_executions_scopes_by_team_and_user(self):
+        """When both team_id and user_id are provided, both are added to
+        the where clause. userId remains the canonical owner filter until
+        the org-cutover migration runs."""
         mock_actions = AsyncMock()
         mock_actions.find_many = AsyncMock(return_value=[])
 
@@ -394,7 +397,7 @@ class TestExecutionUserIdIsolation:
             "where", mock_actions.find_many.call_args[1].get("where")
         )
         assert where_arg["teamId"] == "team-xyz"
-        assert "userId" not in where_arg
+        assert where_arg["userId"] == USER_ID
 
     @pytest.mark.asyncio
     async def test_regression_create_execution_sets_user_id(self):
