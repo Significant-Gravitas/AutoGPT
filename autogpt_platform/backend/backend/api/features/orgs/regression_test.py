@@ -718,6 +718,7 @@ class TestChatSessionUserIdIsolation:
         """delete_chat_session() includes userId in the where clause when
         a user_id is provided, preventing cross-user deletion."""
         mock_actions = AsyncMock()
+        mock_actions.find_first = AsyncMock(return_value=None)
         mock_actions.delete_many = AsyncMock(return_value=1)
 
         with patch(
