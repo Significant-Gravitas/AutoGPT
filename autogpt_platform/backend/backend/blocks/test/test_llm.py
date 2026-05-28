@@ -10,6 +10,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockUserCredentialsInvalidError
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1036,7 +1037,6 @@ class TestUserErrorStatusCodeHandling:
         """401/403/429 Anthropic errors should break immediately, not retry.
         401/403 are tagged as credentials-invalid; 429 is a generic user error."""
         import backend.blocks.llm as llm
-        from backend.util.exceptions import BlockUserCredentialsInvalidError
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -1083,7 +1083,6 @@ class TestUserErrorStatusCodeHandling:
         """401/403/429 OpenAI errors should break immediately, not retry.
         401/403 are tagged as credentials-invalid; 429 is a generic user error."""
         import backend.blocks.llm as llm
-        from backend.util.exceptions import BlockUserCredentialsInvalidError
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -1149,7 +1148,6 @@ class TestUserErrorStatusCodeHandling:
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
         import backend.blocks.llm as llm
-        from backend.util.exceptions import BlockUserCredentialsInvalidError
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
