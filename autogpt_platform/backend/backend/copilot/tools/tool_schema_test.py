@@ -65,7 +65,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # extra ~270 chars on CI (env-flagged tool registrations push CI
 # higher than local) carry the LLM-decision-critical copy for
 # "search the library before building new" + "user-confirmed bypass".
-_CHAR_BUDGET = 39_500
+# Bumped 39500 -> 40500 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+_CHAR_BUDGET = 40_500
 
 
 @pytest.fixture(scope="module")
