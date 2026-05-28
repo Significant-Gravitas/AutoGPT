@@ -157,7 +157,7 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
+        <div className="flex h-full min-h-0 flex-col bg-white px-2 pt-[15px] lg:mr-[70px] lg:px-0">
           {sessionId ? (
             <div
               className={cn(
@@ -189,7 +189,7 @@ export const ChatContainer = ({
                 transition={{ duration: 0.3 }}
                 className="relative px-3 pb-2 pt-2"
               >
-                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
+                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-white" />
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
@@ -198,9 +198,9 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(248,248,249,0.96)_0%,rgba(248,248,249,0.9)_42%,rgba(248,248,249,0.58)_68%,rgba(248,248,249,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                     >
-                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#f8f8f9]/80 blur-2xl" />
+                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
                       <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
                     <div className="pointer-events-auto relative px-3">

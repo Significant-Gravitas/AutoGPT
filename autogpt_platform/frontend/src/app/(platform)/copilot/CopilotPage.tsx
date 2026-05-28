@@ -61,9 +61,9 @@ export function CopilotPage() {
       className="h-[calc(100vh-72px)] min-h-0"
     >
       {!isMobile && <ChatSidebar />}
-      <div className="flex h-full w-full flex-row overflow-hidden">
+      <div className="flex h-full w-full flex-row gap-2 overflow-hidden bg-[#fafafa] p-2">
         <FileDropZone
-          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9] px-0"
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white px-0 shadow-sm"
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}

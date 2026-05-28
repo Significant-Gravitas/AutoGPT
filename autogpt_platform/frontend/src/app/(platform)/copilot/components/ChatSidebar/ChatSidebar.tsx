@@ -217,7 +217,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[50px] !h-[calc(100vh-50px)] border-r border-zinc-100 px-0"
+        className="!top-[50px] !h-[calc(100vh-50px)] px-0"
       >
         {isCollapsed && (
           <SidebarHeader
@@ -264,7 +264,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

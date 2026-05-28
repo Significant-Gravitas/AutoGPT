@@ -6,6 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArtifactContent } from "../ArtifactPanel/components/ArtifactContent";
 import { ArtifactDragHandle } from "../ArtifactPanel/components/ArtifactDragHandle";
@@ -78,6 +79,11 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     );
   }
 
+  // The tabs (file list / progress) blend into the gray canvas, but an
+  // artifact preview needs a readable white surface — so it pops as a card
+  // like the chat column.
+  const isPreviewing =
+    view === "preview" && !!preview.activeArtifact && !!preview.classification;
   const body = view === "preview" ? renderPreview() : renderTabs();
 
   if (mobile) {
@@ -124,7 +130,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeInOut" }}
-          className="relative flex h-full flex-col overflow-hidden border-l border-zinc-200 bg-white"
+          className={cn(
+            "relative flex h-full flex-col overflow-hidden",
+            isPreviewing
+              ? "rounded-2xl border border-zinc-200 bg-white shadow-sm"
+              : "bg-transparent",
+          )}
           style={{ width: preview.effectiveWidth }}
         >
           <ArtifactDragHandle onWidthChange={setArtifactPanelWidth} />
