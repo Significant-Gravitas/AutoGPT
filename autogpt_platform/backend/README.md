@@ -2,9 +2,11 @@
 
 > **Note:** This document has moved to the official documentation site.
 
-For the **released (master)** version of the AutoGPT Platform, please refer to:
+To **self-host** the AutoGPT Platform, please refer to:
 
-- [Getting Started Guide](https://docs.agpt.co/platform/getting-started/) — setup instructions for the latest stable release
-- [Documentation Home](https://docs.agpt.co/) — all platform docs for the released version
+- [Self-Hosting Getting Started](https://agpt.co/docs/platform/self-hosting/getting-started) — setup instructions for running the platform yourself
+- [Platform Documentation](https://agpt.co/docs/platform) — all platform docs
 
-For the **development (dev)** version, see [README.advanced.md](./README.advanced.md).
+For **advanced** self-hosting setup (custom infrastructure, scaling), see [README.advanced.md](./README.advanced.md).
+
+Prefer the managed cloud offering? See [Getting Started on Cloud](https://agpt.co/docs/platform/using-the-platform/getting-started-cloud).
