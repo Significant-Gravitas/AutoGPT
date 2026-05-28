@@ -24,11 +24,17 @@ from backend.data.user import get_or_create_user
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def db_conn():
-    await backend_db.connect()
+    # When the full suite runs, the session-scoped `server` fixture already
+    # holds the shared Prisma connection; only tear it down if we opened it,
+    # otherwise the session-teardown graph_cleanup hits ClientNotConnectedError.
+    opened_here = not backend_db.is_connected()
+    if opened_here:
+        await backend_db.connect()
     try:
         yield
     finally:
-        await backend_db.disconnect()
+        if opened_here:
+            await backend_db.disconnect()
 
 
 async def _mk_user() -> str:
