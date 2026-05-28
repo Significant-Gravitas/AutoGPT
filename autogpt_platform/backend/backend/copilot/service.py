@@ -43,6 +43,11 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 settings = Settings()
 
+_TITLE_MAX_WORDS = 6
+_TITLE_MAX_CHARS = 50
+_TITLE_ELLIPSIS = "..."
+_TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
+
 
 def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
     """Return the configured SDK model for the given tier.
@@ -786,25 +791,26 @@ async def _generate_session_title(
         title = msg.content if msg is not None else None
     if title:
         title = title.strip().strip("\"'")
-        if len(title) > 50:
-            title = title[:47] + "..."
+        if len(title) > _TITLE_MAX_CHARS:
+            title = title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
     if not title:
         title = _fallback_title_from_message(message)
     return title, response
 
 
 def _fallback_title_from_message(message: str) -> str:
-    cleaned = " ".join(strip_injected_context_for_display(message).split())
-    if not cleaned:
+    words = strip_injected_context_for_display(message).split()
+    if not words:
         return "New chat"
 
-    words = cleaned.split()
-    title = " ".join(words[:6])
-    is_shortened = len(words) > 6
-    if len(title) > 50 or (is_shortened and len(title) > 47):
-        return title[:47] + "..."
+    title = " ".join(words[:_TITLE_MAX_WORDS])
+    is_shortened = len(words) > _TITLE_MAX_WORDS
+    if len(title) > _TITLE_MAX_CHARS or (
+        is_shortened and len(title) > _TITLE_TRUNCATED_MAX_CHARS
+    ):
+        return title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
     if is_shortened:
-        return title + "..."
+        return title + _TITLE_ELLIPSIS
     return title
 
 
@@ -963,7 +969,7 @@ async def _update_title_async(
     """
     title, response = await _generate_session_title(message, user_id, session_id)
 
-    if title and user_id:
+    if user_id:
         try:
             await update_session_title(session_id, user_id, title, only_if_empty=True)
             logger.debug("Generated title for session %s", session_id)
