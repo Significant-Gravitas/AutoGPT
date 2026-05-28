@@ -1,3 +1,6 @@
+import json
+import logging
+import re
 from urllib.parse import quote
 
 from backend.blocks._base import (
@@ -19,9 +22,54 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
 
+logger = logging.getLogger(__name__)
+
+NO_SEARCH_RESULTS_OUTPUT = "No search results found for the given query."
+_NO_RESULTS_MESSAGE_PATTERN = re.compile(r"no\s+search\s+results", re.IGNORECASE)
+
 
 def _is_no_results_error(error: HTTPClientError) -> bool:
-    return error.status_code == 422 and "No search results available" in str(error)
+    # Jina Search returns 422 with body
+    # {"message":"No search results available for query"}
+    # when a query yields zero results. Detection prefers the structured JSON
+    # `message`/`detail` field and falls back to a case-insensitive substring
+    # match so minor wording tweaks don't silently re-break this path.
+    if error.status_code != 422:
+        return False
+
+    raw = str(error)
+    body = _extract_json_body(raw)
+    if body is not None:
+        for key in ("message", "detail", "error"):
+            value = body.get(key)
+            if isinstance(value, str) and _NO_RESULTS_MESSAGE_PATTERN.search(value):
+                return True
+        logger.warning(
+            "Jina returned 422 with unrecognized body; treating as hard error: %s",
+            body,
+        )
+        return False
+
+    if _NO_RESULTS_MESSAGE_PATTERN.search(raw):
+        return True
+
+    logger.warning(
+        "Jina returned 422 without a parseable body; treating as hard error: %s",
+        raw,
+    )
+    return False
+
+
+def _extract_json_body(error_str: str) -> dict | None:
+    marker = "Body: "
+    idx = error_str.find(marker)
+    if idx == -1:
+        return None
+    try:
+        parsed = json.loads(error_str[idx + len(marker) :])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -69,7 +117,8 @@ class SearchTheWebBlock(Block, GetRequest):
             )
         except HTTPClientError as e:
             if _is_no_results_error(e):
-                yield "results", ""
+                # No merge_stats here: Jina does not bill the 422 no-results path.
+                yield "results", NO_SEARCH_RESULTS_OUTPUT
                 return
             raise BlockExecutionError(
                 message=f"Search failed: {e}",

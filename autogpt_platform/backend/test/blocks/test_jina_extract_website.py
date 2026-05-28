@@ -7,7 +7,11 @@ from backend.blocks.jina._auth import (
     TEST_CREDENTIALS_INPUT,
     JinaCredentialsInput,
 )
-from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
+from backend.blocks.jina.search import (
+    NO_SEARCH_RESULTS_OUTPUT,
+    ExtractWebsiteContentBlock,
+    SearchTheWebBlock,
+)
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError
 
@@ -48,7 +52,7 @@ async def test_extract_website_content_handles_http_error(monkeypatch):
         raw_content=False,
     )
 
-    async def fake_get_request(_url, json=False, headers=None):
+    async def fake_get_request(url, json=False, headers=None):
         raise HTTPClientError("HTTP 400 Error: Bad Request", 400)
 
     monkeypatch.setattr(block, "get_request", fake_get_request)
@@ -68,7 +72,7 @@ async def test_extract_website_content_handles_http_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_search_the_web_returns_empty_results_for_no_matches(monkeypatch):
+async def test_search_the_web_returns_sentinel_for_no_matches(monkeypatch):
     block = SearchTheWebBlock()
     input_data = block.Input(
         query="PES 2013 player stats historical",
@@ -90,7 +94,11 @@ async def test_search_the_web_returns_empty_results_for_no_matches(monkeypatch):
         )
     ]
 
-    assert results == [("results", "")]
+    assert results == [("results", NO_SEARCH_RESULTS_OUTPUT)]
+    # Jina does not bill the 422 no-results path; ensure provider cost stays unset
+    # so a future refactor cannot silently start charging users for empty searches.
+    assert block.execution_stats.provider_cost is None
+    assert block.execution_stats.provider_cost_type is None
 
 
 @pytest.mark.asyncio
@@ -107,9 +115,59 @@ async def test_search_the_web_still_raises_for_other_client_errors(monkeypatch):
     monkeypatch.setattr(block, "get_request", fake_get_request)
 
     with pytest.raises(BlockExecutionError, match="Search failed: HTTP 401 Error"):
+        # Must fully consume the async generator for the raise to propagate.
         [
             output
             async for output in block.run(
                 input_data=input_data, credentials=TEST_CREDENTIALS
             )
         ]
+
+
+@pytest.mark.asyncio
+async def test_search_the_web_raises_for_422_with_unrelated_body(monkeypatch):
+    block = SearchTheWebBlock()
+    input_data = block.Input(
+        query="Artificial Intelligence",
+        credentials=cast(JinaCredentialsInput, TEST_CREDENTIALS_INPUT),
+    )
+
+    async def fake_get_request(_url, headers=None, json=False):
+        raise HTTPClientError(
+            'HTTP 422 Error: Unprocessable Entity, Body: {"detail":"Validation error"}',
+            422,
+        )
+
+    monkeypatch.setattr(block, "get_request", fake_get_request)
+
+    with pytest.raises(BlockExecutionError, match="Search failed: HTTP 422 Error"):
+        [
+            output
+            async for output in block.run(
+                input_data=input_data, credentials=TEST_CREDENTIALS
+            )
+        ]
+
+
+@pytest.mark.asyncio
+async def test_search_the_web_records_cost_on_success(monkeypatch):
+    block = SearchTheWebBlock()
+    input_data = block.Input(
+        query="Artificial Intelligence",
+        credentials=cast(JinaCredentialsInput, TEST_CREDENTIALS_INPUT),
+    )
+
+    async def fake_get_request(_url, headers=None, json=False):
+        return "search content"
+
+    monkeypatch.setattr(block, "get_request", fake_get_request)
+
+    results = [
+        output
+        async for output in block.run(
+            input_data=input_data, credentials=TEST_CREDENTIALS
+        )
+    ]
+
+    assert results == [("results", "search content")]
+    assert block.execution_stats.provider_cost == 0.01
