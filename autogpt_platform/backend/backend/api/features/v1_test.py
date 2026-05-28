@@ -191,7 +191,7 @@ def test_execute_graph_block(
     )
     mock_credit_model = mocker.AsyncMock()
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -337,7 +337,7 @@ def test_get_user_credits(
     mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -364,7 +364,7 @@ def test_request_top_up(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -426,7 +426,7 @@ def test_configure_auto_top_up(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -456,7 +456,7 @@ def test_configure_auto_top_up_validation_errors(
     mock_credit_model.top_up_credits.return_value = None
 
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -500,7 +500,7 @@ def test_list_invoices_returns_mapped_payload(
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[invoice])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -525,7 +525,7 @@ def test_list_invoices_clamps_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
@@ -540,7 +540,7 @@ def test_list_invoices_default_limit(mocker: pytest_mock.MockFixture) -> None:
     mock_credit_model = Mock()
     mock_credit_model.list_invoices = AsyncMock(return_value=[])
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 

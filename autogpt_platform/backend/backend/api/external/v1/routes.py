@@ -171,12 +171,22 @@ async def execute_graph(
     # than fail-open via the deep gate inside add_graph_execution).
     # Consistent with the JWT-gated internal graph-execute route.
     await enforce_payment_paywall(auth.user_id)
+
+    # Resolve org/team from user's default (PR14 will add key-level org
+    # context). Best-effort: a DB hiccup here must not collapse a
+    # subsequent UserPaywalledError into 400 via the broad except below.
+    from backend.api.features.orgs.db import get_user_default_team
+
     try:
-        # Resolve org/team from user's default (PR14 will add key-level org context)
-        from backend.api.features.orgs.db import get_user_default_team
-
         org_id, team_id = await get_user_default_team(auth.user_id)
+    except Exception:
+        logger.warning(
+            "get_user_default_team failed for external execute",
+            exc_info=True,
+        )
+        org_id, team_id = None, None
 
+    try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=auth.user_id,

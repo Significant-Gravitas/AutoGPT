@@ -2105,7 +2105,7 @@ def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
     """``get_or_create_builder_session`` raises ``NotFoundError`` when the
     user doesn't own the graph; the route must map that to HTTP 404."""
 
-    async def _fake_get_or_create(user_id: str, graph_id: str):
+    async def _fake_get_or_create(user_id: str, graph_id: str, **_kwargs):
         raise NotFoundError(f"Graph {graph_id} not found")
 
     mocker.patch(
@@ -2133,7 +2133,7 @@ def test_create_session_without_builder_graph_id_creates_fresh(
         new_callable=AsyncMock,
     )
 
-    async def _fake_create(user_id: str, *, dry_run: bool) -> ChatSession:
+    async def _fake_create(user_id: str, *, dry_run: bool, **_kwargs) -> ChatSession:
         return ChatSession.new(user_id, dry_run=dry_run)
 
     mocker.patch(
