@@ -36,11 +36,7 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import (
-    GraphExecutionStats,
-    NodeExecutionStats,
-    _BaseCredentials,
-)
+from backend.data.model import GraphExecutionStats, NodeExecutionStats, _BaseCredentials
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
