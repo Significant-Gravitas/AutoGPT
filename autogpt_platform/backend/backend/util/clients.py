@@ -12,6 +12,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 settings = Settings()
 
 if TYPE_CHECKING:
+    from anthropic import AsyncAnthropic
     from openai import AsyncOpenAI
     from supabase import AClient, Client
 
@@ -208,6 +209,31 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
             return AsyncOpenAI(api_key=openai_key)
         if openrouter_key:
             return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+    return None
+
+
+# ============ Anthropic Client ============ #
+
+
+@cached(ttl_seconds=3600)
+def get_anthropic_client() -> "AsyncAnthropic | None":
+    """Get a process-cached async Anthropic client.
+
+    Reads ``settings.secrets.anthropic_api_key`` (same env var the SDK
+    blocks consume). Returns ``None`` when no key is configured — caller
+    should fall back to OpenRouter-routed Anthropic via
+    ``get_openai_client(prefer_openrouter=True)`` for sync calls, or
+    skip the Anthropic-batch path entirely.
+
+    Used by the dream pass + future batch-mode LLM callers that need
+    direct Anthropic API access (batch API, prompt caching with
+    cache_control, tool-use forced structured output).
+    """
+    from anthropic import AsyncAnthropic
+
+    anthropic_key = settings.secrets.anthropic_api_key
+    if anthropic_key:
+        return AsyncAnthropic(api_key=anthropic_key)
     return None
 
 
