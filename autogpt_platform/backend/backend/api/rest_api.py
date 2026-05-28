@@ -515,10 +515,14 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         from autogpt_libs.auth.models import RequestContext
 
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            team_id="test-workspace",
+            team_id=None,
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
@@ -544,10 +548,14 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         from autogpt_libs.auth.models import RequestContext
 
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            team_id="test-workspace",
+            team_id=None,
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
@@ -566,10 +574,14 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         from autogpt_libs.auth.models import RequestContext
 
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            team_id="test-workspace",
+            team_id=None,
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
@@ -600,10 +612,14 @@ class AgentServer(backend.util.service.AppProcess):
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            team_id="test-workspace",
+            team_id=None,
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,

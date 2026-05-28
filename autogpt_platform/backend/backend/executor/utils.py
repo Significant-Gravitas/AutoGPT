@@ -17,7 +17,7 @@ from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
-from backend.data import workspace as team_db
+from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
@@ -1232,7 +1232,7 @@ async def add_graph_execution(
         udb = user_db
         gdb = graph_db
         odb = onboarding_db
-        wdb = team_db
+        wdb = workspace_db
     else:
         edb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
