@@ -242,6 +242,44 @@ async def test_execute_single_tool_masks_for_different_node_not_merged():
 
 
 @pytest.mark.asyncio
+async def test_execute_single_tool_non_mapping_masks_coerced_to_none():
+    """
+    Guard: when nodes_input_masks is set to a non-Mapping value
+    (e.g. an unexpected type from a stale/uninitialised processor), the
+    orchestrator coerces it to None instead of crashing, and on_node_execution
+    receives None.
+    """
+    sink_node_id = _uid()
+    params = _make_execution_params()
+
+    # Non-Mapping sentinel (a list) — exercises the `not isinstance(..., Mapping)`
+    # guard branch added to harden against ExecutionProcessor instances that
+    # don't expose a dict-like nodes_input_masks attribute.
+    mock_db, mock_processor = _setup_mocks(
+        sink_node_id, params, masks=["not", "a", "mapping"]
+    )
+    block = OrchestratorBlock()
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        await block._execute_single_tool_with_manager(
+            tool_info=_make_tool_info(sink_node_id),
+            execution_params=params,
+            execution_processor=mock_processor,
+        )
+
+    mock_processor.on_node_execution.assert_called_once()
+    node_exec, actual_masks = _get_on_node_execution_args(mock_processor)
+
+    # Non-Mapping was coerced to None before being forwarded
+    assert actual_masks is None
+    # No merge happened; inputs are unchanged
+    assert "credentials" not in node_exec.inputs
+
+
+@pytest.mark.asyncio
 async def test_execute_single_tool_empty_masks_no_merge():
     """
     When nodes_input_masks is an empty Mapping (truthy guard is False),
