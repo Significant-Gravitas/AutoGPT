@@ -134,11 +134,39 @@ def test_no_fallback_marker_wins_over_fallback_status():
     assert "down or unavailable" not in message
 
 
-def test_no_fallback_marker_wins_over_fallback_marker():
-    message = image_generation_failure_message("Timed out due to invalid prompt")
+def test_hard_no_fallback_marker_wins_over_fallback_marker():
+    message = image_generation_failure_message(
+        "Timed out waiting for moderation review"
+    )
 
     assert "try another image generation model" not in message
     assert "down or unavailable" not in message
+
+
+def test_fallback_marker_wins_over_soft_no_fallback_marker():
+    message = image_generation_failure_message("Timed out due to invalid prompt")
+
+    assert "try another image generation model" in message
+
+
+def test_fallback_marker_wins_over_broad_capacity_message():
+    message = image_generation_failure_message(
+        "Insufficient capacity, please retry later (server error)"
+    )
+
+    assert "try another image generation model" in message
+
+
+def test_insufficient_credits_still_blocks_fallback():
+    message = image_generation_failure_message("Insufficient credits to run this model")
+
+    assert "try another image generation model" not in message
+
+
+def test_broad_validation_word_no_longer_blocks_fallback():
+    message = image_generation_failure_message("Internal validation 503")
+
+    assert "try another image generation model" in message
 
 
 def test_image_generation_failure_message_suggests_fallback_for_unprocessable_output():

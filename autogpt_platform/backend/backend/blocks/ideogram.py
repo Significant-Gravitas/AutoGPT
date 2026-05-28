@@ -204,8 +204,12 @@ class IdeogramModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: "https://ideogram.ai/api/images/test-generated-image-url.png",
-                "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
+                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: (
+                    "https://ideogram.ai/api/images/test-generated-image-url.png"
+                ),
+                "upscale_image": lambda api_key, image_url: (
+                    "https://ideogram.ai/api/images/test-upscaled-image-url.png"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -213,10 +217,10 @@ class IdeogramModelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            seed = input_data.seed
+        seed = input_data.seed
 
-            # Step 1: Generate the image
+        # Step 1: Generate the image
+        try:
             result = await self.run_model(
                 api_key=credentials.api_key,
                 model_name=input_data.ideogram_model_name.value,
@@ -229,19 +233,24 @@ class IdeogramModelBlock(Block):
                 color_palette_name=input_data.color_palette_name.value,
                 custom_colors=input_data.custom_color_palette,
             )
-
-            # Step 2: Upscale the image if requested
-            if input_data.upscale == UpscaleOption.AI_UPSCALE:
-                result = await self.upscale_image(
-                    api_key=credentials.api_key,
-                    image_url=result,
-                )
-
-            yield "result", result
         except ModerationError:
             raise
         except Exception as e:
             yield "error", image_generation_failure_message(str(e))
+            return
+
+        # Step 2: Upscale the image if requested
+        if input_data.upscale == UpscaleOption.AI_UPSCALE:
+            try:
+                result = await self.upscale_image(
+                    api_key=credentials.api_key,
+                    image_url=result,
+                )
+            except Exception as e:
+                yield "error", f"Image upscale failed: {e}"
+                return
+
+        yield "result", result
 
     async def run_model(
         self,

@@ -50,7 +50,9 @@ _FALLBACK_ERROR_MARKERS = (
     "no valid video url",
 )
 
-_NO_FALLBACK_ERROR_MARKERS = (
+# Hard no-fallback markers: switching models cannot help, even with transient
+# wording in the same message.
+_HARD_NO_FALLBACK_ERROR_MARKERS = (
     "moderation",
     "moderated",
     "flagged",
@@ -67,15 +69,24 @@ _NO_FALLBACK_ERROR_MARKERS = (
     "forbidden",
     "authentication",
     "credential",
-    "permission",
-    "quota",
+    "permission denied",
+    "quota exceeded",
     "billing",
-    "insufficient",
+    "insufficient credits",
+    "insufficient quota",
+    "insufficient permissions",
+    "insufficient funds",
+    "insufficient balance",
+)
+
+# Soft no-fallback markers: suppress fallback only when no explicit fallback
+# marker is present in the same message.
+_SOFT_NO_FALLBACK_ERROR_MARKERS = (
     "invalid prompt",
     "invalid input",
     "invalid request",
-    "validation",
-    "bad request",
+    "validation error",
+    "validation failed",
 )
 
 _FALLBACK_STATUS_RE = re.compile(r"\b(?:408|429|500|502|503|504)\b")
@@ -111,15 +122,13 @@ def _generation_failure_message(
 
 def _should_suggest_fallback(message: str) -> bool:
     normalized_message = message.casefold()
-    # No-fallback markers (auth, policy, validation) are intent-explicit and
-    # always win — a moderation hit on a 503 is still a moderation issue.
-    if any(marker in normalized_message for marker in _NO_FALLBACK_ERROR_MARKERS):
+    if any(marker in normalized_message for marker in _HARD_NO_FALLBACK_ERROR_MARKERS):
         return False
-    # Fallback markers describe transient/provider failures and should win
-    # over no-fallback status codes so e.g. "Model unavailable (404)" still
-    # suggests a fallback even though 404 alone would suppress it.
+    # Explicit fallback markers win over soft no-fallback markers + status codes.
     if any(marker in normalized_message for marker in _FALLBACK_ERROR_MARKERS):
         return True
+    if any(marker in normalized_message for marker in _SOFT_NO_FALLBACK_ERROR_MARKERS):
+        return False
     if _NO_FALLBACK_STATUS_RE.search(normalized_message):
         return False
     return bool(_FALLBACK_STATUS_RE.search(normalized_message))
