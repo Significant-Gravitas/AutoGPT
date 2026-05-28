@@ -18,7 +18,7 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus
+from prisma.enums import AgentExecutionStatus, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
@@ -46,7 +46,7 @@ from pydantic.fields import Field
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -69,6 +69,7 @@ from .model import (
     GraphInput,
     NodeExecutionStats,
 )
+from .sharing.workspace_refs import extract_workspace_file_ids
 
 T = TypeVar("T")
 
@@ -1643,16 +1644,34 @@ async def update_graph_execution_share_status(
     is_shared: bool,
     share_token: str | None,
     shared_at: datetime | None,
+    shared_via: SharedVia | None = None,
 ) -> None:
-    """Update the sharing status of a graph execution."""
-    await AgentGraphExecution.prisma().update(
-        where={"id": execution_id},
+    """Update the sharing status of a graph execution.
+
+    ``shared_via`` records the share provenance (USER = explicitly shared
+    by the owner; CHAT_LINK = enabled as part of a chat session share)
+    and drives cascade-revoke logic.  Defaults to ``USER`` when enabling
+    a share without specifying, matching pre-chat-sharing behaviour.
+    """
+    if is_shared and shared_via is None:
+        shared_via = SharedVia.USER
+
+    updated = await AgentGraphExecution.prisma().update_many(
+        where={"id": execution_id, "userId": user_id},
         data={
             "isShared": is_shared,
             "shareToken": share_token,
             "sharedAt": shared_at,
+            "sharedVia": shared_via if is_shared else None,
         },
     )
+    if updated != 1:
+        # The (id, userId) filter narrows the update to the owner — a
+        # zero-row result means either the execution doesn't exist or
+        # belongs to another user.  Surface as NotFoundError so the
+        # route turns it into a uniform 404, matching the rest of the
+        # share API's anti-enumeration posture.
+        raise NotFoundError(f"Execution {execution_id} not found for user {user_id}")
 
 
 async def get_graph_execution_by_share_token(
@@ -1732,38 +1751,6 @@ async def get_graph_execution_by_share_token(
     )
 
 
-def _extract_workspace_file_ids(outputs: CompletedBlockOutput) -> set[str]:
-    """Extract workspace file IDs from execution outputs.
-
-    Scans all output values for workspace:// URI strings and extracts
-    the file IDs. Only matches values that are plain strings starting
-    with workspace://, not substrings within larger text.
-    """
-    file_ids: set[str] = set()
-
-    def _scan(value: Any) -> None:
-        if isinstance(value, str) and value.startswith("workspace://"):
-            raw = value.removeprefix("workspace://")
-            file_ref = raw.split("#", 1)[0] if "#" in raw else raw
-            if file_ref and not file_ref.startswith("/"):
-                file_ids.add(file_ref)
-        elif isinstance(value, list):
-            for item in value:
-                _scan(item)
-        elif isinstance(value, dict):
-            for v in value.values():
-                _scan(v)
-
-    for output_values in outputs.values():
-        if isinstance(output_values, list):
-            for val in output_values:
-                _scan(val)
-        else:
-            _scan(output_values)
-
-    return file_ids
-
-
 async def create_shared_execution_files(
     execution_id: str,
     share_token: str,
@@ -1777,7 +1764,7 @@ async def create_shared_execution_files(
 
     Returns the number of records created.
     """
-    file_ids = _extract_workspace_file_ids(outputs)
+    file_ids = extract_workspace_file_ids(outputs)
     if not file_ids:
         return 0
 
