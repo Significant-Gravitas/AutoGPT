@@ -2,7 +2,6 @@
 
 What's new in AutoPilot and the AutoGPT Platform. We ship updates regularly and document everything here.
 
-
 ## 2026
 
 | Date | Highlights |
