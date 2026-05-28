@@ -7,31 +7,41 @@ import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 
 import { useLowCreditBanner } from "./useLowCreditBanner";
 
-export function LowCreditBanner() {
-  const { visible, openTopUp, dismiss } = useLowCreditBanner();
+interface Props {
+  className?: string;
+}
 
-  if (!visible) return null;
+export function LowCreditBanner({ className }: Props) {
+  const { openTopUp, dismiss } = useLowCreditBanner();
 
-  return (
+  const alert = (
     <Alert variant="warning" aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          You&apos;re out of automation credits — top up to keep your agents
+          You&apos;re out of automation credits. Top up to keep your agents
           running.
         </AlertDescription>
-        <Button variant="primary" size="small" onClick={openTopUp}>
+        <Button
+          variant="primary"
+          size="small"
+          onClick={openTopUp}
+          className="border-orange-600 bg-orange-600 hover:border-orange-700 hover:bg-orange-700"
+        >
           Top up
         </Button>
         <Button
-          variant="icon"
+          variant="ghost"
           size="icon"
           onClick={dismiss}
           aria-label="Dismiss"
           title="Dismiss"
+          className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
           <XIcon className="h-4 w-4" />
         </Button>
       </div>
     </Alert>
   );
+
+  return className ? <div className={className}>{alert}</div> : alert;
 }

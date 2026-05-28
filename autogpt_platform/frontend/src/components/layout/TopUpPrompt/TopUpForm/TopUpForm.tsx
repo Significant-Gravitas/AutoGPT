@@ -19,7 +19,6 @@ export function TopUpForm({ submitLabel = "Top up" }: Props) {
           <Input
             label="Amount"
             type="amount"
-            size="small"
             decimalCount={0}
             id={field.name}
             error={form.formState.errors.amount?.message}
@@ -28,7 +27,7 @@ export function TopUpForm({ submitLabel = "Top up" }: Props) {
           />
         )}
       />
-      <Button type="submit" disabled={isLoading} size="small">
+      <Button type="submit" disabled={isLoading}>
         {isLoading ? "Redirecting…" : submitLabel}
       </Button>
     </Form>

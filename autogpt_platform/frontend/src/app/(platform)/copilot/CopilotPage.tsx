@@ -56,7 +56,7 @@ export function CopilotPage() {
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}
-          <LowCreditBanner />
+          <LowCreditBanner className="px-4 pt-4" />
           <NotificationBanner />
           <CopilotChatHost
             key={sessionId ?? "new"}
