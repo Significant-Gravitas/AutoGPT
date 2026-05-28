@@ -133,17 +133,45 @@ async def test_json_encoder_invalid_floats(invalid_float):
     block = JSONEncoderBlock()
     data = {"invalid": invalid_float}
 
-    try:
-        outputs = []
+    with pytest.raises(ValueError) as exc_info:
+        async for _ in block.run(JSONEncoderBlock.Input(data=data)):
+            pass
 
-        async for output in block.run(JSONEncoderBlock.Input(data=data)):
-            outputs.append(output)
+    error_message = str(exc_info.value)
+    assert "JSON Encoding Error" in error_message
 
-        assert len(outputs) == 1
-        name, value = outputs[0]
-        assert name == "json_str"
-        # Ensure produced JSON is valid
-        json.loads(value)
-    except ValueError as e:
-        # Also acceptable if serializer rejects invalid floats
-        assert "JSON Encoding Error" in str(e)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "original_data",
+    [
+        {"name": "AutoGPT", "active": True},
+        [1, 2, 3, "test"],
+        "simple string",
+        42,
+        None,
+        {"nested": {"list": [1, 2, None]}},
+        [],
+        {},
+    ],
+)
+async def test_json_roundtrip(original_data):
+    encoder = JSONEncoderBlock()
+    decoder = JSONDecoderBlock()
+
+    encoder_outputs = []
+    async for output in encoder.run(JSONEncoderBlock.Input(data=original_data)):
+        encoder_outputs.append(output)
+
+    assert len(encoder_outputs) == 1
+    name, json_str = encoder_outputs[0]
+    assert name == "json_str"
+
+    decoder_outputs = []
+    async for output in decoder.run(JSONDecoderBlock.Input(json_str=json_str)):
+        decoder_outputs.append(output)
+
+    assert len(decoder_outputs) == 1
+    name, decoded_data = decoder_outputs[0]
+    assert name == "data"
+    assert decoded_data == original_data

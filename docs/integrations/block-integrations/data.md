@@ -127,7 +127,7 @@ Decodes a JSON string into a Python object (dictionary, list, etc.).
 <!-- MANUAL: how_it_works -->
 This block uses the project's `orjson`-based decoder to parse a JSON-formatted string and safely convert it into native Python data structures. Valid inputs must strictly follow JSON syntax; for example, passing the string `'{"active": true, "val": null}'` will successfully decode into a Python dictionary where JSON's `true` maps to the Python boolean `True` and `null` maps to `None`. 
 
-If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and yields an explicit `error` output containing the validation failure details, preventing the workflow from crashing. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
+If the input string is malformed or contains invalid JSON syntax (such as missing quotes or trailing commas), the internal parser throws an exception. The block catches this exception and raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. Edge cases like empty strings or deeply nested structures are handled securely, though extremely deep nesting may be limited by standard parsing recursion depths.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -141,7 +141,7 @@ If the input string is malformed or contains invalid JSON syntax (such as missin
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| data | The decoded Python dictionary or list. | Data |
+| data | The decoded Python object (dictionary, list, string, number, boolean, or null). | Data |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -163,7 +163,7 @@ Encodes a Python object (dictionary, list, etc.) into a JSON string.
 <!-- MANUAL: how_it_works -->
 This block serializes standard Python structures (like `dict`, `list`, `str`, `int`, `float`, `bool`, and `None`) into a valid JSON string using the project's optimized `orjson`-based encoder. It safely handles nested structures, automatically converting Python equivalents to their JSON counterparts (e.g., `{"a": 1}` remains an object, and `None` is translated to `null`).
 
-Before outputting, the block validates JSON-serializability. If an unsupported type is provided—such as custom objects, `datetime`, or `set`s without custom serialization—it captures the failure and returns an encoding error rather than crashing the workflow. For edge cases like large numeric precision or non-serializable types, it is recommended to pre-convert these values into strings or dictionaries before passing them to the encoder.
+Before outputting, the block validates JSON-serializability. If an unsupported type is provided—such as custom objects, `datetime`, or `set`s without custom serialization—it raises a `ValueError` that aborts the block execution, integrating with the framework's execution error handling. The legacy schema-level error pin is unused. For edge cases like large numeric precision or non-serializable types, it is recommended to pre-convert these values into strings or dictionaries before passing them to the encoder.
 <!-- END MANUAL -->
 
 ### Inputs

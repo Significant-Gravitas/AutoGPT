@@ -22,14 +22,12 @@ class JSONEncoderBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-
         data: Any = SchemaField(
             description="The data structure (dictionary, list, string, etc.) to encode into a JSON string.",
             placeholder='e.g., {"key": "value"}',
         )
 
     class Output(BlockSchemaOutput):
-
         json_str: str = SchemaField(
             description="The resulting JSON string representation."
         )
@@ -48,20 +46,6 @@ class JSONEncoderBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        """
-        Encode the provided Python object into a JSON string.
-
-        Args:
-            input_data (Input):
-                Validated input containing the Python object to encode.
-
-            **kwargs:
-                Additional runtime arguments passed by the block framework.
-
-        Yields:
-            tuple[str, str]:
-                - "json_str": Encoded JSON string on success.
-        """
         try:
             json_str = dumps(input_data.data)
             yield "json_str", json_str
@@ -78,17 +62,15 @@ class JSONDecoderBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        """Input schema for the JSON decoder block."""
-
         json_str: str = SchemaField(
             description="The JSON string to parse and convert to a Python object.",
             placeholder='e.g., {"key": "value"}',
         )
 
     class Output(BlockSchemaOutput):
-        """Output schema for the JSON decoder block."""
-
-        data: Any = SchemaField(description="The decoded Python dictionary or list.")
+        data: Any = SchemaField(
+            description="The decoded Python object (dictionary, list, string, number, boolean, or null)."
+        )
 
     def __init__(self):
         super().__init__(
@@ -104,20 +86,6 @@ class JSONDecoderBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        """
-        Decode the provided JSON string into a Python object.
-
-        Args:
-            input_data (Input):
-                Validated input containing the JSON string to decode.
-
-            **kwargs:
-                Additional runtime arguments passed by the block framework.
-
-        Yields:
-            tuple[str, Any]:
-                - "data": Parsed Python object on success.
-        """
         try:
             parsed_data = loads(input_data.json_str)
             yield "data", parsed_data
