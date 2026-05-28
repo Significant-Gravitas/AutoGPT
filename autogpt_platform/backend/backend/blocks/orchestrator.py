@@ -6,7 +6,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Mapping, Sequence
+from collections.abc import AsyncIterable, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -1136,14 +1136,11 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
-        nodes_input_masks = getattr(execution_processor, "nodes_input_masks", None)
-        if not isinstance(nodes_input_masks, Mapping):
-            nodes_input_masks = None
-
         # Apply node input overrides (credential masks from Library/AutoPilot).
         # Mirrors the normal queue-based path in _on_graph_execution, which
         # merges nodes_input_masks[node_id] into queued_node_exec.inputs
         # before execution so credential fields are present for the block run.
+        nodes_input_masks = execution_processor.nodes_input_masks
         if nodes_input_masks and (
             node_input_mask := nodes_input_masks.get(sink_node_id)
         ):

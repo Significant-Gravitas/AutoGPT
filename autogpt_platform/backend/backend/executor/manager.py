@@ -571,6 +571,9 @@ class ExecutionProcessor:
         9. Node executor enqueues the next executed nodes to the node execution queue.
     """
 
+    # Per-graph-execution state, populated by on_graph_execution.
+    nodes_input_masks: Optional[NodesInputMasks] = None
+
     @async_error_logged(swallow=True)
     async def on_node_execution(
         self,
