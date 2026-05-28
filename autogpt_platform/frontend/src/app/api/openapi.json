@@ -8444,9 +8444,9 @@
     },
     "/api/search/global": {
       "get": {
-        "tags": ["v2", "search", "search"],
+        "tags": ["search", "search"],
         "summary": "Global search",
-        "operationId": "getV2Global search",
+        "operationId": "getSearchGlobal search",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {

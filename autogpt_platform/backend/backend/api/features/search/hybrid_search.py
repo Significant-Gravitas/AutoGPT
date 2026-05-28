@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 from prisma.enums import ContentType
 from rank_bm25 import BM25Okapi
@@ -29,16 +29,14 @@ from backend.api.features.search.embeddings import (
 from backend.data.db import query_raw_with_schema
 
 
-class HybridSearchRow(TypedDict, total=False):
+class HybridSearchRow(TypedDict):
     """One row from :func:`unified_hybrid_search`.
 
-    ``total=False`` because BM25 rerank only attaches ``bm25_score`` /
-    ``final_score`` / ``relevance`` when there's at least one result,
-    and the per-row score breakdown columns
-    (``semantic_score`` etc.) come from the SQL CTE — they're always
-    present from the DB but typing them as Required adds nothing here.
-    Callers should treat unknown keys as best-effort and fall back via
-    ``.get(...)`` rather than indexing.
+    The SQL CTE always populates the core columns
+    (``content_id``/``content_type``/``searchable_text``/``metadata``/
+    ``updated_at`` and the score breakdown). Optional fields are either
+    attached by post-processing (``bm25_rerank``) or stripped before
+    the row leaves this module (``total_count``).
     """
 
     content_type: ContentType | str
@@ -54,11 +52,12 @@ class HybridSearchRow(TypedDict, total=False):
     combined_score: float
     # Window-function side car, identical across all rows in one
     # response. Popped before the row leaves ``unified_hybrid_search``.
-    total_count: int
-    # Added by ``bm25_rerank``:
-    bm25_score: float
-    final_score: float
-    relevance: float
+    total_count: NotRequired[int]
+    # Added by ``bm25_rerank`` after the SQL roundtrip — absent when
+    # rerank short-circuits (empty corpus / empty query tokens).
+    bm25_score: NotRequired[float]
+    final_score: NotRequired[float]
+    relevance: NotRequired[float]
 
 
 logger = logging.getLogger(__name__)

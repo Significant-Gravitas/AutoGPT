@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from prisma.enums import ContentType
 
@@ -192,4 +192,8 @@ async def hybrid_search_library_agents(
             min_score,
             [round(r.get("combined_score") or 0.0, 3) for r in raw_results[:5]],
         )
-    return [r for r in raw_results if (r.get("combined_score") or 0.0) >= min_score]
+    return [
+        cast(dict[str, Any], r)
+        for r in raw_results
+        if (r.get("combined_score") or 0.0) >= min_score
+    ]
