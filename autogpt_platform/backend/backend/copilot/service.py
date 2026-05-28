@@ -728,8 +728,11 @@ async def _generate_session_title(
     Returns:
         ``(title, response)``. ``title`` falls back to the user's first
         message when the LLM call raises or returns an empty title.
-        ``response`` is returned even when the LLM title is empty so the
-        caller can still record the (paid-for) cost.
+        ``response`` is returned (non-None) ONLY when the create call
+        succeeded — empty-content path still carries it so the caller
+        can record the (paid-for) cost. The exception path returns
+        ``response=None`` and the caller skips cost-recording: a raised
+        ``create`` did not bill, so there is no cost to record.
     """
     try:
         # Build extra_body for OpenRouter tracing and PostHog analytics.
@@ -785,26 +788,25 @@ async def _generate_session_title(
     # SDK typing, but belt-and-suspenders — the background task would
     # otherwise die on ``IndexError`` and lose the (paid-for) cost
     # recording we're about to do below).
-    title: str | None = None
+    title = ""
     if response.choices:
         msg = response.choices[0].message
-        title = msg.content if msg is not None else None
-    if title:
-        title = title.strip().strip("\"'")
-        if len(title) > _TITLE_MAX_CHARS:
-            title = title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
-    if not title:
-        title = _fallback_title_from_message(message)
-    return title, response
+        if msg is not None and msg.content:
+            title = msg.content.strip().strip("\"'")
+            if len(title) > _TITLE_MAX_CHARS:
+                title = title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
+    return title or _fallback_title_from_message(message), response
 
 
 def _fallback_title_from_message(message: str) -> str:
-    words = strip_injected_context_for_display(message).split()
-    if not words:
+    # ``maxsplit=_TITLE_MAX_WORDS`` caps the per-call allocation for huge
+    # messages — we only need the first N words plus a "has more" signal.
+    parts = strip_injected_context_for_display(message).split(maxsplit=_TITLE_MAX_WORDS)
+    if not parts:
         return "New chat"
 
-    title = " ".join(words[:_TITLE_MAX_WORDS])
-    is_shortened = len(words) > _TITLE_MAX_WORDS
+    is_shortened = len(parts) > _TITLE_MAX_WORDS
+    title = " ".join(parts[:_TITLE_MAX_WORDS])
     if len(title) > _TITLE_MAX_CHARS or (
         is_shortened and len(title) > _TITLE_TRUNCATED_MAX_CHARS
     ):
