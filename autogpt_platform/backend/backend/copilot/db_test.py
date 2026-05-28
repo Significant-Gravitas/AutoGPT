@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from prisma.enums import ResourceVisibility
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
@@ -665,6 +666,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             shareToken=None,
             sharedAt=None,
             autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
         ),
         PrismaChatSession(
             id="s2",
@@ -682,6 +684,7 @@ async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() ->
             shareToken=None,
             sharedAt=None,
             autoShareExecutions=False,
+            visibility=ResourceVisibility.PRIVATE,
         ),
     ]
     find_many = AsyncMock(return_value=rows)

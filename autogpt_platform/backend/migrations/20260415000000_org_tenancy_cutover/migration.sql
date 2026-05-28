@@ -63,29 +63,32 @@ BEGIN
 END $$;
 
 -- ==========================================================================
--- Step 2: Make organizationId NOT NULL
+-- Step 2: (DEFERRED) Make organizationId NOT NULL
 -- ==========================================================================
-
-ALTER TABLE "AgentGraph"
-    ALTER COLUMN "organizationId" SET NOT NULL;
-
-ALTER TABLE "AgentGraphExecution"
-    ALTER COLUMN "organizationId" SET NOT NULL;
-
-ALTER TABLE "StoreListing"
-    ALTER COLUMN "owningOrgId" SET NOT NULL;
+-- NOT NULL enforcement is deferred because:
+--   1. The Prisma schema still declares these columns as nullable
+--      (organizationId String?) so the generated client + writer code allows
+--      NULL values. Setting NOT NULL on the DB column causes runtime
+--      Null-constraint-violation errors when existing code paths and test
+--      fixtures create rows without organizationId.
+--   2. The cutover requires every caller (routes, executors, tests, seeders)
+--      to provide organizationId — that work is in flight.
+-- TODO(org-cutover-pr2): re-enable these ALTERs together with the
+-- ``organizationId String`` schema change once all writers populate it.
+--
+-- ALTER TABLE "AgentGraph"          ALTER COLUMN "organizationId" SET NOT NULL;
+-- ALTER TABLE "AgentGraphExecution" ALTER COLUMN "organizationId" SET NOT NULL;
+-- ALTER TABLE "StoreListing"        ALTER COLUMN "owningOrgId" SET NOT NULL;
 
 -- ==========================================================================
--- Step 3: Update StoreListing unique constraint
+-- Step 3: (DEFERRED) Update StoreListing unique constraint
 -- ==========================================================================
-
--- Drop old per-user slug uniqueness
-ALTER TABLE "StoreListing"
-    DROP CONSTRAINT IF EXISTS "StoreListing_owningUserId_slug_key";
-
--- Add per-org slug uniqueness
-ALTER TABLE "StoreListing"
-    ADD CONSTRAINT "StoreListing_owningOrgId_slug_key" UNIQUE ("owningOrgId", slug);
+-- Depends on owningOrgId being NOT NULL — deferred along with Step 2.
+-- TODO(org-cutover-pr2): drop the per-user slug uniqueness and add the
+-- per-org one once owningOrgId is NOT NULL.
+--
+-- ALTER TABLE "StoreListing" DROP CONSTRAINT IF EXISTS "StoreListing_owningUserId_slug_key";
+-- ALTER TABLE "StoreListing" ADD  CONSTRAINT "StoreListing_owningOrgId_slug_key" UNIQUE ("owningOrgId", slug);
 
 -- ==========================================================================
 -- Step 4: Recreate views with org-aware columns
