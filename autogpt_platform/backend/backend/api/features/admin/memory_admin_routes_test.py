@@ -1,6 +1,5 @@
 """Tests for the admin memory inspector routes."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -35,6 +34,14 @@ def _driver_returning(*query_results) -> AsyncMock:
     return driver
 
 
+def _mock_redis_lock(claimed: bool = True) -> AsyncMock:
+    """Build a mocked redis client that accepts/refuses the rebuild lock."""
+    redis = AsyncMock()
+    redis.set = AsyncMock(return_value=claimed)
+    redis.delete = AsyncMock(return_value=1)
+    return redis
+
+
 class TestOverview:
     def test_returns_counts_for_all_node_types(self) -> None:
         # Returns one row per count query in order: entities, episodes,
@@ -60,9 +67,7 @@ class TestOverview:
         # Driver must be closed even on success
         driver.close.assert_awaited_once()
 
-    def test_me_resolves_to_caller_id(
-        self, mock_jwt_admin
-    ) -> None:
+    def test_me_resolves_to_caller_id(self, mock_jwt_admin) -> None:
         driver = _driver_returning(
             [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
         )
@@ -196,7 +201,11 @@ class TestRebuildCommunities:
         }
         scheduler = MagicMock()
         scheduler.execute_community_rebuild_pass = AsyncMock(return_value=result_dict)
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
+        redis = _mock_redis_lock()
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(f"{_MOCK_MODULE}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 200
         scheduler.execute_community_rebuild_pass.assert_awaited_once_with(
@@ -205,13 +214,20 @@ class TestRebuildCommunities:
         body = resp.json()
         assert body["communities_built"] == {"nodes": 30, "edges": 107}
         assert body["activity"]["new_episodes_since_last_rebuild"] == 16
+        # Lock acquired and released even on success.
+        redis.set.assert_awaited_once()
+        redis.delete.assert_awaited_once()
 
     def test_force_query_param_propagated(self) -> None:
         scheduler = MagicMock()
         scheduler.execute_community_rebuild_pass = AsyncMock(
             return_value={"user_id": "abc", "forced": True}
         )
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
+        redis = _mock_redis_lock()
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(f"{_MOCK_MODULE}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
             resp = client.post("/admin/memory/abc/communities/rebuild?force=true")
         assert resp.status_code == 200
         scheduler.execute_community_rebuild_pass.assert_awaited_once_with(
@@ -223,30 +239,71 @@ class TestRebuildCommunities:
         scheduler.execute_community_rebuild_pass = AsyncMock(
             side_effect=RuntimeError("scheduler unreachable")
         )
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
+        redis = _mock_redis_lock()
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(f"{_MOCK_MODULE}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500
         assert "scheduler unreachable" in resp.json()["detail"]
+        # Lock must be released even when the RPC blows up.
+        redis.delete.assert_awaited_once()
+
+    def test_rebuild_error_in_result_promoted_to_500(self) -> None:
+        """``rebuild_communities_for_user`` returns a result dict with
+        ``error`` populated on non-fatal failures (e.g. graphiti config
+        missing). The route must surface that as 500 rather than 200."""
+        scheduler = MagicMock()
+        scheduler.execute_community_rebuild_pass = AsyncMock(
+            return_value={
+                "user_id": "abc",
+                "error": "graphiti_unavailable: connection refused",
+                "skipped": False,
+            }
+        )
+        redis = _mock_redis_lock()
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(f"{_MOCK_MODULE}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
+            resp = client.post("/admin/memory/abc/communities/rebuild")
+        assert resp.status_code == 500
+        assert "graphiti_unavailable" in resp.json()["detail"]
+        redis.delete.assert_awaited_once()
+
+    def test_concurrent_rebuild_returns_409(self) -> None:
+        """If another rebuild for the same user already holds the lock,
+        ``redis.set(nx=True)`` returns falsy and the route bails with 409
+        without touching the scheduler."""
+        scheduler = MagicMock()
+        scheduler.execute_community_rebuild_pass = AsyncMock()
+        redis = _mock_redis_lock(claimed=False)
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(f"{_MOCK_MODULE}.get_redis_async", AsyncMock(return_value=redis)),
+        ):
+            resp = client.post("/admin/memory/abc/communities/rebuild")
+        assert resp.status_code == 409
+        scheduler.execute_community_rebuild_pass.assert_not_awaited()
+        # We didn't claim the lock — must not delete someone else's.
+        redis.delete.assert_not_awaited()
 
 
 class TestAdminGating:
     """Non-admin callers must get 403 on every route."""
 
-    def test_non_admin_gets_403(self, mock_jwt_user) -> None:
-        # Swap to the non-admin user fixture
+    def test_non_admin_gets_403(self, mock_jwt_user, mock_jwt_admin) -> None:
+        # Swap to the non-admin user fixture. The autouse admin fixture
+        # restores admin auth after this test, so just override here.
         app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
-        try:
-            for path in [
-                "/admin/memory/abc/overview",
-                "/admin/memory/abc/entities",
-                "/admin/memory/abc/facts",
-                "/admin/memory/abc/communities",
-            ]:
-                resp = client.get(path)
-                assert resp.status_code == 403, path
-            resp = client.post("/admin/memory/abc/communities/rebuild")
-            assert resp.status_code == 403
-        finally:
-            app.dependency_overrides[get_jwt_payload] = (
-                pytest.importorskip("conftest", reason="reset to admin").mock_jwt_admin
-            )
+        for path in [
+            "/admin/memory/abc/overview",
+            "/admin/memory/abc/entities",
+            "/admin/memory/abc/facts",
+            "/admin/memory/abc/communities",
+        ]:
+            resp = client.get(path)
+            assert resp.status_code == 403, path
+        resp = client.post("/admin/memory/abc/communities/rebuild")
+        assert resp.status_code == 403

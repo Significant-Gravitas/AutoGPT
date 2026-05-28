@@ -14,12 +14,14 @@ import logging
 from typing import Annotated, Any, Literal
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
-from pydantic import BaseModel, Field
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
+from pydantic import BaseModel
 
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.data.redis_client import get_redis_async
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -113,6 +115,43 @@ def _resolve_user_id(user_id: str, caller_id: str) -> str:
     return caller_id if user_id == "me" else user_id
 
 
+def _audit_cross_user_access(
+    *,
+    request: Request,
+    caller_id: str,
+    target_id: str,
+    jwt_payload: dict,
+) -> None:
+    """Log admin reads/writes against another user's memory.
+
+    ``get_user_id`` only audits impersonation via ``X-Act-As-User-Id``;
+    these routes accept the target user id directly in the path, so we
+    log here to keep an audit trail for PII access (entity names, fact
+    text) and destructive ops (community rebuild).
+    """
+    if target_id == caller_id:
+        return
+    caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
+        "email", ""
+    )
+    logger.info(
+        f"Admin memory access: {caller_id} ({caller_email}) "
+        f"acting on user {target_id} for {request.method} {request.url}"
+    )
+
+
+# Per-user lock for admin-triggered rebuilds. The weekly cron is
+# serialized by APScheduler's ``max_instances=1``; the admin endpoint
+# goes through scheduler RPC and bypasses that, so guard concurrent
+# admin POSTs with a Redis NX key to prevent two ``DETACH DELETE`` +
+# rebuild passes racing on the same user graph.
+_REBUILD_LOCK_TTL_SECONDS = 30 * 60  # rebuild can take many minutes on large graphs
+
+
+def _rebuild_lock_key(user_id: str) -> str:
+    return f"admin:memory:rebuild_lock:{user_id}"
+
+
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     """Read-only driver — bypasses the full Graphiti client construction.
 
@@ -147,8 +186,10 @@ async def _count(driver, query: str) -> int:
 
 @router.get("/{user_id}/overview", response_model=MemoryOverview)
 async def get_memory_overview(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
     try:
@@ -156,6 +197,12 @@ async def get_memory_overview(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     driver = _open_driver(group_id)
     try:
         entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
@@ -166,9 +213,7 @@ async def get_memory_overview(
         mentions = await _count(
             driver, "MATCH ()-[e:MENTIONS]->() RETURN count(e) AS c"
         )
-        communities = await _count(
-            driver, "MATCH (n:Community) RETURN count(n) AS c"
-        )
+        communities = await _count(driver, "MATCH (n:Community) RETURN count(n) AS c")
     finally:
         await driver.close()
 
@@ -185,8 +230,10 @@ async def get_memory_overview(
 
 @router.get("/{user_id}/entities", response_model=EntityListResponse)
 async def list_entities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
@@ -195,6 +242,12 @@ async def list_entities(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     driver = _open_driver(group_id)
     try:
         rows, _, _ = await driver.execute_query(
@@ -225,8 +278,10 @@ async def list_entities(
 
 @router.get("/{user_id}/facts", response_model=FactListResponse)
 async def list_facts(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     status: Annotated[
         Literal["active", "superseded", "contradicted", "any"], Query()
@@ -239,6 +294,12 @@ async def list_facts(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     # Build optional filters
     where_clauses = ["e.group_id = $g"]
     params: dict[str, Any] = {"g": group_id, "limit": limit}
@@ -296,8 +357,10 @@ async def list_facts(
 
 @router.get("/{user_id}/communities", response_model=CommunityListResponse)
 async def list_communities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
@@ -306,12 +369,20 @@ async def list_communities(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     driver = _open_driver(group_id)
     try:
         rows, _, _ = await driver.execute_query(
+            # Graphiti stores membership as ``(Community)-[HAS_MEMBER]->(Entity)``;
+            # match in that direction so member_count + sort-by-size are correct.
             """
             MATCH (c:Community {group_id: $g})
-            OPTIONAL MATCH (c)<-[:HAS_MEMBER]-(m:Entity)
+            OPTIONAL MATCH (c)-[:HAS_MEMBER]->(m:Entity)
             WITH c, count(m) AS member_count
             RETURN c.uuid AS uuid,
                    c.name AS name,
@@ -342,11 +413,15 @@ async def list_communities(
 
 @router.post("/{user_id}/communities/rebuild", response_model=RebuildResponse)
 async def rebuild_communities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     force: Annotated[
         bool,
-        Query(description="Bypass the activity gate — rebuilds even on unchanged graph."),
+        Query(
+            description="Bypass the activity gate — rebuilds even on unchanged graph."
+        ),
     ] = False,
 ) -> RebuildResponse:
     """Trigger an immediate community rebuild for the user.
@@ -361,6 +436,25 @@ async def rebuild_communities(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+
+    # Per-user redis lock: the weekly cron is serialized by APScheduler's
+    # ``max_instances=1``; admin POSTs bypass that, so two concurrent
+    # rebuilds for the same user would race their ``DETACH DELETE``.
+    redis = await get_redis_async()
+    lock_key = _rebuild_lock_key(target)
+    claimed = await redis.set(lock_key, "1", nx=True, ex=_REBUILD_LOCK_TTL_SECONDS)
+    if not claimed:
+        raise HTTPException(
+            status_code=409,
+            detail="A community rebuild is already in progress for this user.",
+        )
+
     try:
         result = await get_scheduler_client().execute_community_rebuild_pass(
             user_id=target, force=force
@@ -374,6 +468,16 @@ async def rebuild_communities(
         raise HTTPException(
             status_code=500,
             detail=f"Community rebuild failed: {type(exc).__name__}: {exc}",
+        )
+    finally:
+        await redis.delete(lock_key)
+
+    # Promote rebuild-side failures (set in ``result['error']``) to a 500
+    # so admin clients don't silently see "success" with a populated error.
+    if result.get("error"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Community rebuild failed: {result['error']}",
         )
 
     # Normalize to the response model — the scheduler returns a dict.
