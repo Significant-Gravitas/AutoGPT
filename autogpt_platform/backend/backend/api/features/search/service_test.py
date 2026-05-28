@@ -362,3 +362,116 @@ def test_db_accessor_search_resolves_unified_hybrid_search():
             "service.global_search hits this attribute on every non-empty "
             "query in production."
         )
+
+
+# ============================================================================
+# Relevance ordering — non-empty query reranks by literal name match
+# ============================================================================
+
+
+def _fake_workspace_file_named(file_id: str, name: str, created_at: datetime.datetime):
+    from backend.data.workspace import WorkspaceFile
+
+    return WorkspaceFile(
+        id=file_id,
+        workspace_id="ws-1",
+        created_at=created_at,
+        updated_at=created_at,
+        name=name,
+        path=f"/documents/{name}",
+        storage_path=f"ws-1/documents/{name}",
+        mime_type="application/pdf",
+        size_bytes=1,
+    )
+
+
+def _fake_chat_session_named(
+    session_id: str, title: str, updated_at: datetime.datetime
+):
+    from backend.copilot.model import ChatSessionInfo
+
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id="u1",
+        title=title,
+        usage=[],
+        started_at=updated_at,
+        updated_at=updated_at,
+    )
+
+
+def test_title_relevance_score_ranks_exact_above_prefix_above_contains():
+    """The three-tier literal-match score is the single knob behind the
+    files/chats rerank — assert each rung individually so a future
+    refactor can't silently flatten the scale."""
+    assert service._title_relevance_score("Quarterly Report", "quarterly") == 2
+    assert service._title_relevance_score("My Quarterly", "quarterly") == 1
+    assert service._title_relevance_score("Quarterly", "quarterly") == 3
+    assert service._title_relevance_score("Annual", "quarterly") == 0
+
+
+@pytest.mark.asyncio
+async def test_files_bucket_reranks_by_relevance_not_freshness(mocker):
+    """Repro of the blocker on service.py:326 — a stale exact / prefix
+    match must beat fresher contains-only matches within ``limit``."""
+    # Freshness DESC from list_files: newest first
+    files = [
+        _fake_workspace_file_named(
+            "f-new-1", "final-report-v3.pdf", datetime.datetime(2026, 5, 28)
+        ),
+        _fake_workspace_file_named(
+            "f-new-2", "report-2026-Q1.pdf", datetime.datetime(2026, 5, 27)
+        ),
+        _fake_workspace_file_named(
+            "f-new-3", "monthly-report.xlsx", datetime.datetime(2026, 5, 26)
+        ),
+        _fake_workspace_file_named(
+            "f-new-4", "weekly-report.md", datetime.datetime(2026, 5, 25)
+        ),
+        # Older, but the literal best match (startswith)
+        _fake_workspace_file_named(
+            "f-old", "quarterly-report-overview.md", datetime.datetime(2026, 5, 20)
+        ),
+    ]
+    mock_manager = MagicMock()
+    mock_manager.list_files = AsyncMock(return_value=files)
+    mocker.patch(
+        "backend.api.features.search.service.WorkspaceManager",
+        return_value=mock_manager,
+    )
+    mocker.patch(
+        "backend.api.features.search.service.get_workspace",
+        new=AsyncMock(return_value=MagicMock(id="ws-1")),
+    )
+
+    result = await service._files_bucket("u1", limit=1, query="quarterly")
+
+    # The stale startswith match must outrank the fresh contains matches.
+    assert [f.id for f in result] == ["f-old"]
+    # Over-fetch must request at least _RELEVANCE_OVERFETCH_CAP candidates
+    # so the rerank has enough headroom.
+    assert (
+        mock_manager.list_files.await_args.kwargs["limit"]
+        >= service._RELEVANCE_OVERFETCH_CAP
+    )
+
+
+@pytest.mark.asyncio
+async def test_chats_bucket_reranks_by_relevance_not_recency(mocker):
+    """Same rerank guarantee for ``_chats_bucket`` — an older exact-title
+    chat must beat fresher contains-only matches."""
+    sessions = [
+        _fake_chat_session_named(
+            "s-new", "Reporting on Q2", datetime.datetime(2026, 5, 28)
+        ),
+        _fake_chat_session_named("s-old", "report", datetime.datetime(2026, 5, 20)),
+    ]
+    mocker.patch(
+        "backend.api.features.search.service.get_user_sessions",
+        new=AsyncMock(return_value=(sessions, len(sessions))),
+    )
+
+    result = await service._chats_bucket("u1", limit=1, query="report")
+
+    # Exact case-insensitive match wins despite being older.
+    assert [c.id for c in result] == ["s-old"]
