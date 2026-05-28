@@ -122,106 +122,106 @@ export function SearchCommandModal({
           <RXDialog.Title id={`${idPrefix}-title`} className="sr-only">
             Search
           </RXDialog.Title>
-        <div className="flex items-center gap-3 bg-zinc-50 p-3">
-          <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-zinc-800" />
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={placeholder}
-            aria-label={inputAriaLabel}
-            aria-controls={`${idPrefix}-results`}
-            aria-activedescendant={
-              highlightedFlat
-                ? `${idPrefix}-${highlightedFlat.item.id}`
-                : undefined
-            }
-            autoComplete="off"
-            className="h-9 border-0 bg-transparent px-0 text-base text-zinc-950 shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
-          />
-          {isLoading && isSearching ? (
-            <LoadingSpinner
-              size="small"
-              aria-label="Searching"
-              className="shrink-0 text-zinc-500"
+          <div className="flex items-center gap-3 bg-zinc-50 p-3">
+            <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-zinc-800" />
+            <Input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={placeholder}
+              aria-label={inputAriaLabel}
+              aria-controls={`${idPrefix}-results`}
+              aria-activedescendant={
+                highlightedFlat
+                  ? `${idPrefix}-${highlightedFlat.item.id}`
+                  : undefined
+              }
+              autoComplete="off"
+              className="h-9 border-0 bg-transparent px-0 text-base text-zinc-950 shadow-none placeholder:text-zinc-700 focus-visible:ring-0"
             />
-          ) : null}
-          {query ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Clear search"
-              onClick={() => onQueryChange("")}
-              className="shrink-0"
-            >
-              <XIcon className="h-4 w-4" />
-            </Button>
-          ) : null}
-        </div>
-        <Separator />
-        <div className="py-2">
-          <div
-            id={`${idPrefix}-results`}
-            className={cn(
-              "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200",
-              totalCount === 0 && "max-h-none",
-            )}
-          >
-            {isError ? (
-              <div className="px-3 py-8 text-center text-sm text-red-500">
-                {errorLabel}
-              </div>
-            ) : showResults ? (
-              <SearchCommandResults
-                buckets={buckets}
-                idPrefix={idPrefix}
-                query={trimmedQuery}
-                highlightedIndex={highlightedIndex}
-                highlightedRef={highlightedRef}
-                onHighlight={setHighlightedIndex}
-                onSelect={onSelectItem}
+            {isLoading && isSearching ? (
+              <LoadingSpinner
+                size="small"
+                aria-label="Searching"
+                className="shrink-0 text-zinc-500"
               />
-            ) : showLoading ? (
-              // Skeleton over text: the input-side spinner already
-              // signals "searching", so the body should mirror the
-              // shape of what's about to appear (staggered rows) rather
-              // than block the eye with a centred string. Emil
-              // Kowalski's strategy-feedback-immediate rule.
-              <SearchCommandSkeleton />
-            ) : showEmptyState ? (
-              <div className="px-3 py-8 text-center text-sm text-zinc-500">
-                {isSearching ? searchingEmptyLabel : idleEmptyLabel}
-              </div>
+            ) : null}
+            {query ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Clear search"
+                onClick={() => onQueryChange("")}
+                className="shrink-0"
+              >
+                <XIcon className="h-4 w-4" />
+              </Button>
             ) : null}
           </div>
-        </div>
-        <Separator />
-        <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4 text-xs text-zinc-700">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                ↑
-              </kbd>
-              <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                ↓
-              </kbd>
-              <span>Navigate</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-                ↵
-              </kbd>
-              <span>Select</span>
+          <Separator />
+          <div className="py-2">
+            <div
+              id={`${idPrefix}-results`}
+              className={cn(
+                "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200",
+                totalCount === 0 && "max-h-none",
+              )}
+            >
+              {isError ? (
+                <div className="px-3 py-8 text-center text-sm text-red-500">
+                  {errorLabel}
+                </div>
+              ) : showResults ? (
+                <SearchCommandResults
+                  buckets={buckets}
+                  idPrefix={idPrefix}
+                  query={trimmedQuery}
+                  highlightedIndex={highlightedIndex}
+                  highlightedRef={highlightedRef}
+                  onHighlight={setHighlightedIndex}
+                  onSelect={onSelectItem}
+                />
+              ) : showLoading ? (
+                // Skeleton over text: the input-side spinner already
+                // signals "searching", so the body should mirror the
+                // shape of what's about to appear (staggered rows) rather
+                // than block the eye with a centred string. Emil
+                // Kowalski's strategy-feedback-immediate rule.
+                <SearchCommandSkeleton />
+              ) : showEmptyState ? (
+                <div className="px-3 py-8 text-center text-sm text-zinc-500">
+                  {isSearching ? searchingEmptyLabel : idleEmptyLabel}
+                </div>
+              ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <kbd className="inline-flex h-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
-              esc
-            </kbd>
-            <span>Close</span>
+          <Separator />
+          <div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-4 text-xs text-zinc-700">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+                  ↑
+                </kbd>
+                <kbd className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-zinc-200 bg-white font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+                  ↓
+                </kbd>
+                <span>Navigate</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+                  ↵
+                </kbd>
+                <span>Select</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <kbd className="inline-flex h-5 items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 font-sans text-[11px] text-zinc-800 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]">
+                esc
+              </kbd>
+              <span>Close</span>
+            </div>
           </div>
-        </div>
         </RXDialog.Content>
       </RXDialog.Portal>
     </RXDialog.Root>

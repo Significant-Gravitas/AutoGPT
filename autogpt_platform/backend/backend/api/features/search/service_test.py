@@ -209,12 +209,15 @@ async def test_global_search_buckets_results_by_content_type(mocker):
 
 @pytest.mark.asyncio
 async def test_global_search_respects_per_type_limit(mocker):
-    """Bucket cap is forwarded as the ``limit`` to the direct-DB file
-    listing so the underlying query only fetches what we need."""
+    """Bucket cap (``per_type_limit``) trims the rendered response after
+    in-Python relevance reranking. The DB fetch limit is the larger of
+    the bucket cap and ``_RELEVANCE_OVERFETCH_CAP`` (32) so the rerank
+    has enough candidates to do meaningful work — see the docstring on
+    ``_files_bucket``."""
     files = [_fake_workspace_file(f"file-{i}") for i in range(10)]
 
     mock_manager = MagicMock()
-    mock_manager.list_files = AsyncMock(return_value=files[:3])
+    mock_manager.list_files = AsyncMock(return_value=files)
     mocker.patch(
         "backend.api.features.search.service.WorkspaceManager",
         return_value=mock_manager,
@@ -235,9 +238,15 @@ async def test_global_search_respects_per_type_limit(mocker):
     with patcher:
         result = await service.global_search(query="x", user_id="u1", per_type_limit=3)
 
+    # Rendered response is trimmed to per_type_limit even though the
+    # bucket fetched more for reranking.
     assert len(result.files) == 3
-    # The bucket cap must reach the DB layer as the page-size guard.
-    assert mock_manager.list_files.await_args.kwargs["limit"] == 3
+    # The DB fetch uses the relevance overfetch cap, NOT the bucket
+    # cap — anything else would mean we're ranking too small a sample.
+    assert (
+        mock_manager.list_files.await_args.kwargs["limit"]
+        == service._RELEVANCE_OVERFETCH_CAP
+    )
 
 
 @pytest.mark.asyncio
