@@ -61,7 +61,46 @@ export function CopilotPage() {
       className="h-[calc(100vh-72px)] min-h-0"
     >
       {!isMobile && <ChatSidebar />}
-      <div className="flex h-full w-full flex-row gap-2 overflow-hidden bg-[#fafafa] p-2">
+      <MainArea
+        isMobile={isMobile}
+        isContextPanelEnabled={isContextPanelEnabled}
+        isArtifactsEnabled={isArtifactsEnabled}
+        sessionId={sessionId}
+        droppedFiles={droppedFiles}
+        setDroppedFiles={setDroppedFiles}
+      />
+      {isMobile &&
+        (isContextPanelEnabled ? (
+          <ContextPanel sessionId={sessionId} mobile />
+        ) : (
+          isArtifactsEnabled && <ArtifactPanel mobile />
+        ))}
+      {isMobile && <MobileDrawer />}
+      <NotificationDialog />
+    </SidebarProvider>
+  );
+}
+
+interface MainAreaProps {
+  isMobile: boolean;
+  isContextPanelEnabled: boolean;
+  isArtifactsEnabled: boolean;
+  sessionId: string | null;
+  droppedFiles: File[];
+  setDroppedFiles: (files: File[]) => void;
+}
+
+function MainArea({
+  isMobile,
+  isContextPanelEnabled,
+  isArtifactsEnabled,
+  sessionId,
+  droppedFiles,
+  setDroppedFiles,
+}: MainAreaProps) {
+  return (
+    <div className="relative mr-5 mt-2.5 flex h-full w-full flex-row pb-5 lg:mr-[0.3rem]">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa] p-2">
         <FileDropZone
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-100 bg-white px-0 shadow-sm"
           onFilesDropped={setDroppedFiles}
@@ -74,7 +113,6 @@ export function CopilotPage() {
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
-          {!isMobile && isContextPanelEnabled && <ContextPanelToggle />}
           {/* Auto-open is desktop-only: on mobile the panel is a fullscreen
               sheet, so opening it on first file would take over the chat. */}
           {!isMobile && isContextPanelEnabled && (
@@ -84,21 +122,14 @@ export function CopilotPage() {
             />
           )}
         </FileDropZone>
-        {!isMobile &&
-          (isContextPanelEnabled ? (
-            <ContextPanel sessionId={sessionId} />
-          ) : (
-            isArtifactsEnabled && <ArtifactPanel />
-          ))}
       </div>
-      {isMobile &&
+      {!isMobile &&
         (isContextPanelEnabled ? (
-          <ContextPanel sessionId={sessionId} mobile />
+          <ContextPanel sessionId={sessionId} />
         ) : (
-          isArtifactsEnabled && <ArtifactPanel mobile />
+          isArtifactsEnabled && <ArtifactPanel />
         ))}
-      {isMobile && <MobileDrawer />}
-      <NotificationDialog />
-    </SidebarProvider>
+      {!isMobile && isContextPanelEnabled && <ContextPanelToggle />}
+    </div>
   );
 }

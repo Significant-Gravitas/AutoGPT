@@ -191,10 +191,10 @@ export function ChatInput({
       <InputGroup
         className={cn(
           "overflow-hidden has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-          // In an active session the input docks to the bottom of the chat
-          // card as a flush bar — no rounding/shadow, just a top hairline.
+          // In an active session the input docks into the gray input bar —
+          // no rounding/border/shadow, transparent so the bar bg shows.
           hasSession &&
-            "!rounded-none border-0 border-t border-neutral-200 pt-4 shadow-none",
+            "!rounded-none !border-0 !bg-transparent pt-2 shadow-none",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}

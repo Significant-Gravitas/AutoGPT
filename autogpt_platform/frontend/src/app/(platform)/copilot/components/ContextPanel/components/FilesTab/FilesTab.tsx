@@ -112,22 +112,26 @@ export function FilesTab({ sessionId }: Props) {
     );
   }
 
+  const downloadAllButton = (
+    <Button
+      variant="ghost"
+      size="small"
+      onClick={handleDownloadAll}
+      loading={isZipping}
+      leftIcon={<DownloadSimpleIcon size={16} />}
+    >
+      Download all
+    </Button>
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-end border-b border-zinc-100 px-3 py-2">
-        <Button
-          variant="ghost"
-          size="small"
-          onClick={handleDownloadAll}
-          loading={isZipping}
-          leftIcon={<DownloadSimpleIcon size={16} />}
-        >
-          Download all
-        </Button>
-      </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2">
         {uploaded.length > 0 && (
-          <FileSection title="Uploaded">
+          <FileSection
+            title="Uploaded"
+            action={generated.length === 0 ? downloadAllButton : null}
+          >
             {uploaded.map((file) => (
               <FileRow
                 key={file.item.id}
@@ -140,7 +144,7 @@ export function FilesTab({ sessionId }: Props) {
           </FileSection>
         )}
         {generated.length > 0 && (
-          <FileSection title="Generated">
+          <FileSection title="Generated" action={downloadAllButton}>
             {generated.map((file) => (
               <FileRow
                 key={file.item.id}
@@ -165,16 +169,21 @@ export function FilesTab({ sessionId }: Props) {
 
 function FileSection({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section>
-      <h3 className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-        {title}
-      </h3>
+      <div className="flex items-center justify-between px-2 pb-1">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+          {title}
+        </h3>
+        {action}
+      </div>
       <div className="flex flex-col">{children}</div>
     </section>
   );
