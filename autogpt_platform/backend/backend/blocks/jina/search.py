@@ -20,6 +20,10 @@ from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
 
 
+def _is_no_results_error(error: HTTPClientError) -> bool:
+    return error.status_code == 422 and "No search results available" in str(error)
+
+
 class SearchTheWebBlock(Block, GetRequest):
     class Input(BlockSchemaInput):
         credentials: JinaCredentialsInput = JinaCredentialsField()
@@ -63,6 +67,15 @@ class SearchTheWebBlock(Block, GetRequest):
             results = await self.get_request(
                 jina_search_url, headers=headers, json=False
             )
+        except HTTPClientError as e:
+            if _is_no_results_error(e):
+                yield "results", ""
+                return
+            raise BlockExecutionError(
+                message=f"Search failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Search failed: {e}",
