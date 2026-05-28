@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from backend.blocks.llm import LlmModel
 from backend.util.clients import OPENROUTER_BASE_URL
 
 
@@ -110,10 +111,17 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default="google/gemini-2.5-flash-lite",
-        description="Model for dry-run block simulation (should be fast/cheap with good JSON output). "
-        "Gemini 2.5 Flash-Lite is ~3x cheaper than Flash ($0.10/$0.40 vs $0.30/$1.20 per MTok) "
-        "with JSON-mode reliability adequate for shape-matching block outputs.",
+        default=LlmModel.GEMINI_2_5_FLASH_LITE.value,
+        description="Model for dry-run block simulation. Constraints: "
+        "(1) the LLM-simulation path calls OpenRouter's OpenAI-compat "
+        "endpoint with ``response_format=json_object`` and "
+        "``json.loads()`` the response — Claude wraps JSON in markdown "
+        "fences here, Gemini doesn't; (2) the orchestrator BUILT_IN "
+        "dry-run path dispatches on ``llm_model.metadata.provider`` — "
+        "a Claude default would hit ``api.anthropic.com`` with the "
+        "platform OR key and 401, while Gemini has provider=open_router "
+        "and routes correctly. Flash-Lite satisfies both and keeps "
+        "platform OR cost low.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
