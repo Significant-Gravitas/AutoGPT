@@ -35,6 +35,7 @@ def _make_library_agent(
             userId="u1",
             isActive=True,
             createdAt=datetime.datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
         ),
     )
@@ -53,6 +54,7 @@ def test_from_db_execution_count_override_covers_success_rate():
         updatedAt=now,
         isDeleted=False,
         isShared=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
     agent = _make_library_agent(executions=[exec1])
 
