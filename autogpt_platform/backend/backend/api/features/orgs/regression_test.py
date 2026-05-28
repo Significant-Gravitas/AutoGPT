@@ -2354,14 +2354,10 @@ class TestPR15MarketplaceOrg:
         assert first_entry["organizationId"] == "org-target"
         assert result is not None
 
-    @pytest.mark.xfail(
-        reason="copy_graph endpoint not implemented yet (deferred feature)",
-        strict=True,
-    )
     @pytest.mark.asyncio
     async def test_copy_graph_to_different_team(self):
         """A copy_graph API endpoint should allow copying a graph to a
-        different team within the same org. The endpoint doesn't exist yet."""
+        different team within the same org."""
         # No importlib.reload here: reloading backend.data.graph would
         # rebuild Graph/NodeModel/Link as fresh class objects, breaking
         # pydantic class-identity for every alphabetically-later test

@@ -45,14 +45,34 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user, setup_test_user):
+def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from autogpt_libs.auth.models import RequestContext
 
     # setup_test_user fixture already executed and user is created in database
     # It returns the user_id which we don't need to await
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    # Override get_request_context too — the real one queries Prisma to
+    # resolve the user's personal org when no X-Org-Id header is set,
+    # which closes/leaks the test event loop across sync TestClient calls.
+    async def _fake_request_context() -> RequestContext:
+        return RequestContext(
+            user_id=test_user_id,
+            org_id="test-org",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+
+    app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
 
