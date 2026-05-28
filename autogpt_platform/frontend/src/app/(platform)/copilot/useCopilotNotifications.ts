@@ -4,6 +4,7 @@ import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import {
+  COPILOT_COMPLETION_NOTIFICATION,
   ORIGINAL_TITLE,
   formatNotificationTitle,
   parseSessionIDs,
@@ -115,9 +116,9 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         Notification.permission === "granted" &&
         isUserAway
       ) {
-        showBrowserNotification("AutoPilot is ready", {
-          body: "A response is waiting for you.",
-          icon: "/favicon.ico",
+        showBrowserNotification(COPILOT_COMPLETION_NOTIFICATION.title, {
+          body: COPILOT_COMPLETION_NOTIFICATION.body,
+          icon: COPILOT_COMPLETION_NOTIFICATION.icon,
           sessionID,
         });
       }

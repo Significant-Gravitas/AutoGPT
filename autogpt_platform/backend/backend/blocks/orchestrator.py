@@ -6,7 +6,7 @@ import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import AsyncIterable, Sequence
+from collections.abc import AsyncIterable, Mapping, Sequence
 from concurrent.futures import Future
 from enum import Enum
 from functools import partial
@@ -1136,6 +1136,20 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
+        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Mirrors the normal queue-based path in _on_graph_execution, which
+        # merges nodes_input_masks[node_id] into queued_node_exec.inputs
+        # before execution so credential fields are present for the block run.
+        # isinstance coercion is load-bearing: tests pass MagicMock processors
+        # whose attribute chain otherwise returns coroutines under AsyncMock.
+        nodes_input_masks = execution_processor.nodes_input_masks
+        if not isinstance(nodes_input_masks, Mapping):
+            nodes_input_masks = None
+        if nodes_input_masks and (
+            node_input_mask := nodes_input_masks.get(sink_node_id)
+        ):
+            node_exec_entry.inputs.update(node_input_mask)
+
         # Use the execution manager to execute the tool node
         try:
             # Get NodeExecutionProgress from the execution manager's running nodes
@@ -1169,7 +1183,7 @@ class OrchestratorBlock(Block):
                 tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
-                    nodes_input_masks=None,
+                    nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
                 if tool_node_stats is None:

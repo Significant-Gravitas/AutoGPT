@@ -6,13 +6,13 @@
 var NOTIFICATION_MAP = {
   copilot_completion: {
     session_completed: {
-      title: "AutoPilot is ready",
-      body: "A response is waiting for you.",
+      title: "AutoGPT",
+      body: "Task completed",
       url: "/copilot",
     },
     session_failed: {
-      title: "AutoPilot session failed",
-      body: "Something went wrong with your session.",
+      title: "AutoGPT",
+      body: "Task failed",
       url: "/copilot",
     },
   },
@@ -152,8 +152,8 @@ self.addEventListener("push", function (event) {
 
         var options = {
           body: config.body,
-          icon: "/favicon.ico",
-          badge: "/favicon.ico",
+          icon: "/notification-icon-192.png",
+          badge: "/notification-icon-192.png",
           tag: tag,
           data: Object.assign({ url: targetUrl }, data),
           renotify: true,
