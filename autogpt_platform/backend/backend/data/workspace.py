@@ -251,6 +251,7 @@ async def get_workspace_file_by_path(
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
+    path_not_starts_with: Optional[str] = None,
     include_deleted: bool = False,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -262,6 +263,9 @@ async def list_workspace_files(
     Args:
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/documents/")
+        path_not_starts_with: Optional path prefix to *exclude* — used by
+            the Artifacts page to filter out session-scoped (autopilot)
+            uploads when the user picks the "Builder" origin filter.
         include_deleted: Whether to include soft-deleted files
         limit: Maximum number of files to return
         offset: Number of files to skip
@@ -282,6 +286,14 @@ async def list_workspace_files(
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
+
+    if path_not_starts_with:
+        if not path_not_starts_with.startswith("/"):
+            path_not_starts_with = f"/{path_not_starts_with}"
+        # Prisma's NOT accepts a partial where clause; combining with
+        # ``path_prefix`` would be ambiguous, so callers should pass
+        # one or the other — not both.
+        where_clause["NOT"] = {"path": {"startswith": path_not_starts_with}}
 
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}

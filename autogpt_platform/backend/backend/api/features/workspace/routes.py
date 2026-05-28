@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 import fastapi
@@ -339,6 +339,23 @@ async def list_workspace_files(
     session_id: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    q: str | None = Query(
+        default=None,
+        description=(
+            "Case-insensitive substring search on file name. Applied "
+            "in the database for fresh results without waiting on "
+            "embedding generation."
+        ),
+    ),
+    origin: Literal["builder", "autopilot"] | None = Query(
+        default=None,
+        description=(
+            "Filter by upload origin. ``autopilot`` matches files stored "
+            "under ``/sessions/...`` (CoPilot chat uploads); ``builder`` "
+            "matches everything else. Ignored when ``session_id`` is set "
+            "(session scoping already implies origin)."
+        ),
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -346,6 +363,9 @@ async def list_workspace_files(
     When session_id is provided, only files for that session are returned.
     Otherwise, all files across sessions are listed. Results are paginated
     via `limit`/`offset`; `has_more` indicates whether additional pages exist.
+
+    The Artifacts page uses ``q`` for name search and ``origin`` to filter
+    between Builder (root-level) and Autopilot (session-scoped) uploads.
     """
     workspace = await get_or_create_workspace(user_id)
 
@@ -356,11 +376,27 @@ async def list_workspace_files(
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
+
+    # Origin → path filter. Only applied when not session-scoped, since
+    # session_id already pins the origin.
+    list_path: str | None = None
+    path_not_starts_with: str | None = None
+    if session_id is None and origin is not None:
+        if origin == "autopilot":
+            list_path = "/sessions/"
+        else:  # "builder"
+            path_not_starts_with = "/sessions/"
+
+    name_contains = (q or "").strip() or None
+
     # Fetch one extra to compute has_more without a separate count query.
     files = await manager.list_files(
+        path=list_path,
         limit=limit + 1,
         offset=offset,
         include_all_sessions=include_all,
+        name_contains=name_contains,
+        path_not_starts_with=path_not_starts_with,
     )
     has_more = len(files) > limit
     page = files[:limit]
