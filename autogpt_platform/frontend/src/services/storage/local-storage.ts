@@ -21,6 +21,8 @@ export enum Key {
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
+  TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
+  LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
 }
 
 function get(key: Key) {
