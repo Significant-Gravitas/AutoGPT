@@ -110,70 +110,73 @@ export async function AdminUserGrantHistory({
                 </TableCell>
               </TableRow>
             ) : (
-              history.map((transaction) => (
-                <TableRow
-                  key={`${transaction.user_id}-${transaction.transaction_time}`}
-                  className="hover:bg-gray-50"
-                >
-                  <TableCell className="font-medium">
-                    {transaction.user_email}
-                  </TableCell>
+              history.map((transaction) => {
+                const runningBalance = transaction.running_balance;
+                const hasRunningBalance = runningBalance != null;
+                return (
+                  <TableRow
+                    key={`${transaction.user_id}-${transaction.transaction_time}`}
+                    className="hover:bg-gray-50"
+                  >
+                    <TableCell className="font-medium">
+                      {transaction.user_email}
+                    </TableCell>
 
-                  <TableCell>
-                    {formatType(transaction.transaction_type)}
-                  </TableCell>
-                  <TableCell className="text-gray-600">
-                    {formatDate(transaction.transaction_time)}
-                  </TableCell>
-                  <TableCell>{transaction.reason}</TableCell>
-                  <TableCell className="text-gray-600">
-                    {transaction.admin_email}
-                  </TableCell>
-                  <TableCell className="font-medium text-green-600">
-                    $
-                    {((transaction.running_balance ?? 0) +
-                      -transaction.amount) /
-                      100}
-                  </TableCell>
-                  <TableCell>
-                    {formatAmount(
-                      transaction.amount,
-                      transaction.transaction_type,
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium text-green-600">
-                    ${(transaction.running_balance ?? 0) / 100}
-                  </TableCell>
-                  {/* <TableCell className="font-medium text-green-600">
-                    ${transaction.current_balance / 100}
-                  </TableCell> */}
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <RateLimitModal
-                        userId={transaction.user_id}
-                        userEmail={transaction.user_email ?? ""}
-                      />
-                      <AdminAddMoneyButton
-                        userId={transaction.user_id}
-                        userEmail={transaction.user_email ?? ""}
-                        currentBalance={transaction.current_balance}
-                        defaultAmount={
-                          transaction.transaction_type ===
-                          CreditTransactionType.USAGE
-                            ? -transaction.amount
-                            : undefined
-                        }
-                        defaultComments={
-                          transaction.transaction_type ===
-                          CreditTransactionType.USAGE
-                            ? "Refund for usage"
-                            : undefined
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    <TableCell>
+                      {formatType(transaction.transaction_type)}
+                    </TableCell>
+                    <TableCell className="text-gray-600">
+                      {formatDate(transaction.transaction_time)}
+                    </TableCell>
+                    <TableCell>{transaction.reason}</TableCell>
+                    <TableCell className="text-gray-600">
+                      {transaction.admin_email}
+                    </TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      {hasRunningBalance
+                        ? `$${(runningBalance - transaction.amount) / 100}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      {formatAmount(
+                        transaction.amount,
+                        transaction.transaction_type,
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      {hasRunningBalance ? `$${runningBalance / 100}` : "N/A"}
+                    </TableCell>
+                    {/* <TableCell className="font-medium text-green-600">
+                      ${transaction.current_balance / 100}
+                    </TableCell> */}
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <RateLimitModal
+                          userId={transaction.user_id}
+                          userEmail={transaction.user_email ?? ""}
+                        />
+                        <AdminAddMoneyButton
+                          userId={transaction.user_id}
+                          userEmail={transaction.user_email ?? ""}
+                          currentBalance={transaction.current_balance}
+                          defaultAmount={
+                            transaction.transaction_type ===
+                            CreditTransactionType.USAGE
+                              ? -transaction.amount
+                              : undefined
+                          }
+                          defaultComments={
+                            transaction.transaction_type ===
+                            CreditTransactionType.USAGE
+                              ? "Refund for usage"
+                              : undefined
+                          }
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
