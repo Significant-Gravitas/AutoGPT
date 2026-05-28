@@ -206,25 +206,28 @@ flows to every backend helper that needs an LLM, so a single
 
 The store's embedding model is overridable via env so deployments with
 a compatible backend (vLLM, LiteLLM proxy, Ollama with an embedding
-model pulled, Azure OpenAI) can swap models without a code change:
+model pulled, Azure OpenAI) can swap models without a code change.
+**The replacement model must emit 1536-dim vectors** — the pgvector
+column is declared `vector(1536)` in `schema.prisma` and inserts with
+any other dim hard-fail.
 
 ```bash
-# Default (matches the historical OpenAI text-embedding-3-small column shape):
+# Default — OpenAI text-embedding-3-small (1536 dim):
 STORE_EMBEDDING_MODEL=text-embedding-3-small
-STORE_EMBEDDING_DIM=1536
 
-# Example: nomic-embed-text on Ollama (smallest and fastest decent embedder):
-ollama pull nomic-embed-text
-# then in backend/.env:
-STORE_EMBEDDING_MODEL=nomic-embed-text
-STORE_EMBEDDING_DIM=768
+# Example: nomic-embed-text on Ollama emits 768 dims natively, so it
+# DOES NOT fit the existing schema — picking it would break every
+# publish + reindex. Use a 1536-dim model instead, e.g.
+# text-embedding-ada-002 (OpenAI legacy) or one of the LiteLLM proxy's
+# 1536-dim shims. Custom-dim support would need a schema migration
+# beyond the scope of this guide.
 ```
 
-> **pgvector dimension is fixed at column-create time.** If you change
-> `STORE_EMBEDDING_DIM` after content has already been embedded, the new
-> writes will fail with a shape mismatch — you'll need to re-create the
-> embedding column or drop existing rows. Pick a dim at install time
-> and keep it.
+> **pgvector dimension is fixed in the schema, not configurable at
+> runtime.** A model that emits a different vector length will succeed
+> at the embedding call and fail at every subsequent `INSERT`. If you
+> need a different dim, you'll need to fork the schema and migrate
+> existing rows — it's not a runtime knob.
 
 If you don't configure an embedding backend at all, marketplace
 hybrid search auto-degrades to lexical-only (no semantic ranking) —

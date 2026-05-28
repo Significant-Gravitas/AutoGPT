@@ -38,6 +38,12 @@ _MAX_PAGES = 100
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
 
+# Cloud-transport model for ``extract_business_understanding``. Frozen at the
+# historical pick so existing OpenRouter / direct-Anthropic deployments don't
+# see a silent model swap (and cost change) when the local-transport plumbing
+# rolls out — local transport routes through ``chat_cfg.title_model`` instead.
+_EXTRACTION_MODEL_CLOUD = "openai/gpt-4o-mini"
+
 SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
 PROMPTS_PER_THEME = 5
 
@@ -358,11 +364,14 @@ async def extract_business_understanding(
     base_url=OPENROUTER_BASE_URL)`` returned a 401 on the very first signup
     of any no-API-key install).
 
-    Model picks ``ChatConfig.title_model`` so that under ``use_local`` the
-    auto-derivation from ``fast_standard_model`` flows through here too —
-    one less env to remember. Reuses the module-level ``ChatConfig``
-    singleton from ``copilot.sdk.env`` to avoid a fresh ``.env``-parse
-    on every Tally submission.
+    Model picks ``ChatConfig.title_model`` only under the local transport so
+    the auto-derivation from ``fast_standard_model`` flows through here too —
+    one less env to remember for self-hosted operators. Cloud transports
+    (OpenRouter / direct-Anthropic) keep the historical ``openai/gpt-4o-mini``
+    pick so existing deployments don't see a silent model swap (different
+    pricing, different output shape). Reuses the module-level ``ChatConfig``
+    singleton from ``copilot.sdk.env`` to avoid a fresh ``.env``-parse on
+    every Tally submission.
     """
     from backend.copilot.sdk.env import config as chat_cfg
 
@@ -374,7 +383,11 @@ async def extract_business_understanding(
             "CHAT_BASE_URL + CHAT_API_KEY (local). See "
             "docs/platform/copilot-local-llm.md."
         )
-    model = chat_cfg.title_model
+    model = (
+        chat_cfg.title_model
+        if chat_cfg.transport.name == "local"
+        else _EXTRACTION_MODEL_CLOUD
+    )
 
     # ``_LLM_TIMEOUT`` was sized for OpenRouter latency. Local CPU-only
     # Ollama can take 30–120+ seconds for even a small JSON extraction

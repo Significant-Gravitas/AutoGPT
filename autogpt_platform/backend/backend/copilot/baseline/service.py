@@ -784,6 +784,13 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
+        # ``openrouter_active`` is shape-only (use_openrouter + truthy api_key +
+        # http-ish base_url) — a local Ollama install with the default
+        # ``use_openrouter=True`` and ``api_key="ollama"`` satisfies it too,
+        # so OR-specific request shape would leak into local turns. Branch on
+        # the resolved transport name instead: that's the single source of
+        # truth for "what wire format is this turn actually using".
+        is_openrouter_transport = config.transport.name == "openrouter"
         extra_body: dict[str, Any] = {}
         if config.transport.name == "local":
             # Ollama's OpenAI shim defaults to ``num_ctx=4096`` regardless of
@@ -796,7 +803,7 @@ async def _baseline_llm_caller(
             extra_body.setdefault("options", {}).setdefault(
                 "num_ctx", config.local_num_ctx
             )
-        elif config.openrouter_active:
+        elif is_openrouter_transport:
             # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
             extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
             reasoning_param = reasoning_extra_body(
@@ -818,10 +825,10 @@ async def _baseline_llm_caller(
             "extra_body": extra_body,
         }
         # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
-        if config.openrouter_active:
+        if is_openrouter_transport:
             create_kwargs["stream_options"] = {"include_usage": True}
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
-        if not config.openrouter_active and "thinking" in extra_body:
+        if not is_openrouter_transport and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
@@ -849,7 +856,10 @@ async def _baseline_llm_caller(
                             _extract_cache_creation_tokens(ptd)
                         )
                     cost = _extract_usage_cost(chunk.usage)
-                    direct_mode = not config.openrouter_active
+                    # Rate-card recovery covers both direct-Anthropic and local
+                    # (Ollama et al.) — neither emits OR's ``usage.cost``
+                    # extension, so anything that isn't OR needs the fallback.
+                    direct_mode = not is_openrouter_transport
                     if cost is None and direct_mode:
                         # Direct mode: no usage.cost field (OR extension); compute from rate card.
                         ptd = chunk.usage.prompt_tokens_details
@@ -2339,9 +2349,16 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Safety net: recover cost from rate card if usage chunk was dropped (truncated SSE).
-        # OR mode skips recovery — OR's markup differs from raw Anthropic pricing.
-        if state.cost_usd is None and not config.openrouter_active:
+        # Safety net: recover cost from rate card if usage chunk was dropped
+        # (truncated SSE). OR mode skips recovery — OR's markup differs from
+        # raw Anthropic pricing. Local Ollama/vLLM never emit ``usage.cost``
+        # so the recovery is what turns up *any* cost number for local turns.
+        # Branch on resolved transport name, not the shape-only
+        # ``openrouter_active`` (a local install with default
+        # ``use_openrouter=True`` would satisfy that and skip recovery,
+        # leaving every local turn at $0 — see PR #12993 review).
+        is_openrouter_transport = config.transport.name == "openrouter"
+        if state.cost_usd is None and not is_openrouter_transport:
             recovered = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
@@ -2370,7 +2387,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            provider="open_router" if config.openrouter_active else "anthropic",
+            provider=config.transport.cost_log_provider,
         )
 
         # Persist structured tool-call history (assistant + tool messages)

@@ -430,6 +430,7 @@ class TestTransportProfile:
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is True
+        assert p.cost_log_provider == "ollama"
 
     def test_openrouter_profile_shape(self):
         cfg = ChatConfig(
@@ -444,6 +445,7 @@ class TestTransportProfile:
         assert "OPEN_ROUTER_API_KEY" in p.api_key_fallback_envs
         assert "OPENAI_API_KEY" in p.api_key_fallback_envs
         assert p.inherit_fast_model_for_aux is False
+        assert p.cost_log_provider == "open_router"
 
     def test_subscription_profile_shape(self):
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
@@ -453,6 +455,7 @@ class TestTransportProfile:
         assert p.sdk_model_vendor_constraint is None
         assert p.api_key_fallback_envs == ()
         assert p.inherit_fast_model_for_aux is False
+        assert p.cost_log_provider == "anthropic"
 
     def test_direct_anthropic_profile_shape(self):
         cfg = _make_direct_safe_config(
@@ -462,6 +465,7 @@ class TestTransportProfile:
         assert p.name == "direct_anthropic"
         assert p.supports_sdk is True
         assert p.sdk_model_vendor_constraint == "anthropic"
+        assert p.cost_log_provider == "anthropic"
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by
@@ -534,6 +538,12 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "llama3.1:8b-instruct-q4_K_M"
         assert cfg.simulation_model == "llama3.1:8b-instruct-q4_K_M"
+        # ``fast_advanced_model`` must inherit too — without it, the
+        # "advanced" tier button in the UI sends the cloud opus slug to
+        # Ollama and 404s. Boot-time vendor validator is skipped under
+        # local transport so the misconfig wouldn't surface until the
+        # first advanced-tier turn.
+        assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
 
     def test_explicit_aux_model_wins(self):
         """Operators who genuinely want a different aux model (e.g.
@@ -545,9 +555,11 @@ class TestLocalAuxModels:
             fast_standard_model="llama3.1:8b-instruct-q4_K_M",
             title_model="qwen3:0.6b",
             simulation_model="qwen3:4b",
+            fast_advanced_model="llama3.1:70b",
         )
         assert cfg.title_model == "qwen3:0.6b"
         assert cfg.simulation_model == "qwen3:4b"
+        assert cfg.fast_advanced_model == "llama3.1:70b"
 
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
@@ -560,6 +572,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
+        assert cfg.fast_advanced_model == "anthropic/claude-opus-4.7"
 
 
 class TestLocalRequirementsValidator:

@@ -431,6 +431,7 @@ async def generate_activity_status_for_execution(
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             model_name=or_model,
+            provider=chat_cfg.transport.cost_log_provider,
             db_client=db_client,
         )
 
@@ -488,6 +489,7 @@ def _persist_activity_status_cost(
     graph_exec_id: str,
     graph_id: str,
     model_name: str,
+    provider: str,
     db_client: "DatabaseManagerAsyncClient",
 ) -> None:
     """Schedule a PlatformCostLog entry for the activity-status LLM call.
@@ -525,7 +527,7 @@ def _persist_activity_status_cost(
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
                 block_name="activity_status_generator",
-                provider="open_router",
+                provider=provider,
                 cost_microdollars=cost_microdollars,
                 input_tokens=input_tokens or None,
                 output_tokens=output_tokens or None,

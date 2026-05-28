@@ -286,7 +286,9 @@ class TestBuildExecutionSummary:
             # Check that errors are now in node's recent_errors field
             # Find the output node (with truncated UUID)
             output_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "678e9012"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "678e9012"  # Truncated
             )
             assert output_node["error_count"] == 1
             assert output_node["execution_count"] == 1
@@ -414,7 +416,9 @@ class TestBuildExecutionSummary:
 
             # String error format - find node with truncated ID
             string_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "333e4444"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "333e4444"  # Truncated
             )
             assert len(string_error_node["recent_errors"]) == 1
             assert (
@@ -424,7 +428,9 @@ class TestBuildExecutionSummary:
 
             # No error output format - find node with truncated ID
             no_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "777e8888"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "777e8888"  # Truncated
             )
             assert len(no_error_node["recent_errors"]) == 1
             assert no_error_node["recent_errors"][0]["error"] == "Unknown error"
@@ -563,7 +569,12 @@ class TestGenerateActivityStatusForExecution:
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
             assert entry.block_name == "activity_status_generator"
-            assert entry.provider == "open_router"
+            # ``provider`` is threaded from ``chat_cfg.transport.cost_log_provider``
+            # so the row reflects the backend that actually billed the call.
+            # The test runs against whichever transport the ambient env
+            # resolves to (``CHAT_USE_LOCAL`` / ``OPEN_ROUTER_API_KEY`` /
+            # ``ANTHROPIC_API_KEY``), so accept any of the cloud labels.
+            assert entry.provider in {"anthropic", "open_router"}
             assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"
             assert entry.tracking_amount == pytest.approx(0.0042)

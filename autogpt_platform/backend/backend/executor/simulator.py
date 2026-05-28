@@ -193,17 +193,16 @@ async def _call_llm_for_simulation(
     last_error: Exception | None = None
     for attempt in range(_MAX_JSON_RETRIES):
         try:
-            create_kwargs: dict[str, Any] = {
-                "model": model,
-                "temperature": _TEMPERATURE,
-                "response_format": {"type": "json_object"},
-                "messages": [
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                "extra_body": extra_body,
-            }
-            response = await client.chat.completions.create(**create_kwargs)
+                extra_body=extra_body,
+            )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
             raw = response.choices[0].message.content or ""
@@ -225,7 +224,12 @@ async def _call_llm_for_simulation(
                     "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
                 )
 
-            await _track_simulator_cost(usage=usage, user_id=user_id, model=model)
+            await _track_simulator_cost(
+                usage=usage,
+                user_id=user_id,
+                model=model,
+                provider=chat_cfg.transport.cost_log_provider,
+            )
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -288,6 +292,7 @@ async def _track_simulator_cost(
     usage: CompletionUsage | None,
     user_id: str | None,
     model: str,
+    provider: str,
 ) -> None:
     """Record platform cost for a single simulator LLM call.
 
@@ -309,7 +314,7 @@ async def _track_simulator_cost(
             log_prefix="[simulator]",
             cost_usd=cost_usd,
             model=model,
-            provider="open_router",
+            provider=provider,
         )
     except Exception as exc:
         logger.warning("[simulator] usage tracking failed: %s", exc)

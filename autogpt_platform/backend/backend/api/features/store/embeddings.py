@@ -27,14 +27,19 @@ logger = logging.getLogger(__name__)
 # (vLLM, LiteLLM proxy, an Ollama install with an embedding model pulled,
 # Azure OpenAI, …) can swap models without a code change. Default keeps
 # the historical OpenAI ``text-embedding-3-small`` so existing pgvector
-# columns (sized for 1536 dims) still match.
+# columns still match.
 EMBEDDING_MODEL = os.getenv("STORE_EMBEDDING_MODEL", "text-embedding-3-small")
-# Embedding dimension for the model above
-# text-embedding-3-small: 1536, text-embedding-3-large: 3072
-# IMPORTANT: this MUST match the dimensions emitted by EMBEDDING_MODEL — the
-# pgvector column is created at this size; a mismatch raises at insert time.
-# Override via STORE_EMBEDDING_DIM if you change the model.
-EMBEDDING_DIM = int(os.getenv("STORE_EMBEDDING_DIM", "1536"))
+# pgvector column dimension. Hardcoded to 1536: the
+# ``UnifiedContentEmbedding.embedding`` column (and every other embedding
+# column on the platform) is declared ``vector(1536)`` in schema.prisma +
+# migrations, so a mismatch fails at every INSERT — there's no actually-safe
+# way to override at runtime. A configurable knob here used to read
+# ``STORE_EMBEDDING_DIM`` and was removed because operators overriding
+# ``STORE_EMBEDDING_MODEL`` would assume the platform was dim-agnostic and
+# silently break every publish + reindex. If you need a different model,
+# pick one that emits 1536 dims (e.g. ``text-embedding-3-small``,
+# ``text-embedding-ada-002``, ``nomic-embed-text``).
+EMBEDDING_DIM = 1536
 # OpenAI embedding token limit (8,191 with 1 token buffer for safety)
 EMBEDDING_MAX_TOKENS = 8191
 
@@ -91,7 +96,8 @@ async def generate_embedding(text: str) -> list[float]:
             "CHAT_USE_LOCAL=true with a CHAT_BASE_URL that exposes "
             "/v1/embeddings (vLLM / LiteLLM proxy / Azure OpenAI / "
             "Ollama with an embedding model pulled). Override the model "
-            "via STORE_EMBEDDING_MODEL + STORE_EMBEDDING_DIM."
+            "via STORE_EMBEDDING_MODEL (must emit 1536-dim vectors to "
+            "match the pgvector column)."
         )
 
     # Truncate text to token limit using tiktoken. tiktoken only ships the

@@ -45,6 +45,12 @@ ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 # can't drift.
 _DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-4-5"
 _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
+# Default for ``fast_advanced_model`` — kept in sync with the field default
+# below. ``_apply_local_aux_models`` reads this to detect "operator left it
+# at the cloud default" so it can rewrite to ``fast_standard_model`` under
+# local transport (otherwise an "advanced" tier request 404s against
+# Ollama's OpenAI shim — no ``anthropic/`` slugs there).
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4.7"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 
@@ -87,6 +93,13 @@ class TransportProfile(BaseModel):
     # have to set every CHAT_*_MODEL slug. Cloud transports leave them
     # alone — operators can mix providers per field if they want.
     inherit_fast_model_for_aux: bool
+    # Free-form provider string persisted to ``PlatformCostLog.provider`` for
+    # rows attributable to this transport. Kept on the profile so the
+    # baseline path, the simulator, the activity-status generator, and any
+    # future cost-emitting call site share a single source of truth — a
+    # ``provider="open_router"`` row from a local Ollama turn would
+    # falsely show up as OR spend on the admin dashboard.
+    cost_log_provider: str
 
 
 _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
@@ -96,6 +109,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=False,
+        cost_log_provider="anthropic",
     ),
     "openrouter": TransportProfile(
         name="openrouter",
@@ -103,6 +117,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
+        cost_log_provider="open_router",
     ),
     "direct_anthropic": TransportProfile(
         name="direct_anthropic",
@@ -110,6 +125,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         sdk_model_vendor_constraint="anthropic",
         api_key_fallback_envs=("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY"),
         inherit_fast_model_for_aux=False,
+        cost_log_provider="anthropic",
     ),
     "local": TransportProfile(
         name="local",
@@ -117,6 +133,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         sdk_model_vendor_constraint=None,
         api_key_fallback_envs=(),
         inherit_fast_model_for_aux=True,
+        cost_log_provider="ollama",
     ),
 }
 
@@ -165,10 +182,12 @@ class ChatConfig(BaseSettings):
         "(see ``copilot/model_router.py``); this value is the fallback.",
     )
     fast_advanced_model: str = Field(
-        default="anthropic/claude-opus-4.7",
+        default=_DEFAULT_FAST_ADVANCED_MODEL,
         validation_alias=AliasChoices("CHAT_FAST_ADVANCED_MODEL"),
         description="Baseline path, 'advanced' tier.  LD override: "
-        "``copilot-model-routing[fast][advanced]``.",
+        "``copilot-model-routing[fast][advanced]``. Auto-overridden to "
+        "match ``fast_standard_model`` under ``use_local`` when left at "
+        "the cloud default — see ``_apply_local_aux_models``.",
     )
     thinking_standard_model: str = Field(
         default="anthropic/claude-sonnet-4-6",
@@ -981,14 +1000,23 @@ class ChatConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _apply_local_aux_models(self) -> "ChatConfig":
-        """Inherit ``fast_standard_model`` for ``title_model`` /
-        ``simulation_model`` when the transport asks for it.
+        """Inherit ``fast_standard_model`` for the auxiliary model fields
+        when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        — fine on OpenRouter, instant 404 on a local backend. Operators
-        on the local transport otherwise have to repeat the same Ollama
-        slug across half a dozen ``CHAT_*_MODEL`` envs. Only fires when
-        the field is still at the cloud default — explicit overrides win.
+        / ``anthropic/claude-opus-4.7`` — fine on OpenRouter, instant 404
+        on a local backend (no provider slugs there). Operators on the
+        local transport otherwise have to repeat the same Ollama slug
+        across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
+        field is still at the cloud default — explicit overrides win.
+
+        Covers ``title_model`` + ``simulation_model`` (aux call sites)
+        AND ``fast_advanced_model`` (the "advanced" baseline tier);
+        without the advanced derivation, a user clicking the advanced
+        toggle in the UI sends ``anthropic/claude-opus-4.7`` to Ollama
+        and gets a model-not-found 404. The boot-time vendor validator
+        is skipped under local transport so this misconfig wouldn't
+        surface until the first advanced-tier turn.
         """
         if not self.transport.inherit_fast_model_for_aux:
             return self
@@ -996,6 +1024,8 @@ class ChatConfig(BaseSettings):
             object.__setattr__(self, "title_model", self.fast_standard_model)
         if self.simulation_model == _DEFAULT_SIMULATION_MODEL:
             object.__setattr__(self, "simulation_model", self.fast_standard_model)
+        if self.fast_advanced_model == _DEFAULT_FAST_ADVANCED_MODEL:
+            object.__setattr__(self, "fast_advanced_model", self.fast_standard_model)
         return self
 
     @model_validator(mode="after")

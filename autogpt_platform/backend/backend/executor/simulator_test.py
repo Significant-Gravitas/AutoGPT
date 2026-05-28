@@ -292,9 +292,9 @@ class TestPrepareDryRun:
         # manager.py does before calling Input(**...).
         validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
         err = block.input_schema.validate_data(validation_input)
-        assert (
-            err is None
-        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
+        assert err is None, (
+            f"prepare_dry_run produced input that fails jsonschema validation: {err}"
+        )
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
@@ -807,7 +807,13 @@ class TestSimulatorCostTracking:
         assert create_kwargs["extra_body"] == {"usage": {"include": True}}
 
         track_kwargs = mock_track.await_args.kwargs
-        assert track_kwargs["provider"] == "open_router"
+        # ``provider`` is threaded from ``chat_cfg.transport.cost_log_provider``
+        # so the row reflects the backend that actually billed the call.
+        # The test runs against the ambient transport (OpenRouter when the
+        # platform key is set, direct-Anthropic otherwise); accept either
+        # cloud label since the call-site contract is "whichever transport
+        # is live", not the literal "open_router".
+        assert track_kwargs["provider"] in {"open_router", "anthropic"}
         assert track_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
         assert track_kwargs["user_id"] == "user-42"
         assert track_kwargs["prompt_tokens"] == 1100
@@ -846,7 +852,8 @@ class TestSimulatorCostTracking:
         track_kwargs = mock_track.await_args.kwargs
         assert track_kwargs["cost_usd"] is None
         assert track_kwargs["user_id"] == "user-7"
-        assert track_kwargs["provider"] == "open_router"
+        # See note in test_persists_platform_cost_when_track_succeeds.
+        assert track_kwargs["provider"] in {"open_router", "anthropic"}
 
     @pytest.mark.asyncio
     async def test_tracking_failure_does_not_break_simulation(self) -> None:
