@@ -5,10 +5,13 @@ import { useTopUpForm } from "./useTopUpForm";
 
 interface Props {
   submitLabel?: string;
+  size?: "small" | "normal";
 }
 
-export function TopUpForm({ submitLabel = "Top up" }: Props) {
+export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
   const { form, isLoading, submitTopUp } = useTopUpForm();
+  const inputSize = size === "small" ? "small" : "medium";
+  const buttonSize = size === "small" ? "small" : "large";
 
   return (
     <Form form={form} onSubmit={submitTopUp} className="my-4">
@@ -19,6 +22,7 @@ export function TopUpForm({ submitLabel = "Top up" }: Props) {
           <Input
             label="Amount"
             type="amount"
+            size={inputSize}
             decimalCount={0}
             id={field.name}
             error={form.formState.errors.amount?.message}
@@ -27,7 +31,7 @@ export function TopUpForm({ submitLabel = "Top up" }: Props) {
           />
         )}
       />
-      <Button type="submit" disabled={isLoading}>
+      <Button type="submit" disabled={isLoading} size={buttonSize}>
         {isLoading ? "Redirecting…" : submitLabel}
       </Button>
     </Form>
