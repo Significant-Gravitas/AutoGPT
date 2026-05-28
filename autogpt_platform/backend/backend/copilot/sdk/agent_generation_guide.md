@@ -26,36 +26,6 @@ Steps:
 **Skip this** when the goal already specifies all dimensions (e.g.
 "scrape prices from Amazon and email me daily").
 
-### Before Building: Show the Plan
-
-Start agent generation by calling `decompose_goal` once to display your
-build plan to the user as a step-by-step UI card.
-
-1. Analyze the user's request and break it into plain-English steps
-   describing **what the agent will do for the user**, not which blocks
-   you will add or how they connect. For a YouTube summarizer that
-   might be: "Accept a YouTube URL from the user", "Fetch the video's
-   transcript", "Generate a timestamped summary", "Return the summary
-   to the user".
-2. Call `decompose_goal` with those steps. Do not write any text before
-   or after the tool call — the platform renders the plan UI card
-   automatically, so any extra text duplicates the display.
-3. Continue immediately with the workflow below in the same turn. The
-   plan card is informational only — there is no approval step, no
-   countdown, and no need to wait for the user.
-
-The `description` is user-facing and must read as plain English to a
-non-technical user. The platform records the block name and action on
-the same step via the separate `block_name` and `action` fields — those
-fields carry the technical detail. Do not put block class names
-("AgentInputBlock", "AgentOutputBlock", "TranscribeYoutubeVideoBlock"),
-internal types, or wiring verbs ("wire", "connect", "link") inside
-`description`.
-
-For simple goals (1-2 blocks), keep steps brief (2-3 steps).
-For complex goals, use as many steps as needed.
-
-
 ### Workflow for Creating/Editing Agents
 
 1. **If creating a new agent from a user goal (REQUIRED before `create_agent`)**:
@@ -83,43 +53,71 @@ For complex goals, use as many steps as needed.
    agent in the Builder) bypass this gate automatically — no
    pre-flight call is needed there.
 
-2. **If editing**: First narrow to the specific agent by UUID, then fetch its
+2. **If creating, show the plan**: After the library check has run and
+   the user has not chosen an existing match, call `decompose_goal` once
+   to display the build plan as a step-by-step UI card. Decomposition is
+   gated on the same library-similarity check as `create_agent`
+   (`require_library_check`) and will refuse to run if step 1 was
+   skipped — never call it before the library search.
+   - Analyze the user's request and break it into plain-English steps
+     describing **what the agent will do for the user**, not which
+     blocks you will add or how they connect. For a YouTube summarizer
+     that might be: "Accept a YouTube URL from the user", "Fetch the
+     video's transcript", "Generate a timestamped summary", "Return the
+     summary to the user".
+   - Call `decompose_goal` with those steps. Do not write any text
+     before or after the tool call — the platform renders the plan UI
+     card automatically, so any extra text duplicates the display.
+   - Continue immediately with the rest of the workflow in the same
+     turn. The plan card is informational only — there is no approval
+     step, no countdown, and no need to wait for the user.
+
+   The `description` is user-facing and must read as plain English to a
+   non-technical user. The platform records the block name and action
+   on the same step via the separate `block_name` and `action` fields —
+   those fields carry the technical detail. Do not put block class
+   names ("AgentInputBlock", "AgentOutputBlock",
+   "TranscribeYoutubeVideoBlock"), internal types, or wiring verbs
+   ("wire", "connect", "link") inside `description`. For simple goals
+   (1-2 blocks), keep steps brief (2-3 steps); for complex goals, use
+   as many steps as needed.
+3. **If editing**: First narrow to the specific agent by UUID, then fetch its
    graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
    returns the full graph structure (nodes + links). **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-3. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
+4. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas. The `for_agent_generation=true` flag is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
    in CoPilot outside agent generation, use `run_mcp_tool` instead.)
-4. **Find library agents for sub-agent composition**: Call `find_library_agent`
+5. **Find library agents for sub-agent composition**: Call `find_library_agent`
    (default mode, no `for_creation` flag) to discover reusable agents that
    can be composed as sub-agents via `AgentExecutorBlock`. This is distinct
    from the create-time similarity check in step 1 — here you're looking
    for building blocks, not asking "does the user already have this?".
-5. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
-   - Use block IDs from step 3 as `block_id` in nodes
+6. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 4 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
    - When editing, apply targeted changes and preserve unchanged parts
-6. **Write to workspace**: Save the JSON to a workspace file so the user
+7. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-7. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+8. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-8. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+9. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-9. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-   the final `agent_json`. For `create_agent`, the library similarity gate
-   from step 1 must have been satisfied (either matches were shown to the
-   user, or pass `library_check_ack=true` after explicit user confirmation).
-10. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+10. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+    the final `agent_json`. For `create_agent`, the library similarity gate
+    from step 1 must have been satisfied (either matches were shown to the
+    user, or pass `library_check_ack=true` after explicit user confirmation).
+11. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
-11. **Inspect & fix**: Check the dry-run output for errors. If issues are
+12. **Inspect & fix**: Check the dry-run output for errors. If issues are
     found, call `edit_agent` to fix and dry-run again. Repeat until the
     simulation passes or the problems are clearly unfixable.
     See "REQUIRED: Dry-Run Verification Loop" section below for details.
