@@ -29,6 +29,9 @@ class TestRebuildCommunitiesForUser:
         result = await rebuild_communities_for_user("")
         assert result["error"] is not None
         assert result["communities_built"] is None
+        # Contract: result always carries elapsed_seconds, even on the
+        # early-return invalid-user-id branch.
+        assert result["elapsed_seconds"] is not None
 
     @pytest.mark.asyncio
     async def test_success_path_calls_detach_delete_then_build(self) -> None:

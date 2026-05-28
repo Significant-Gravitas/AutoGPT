@@ -53,7 +53,7 @@ def test_memoryfact_status_enum_restricted():
     """Open enum on the envelope side, restricted on the edge side."""
     MemoryFact(status=MemoryStatus.tentative)
     with pytest.raises(ValidationError):
-        MemoryFact(status="archived")  # type: ignore[arg-type]
+        MemoryFact.model_validate({"status": "archived"})
 
 
 def test_memoryfact_carries_full_envelope_metadata():
@@ -92,12 +92,14 @@ def test_edge_types_include_memoryfact():
 
 def test_edge_type_map_spans_full_cartesian_product():
     """Every (entity, entity) pair maps to MemoryFact — the audit's
-    'one edge type, narrow entity vocabulary' shape."""
-    # Six entity types × six entity types = 36 pairs.
-    assert len(EDGE_TYPE_MAP) == len(ENTITY_TYPES) ** 2
+    'one edge type, narrow entity vocabulary' shape — plus the
+    (Entity, Entity) wildcard for Graphiti's default Entity type."""
+    # Six entity types × six entity types = 36 pairs, plus the wildcard.
+    assert len(EDGE_TYPE_MAP) == len(ENTITY_TYPES) ** 2 + 1
     for src in ENTITY_TYPES:
         for tgt in ENTITY_TYPES:
             assert EDGE_TYPE_MAP.get((src, tgt)) == ["MemoryFact"]
+    assert EDGE_TYPE_MAP.get(("Entity", "Entity")) == ["MemoryFact"]
 
 
 def test_person_entity_has_optional_role_and_email():

@@ -55,10 +55,14 @@ async def test_backfill_one_user_none_result_returns_zero(_stub_driver):
 
 
 @pytest.mark.asyncio
-async def test_backfill_one_user_swallows_driver_exception(_stub_driver, caplog):
-    """Missing-graph errors are logged at debug and treated as no-op."""
-    _stub_driver.execute_query = AsyncMock(side_effect=Exception("no such db"))
-    assert await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264") == 0
+async def test_backfill_one_user_propagates_driver_exception(_stub_driver):
+    """Unexpected driver failures must bubble up — silent suppression
+    would let auth/config regressions hide as 'no edges to backfill',
+    which the migration's success-print would then advertise."""
+    _stub_driver.execute_query = AsyncMock(side_effect=RuntimeError("auth failed"))
+    with pytest.raises(RuntimeError, match="auth failed"):
+        await mig.backfill_one_user("9aa20a1c-805e-4128-8bb2-c27515140264")
+    _stub_driver.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

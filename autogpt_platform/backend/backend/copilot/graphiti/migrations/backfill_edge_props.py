@@ -64,14 +64,8 @@ async def backfill_one_user(user_id: str) -> int:
         records = result[0] if result else []
         updated = records[0]["updated"] if records else 0
         if updated:
-            logger.info("Backfilled %d edges for user %s", updated, user_id[:12])
+            logger.info(f"Backfilled {updated} edges for user {user_id[:12]}")
         return updated
-    except Exception:
-        # User may have no graph yet (never used memory). Treat as no-op.
-        logger.debug(
-            "No graph found or query failed for user %s", user_id[:12], exc_info=True
-        )
-        return 0
     finally:
         await driver.close()
 

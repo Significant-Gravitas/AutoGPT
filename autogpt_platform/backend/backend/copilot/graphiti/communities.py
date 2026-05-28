@@ -55,45 +55,47 @@ async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
     }
 
     try:
-        group_id = derive_group_id(user_id)
-    except ValueError as exc:
-        result["error"] = f"invalid_user_id: {exc}"
-        logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])
-        return result
+        try:
+            group_id = derive_group_id(user_id)
+        except ValueError as exc:
+            result["error"] = f"invalid_user_id: {exc}"
+            logger.warning(
+                f"Skipping community rebuild — invalid user_id {user_id[:12]}"
+            )
+            return result
 
-    try:
-        client = await get_graphiti_client(group_id)
+        try:
+            client = await get_graphiti_client(group_id)
 
-        # Defensive: clean up any orphan :Community nodes regardless of
-        # upstream version. Per multi-episode research, modern Graphiti
-        # already does this inside build_communities(), but older
-        # versions did not. Idempotent either way.
-        driver = getattr(client, "graph_driver", None) or getattr(
-            client, "driver", None
-        )
-        if driver is None:
-            raise RuntimeError("Graphiti client has no graph_driver")
+            # Defensive: clean up any orphan :Community nodes regardless of
+            # upstream version. Per multi-episode research, modern Graphiti
+            # already does this inside build_communities(), but older
+            # versions did not. Idempotent either way.
+            driver = getattr(client, "graph_driver", None) or getattr(
+                client, "driver", None
+            )
+            if driver is None:
+                raise RuntimeError("Graphiti client has no graph_driver")
 
-        await driver.execute_query(
-            """
-            MATCH (c:Community {group_id: $group_id})
-            DETACH DELETE c
-            """,
-            group_id=group_id,
-        )
+            await driver.execute_query(
+                """
+                MATCH (c:Community {group_id: $group_id})
+                DETACH DELETE c
+                """,
+                group_id=group_id,
+            )
 
-        # Rebuild via Graphiti. The result shape changes between graphiti
-        # versions; we record whatever it returns rather than asserting
-        # a specific shape.
-        summary = await client.build_communities(group_ids=[group_id])
-        result["communities_built"] = _summarize_communities(summary)
+            # Rebuild via Graphiti. The result shape changes between graphiti
+            # versions; we record whatever it returns rather than asserting
+            # a specific shape.
+            summary = await client.build_communities(group_ids=[group_id])
+            result["communities_built"] = _summarize_communities(summary)
 
-    except Exception as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
-        logger.warning(
-            "Community rebuild failed for user %s", user_id[:12], exc_info=True
-        )
-
+        except Exception as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                f"Community rebuild failed for user {user_id[:12]}", exc_info=True
+            )
     finally:
         ended_at = datetime.now(timezone.utc)
         result["elapsed_seconds"] = (ended_at - started_at).total_seconds()

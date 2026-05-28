@@ -28,6 +28,10 @@ export async function GET(request: Request) {
       : {
           message_type: "oauth_popup_result",
           success: false,
+          // Echo back `state` when present so the originating page's
+          // state-keyed listeners route the failure to the right flow
+          // instead of timing out silently.
+          ...(state ? { state } : {}),
           message: `Incomplete query: ${searchParams.toString()}`,
         };
 

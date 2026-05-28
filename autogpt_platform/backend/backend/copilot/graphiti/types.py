@@ -112,7 +112,12 @@ EDGE_TYPES: dict[str, type[BaseModel]] = {"MemoryFact": MemoryFact}
 
 # Allow MemoryFact between any pair of our entity types. Graphiti uses
 # this to constrain edge labels during extraction; allowing all pairs
-# keeps the LLM free to extract any meaningful relationship.
+# keeps the LLM free to extract any meaningful relationship. The
+# ("Entity", "Entity") key is a Graphiti-recognized wildcard that
+# covers edges involving its standard Entity type (extracted when the
+# LLM doesn't fit a candidate into one of our six narrow kinds), so
+# MemoryFact metadata still lands on those edges.
 EDGE_TYPE_MAP: dict[tuple[str, str], list[str]] = {
-    (src, tgt): ["MemoryFact"] for src in ENTITY_TYPES for tgt in ENTITY_TYPES
+    **{(src, tgt): ["MemoryFact"] for src in ENTITY_TYPES for tgt in ENTITY_TYPES},
+    ("Entity", "Entity"): ["MemoryFact"],
 }
