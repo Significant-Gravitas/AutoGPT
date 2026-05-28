@@ -11,12 +11,21 @@ accepts ``user_id="me"`` and resolves to the caller's user id via
 """
 
 import logging
+import uuid as _uuid
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.copilot.dream.job_status import (
+    JobKind,
+    JobState,
+    read_status,
+    write_initial_status,
+)
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
@@ -631,38 +640,108 @@ class DreamPassResponse(BaseModel):
     skip_reason: str | None = None
 
 
-@router.post("/{user_id}/dream", response_model=DreamPassResponse)
+class JobTriggerResponse(BaseModel):
+    """202 response from a fire-and-forget admin trigger.
+
+    Frontend captures ``job_id`` and polls ``GET .../{job_id}`` for
+    progress. ``state`` is always ``"queued"`` at this point — the
+    scheduler picks the job up within sub-second and flips it to
+    ``running``.
+    """
+
+    job_id: str
+    user_id: str
+    kind: JobKind
+    state: JobState
+    started_at: datetime
+
+
+class JobStatusResponse(BaseModel):
+    """Read-side of the JobStatus row, mirrored from
+    ``backend/copilot/dream/job_status.py``."""
+
+    job_id: str
+    user_id: str
+    kind: JobKind
+    state: JobState
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+    current_phase: str | None = None
+    batch_id: str | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+@router.post(
+    "/{user_id}/dream",
+    response_model=JobTriggerResponse,
+    status_code=202,
+)
 async def trigger_dream_pass(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> DreamPassResponse:
-    """Trigger an on-demand dream pass for the user (in isolation).
+) -> JSONResponse:
+    """Fire a dream pass and return 202 + job_id immediately.
 
-    Forwards to ``Scheduler.execute_dream_pass_now``. Runs ONLY the
-    dream pass submitter — does NOT run community rebuild or
-    ratification. For the full nightly fan-out (matching what the
-    03:00 cron does), use ``POST /{user_id}/nightly`` instead.
+    Frontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``
+    for progress. Runs ONLY the dream pass submitter — for the full
+    nightly fan-out use ``POST /{user_id}/nightly``.
     """
     target = _resolve_user_id(user_id, caller_id)
     try:
-        derive_group_id(target)  # validate before the RPC
+        derive_group_id(target)  # validate before kicking off
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    job_id = str(_uuid.uuid4())
+    status = await write_initial_status(
+        kind="dream_pass", job_id=job_id, user_id=target
+    )
+
     try:
-        result = await get_scheduler_client().execute_dream_pass_now(user_id=target)
+        await get_scheduler_client().schedule_immediate_dream_pass(
+            user_id=target, job_id=job_id
+        )
     except Exception as exc:
         logger.warning(
-            "Admin-triggered dream pass failed for user %s: %s",
+            "Failed to schedule dream pass %s for user %s: %s",
+            job_id[:12],
             target[:12],
             exc,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Dream pass failed: {type(exc).__name__}: {exc}",
+            detail=f"Dream pass scheduling failed: {type(exc).__name__}: {exc}",
         )
 
-    return DreamPassResponse(**result)
+    payload = JobTriggerResponse(
+        job_id=status.job_id,
+        user_id=status.user_id,
+        kind=status.kind,
+        state=status.state,
+        started_at=status.started_at,
+    )
+    return JSONResponse(status_code=202, content=payload.model_dump(mode="json"))
+
+
+@router.get(
+    "/{user_id}/dream/{job_id}",
+    response_model=JobStatusResponse,
+)
+async def get_dream_pass_status(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    job_id: Annotated[str, Path(description="Job id returned by the POST")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> JobStatusResponse:
+    """Read the current status of a fire-and-forget dream pass job."""
+    target = _resolve_user_id(user_id, caller_id)
+    status = await read_status(kind="dream_pass", job_id=job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if status.user_id != target:
+        raise HTTPException(status_code=403, detail="job belongs to a different user")
+    return JobStatusResponse(**status.model_dump())
 
 
 class RatificationResultResponse(BaseModel):
@@ -736,21 +815,21 @@ async def trigger_ratification_pass(
     return RatificationResultResponse(**result)
 
 
-@router.post("/{user_id}/nightly", response_model=NightlyBatchResponse)
+@router.post(
+    "/{user_id}/nightly",
+    response_model=JobTriggerResponse,
+    status_code=202,
+)
 async def trigger_nightly_batch(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> NightlyBatchResponse:
-    """Trigger the full nightly batch fan-out for the user.
+) -> JSONResponse:
+    """Fire the full nightly batch fan-out and return 202 + job_id immediately.
 
-    Forwards to ``Scheduler.execute_nightly_batch_now``. Runs every
-    enabled batch-family submitter in sequence (dream pass +
-    ratification sweep today; future P2/P3/P4/P11 stages as they
-    land). One pre-flight billing check; per-submitter cost log rows
-    share the same ``nightly_id`` for downstream attribution.
-
-    Equivalent to what the 03:00 cron does — use this when you want
-    to exercise the full nightly composition on demand.
+    Frontend polls ``GET /api/admin/memory/{user_id}/nightly/{job_id}``
+    for progress. Same composition as the 03:00 cron — every enabled
+    batch-family submitter runs in sequence sharing one ``nightly_id``
+    for cost-log attribution.
     """
     target = _resolve_user_id(user_id, caller_id)
     try:
@@ -758,60 +837,132 @@ async def trigger_nightly_batch(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    job_id = str(_uuid.uuid4())
+    status = await write_initial_status(kind="nightly", job_id=job_id, user_id=target)
+
     try:
-        result = await get_scheduler_client().execute_nightly_batch_now(
-            user_id=target
+        await get_scheduler_client().schedule_immediate_nightly_batch(
+            user_id=target, job_id=job_id
         )
     except Exception as exc:
         logger.warning(
-            "Admin-triggered nightly batch failed for user %s: %s",
+            "Failed to schedule nightly batch %s for user %s: %s",
+            job_id[:12],
             target[:12],
             exc,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Nightly batch failed: {type(exc).__name__}: {exc}",
+            detail=f"Nightly batch scheduling failed: {type(exc).__name__}: {exc}",
         )
-    return NightlyBatchResponse(**result)
+
+    payload = JobTriggerResponse(
+        job_id=status.job_id,
+        user_id=status.user_id,
+        kind=status.kind,
+        state=status.state,
+        started_at=status.started_at,
+    )
+    return JSONResponse(status_code=202, content=payload.model_dump(mode="json"))
 
 
-@router.post("/{user_id}/communities/rebuild", response_model=RebuildResponse)
+@router.get(
+    "/{user_id}/nightly/{job_id}",
+    response_model=JobStatusResponse,
+)
+async def get_nightly_batch_status(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    job_id: Annotated[str, Path(description="Job id returned by the POST")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> JobStatusResponse:
+    """Read the current status of a fire-and-forget nightly batch job."""
+    target = _resolve_user_id(user_id, caller_id)
+    status = await read_status(kind="nightly", job_id=job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if status.user_id != target:
+        raise HTTPException(status_code=403, detail="job belongs to a different user")
+    return JobStatusResponse(**status.model_dump())
+
+
+@router.post(
+    "/{user_id}/communities/rebuild",
+    response_model=JobTriggerResponse,
+    status_code=202,
+)
 async def rebuild_communities(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     force: Annotated[
         bool,
         Query(
-            description="Bypass the activity gate — rebuilds even on unchanged graph."
+            description=(
+                "Reserved — the fire-and-forget wrapper currently always "
+                "honours the activity gate. Kept on the signature so the "
+                "frontend hook doesn't need a contract change when the "
+                "force flag is threaded through to the wrapper."
+            )
         ),
     ] = False,
-) -> RebuildResponse:
-    """Trigger an immediate community rebuild for the user.
+) -> JSONResponse:
+    """Fire a community rebuild and return 202 + job_id immediately.
 
-    Forwards to ``Scheduler.execute_community_rebuild_pass``. The
-    activity gate inside ``rebuild_communities_for_user`` is honoured
-    by default — pass ``?force=true`` to bypass it.
+    Frontend polls
+    ``GET /api/admin/memory/{user_id}/communities/rebuild/{job_id}``
+    for progress.
     """
+    _ = force  # not yet plumbed through the with_status wrapper
     target = _resolve_user_id(user_id, caller_id)
     try:
-        derive_group_id(target)  # validate before doing the RPC
+        derive_group_id(target)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    job_id = str(_uuid.uuid4())
+    status = await write_initial_status(kind="rebuild", job_id=job_id, user_id=target)
+
     try:
-        result = await get_scheduler_client().execute_community_rebuild_pass(
-            user_id=target, force=force
+        await get_scheduler_client().schedule_immediate_community_rebuild(
+            user_id=target, job_id=job_id
         )
     except Exception as exc:
         logger.warning(
-            "Admin-triggered community rebuild failed for user %s: %s",
+            "Failed to schedule community rebuild %s for user %s: %s",
+            job_id[:12],
             target[:12],
             exc,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Community rebuild failed: {type(exc).__name__}: {exc}",
+            detail=(
+                f"Community rebuild scheduling failed: " f"{type(exc).__name__}: {exc}"
+            ),
         )
 
-    # Normalize to the response model — the scheduler returns a dict.
-    return RebuildResponse(**result)
+    payload = JobTriggerResponse(
+        job_id=status.job_id,
+        user_id=status.user_id,
+        kind=status.kind,
+        state=status.state,
+        started_at=status.started_at,
+    )
+    return JSONResponse(status_code=202, content=payload.model_dump(mode="json"))
+
+
+@router.get(
+    "/{user_id}/communities/rebuild/{job_id}",
+    response_model=JobStatusResponse,
+)
+async def get_community_rebuild_status(
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    job_id: Annotated[str, Path(description="Job id returned by the POST")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+) -> JobStatusResponse:
+    """Read the current status of a fire-and-forget community rebuild job."""
+    target = _resolve_user_id(user_id, caller_id)
+    status = await read_status(kind="rebuild", job_id=job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if status.user_id != target:
+        raise HTTPException(status_code=403, detail="job belongs to a different user")
+    return JobStatusResponse(**status.model_dump())

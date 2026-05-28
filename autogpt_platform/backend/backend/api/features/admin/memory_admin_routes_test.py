@@ -178,52 +178,123 @@ class TestListCommunities:
         assert items[0]["member_count"] == 7
 
 
-class TestRebuildCommunities:
-    def test_forwards_to_scheduler_with_default_force_false(self) -> None:
-        result_dict = {
-            "user_id": "abc",
-            "started_at": "2026-05-19T10:00:00Z",
-            "communities_built": {"nodes": 30, "edges": 107},
-            "elapsed_seconds": 18.7,
-            "error": None,
-            "skipped": False,
-            "skip_reason": None,
-            "activity": {"new_episodes_since_last_rebuild": 16},
-            "forced": False,
-        }
-        scheduler = MagicMock()
-        scheduler.execute_community_rebuild_pass = AsyncMock(return_value=result_dict)
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
-            resp = client.post("/admin/memory/abc/communities/rebuild")
-        assert resp.status_code == 200
-        scheduler.execute_community_rebuild_pass.assert_awaited_once_with(
-            user_id="abc", force=False
-        )
-        body = resp.json()
-        assert body["communities_built"] == {"nodes": 30, "edges": 107}
-        assert body["activity"]["new_episodes_since_last_rebuild"] == 16
+class TestRebuildCommunitiesPolling:
+    """POST /communities/rebuild is now fire-and-forget.
 
-    def test_force_query_param_propagated(self) -> None:
+    It writes a JobStatus row, kicks off the scheduler via
+    ``schedule_immediate_community_rebuild``, and returns 202 +
+    job_id immediately. Frontend polls the GET endpoint to read
+    progress; the work body fires asynchronously on the scheduler
+    thread pool.
+    """
+
+    def test_returns_202_with_job_id(self) -> None:
         scheduler = MagicMock()
-        scheduler.execute_community_rebuild_pass = AsyncMock(
-            return_value={"user_id": "abc", "forced": True}
+        scheduler.schedule_immediate_community_rebuild = AsyncMock(
+            return_value={"scheduled": True, "job_id": "x", "kind": "rebuild"}
         )
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
-            resp = client.post("/admin/memory/abc/communities/rebuild?force=true")
-        assert resp.status_code == 200
-        scheduler.execute_community_rebuild_pass.assert_awaited_once_with(
-            user_id="abc", force=True
-        )
+        with patch(
+            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
+        ), patch(
+            f"{_MOCK_MODULE}.write_initial_status",
+            new=_make_fake_initial_status("rebuild"),
+        ):
+            resp = client.post("/admin/memory/abc/communities/rebuild")
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["kind"] == "rebuild"
+        assert body["state"] == "queued"
+        assert body["user_id"] == "abc"
+        assert isinstance(body["job_id"], str)
+        scheduler.schedule_immediate_community_rebuild.assert_awaited_once()
+        # The job_id passed to the scheduler must match the one returned.
+        call_kwargs = scheduler.schedule_immediate_community_rebuild.call_args.kwargs
+        assert call_kwargs["job_id"] == body["job_id"]
+        assert call_kwargs["user_id"] == "abc"
 
     def test_scheduler_failure_returns_500(self) -> None:
         scheduler = MagicMock()
-        scheduler.execute_community_rebuild_pass = AsyncMock(
+        scheduler.schedule_immediate_community_rebuild = AsyncMock(
             side_effect=RuntimeError("scheduler unreachable")
         )
-        with patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler):
+        with patch(
+            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
+        ), patch(
+            f"{_MOCK_MODULE}.write_initial_status",
+            new=_make_fake_initial_status("rebuild"),
+        ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500
         assert "scheduler unreachable" in resp.json()["detail"]
+
+
+class TestTriggerStatusGetEndpoints:
+    """Each trigger has a paired GET that reads the JobStatus row."""
+
+    def test_status_returns_404_for_unknown_job(self) -> None:
+        with patch(f"{_MOCK_MODULE}.read_status", new=AsyncMock(return_value=None)):
+            resp = client.get("/admin/memory/abc/nightly/missing-job-id")
+        assert resp.status_code == 404
+
+    def test_status_returns_403_when_user_mismatches(self) -> None:
+        # A job owned by a different user must not be visible.
+        status = _fake_status_row("nightly", "owned-by-someone-else")
+        with patch(f"{_MOCK_MODULE}.read_status", new=AsyncMock(return_value=status)):
+            resp = client.get("/admin/memory/abc/nightly/job-1")
+        assert resp.status_code == 403
+
+    def test_status_returns_job_row_for_owner(self) -> None:
+        status = _fake_status_row("nightly", "abc")
+        with patch(f"{_MOCK_MODULE}.read_status", new=AsyncMock(return_value=status)):
+            resp = client.get("/admin/memory/abc/nightly/job-1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["user_id"] == "abc"
+        assert body["kind"] == "nightly"
+        assert body["state"] == "queued"
+
+    def test_each_kind_has_its_own_status_endpoint(self) -> None:
+        """Pin the URL structure: nightly, dream, communities/rebuild
+        each have a GET .../{job_id} sibling to their POST."""
+        for kind, url in [
+            ("nightly", "/admin/memory/abc/nightly/job-1"),
+            ("dream_pass", "/admin/memory/abc/dream/job-1"),
+            ("rebuild", "/admin/memory/abc/communities/rebuild/job-1"),
+        ]:
+            status = _fake_status_row(kind, "abc")
+            with patch(
+                f"{_MOCK_MODULE}.read_status",
+                new=AsyncMock(return_value=status),
+            ):
+                resp = client.get(url)
+            assert resp.status_code == 200, url
+            assert resp.json()["kind"] == kind
+
+
+def _make_fake_initial_status(kind: str):
+    """A ``write_initial_status`` replacement that returns a fake
+    ``JobStatus`` matching the requested kind + caller's user_id."""
+
+    async def fake(*, kind: str, job_id: str, user_id: str):
+        return _fake_status_row(kind, user_id, job_id=job_id)
+
+    return fake
+
+
+def _fake_status_row(kind: str, user_id: str, job_id: str = "job-1"):
+    from datetime import datetime, timezone
+
+    from backend.copilot.dream.job_status import JobStatus
+
+    now = datetime.now(timezone.utc)
+    return JobStatus(
+        job_id=job_id,
+        user_id=user_id,
+        kind=kind,
+        state="queued",
+        started_at=now,
+        updated_at=now,
+    )
 
 
 class TestAdminGating:

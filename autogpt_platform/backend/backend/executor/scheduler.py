@@ -344,9 +344,7 @@ def execute_nightly_batch_sync(user_id: str):
     else:
         dream_writes = result.dream.consolidated_count if result.dream else 0
         dream_proposals = result.dream.proposal_count if result.dream else 0
-        rat_ratified = (
-            result.ratification.ratified_count if result.ratification else 0
-        )
+        rat_ratified = result.ratification.ratified_count if result.ratification else 0
         rat_superseded = (
             result.ratification.superseded_count if result.ratification else 0
         )
@@ -360,6 +358,220 @@ def execute_nightly_batch_sync(user_id: str):
             dream_proposals,
             rat_ratified,
             rat_superseded,
+        )
+
+
+# ---------------------------------------------------------------------------
+# *_with_status wrappers — used by fire-and-forget admin triggers
+# ---------------------------------------------------------------------------
+#
+# The original ``execute_*_sync`` bodies above are called from cron
+# triggers and return a result that the cron-fired path just logs.
+# The admin trigger pattern (POST returns 202 + job_id, frontend
+# polls) needs each work body to also write status transitions to the
+# Redis-backed JobStatus registry so the frontend can show
+# "Consolidating..." → "Recombining..." → "Complete (3.2 min)".
+#
+# Rather than thread ``job_id`` through every internal call, we wrap
+# the sync bodies with a thin status-recording wrapper. The wrapper
+# uses ``run_async`` to call the async JobStatus helpers from this
+# sync context (same bridge to the shared event loop the existing
+# bodies use).
+#
+# The cron path keeps calling the original ``execute_*_sync`` bodies
+# (no status writes). The admin path goes through these wrappers.
+
+
+def execute_nightly_batch_with_status(user_id: str, job_id: str):
+    """Run the nightly batch and record JobStatus transitions.
+
+    Used by the admin trigger pattern (POST /api/admin/memory/{user}/nightly
+    returns 202 + job_id; this fires asynchronously via
+    ``Scheduler.schedule_immediate_nightly_batch``).
+    """
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+
+    try:
+        run_async(
+            update_status_phase(kind="nightly", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        # Status update failures must never crash the work body — the
+        # admin frontend will just see the row stuck at "queued" until
+        # mark_complete / mark_errored writes the terminal state.
+        logger.warning(
+            "Failed to mark nightly batch %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        execute_nightly_batch_sync(user_id)
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered nightly batch crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="nightly",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for nightly %s", job_id[:12]
+            )
+        return
+
+    try:
+        run_async(
+            mark_complete(kind="nightly", job_id=job_id, result={}),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark nightly batch %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def execute_dream_pass_with_status(user_id: str, job_id: str):
+    """Run the dream pass in isolation and record JobStatus transitions."""
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+    from backend.copilot.dream.orchestrator import execute_dream_pass
+
+    try:
+        run_async(
+            update_status_phase(kind="dream_pass", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark dream pass %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        result = run_async(
+            execute_dream_pass(user_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered dream pass crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="dream_pass",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for dream pass %s", job_id[:12]
+            )
+        return
+
+    try:
+        run_async(
+            mark_complete(
+                kind="dream_pass",
+                job_id=job_id,
+                result=result.model_dump(mode="json"),
+            ),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark dream pass %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def execute_community_rebuild_with_status(user_id: str, job_id: str):
+    """Run a community rebuild and record JobStatus transitions."""
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+
+    try:
+        run_async(
+            update_status_phase(kind="rebuild", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark community rebuild %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        result = run_async(
+            rebuild_communities_for_user(user_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered community rebuild crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="rebuild",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for rebuild %s", job_id[:12]
+            )
+        return
+
+    try:
+        run_async(
+            mark_complete(kind="rebuild", job_id=job_id, result=result),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark community rebuild %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
         )
 
 
@@ -1129,14 +1341,101 @@ class Scheduler(AppService):
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 
+    # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
+    #
+    # The ``schedule_immediate_*`` methods schedule the matching
+    # ``*_with_status`` wrapper to run on the APScheduler thread pool
+    # at the current time, then return immediately. The admin route
+    # writes the initial ``state="queued"`` row before calling these;
+    # the wrapper writes ``running`` / phase transitions / ``complete``
+    # / ``errored``. The admin frontend polls a GET endpoint to render
+    # progress without holding an HTTP connection open for minutes.
+
+    @expose
+    def schedule_immediate_nightly_batch(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot nightly batch run keyed by ``job_id``.
+
+        The admin endpoint that calls this has already written an
+        initial ``state="queued"`` JobStatus row, so this method just
+        adds the APScheduler job and returns immediately. The wrapper
+        body is responsible for advancing the status row.
+        """
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_nightly_{job_id}"
+        self.scheduler.add_job(
+            execute_nightly_batch_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate nightly batch %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "nightly"}
+
+    @expose
+    def schedule_immediate_dream_pass(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot dream pass run keyed by ``job_id``."""
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_dream_{job_id}"
+        self.scheduler.add_job(
+            execute_dream_pass_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate dream pass %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "dream_pass"}
+
+    @expose
+    def schedule_immediate_community_rebuild(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot community rebuild run keyed by ``job_id``."""
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_rebuild_{job_id}"
+        self.scheduler.add_job(
+            execute_community_rebuild_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate community rebuild %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "rebuild"}
+
     @expose
     def execute_nightly_batch_now(self, user_id: str) -> dict:
         """Manually trigger the full nightly batch fan-out (bypasses cron).
 
-        Used by the admin "run nightly batch now" button and the
-        AgentProbe runner. Returns the ``NightlyBatchResult`` as a dict
-        so callers can read per-submitter outcomes without depending
-        on the dream module shape.
+        DEPRECATED for admin UI use — kept for the AgentProbe eval
+        runner which expects synchronous return + result. The admin
+        UI path uses ``schedule_immediate_nightly_batch`` (fire-and-
+        forget + JobStatus polling). New eval/test code should prefer
+        this synchronous path so they can assert on the result; new
+        UI code should prefer the polling pattern.
         """
         from backend.copilot.dream.nightly_batch import run_nightly_batch_submit
 
@@ -1195,15 +1494,11 @@ class SchedulerClient(AppServiceClient):
         Scheduler.execute_community_rebuild_pass
     )
 
-    add_nightly_batch_schedule = endpoint_to_async(
-        Scheduler.add_nightly_batch_schedule
-    )
+    add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )
-    execute_nightly_batch_now = endpoint_to_async(
-        Scheduler.execute_nightly_batch_now
-    )
+    execute_nightly_batch_now = endpoint_to_async(Scheduler.execute_nightly_batch_now)
 
     # Per-submitter admin debug endpoints — bypass the nightly batch
     # and run only their submitter. Used by the admin viz's individual
@@ -1211,4 +1506,17 @@ class SchedulerClient(AppServiceClient):
     execute_dream_pass_now = endpoint_to_async(Scheduler.execute_dream_pass_now)
     execute_ratification_pass_now = endpoint_to_async(
         Scheduler.execute_ratification_pass_now
+    )
+
+    # Fire-and-forget admin triggers — the admin route writes an
+    # initial JobStatus row, calls these, and returns 202 immediately.
+    # Frontend polls the JobStatus GET endpoint to render progress.
+    schedule_immediate_nightly_batch = endpoint_to_async(
+        Scheduler.schedule_immediate_nightly_batch
+    )
+    schedule_immediate_dream_pass = endpoint_to_async(
+        Scheduler.schedule_immediate_dream_pass
+    )
+    schedule_immediate_community_rebuild = endpoint_to_async(
+        Scheduler.schedule_immediate_community_rebuild
     )
