@@ -7,7 +7,6 @@ Handles generation and storage of OpenAI embeddings for all content types
 
 import asyncio
 import logging
-import os
 import time
 from typing import Any
 
@@ -20,15 +19,18 @@ from backend.blocks import get_blocks
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+settings = Settings()
 
 # Embedding model — overridable so deployments with a compatible backend
 # (vLLM, LiteLLM proxy, an Ollama install with an embedding model pulled,
 # Azure OpenAI, …) can swap models without a code change. Default keeps
 # the historical OpenAI ``text-embedding-3-small`` so existing pgvector
 # columns still match.
-EMBEDDING_MODEL = os.getenv("STORE_EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_MODEL = settings.config.store_embedding_model
 # pgvector column dimension. Hardcoded to 1536: the
 # ``UnifiedContentEmbedding.embedding`` column (and every other embedding
 # column on the platform) is declared ``vector(1536)`` in schema.prisma +
