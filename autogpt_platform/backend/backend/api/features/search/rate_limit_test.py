@@ -13,11 +13,11 @@ from backend.api.features.search import rate_limit
 @pytest.fixture
 def fake_redis(mocker):
     """Patch ``get_redis_async`` to return a MagicMock with awaitable
-    ``incr`` and ``expire`` so each test can drive the counter directly.
+    ``set`` and ``incr`` so each test can drive the counter directly.
     """
     redis = MagicMock()
+    redis.set = AsyncMock()
     redis.incr = AsyncMock()
-    redis.expire = AsyncMock()
     mocker.patch(
         "backend.api.features.search.rate_limit.get_redis_async",
         new=AsyncMock(return_value=redis),
@@ -26,26 +26,28 @@ def fake_redis(mocker):
 
 
 @pytest.mark.asyncio
-async def test_first_hit_sets_expire(fake_redis):
-    """The first hit in a window should set the TTL — subsequent hits
-    inside the same window must not touch ``expire``."""
+async def test_first_hit_creates_key_with_ttl(fake_redis):
+    """``SET NX EX`` is the atomic create-with-TTL that runs on every
+    hit — subsequent hits are no-ops on the SET (key already exists),
+    so the TTL is set exactly once when the window opens."""
     fake_redis.incr.return_value = 1
     await rate_limit.enforce_global_search_rate_limit("u1")
-    fake_redis.expire.assert_awaited_once()
-    # Window key bucket aligns to the configured window seconds.
-    key, ttl = fake_redis.expire.await_args.args
-    assert ttl == rate_limit.GLOBAL_SEARCH_WINDOW_SECONDS
+    fake_redis.set.assert_awaited_once()
+    args, kwargs = fake_redis.set.await_args
+    key = args[0]
+    assert kwargs["ex"] == rate_limit.GLOBAL_SEARCH_WINDOW_SECONDS
+    assert kwargs["nx"] is True
     assert "u1" in key
 
 
 @pytest.mark.asyncio
-async def test_subsequent_hit_skips_expire(fake_redis):
-    """``incr`` returning > 1 means the key already exists; don't reset
-    the TTL — that would create a sliding-window effect we explicitly
-    don't want for this fixed-window design."""
+async def test_subsequent_hit_still_calls_set_nx(fake_redis):
+    """Every hit issues ``SET NX EX`` — Redis no-ops the actual write
+    when the key already exists, so the TTL stays put. The point of NX
+    is to make this safe to call unconditionally."""
     fake_redis.incr.return_value = 2
     await rate_limit.enforce_global_search_rate_limit("u1")
-    fake_redis.expire.assert_not_awaited()
+    fake_redis.set.assert_awaited_once()
 
 
 @pytest.mark.asyncio

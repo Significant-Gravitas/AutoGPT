@@ -426,7 +426,7 @@ app.include_router(
 )
 app.include_router(
     search_routes.router,
-    tags=["v2", "search"],
+    tags=["search"],
     prefix="/api/search",
 )
 app.include_router(

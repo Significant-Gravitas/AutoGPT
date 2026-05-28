@@ -16,7 +16,7 @@ import logging
 
 from prisma.enums import ContentType
 
-from backend.api.features.search.content_handlers import WorkspaceFileHandler
+from backend.api.features.search.content_handlers import build_workspace_file_text
 from backend.api.features.search.embeddings import (
     delete_content_embedding,
     ensure_content_embedding,
@@ -31,7 +31,7 @@ _background_tasks: set[asyncio.Task[None]] = set()
 
 async def _run_embedding(file_id: str, user_id: str, name: str, path: str) -> None:
     try:
-        searchable_text = WorkspaceFileHandler._build_text(name, path)
+        searchable_text = build_workspace_file_text(name, path)
         if not searchable_text:
             logger.debug(
                 "Skipping workspace file embedding for %s: empty searchable text",

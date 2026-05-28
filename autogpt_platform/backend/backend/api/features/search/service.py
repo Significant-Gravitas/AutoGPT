@@ -29,6 +29,7 @@ from backend.api.features.search.model import (
     SearchResultItem,
 )
 from backend.copilot.model import get_user_sessions
+from backend.data.db import query_raw_with_schema
 from backend.data.db_accessors import library_db, search
 from backend.data.workspace import get_workspace
 from backend.util.cache import cached
@@ -72,7 +73,7 @@ _CONTENT_TYPE_ADAPTER = pydantic.TypeAdapter(ContentType)
 _METADATA_ADAPTER = pydantic.TypeAdapter(dict[str, Any])
 
 
-def _hybrid_row_to_item(row: dict[str, Any]) -> SearchResultItem | None:
+def _hybrid_row_to_item(row: hybrid_search.HybridSearchRow) -> SearchResultItem | None:
     """Convert one ``unified_hybrid_search`` row into a ``SearchResultItem``.
 
     Returns None when the row's content type is one we don't surface
@@ -170,7 +171,64 @@ async def _search_bucket(
             items.append(item)
         if len(items) >= limit:
             break
+
+    # Read-time enrichment so store-agent rows embedded BEFORE the
+    # ``creator``/``slug`` metadata fields were added still link to the
+    # marketplace correctly. Newer embeds carry these in the JSON
+    # column; older ones need a join back to ``StoreListing`` + Profile
+    # to be clickable.
+    await _enrich_store_agent_metadata(items)
     return items
+
+
+async def _enrich_store_agent_metadata(items: list[SearchResultItem]) -> None:
+    """Backfill ``creator`` and ``slug`` on any store-agent items that
+    are missing them.
+
+    Mutates ``items`` in place. Single batched SQL roundtrip, runs only
+    when at least one store-agent item is missing the fields, so the
+    common-case (all rows embedded post-fix) pays nothing.
+    """
+    stale_ids = [
+        item.id
+        for item in items
+        if item.type == "store_agent"
+        and not (item.metadata.get("creator") and item.metadata.get("slug"))
+    ]
+    if not stale_ids:
+        return
+
+    try:
+        rows = await query_raw_with_schema(
+            """
+            SELECT slv.id, sl.slug, p.username AS creator
+            FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"StoreListing" sl
+              ON slv."storeListingId" = sl.id
+            JOIN {schema_prefix}"Profile" p
+              ON p."userId" = sl."owningUserId"
+            WHERE slv.id = ANY($1::text[])
+              AND sl."isDeleted" = false
+            """,
+            stale_ids,
+        )
+    except Exception as e:
+        # Enrichment is purely a click-routing concern — never let it
+        # 500 the whole bucket. A search result with a missing
+        # marketplace URL renders as inert (handled by the FE click
+        # guard), which matches current behaviour.
+        logger.warning("Failed to enrich store-agent metadata: %s", e)
+        return
+
+    by_id = {row["id"]: row for row in rows}
+    for item in items:
+        if item.type != "store_agent":
+            continue
+        enrichment = by_id.get(item.id)
+        if enrichment is None:
+            continue
+        item.metadata["creator"] = enrichment["creator"]
+        item.metadata["slug"] = enrichment["slug"]
 
 
 # ----- recent (empty-query) buckets ------------------------------------------
@@ -212,6 +270,30 @@ async def _recent_agents(user_id: str, limit: int) -> list[SearchResultItem]:
     return items
 
 
+# Over-fetch so the in-Python relevance rerank has enough candidates
+# to actually re-order. Bounded so a user with thousands of name-
+# matching files doesn't blow the bucket cost.
+_RELEVANCE_OVERFETCH_CAP = 32
+
+
+def _title_relevance_score(title: str, query: str) -> int:
+    """Three-tier literal-match score, highest = best.
+
+    Exact case-insensitive match (3) > startswith (2) > contains (1).
+    Falls back to 0 when nothing matches, which shouldn't happen in
+    practice because the DB filter already applied ``contains``.
+    """
+    title_lower = title.lower()
+    query_lower = query.lower()
+    if title_lower == query_lower:
+        return 3
+    if title_lower.startswith(query_lower):
+        return 2
+    if query_lower in title_lower:
+        return 1
+    return 0
+
+
 async def _files_bucket(
     user_id: str, limit: int, query: str | None = None
 ) -> list[SearchResultItem]:
@@ -221,6 +303,13 @@ async def _files_bucket(
     index so newly-written files are findable immediately. Workspace
     file embeddings only encode the name anyway, so we lose nothing in
     quality and gain freshness.
+
+    When ``query`` is non-empty we over-fetch up to
+    ``_RELEVANCE_OVERFETCH_CAP`` candidates and re-rank by literal
+    name-match relevance before truncating to ``limit``, so a stale
+    exact match still beats four fresh substring matches. The recents
+    branch (empty query) keeps the DB-side ``createdAt DESC`` ordering
+    untouched.
     """
     try:
         workspace = await get_workspace(user_id)
@@ -229,14 +318,24 @@ async def _files_bucket(
             # create one just for the recents view.
             return []
         manager = WorkspaceManager(user_id, workspace.id, session_id=None)
+        fetch_limit = max(limit, _RELEVANCE_OVERFETCH_CAP) if query else limit
         files = await manager.list_files(
-            limit=limit,
+            limit=fetch_limit,
             include_all_sessions=True,
             name_contains=query or None,
         )
     except Exception as e:
         logger.warning("Failed to list workspace files for %s: %s", user_id, e)
         return []
+
+    if query:
+        # Sort by relevance desc, then by ``createdAt`` desc as
+        # tiebreaker so the freshness ordering is preserved within a
+        # relevance bucket. ``list_files`` already returns
+        # createdAt-desc, so a stable sort keeps that tiebreaker.
+        files = sorted(
+            files, key=lambda f: _title_relevance_score(f.name, query), reverse=True
+        )
 
     items: list[SearchResultItem] = []
     for file in files[:limit]:
@@ -265,17 +364,34 @@ async def _chats_bucket(
     Uses a direct ``ILIKE`` filter on ``title`` instead of the embedding
     index so newly-renamed sessions are findable immediately. Chat
     session embeddings only encode the title anyway.
+
+    Non-empty queries over-fetch + relevance-rerank exactly like
+    ``_files_bucket`` (see its docstring). Empty queries keep the
+    ``updatedAt DESC`` recents ordering.
     """
     try:
+        fetch_limit = max(limit, _RELEVANCE_OVERFETCH_CAP) if query else limit
         sessions, _total = await get_user_sessions(
             user_id=user_id,
-            limit=limit,
+            limit=fetch_limit,
             offset=0,
             title_contains=query or None,
         )
     except Exception as e:
         logger.warning("Failed to list chat sessions for %s: %s", user_id, e)
         return []
+
+    if query:
+        # Untitled sessions still ride the recents path elsewhere; this
+        # branch only fires with a query, where ``title_contains``
+        # already filters them out. The placeholder fallback below
+        # ("Untitled chat") is therefore unreachable here, but stays as
+        # a defensive read.
+        sessions = sorted(
+            sessions,
+            key=lambda s: _title_relevance_score(s.title or "", query),
+            reverse=True,
+        )
 
     items: list[SearchResultItem] = []
     for session in sessions[:limit]:

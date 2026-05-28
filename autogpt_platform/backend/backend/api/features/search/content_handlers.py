@@ -115,12 +115,19 @@ class StoreAgentHandler(ContentHandler):
                 slv.name,
                 slv.description,
                 slv."subHeading",
-                slv.categories
+                slv.categories,
+                sl.slug,
+                p.username AS creator
             FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"StoreListing" sl
+                ON slv."storeListingId" = sl.id
+            JOIN {schema_prefix}"Profile" p
+                ON p."userId" = sl."owningUserId"
             LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
                 ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
+            AND sl."isDeleted" = false
             AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -137,9 +144,16 @@ class StoreAgentHandler(ContentHandler):
                     sub_heading=row["subHeading"],
                     categories=row["categories"] or [],
                 ),
+                # ``creator`` (Profile.username) + ``slug`` (StoreListing.slug)
+                # build the marketplace URL — the FE search-result click
+                # handler in ChatSidebar.tsx routes to
+                # ``/marketplace/agent/{creator}/{slug}`` and silently no-ops
+                # without them.
                 metadata={
                     "name": row["name"],
                     "categories": row["categories"] or [],
+                    "creator": row["creator"],
+                    "slug": row["slug"],
                 },
                 user_id=None,  # Store agents are public
             )
@@ -789,6 +803,34 @@ class LibraryAgentHandler(ContentHandler):
         return {row["id"] for row in rows}
 
 
+def build_workspace_file_text(name: str, path: str) -> str:
+    """Build the embedding-searchable text for a workspace file.
+
+    Shared between :class:`WorkspaceFileHandler` (batch backfill) and
+    the per-write indexer in ``workspace/embeddings.py`` so both encode
+    the file under the same ``searchableText`` representation. If they
+    drift, the "skip if unchanged" guard in the indexer keeps re-
+    embedding the same row forever.
+    """
+    # Strip the leading slash and extension from the path stem so the
+    # token "report" from "/documents/report.pdf" reinforces a rename
+    # to "Final.pdf" without polluting the text with directory noise.
+    from pathlib import PurePosixPath
+
+    stem = PurePosixPath(path).stem if path else ""
+    parts = [name or "", stem]
+    # Dedup while preserving order: a freshly-created file usually has
+    # ``name == stem`` and we don't want the same token weighted twice.
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            out.append(p)
+    return " ".join(out)
+
+
 class WorkspaceFileHandler(ContentHandler):
     """Handler for user-scoped workspace files.
 
@@ -802,26 +844,6 @@ class WorkspaceFileHandler(ContentHandler):
     @property
     def content_type(self) -> ContentType:
         return ContentType.WORKSPACE_FILE
-
-    @staticmethod
-    def _build_text(name: str, path: str) -> str:
-        # Strip the leading slash and extension from the path stem so the
-        # token "report" from "/documents/report.pdf" reinforces a rename
-        # to "Final.pdf" without polluting the text with directory noise.
-        from pathlib import PurePosixPath
-
-        stem = PurePosixPath(path).stem if path else ""
-        parts = [name or "", stem]
-        # Dedup while preserving order: a freshly-created file usually has
-        # ``name == stem`` and we don't want the same token weighted twice.
-        seen: set[str] = set()
-        out: list[str] = []
-        for p in parts:
-            p = p.strip()
-            if p and p.lower() not in seen:
-                seen.add(p.lower())
-                out.append(p)
-        return " ".join(out)
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         missing = await query_raw_with_schema(
@@ -847,7 +869,7 @@ class WorkspaceFileHandler(ContentHandler):
 
         items: list[ContentItem] = []
         for row in missing:
-            text = self._build_text(row["name"] or "", row["path"] or "")
+            text = build_workspace_file_text(row["name"] or "", row["path"] or "")
             if not text:
                 continue
             items.append(

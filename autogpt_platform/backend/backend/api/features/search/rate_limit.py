@@ -49,12 +49,15 @@ async def enforce_global_search_rate_limit(user_id: str) -> None:
     key = _window_key(user_id, now=now)
     try:
         redis = await get_redis_async()
-        # INCR then EXPIRE only when this is the first hit. Atomicity
-        # between the two commands isn't critical — at worst a key has
-        # no TTL for a few ms and gets a fresh one on the next hit.
+        # Atomic create-with-TTL then INCR. The previous ``INCR`` +
+        # conditional ``EXPIRE`` was racy: if EXPIRE failed on the
+        # first-hit path (e.g. transient network blip — the exact
+        # "Redis brown-out" the except below catches) the key stuck
+        # around without a TTL until Redis evicted it. ``SET NX EX``
+        # makes the TTL part of the same write that creates the key;
+        # subsequent INCRs preserve it.
+        await redis.set(key, 0, ex=GLOBAL_SEARCH_WINDOW_SECONDS, nx=True)
         count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, GLOBAL_SEARCH_WINDOW_SECONDS)
     except Exception as e:
         logger.warning(
             "Global-search rate-limit check failed open for user %s: %s",
