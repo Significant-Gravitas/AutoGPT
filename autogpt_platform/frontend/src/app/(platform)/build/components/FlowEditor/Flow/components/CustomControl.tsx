@@ -22,9 +22,11 @@ export const CustomControls = memo(
   ({
     setIsLocked,
     isLocked,
+    isReadOnly = false,
   }: {
     isLocked: boolean;
     setIsLocked: (isLocked: boolean) => void;
+    isReadOnly?: boolean;
   }) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const { isTutorialRunning, setIsTutorialRunning } = useTutorialStore();
@@ -94,6 +96,7 @@ export const CustomControls = memo(
         label: "Toggle Lock",
         onClick: () => setIsLocked(!isLocked),
         className: `h-10 w-10 border-none ${isLocked ? "bg-zinc-100" : "bg-white"}`,
+        disabled: isReadOnly,
       },
     ];
 
