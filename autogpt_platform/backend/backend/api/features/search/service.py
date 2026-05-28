@@ -19,6 +19,7 @@ import asyncio
 import logging
 from typing import Any
 
+import pydantic
 from prisma.enums import ContentType
 
 from backend.api.features.search import hybrid_search
@@ -27,8 +28,11 @@ from backend.api.features.search.model import (
     SearchItemType,
     SearchResultItem,
 )
+from backend.copilot.model import get_user_sessions
 from backend.data.db_accessors import library_db, search
+from backend.data.workspace import get_workspace
 from backend.util.cache import cached
+from backend.util.workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
@@ -55,34 +59,49 @@ def _should_prefix_match(query: str) -> bool:
 # ----- helpers ---------------------------------------------------------------
 
 
+# Pydantic coerces both ``ContentType`` enum members (in-process accessor
+# path) and bare strings (raw-SQL / RPC shim path) into the enum at the
+# boundary, so the dispatch below can rely on a typed value rather than
+# duck-typing the input with ``getattr``.
+_CONTENT_TYPE_ADAPTER = pydantic.TypeAdapter(ContentType)
+
+# Hybrid-search rows carry their metadata as a JSON column; Prisma
+# deserialises it to a dict on the way out. A typed adapter at the
+# boundary turns "you probably get a dict" into "you definitely get a
+# dict (or this row gets skipped)" so downstream ``.get(...)`` is safe.
+_METADATA_ADAPTER = pydantic.TypeAdapter(dict[str, Any])
+
+
 def _hybrid_row_to_item(row: dict[str, Any]) -> SearchResultItem | None:
     """Convert one ``unified_hybrid_search`` row into a ``SearchResultItem``.
 
     Returns None when the row's content type is one we don't surface
     through /search/global (e.g. BLOCK / DOCUMENTATION rows that might
-    sneak in if a caller widens the type filter).
+    sneak in if a caller widens the type filter), or when the row's
+    ``content_type`` / ``metadata`` columns fail to coerce to their
+    expected shapes (defensive — should not happen in practice).
     """
-    raw_type = row.get("content_type")
-    # Both Prisma enum members and bare strings can show up depending on
-    # whether the search ran via the in-process accessor or the RPC shim.
-    type_str = getattr(raw_type, "value", raw_type)
-    metadata = row.get("metadata") or {}
+    try:
+        content_type = _CONTENT_TYPE_ADAPTER.validate_python(row.get("content_type"))
+        metadata = _METADATA_ADAPTER.validate_python(row.get("metadata") or {})
+    except pydantic.ValidationError:
+        return None
 
     item_type: SearchItemType
-    if type_str == ContentType.LIBRARY_AGENT.value:
+    if content_type is ContentType.LIBRARY_AGENT:
         title = metadata.get("name") or row.get("searchable_text") or ""
         item_type = "library_agent"
         subtitle = None
-    elif type_str == ContentType.STORE_AGENT.value:
+    elif content_type is ContentType.STORE_AGENT:
         title = metadata.get("name") or row.get("searchable_text") or ""
         item_type = "store_agent"
         cats = metadata.get("categories") or []
         subtitle = ", ".join(cats[:2]) if cats else None
-    elif type_str == ContentType.WORKSPACE_FILE.value:
+    elif content_type is ContentType.WORKSPACE_FILE:
         title = metadata.get("name") or row.get("searchable_text") or ""
         item_type = "workspace_file"
         subtitle = metadata.get("mime_type") or metadata.get("path")
-    elif type_str == ContentType.CHAT_SESSION.value:
+    elif content_type is ContentType.CHAT_SESSION:
         title = metadata.get("title") or row.get("searchable_text") or ""
         item_type = "chat_session"
         subtitle = None
@@ -98,7 +117,7 @@ def _hybrid_row_to_item(row: dict[str, Any]) -> SearchResultItem | None:
         type=item_type,
         title=title,
         subtitle=subtitle,
-        metadata=metadata if isinstance(metadata, dict) else {},
+        metadata=metadata,
         score=float(score) if score is not None else None,
         updated_at=row.get("updated_at"),
     )
@@ -203,9 +222,6 @@ async def _files_bucket(
     file embeddings only encode the name anyway, so we lose nothing in
     quality and gain freshness.
     """
-    from backend.data.workspace import get_workspace
-    from backend.util.workspace import WorkspaceManager
-
     try:
         workspace = await get_workspace(user_id)
         if workspace is None:
@@ -250,8 +266,6 @@ async def _chats_bucket(
     index so newly-renamed sessions are findable immediately. Chat
     session embeddings only encode the title anyway.
     """
-    from backend.copilot.model import get_user_sessions
-
     try:
         sessions, _total = await get_user_sessions(
             user_id=user_id,

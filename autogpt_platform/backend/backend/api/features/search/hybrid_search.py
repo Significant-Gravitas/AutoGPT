@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from prisma.enums import ContentType
-from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
+from rank_bm25 import BM25Okapi
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,

@@ -21,7 +21,6 @@ from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
 from backend.api.features.search.content_handlers import CONTENT_HANDLERS
-from backend.blocks import get_blocks
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
@@ -536,83 +535,12 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 }
                 continue
 
-            # Get all current content IDs from handler
-            if content_type == ContentType.STORE_AGENT:
-                # Get IDs of approved store listing versions from non-deleted listings
-                valid_agents = await query_raw_with_schema(
-                    """
-                    SELECT slv.id
-                    FROM {schema_prefix}"StoreListingVersion" slv
-                    JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
-                    WHERE slv."submissionStatus" = 'APPROVED'
-                      AND slv."isDeleted" = false
-                      AND sl."isDeleted" = false
-                    """,
-                )
-                current_ids = {row["id"] for row in valid_agents}
-            elif content_type == ContentType.BLOCK:
-                current_ids = set(get_blocks().keys())
-            elif content_type == ContentType.LIBRARY_AGENT:
-                # Match LibraryAgentHandler.get_missing_items: only non-deleted,
-                # non-hidden LibraryAgent rows are considered valid.
-                valid_agents = await query_raw_with_schema(
-                    """
-                    SELECT id
-                    FROM {schema_prefix}"LibraryAgent"
-                    WHERE "isDeleted" = false AND "isHidden" = false
-                    """,
-                )
-                current_ids = {row["id"] for row in valid_agents}
-            elif content_type == ContentType.DOCUMENTATION:
-                # Use DocumentationHandler to get section-based content IDs
-                from backend.api.features.search.content_handlers import (
-                    DocumentationHandler,
-                )
-
-                doc_handler = CONTENT_HANDLERS.get(ContentType.DOCUMENTATION)
-                if isinstance(doc_handler, DocumentationHandler):
-                    docs_root = doc_handler._get_docs_root()
-                    if docs_root.exists():
-                        current_ids = doc_handler._get_all_section_content_ids(
-                            docs_root
-                        )
-                    else:
-                        current_ids = set()
-                else:
-                    current_ids = set()
-            elif content_type == ContentType.WORKSPACE_FILE:
-                # Valid files mirror WorkspaceFileHandler.get_missing_items:
-                # non-deleted rows. A deleted file's embedding is orphaned.
-                valid_files = await query_raw_with_schema(
-                    """
-                    SELECT id
-                    FROM {schema_prefix}"UserWorkspaceFile"
-                    WHERE "isDeleted" = false
-                    """,
-                )
-                current_ids = {row["id"] for row in valid_files}
-            elif content_type == ContentType.CHAT_SESSION:
-                # Match ChatSessionHandler.get_missing_items: only sessions
-                # with a non-empty (trimmed) title are embedded, so a session
-                # that was deleted or lost its title is orphaned.
-                valid_sessions = await query_raw_with_schema(
-                    """
-                    SELECT id
-                    FROM {schema_prefix}"ChatSession"
-                    WHERE title IS NOT NULL AND btrim(title) <> ''
-                    """,
-                )
-                current_ids = {row["id"] for row in valid_sessions}
-            else:
-                # Skip unknown content types to avoid accidental deletion
-                logger.warning(
-                    f"Skipping cleanup for unknown content type: {content_type}"
-                )
-                results_by_type[content_type.value] = {
-                    "deleted": 0,
-                    "error": "Unknown content type - skipped for safety",
-                }
-                continue
+            # Each handler owns the definition of "what is currently
+            # valid for embedding". The same domain knowledge lives in
+            # its ``get_missing_items`` filter — keeping both behind one
+            # method means the orphan-cleaner and the embedder can't
+            # drift out of sync.
+            current_ids = await handler.get_valid_content_ids()
 
             # Get all embedding IDs from database
             db_embeddings = await query_raw_with_schema(

@@ -82,6 +82,20 @@ class ContentHandler(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_valid_content_ids(self) -> set[str]:
+        """Return the set of ``contentId`` values that should currently
+        have an embedding for this content type.
+
+        Used by :func:`cleanup_orphaned_embeddings` to compute the
+        difference against ``UnifiedContentEmbedding`` and delete rows
+        whose source content has been removed / hidden / untitled. The
+        definition of "valid" must match the corresponding handler's
+        :meth:`get_missing_items` filter so the embedder isn't fighting
+        the orphan-cleaner.
+        """
+        pass
+
 
 class StoreAgentHandler(ContentHandler):
     """Handler for marketplace store agent listings."""
@@ -162,6 +176,22 @@ class StoreAgentHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_approved - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Approved StoreListingVersion rows from non-deleted listings
+        # mirror ``get_missing_items``: rejected / soft-deleted listings
+        # should have their embeddings cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT slv.id
+            FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
+            WHERE slv."submissionStatus" = 'APPROVED'
+              AND slv."isDeleted" = false
+              AND sl."isDeleted" = false
+            """,
+        )
+        return {row["id"] for row in rows}
 
 
 @functools.lru_cache(maxsize=1)
@@ -315,6 +345,13 @@ class BlockHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_blocks - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # The enabled-block registry is the source of truth — a block
+        # that's been removed from the registry or disabled is no
+        # longer a valid embedding target.
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
+        return set(enabled.keys())
 
 
 @dataclass
@@ -643,6 +680,16 @@ class DocumentationHandler(ContentHandler):
             "without_embeddings": total_sections - with_embeddings,
         }
 
+    async def get_valid_content_ids(self) -> set[str]:
+        # Section IDs are derived from on-disk markdown — a deleted file
+        # or removed section drops from this set and its embedding gets
+        # cleaned up.
+        docs_root = self._get_docs_root()
+        if not docs_root.exists():
+            return set()
+        # Filesystem walk is sync; keep it off the event loop.
+        return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)
+
 
 class LibraryAgentHandler(ContentHandler):
     """Handler for user-scoped library agents.
@@ -728,6 +775,18 @@ class LibraryAgentHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: only non-deleted, non-hidden
+        # LibraryAgent rows are considered valid embedding targets.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"LibraryAgent"
+            WHERE "isDeleted" = false AND "isHidden" = false
+            """,
+        )
+        return {row["id"] for row in rows}
 
 
 class WorkspaceFileHandler(ContentHandler):
@@ -836,6 +895,18 @@ class WorkspaceFileHandler(ContentHandler):
             "without_embeddings": total - with_embeddings,
         }
 
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: a soft-deleted file's embedding
+        # is orphaned and should be cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"UserWorkspaceFile"
+            WHERE "isDeleted" = false
+            """,
+        )
+        return {row["id"] for row in rows}
+
 
 class ChatSessionHandler(ContentHandler):
     """Handler for user-scoped chat sessions.
@@ -913,6 +984,19 @@ class ChatSessionHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: sessions without a non-empty
+        # title aren't embedded; a session that was deleted or had its
+        # title cleared should have its embedding cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"ChatSession"
+            WHERE title IS NOT NULL AND btrim(title) <> ''
+            """,
+        )
+        return {row["id"] for row in rows}
 
 
 # Content handler registry
