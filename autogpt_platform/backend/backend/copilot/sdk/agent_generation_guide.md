@@ -3,43 +3,126 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
+### Clarifying — Before or During Building
+
+Use `ask_question` whenever the user's intent is ambiguous — whether
+that's before starting or midway through the workflow. Common moments:
+
+- **Before building**: output format, delivery channel, data source, or
+  trigger is unspecified.
+- **During block discovery**: multiple blocks could fit and the user
+  should choose.
+- **During JSON generation**: a wiring decision depends on user
+  preference.
+
+Steps:
+1. Call `find_block` (or another discovery tool) to learn what the
+   platform actually supports for the ambiguous dimension.
+2. Call `ask_question` with a concrete question listing the discovered
+   options (e.g. "The platform supports Gmail, Slack, and Google Docs —
+   which should the agent use for delivery?").
+3. **Wait for the user's answer** before continuing.
+
+**Skip this** when the goal already specifies all dimensions (e.g.
+"scrape prices from Amazon and email me daily").
+
+### Before Building: Show the Plan
+
+Start agent generation by calling `decompose_goal` once to display your
+build plan to the user as a step-by-step UI card.
+
+1. Analyze the user's request and break it into plain-English steps
+   describing **what the agent will do for the user**, not which blocks
+   you will add or how they connect. For a YouTube summarizer that
+   might be: "Accept a YouTube URL from the user", "Fetch the video's
+   transcript", "Generate a timestamped summary", "Return the summary
+   to the user".
+2. Call `decompose_goal` with those steps. Do not write any text before
+   or after the tool call — the platform renders the plan UI card
+   automatically, so any extra text duplicates the display.
+3. Continue immediately with the workflow below in the same turn. The
+   plan card is informational only — there is no approval step, no
+   countdown, and no need to wait for the user.
+
+The `description` is user-facing and must read as plain English to a
+non-technical user. The platform records the block name and action on
+the same step via the separate `block_name` and `action` fields — those
+fields carry the technical detail. Do not put block class names
+("AgentInputBlock", "AgentOutputBlock", "TranscribeYoutubeVideoBlock"),
+internal types, or wiring verbs ("wire", "connect", "link") inside
+`description`.
+
+For simple goals (1-2 blocks), keep steps brief (2-3 steps).
+For complex goals, use as many steps as needed.
+
+
 ### Workflow for Creating/Editing Agents
 
-1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+1. **If creating a new agent from a user goal (REQUIRED before `create_agent`)**:
+   First call
+   `find_library_agent(for_creation=true, goal_summary="<one-sentence summary of what the user wants>")`
+   to check whether the user already has a functionally similar agent. The
+   tool runs a hybrid semantic + lexical similarity search over the user's
+   library and returns either:
+   - `AgentsFoundResponse` with candidates whose descriptions are prefixed
+     with `[N% match]`. **Surface these to the user**, preserving the match
+     prefix, and ask whether they want to reuse one before you build a new
+     agent. If they pick an existing agent, run it with `run_agent` —
+     **do not** call `create_agent`.
+   - `NoResultsResponse` — no functionally similar agent exists, so you may
+     proceed with `create_agent`.
+
+   `create_agent` enforces this check as a hard gate (`require_library_check`)
+   and will refuse otherwise. If the user has been shown matches and
+   explicitly tells you to build a new one anyway, retry `create_agent`
+   with `library_check_ack=true` to bypass the gate for that call.
+   **Never set `library_check_ack=true` proactively** — only after the
+   user has seen the matches and chosen to build new.
+
+   Builder-bound sessions (when the user is already editing a specific
+   agent in the Builder) bypass this gate automatically — no
+   pre-flight call is needed there.
+
+2. **If editing**: First narrow to the specific agent by UUID, then fetch its
    graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
    returns the full graph structure (nodes + links). **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-2. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
+3. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas. The `for_agent_generation=true` flag is
    required to surface graph-only blocks such as AgentInputBlock,
    AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
    and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
    in CoPilot outside agent generation, use `run_mcp_tool` instead.)
-3. **Find library agents**: Call `find_library_agent` to discover reusable
-   agents that can be composed as sub-agents via `AgentExecutorBlock`.
-4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
-   - Use block IDs from step 2 as `block_id` in nodes
+4. **Find library agents for sub-agent composition**: Call `find_library_agent`
+   (default mode, no `for_creation` flag) to discover reusable agents that
+   can be composed as sub-agents via `AgentExecutorBlock`. This is distinct
+   from the create-time similarity check in step 1 — here you're looking
+   for building blocks, not asking "does the user already have this?".
+5. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 3 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
    - When editing, apply targeted changes and preserve unchanged parts
-5. **Write to workspace**: Save the JSON to a workspace file so the user
+6. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+7. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+8. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-   the final `agent_json`
-8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
-   `wait_for_result=120` to verify the agent works end-to-end.
-9. **Inspect & fix**: Check the dry-run output for errors. If issues are
-   found, call `edit_agent` to fix and dry-run again. Repeat until the
-   simulation passes or the problems are clearly unfixable.
-   See "REQUIRED: Dry-Run Verification Loop" section below for details.
+9. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+   the final `agent_json`. For `create_agent`, the library similarity gate
+   from step 1 must have been satisfied (either matches were shown to the
+   user, or pass `library_check_ack=true` after explicit user confirmation).
+10. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+    `wait_for_result=120` to verify the agent works end-to-end.
+11. **Inspect & fix**: Check the dry-run output for errors. If issues are
+    found, call `edit_agent` to fix and dry-run again. Repeat until the
+    simulation passes or the problems are clearly unfixable.
+    See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
 
@@ -324,3 +407,67 @@ A minimal agent with input, processing, and output:
 - Node 3: `AgentOutputBlock` (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`,
   input_default: {"name": "summary", "title": "Summary"},
   input: "value" linked from Node 2's output)
+
+### Building Trigger Agents
+
+A **trigger agent** is a scheduled agent that watches for changes in an
+external source (e.g. email inbox, RSS feed, API) and runs a parent agent
+or AutoPilot session for each new item. Trigger agents are hidden from the
+user's library but listed under the parent agent's triggers.
+
+**Pattern: Fetch → Compare → Store → Sink**
+
+1. **Fetch current state**: Use a data-fetching block (e.g. RSS, email,
+   HTTP request) to get the latest items from the source.
+2. **Retrieve stored state**: Use `RetrieveInformationBlock`
+   (ID: `d8710fc9-6e29-481e-a7d5-165eb16f8471`) with scope `within_agent`
+   to load the previously stored state (e.g. list of seen item IDs).
+3. **Compare**: Use a `CodeExecutionBlock` to diff the fetched items
+   against the stored state. Output the new items (if any).
+4. **Store updated state**: Use `PersistInformationBlock`
+   (ID: `1d055e55-a2b9-4547-8311-907d05b0304d`) with scope `within_agent`
+   to save the current state for the next run.
+5. **Sink** — for each new item, do one of:
+   - **Run an agent**: Use `AgentExecutorBlock`
+     (ID: `e189baac-8c20-45a1-94a7-55177ea42565`) to run the parent
+     agent with the new item as input.
+   - **Start an AutoPilot session**: Use `AutoPilotBlock`
+     (ID: `c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) with a prompt
+     describing the new item (e.g. "New email from {sender} about
+     {subject}. Analyze and draft a reply.").
+
+**Creating a trigger agent:**
+
+1. Build the trigger agent JSON following the pattern above. When using
+   the AgentExecutorBlock sink, set its `graph_id` (in `input_default`)
+   to the parent agent's graph_id — this is how the trigger is linked
+   to the parent agent.
+2. Save it with `is_hidden=true` via `create_agent` so it doesn't
+   clutter the user's library.
+3. Schedule it to run on a cron interval (e.g. every 15 minutes:
+   `*/15 * * * *`) using `run_agent` with `schedule_name` and `cron`.
+
+The parent → trigger relationship is **derived from the graph
+contents**: any hidden agent whose graph contains an AgentExecutorBlock
+referencing the parent's graph_id is listed under that parent's
+triggers. No explicit linking is needed.
+
+**Inspecting an agent's existing triggers:**
+
+- Use `list_agent_triggers` with the parent's `library_agent_id` to see
+  all triggers configured for that agent — both trigger agents
+  (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
+  before adding a new trigger (to avoid duplicates) or before deleting
+  one (to find the right ID).
+
+**Managing schedules:**
+
+- Use `list_schedules` to see existing schedules (optionally filtered by
+  `graph_id`).
+- Use `delete_schedule` with a `schedule_id` to remove one.
+- To change a schedule's cron, delete it and re-create via `run_agent`
+  with the new `cron`.
+
+**Note**: When a trigger agent is edited and a new version is created,
+the existing schedule will still run the old version. Delete the old
+schedule and re-create it with the new version after editing.

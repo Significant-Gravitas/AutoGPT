@@ -34,6 +34,7 @@ import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { QueueBadge } from "./components/QueueBadge";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
@@ -49,6 +50,10 @@ interface Props {
    *  zero on every fresh mount. */
   activeStreamStartedAt?: string | null;
   sessionID?: string | null;
+  /** Session-level lifecycle: ``"idle" | "queued" | "running"``.
+   *  The Queued badge anchors on the latest user message iff this is
+   *  ``"queued"``. */
+  sessionChatStatus?: string;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -60,13 +65,36 @@ interface Props {
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
   bottomContentPadding?: number;
+  /** Public-viewer mode: render messages exactly as the owner sees them,
+   *  but hide every interactive affordance that depends on auth — feedback
+   *  buttons, TTS, queue/streaming indicators, load-more, retry, pending-
+   *  review banners, queued-message strip.  Anonymous viewers of a shared
+   *  chat get the rich renderer without any controls that would 401. */
+  readOnly?: boolean;
+  /** URL→file-ID matcher used to decide whether a ``FileUIPart`` becomes
+   *  an ArtifactCard.  Owner side defaults to the workspace-file URL
+   *  shape; the public viewer passes a per-token pattern so its file
+   *  URLs match without loosening the default. */
+  filePattern?: RegExp;
+  /** Override the URL emitted when rewriting ``workspace://`` references
+   *  in markdown prose AND when building inline artifact source URLs.
+   *  The public viewer passes a token-aware builder. */
+  fileUrlBuilder?: (fileId: string) => string;
+}
+
+interface RenderSegmentOptions {
+  onRetry?: () => void;
+  fileUrlBuilder?: (fileId: string) => string;
+  forceArtifacts?: boolean;
+  readOnly?: boolean;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
-  onRetry?: () => void,
+  options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
+  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
@@ -78,6 +106,9 @@ function renderSegments(
         messageID={messageID}
         partIndex={seg.index}
         onRetry={onRetry}
+        fileUrlBuilder={fileUrlBuilder}
+        forceArtifacts={forceArtifacts}
+        readOnly={readOnly}
       />
     );
   });
@@ -267,6 +298,7 @@ export function ChatMessagesContainer({
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
+  sessionChatStatus,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -274,6 +306,9 @@ export function ChatMessagesContainer({
   turnStats,
   queuedMessages,
   bottomContentPadding,
+  readOnly = false,
+  filePattern,
+  fileUrlBuilder,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -443,7 +478,7 @@ export function ChatMessagesContainer({
             : undefined
         }
       >
-        {hasMoreMessages && onLoadMore && (
+        {!readOnly && hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
             isLoading={!!isLoadingMore}
@@ -530,15 +565,20 @@ export function ChatMessagesContainer({
               >
                 {hasReasoning && reasoningSegments && (
                   <StepsCollapse>
-                    {renderSegments(reasoningSegments, message.id)}
+                    {renderSegments(reasoningSegments, message.id, {
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })}
                   </StepsCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(
-                      responseSegments,
-                      message.id,
-                      isLastAssistant ? onRetry : undefined,
-                    )
+                  ? renderSegments(responseSegments, message.id, {
+                      onRetry: isLastAssistant ? onRetry : undefined,
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })
                   : renderableParts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
@@ -546,6 +586,9 @@ export function ChatMessagesContainer({
                         messageID={message.id}
                         partIndex={i}
                         onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        forceArtifacts={readOnly}
+                        readOnly={readOnly}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
@@ -561,6 +604,23 @@ export function ChatMessagesContainer({
                 )}
                 {isLastAssistant && showIndicator && indicator}
               </MessageContent>
+              {!readOnly &&
+                message.role === "user" &&
+                sessionChatStatus === "queued" &&
+                (() => {
+                  const stats = turnStats?.get(message.id);
+                  if (!stats?.isLatestUserMessage) {
+                    return null;
+                  }
+                  return (
+                    <MessageActions
+                      className="mt-1 items-center justify-end gap-1.5"
+                      data-testid="queue-status-row"
+                    >
+                      <QueueBadge sessionID={sessionID ?? null} />
+                    </MessageActions>
+                  );
+                })()}
               {message.role === "user" && textParts.length > 0 && (
                 <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   {(() => {
@@ -584,25 +644,33 @@ export function ChatMessagesContainer({
                 <MessageAttachments
                   files={fileParts}
                   isUser={message.role === "user"}
+                  forceArtifacts={readOnly}
+                  filePattern={filePattern}
+                  readOnly={readOnly}
                 />
               )}
-              {showActions && (
+              {!readOnly && showActions && (
                 <AssistantMessageActions
                   message={message}
                   sessionID={sessionID ?? null}
                 />
               )}
+              {readOnly && showActions && (
+                <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
+                </MessageActions>
+              )}
             </Message>
           );
         })}
-        {showIndicator && lastMessage?.role !== "assistant" && (
+        {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
             </MessageContent>
           </Message>
         )}
-        {isRestoringActiveSession && (
+        {!readOnly && isRestoringActiveSession && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
               {showRestoreFallback ? (
@@ -627,19 +695,22 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         )}
-        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
-        {queuedMessages?.map((msg, idx) => (
-          <Message key={idx} from="user">
-            <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
-              <span>{msg}</span>
-              <span className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="size-3" weight="bold" />
-                Queued
-              </span>
-            </MessageContent>
-          </Message>
-        ))}
-        {error && !lastAssistantHasErrorMarker && (
+        {!readOnly && graphExecId && (
+          <CopilotPendingReviews graphExecId={graphExecId} />
+        )}
+        {!readOnly &&
+          queuedMessages?.map((msg, idx) => (
+            <Message key={idx} from="user">
+              <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+                <span>{msg}</span>
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Clock className="size-3" weight="bold" />
+                  Queued
+                </span>
+              </MessageContent>
+            </Message>
+          ))}
+        {!readOnly && error && !lastAssistantHasErrorMarker && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your

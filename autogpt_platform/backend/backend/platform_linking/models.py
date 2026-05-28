@@ -154,6 +154,21 @@ class PlatformUserLinkInfo(BaseModel):
     linked_at: datetime
 
 
+class BotPlatformInfo(BaseModel):
+    """A bot platform enabled on this deployment plus the caller's links to it.
+
+    Platforms whose adapter isn't configured (missing token/credentials) are
+    omitted from the response entirely — the Bots settings page hides them.
+    """
+
+    platform: str
+    display_name: str
+    icon: str
+    add_bot_url: str | None = None
+    dm_link: PlatformUserLinkInfo | None = None
+    server_links: list[PlatformLinkInfo] = Field(default_factory=list)
+
+
 class ConfirmLinkResponse(BaseModel):
     success: bool
     link_type: LinkType = LinkType.SERVER
@@ -180,3 +195,16 @@ class ChatTurnHandle(BaseModel):
     turn_id: str
     user_id: str
     subscribe_from: str = "0-0"
+
+
+class ChatSessionSummary(BaseModel):
+    """Minimal chat-session fields safe to send to a bot client."""
+
+    session_id: str
+    title: str | None = None
+    updated_at: datetime
+
+
+class ListUserChatsResponse(BaseModel):
+    sessions: list[ChatSessionSummary]
+    total: int

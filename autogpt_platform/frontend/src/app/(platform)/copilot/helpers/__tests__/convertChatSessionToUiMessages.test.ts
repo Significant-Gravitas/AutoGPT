@@ -384,3 +384,40 @@ describe("concatWithAssistantMerge", () => {
     expect(result).toHaveLength(2);
   });
 });
+
+describe("convertChatSessionMessagesToUiMessages — latest user marker", () => {
+  it("marks the latest user row as isLatestUserMessage=true", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { id: "uuid-user-1", role: "user", content: "first", sequence: 0 },
+        { id: "uuid-asst-1", role: "assistant", content: "reply", sequence: 1 },
+        { id: "uuid-user-2", role: "user", content: "newest", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    const stats0 = result.stats.get(result.messages[0].id);
+    const stats2 = result.stats.get(
+      result.messages[result.messages.length - 1].id,
+    );
+    // First user row is older — not the latest.
+    expect(stats0?.isLatestUserMessage).toBeFalsy();
+    // Latest user row carries the marker; consumer (ChatMessagesContainer)
+    // decides whether to render the Queued badge by also checking
+    // session.chat_status === 'queued'.
+    expect(stats2?.isLatestUserMessage).toBe(true);
+    expect(stats2?.rawMessageId).toBe("uuid-user-2");
+  });
+
+  it("marks a single user row as the latest", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ id: "u1", role: "user", content: "hi", sequence: 0 }],
+      { isComplete: true },
+    );
+
+    const stats = result.stats.get(result.messages[0].id);
+    expect(stats?.isLatestUserMessage).toBe(true);
+  });
+});

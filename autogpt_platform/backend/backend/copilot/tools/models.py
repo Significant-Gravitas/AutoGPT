@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.data.graph import BaseGraph
 from backend.data.model import CredentialsMetaInput
@@ -36,11 +36,22 @@ class ResponseType(str, Enum):
     AGENT_BUILDER_VALIDATION_RESULT = "agent_builder_validation_result"
     AGENT_BUILDER_FIX_RESULT = "agent_builder_fix_result"
 
+    # Task decomposition (goal → sub-instructions)
+    TASK_DECOMPOSITION = "task_decomposition"
+
     # Block
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
+
+    # Schedules
+    SCHEDULE_LIST = "schedule_list"
+    SCHEDULE_DELETED = "schedule_deleted"
+    SCHEDULE_CREATED = "schedule_created"
+
+    # Agent triggers
+    AGENT_TRIGGER_LIST = "agent_trigger_list"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -94,6 +105,12 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
+    # Skills (self-distilled procedure registry)
+    SKILL_STORED = "skill_stored"
+    SKILL_LOADED = "skill_loaded"
+    SKILL_DELETED = "skill_deleted"
+    SKILL_LIST = "skill_list"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -124,6 +141,14 @@ class AgentInfo(BaseModel):
     new_output: bool | None = None
     graph_id: str | None = None
     graph_version: int | None = None
+    match_score: float | None = Field(
+        default=None,
+        description=(
+            "Combined relevance score in [0, 1] when this agent was returned "
+            "from a similarity search (e.g. the create-time library check). "
+            "Null for non-similarity sources."
+        ),
+    )
     input_schema: dict[str, Any] | None = Field(
         default=None,
         description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",
@@ -262,6 +287,7 @@ class ErrorResponse(ToolResponseBase):
     """Response for errors."""
 
     type: ResponseType = ResponseType.ERROR
+    execution_id: str | None = None
     error: str | None = None
     details: dict[str, Any] | None = None
 
@@ -814,6 +840,48 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
     agent_names: list[str] = []
     folder_id: str | None = None
     count: int = 0
+
+
+# Task decomposition models
+
+
+class DecompositionStepModel(BaseModel):
+    """A single step in a decomposed agent-building plan."""
+
+    step_id: str = Field(description="Unique step identifier, e.g. 'step_1'")
+    description: str = Field(
+        description=(
+            "Plain-English description of what this step does for the user. "
+            "Do not put block class names or wiring verbs here — block_name "
+            "and action carry that technical detail."
+        )
+    )
+    action: str = Field(
+        description="Action type: 'add_block', 'connect_blocks', 'configure', etc."
+    )
+    block_name: str | None = Field(
+        default=None, description="Block being added, if applicable"
+    )
+    status: str = Field(
+        default="pending",
+        description="Step status: pending, in_progress, completed, failed",
+    )
+
+
+class TaskDecompositionResponse(ToolResponseBase):
+    """Response for decompose_goal tool — shows the plan to the user."""
+
+    type: ResponseType = ResponseType.TASK_DECOMPOSITION
+    goal: str = Field(description="The original user goal")
+    steps: list[DecompositionStepModel]
+    step_count: int = Field(
+        default=0, description="Number of steps (auto-derived from steps list)"
+    )
+
+    @model_validator(mode="after")
+    def sync_step_count(self) -> "TaskDecompositionResponse":
+        self.step_count = len(self.steps)
+        return self
 
 
 # --- Graphiti memory responses ---

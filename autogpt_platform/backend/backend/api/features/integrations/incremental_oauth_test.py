@@ -1128,3 +1128,164 @@ class TestUpgradeExistingCredentialDoesNotMutateCaller:
             "https://www.googleapis.com/auth/calendar.readonly",
         }
         mock_mgr.update.assert_called_once()
+
+
+class TestExplicitUpgradeScopeGuard:
+    """Explicit scope upgrade (`credential_id` set on the OAuth state) must
+    enforce the same scope-coverage guard as the implicit-merge path.
+
+    Without the guard a narrowed re-auth — the user lands on the provider's
+    consent screen and only grants some of the requested scopes — would
+    overwrite the existing credential's ``access_token`` with a narrower
+    token while merging the wider scope set onto the record.  The
+    credential matcher then routes AutoPilot tools to that record believing
+    it covers scopes its token does not actually grant, and the tool fails
+    with opaque 401/403s on the missing scopes.  Users perceive this as
+    "AutoPilot keeps picking the old creds" because the loop never breaks.
+    """
+
+    def _make_state_with_credential_id(
+        self,
+        credential_id: str,
+        scopes: list[str] | None = None,
+        provider: str = "google",
+    ) -> OAuthState:
+        return OAuthState(
+            token="state-token",
+            provider=provider,
+            expires_at=9999999999,
+            scopes=(
+                scopes
+                if scopes is not None
+                else [
+                    "https://www.googleapis.com/auth/gmail.readonly",
+                    "https://www.googleapis.com/auth/calendar.readonly",
+                ]
+            ),
+            credential_id=credential_id,
+        )
+
+    def test_explicit_upgrade_skipped_when_new_scopes_narrower(self):
+        """The user re-auths to upgrade scopes but the provider returns a
+        narrower token than what the existing record advertises.  The
+        existing credential must stay intact (its old token still grants
+        the lost scopes) and the new (narrower) credential is persisted
+        alongside it."""
+        existing = _make_google_oauth2_cred(
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/calendar.readonly",
+            ],
+        )
+        # The user only granted Gmail on the consent screen — narrower
+        # than the existing record's claimed Gmail + Calendar.
+        new_cred = _make_google_oauth2_cred(
+            cred_id="new-cred-id",
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        )
+        state = self._make_state_with_credential_id(
+            "google-cred-1",
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        )
+        handler = MagicMock()
+        handler.exchange_code_for_tokens = AsyncMock(return_value=new_cred)
+        handler.handle_default_scopes.return_value = state.scopes
+
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.verify_state_token = AsyncMock(return_value=state)
+            mock_mgr.store.get_creds_by_id = AsyncMock(return_value=existing)
+            mock_mgr.create = AsyncMock()
+            mock_mgr.update = AsyncMock()
+
+            resp = client.post(
+                "/google/callback",
+                json={"code": "auth-code", "state_token": "state-token"},
+            )
+
+        assert resp.status_code == 200
+        # No mutation of the existing record — keep its wider token intact.
+        mock_mgr.update.assert_not_called()
+        # The narrower credential is persisted as a new record so the user
+        # ends up with both: the AutoPilot matcher will now pick the one
+        # that actually grants the requested scopes for each tool call.
+        mock_mgr.create.assert_called_once()
+
+    def test_explicit_upgrade_proceeds_when_new_scopes_are_superset(self):
+        """Typical happy path: the OAuth flow asked for existing ∪ new and
+        the user authorised everything.  The new token covers the wider
+        set, so merging into the existing record is safe."""
+        existing = _make_google_oauth2_cred(
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        )
+        new_cred = _make_google_oauth2_cred(
+            cred_id="new-cred-id",
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/calendar.readonly",
+            ],
+        )
+        state = self._make_state_with_credential_id("google-cred-1")
+        handler = MagicMock()
+        handler.exchange_code_for_tokens = AsyncMock(return_value=new_cred)
+        handler.handle_default_scopes.return_value = state.scopes
+
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.verify_state_token = AsyncMock(return_value=state)
+            mock_mgr.store.get_creds_by_id = AsyncMock(return_value=existing)
+            mock_mgr.create = AsyncMock()
+            mock_mgr.update = AsyncMock()
+
+            resp = client.post(
+                "/google/callback",
+                json={"code": "auth-code", "state_token": "state-token"},
+            )
+
+        assert resp.status_code == 200
+        mock_mgr.update.assert_called_once()
+        mock_mgr.create.assert_not_called()
+
+    def test_explicit_upgrade_with_equal_scopes_still_merges(self):
+        """Re-auth with the same scope set (e.g. user refreshed an expired
+        token by going through the OAuth flow again) is the same as
+        ``new ⊇ existing`` — merging into the existing record updates
+        the access_token without scope drift."""
+        scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
+        existing = _make_google_oauth2_cred(scopes=scopes)
+        new_cred = _make_google_oauth2_cred(cred_id="new-cred-id", scopes=scopes)
+        state = self._make_state_with_credential_id("google-cred-1", scopes=scopes)
+        handler = MagicMock()
+        handler.exchange_code_for_tokens = AsyncMock(return_value=new_cred)
+        handler.handle_default_scopes.return_value = state.scopes
+
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.verify_state_token = AsyncMock(return_value=state)
+            mock_mgr.store.get_creds_by_id = AsyncMock(return_value=existing)
+            mock_mgr.create = AsyncMock()
+            mock_mgr.update = AsyncMock()
+
+            resp = client.post(
+                "/google/callback",
+                json={"code": "auth-code", "state_token": "state-token"},
+            )
+
+        assert resp.status_code == 200
+        mock_mgr.update.assert_called_once()
+        mock_mgr.create.assert_not_called()

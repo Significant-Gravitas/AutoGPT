@@ -1,8 +1,10 @@
+import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import {
   getV1OnboardingState,
   postV1CompleteOnboardingStep,
   postV1SubmitOnboardingProfile,
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import { resolveResponse } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
@@ -47,7 +49,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -84,9 +86,30 @@ export function useOnboardingPage() {
   if (paymentEnabledSnapshot.current === null && areFlagsReady) {
     paymentEnabledSnapshot.current = livePaymentEnabled;
   }
-  const isPaymentEnabled = paymentEnabledSnapshot.current ?? false;
+
+  // Skip the paywall for users already on a paid tier (admin grants or
+  // pre-VISIT_COPILOT accounts) so they aren't asked to pay again to escape.
+  const { data: tier, isLoading: isTierLoading } = useGetSubscriptionStatus({
+    query: {
+      enabled: isLoggedIn,
+      select: (res) =>
+        res.status === 200
+          ? (res.data as SubscriptionStatusResponse).tier
+          : null,
+    },
+  });
+  const userHasActivePlan = !!tier && tier !== "NO_TIER";
+
+  const isPaymentEnabled =
+    (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
   const preparingStep: Step = isPaymentEnabled ? 5 : 4;
   const totalSteps = isPaymentEnabled ? 4 : 3;
+
+  // Wait for auth too — without !isUserLoading, LD can resolve while
+  // isLoggedIn is transiently false, the tier query stays disabled
+  // (isTierLoading=false), and init fires with the wrong preparingStep.
+  const isReady =
+    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
@@ -100,7 +123,7 @@ export function useOnboardingPage() {
   // would defeat the point of persistence by wiping the user's name/role
   // every time they refresh mid-wizard.
   useEffect(() => {
-    if (!areFlagsReady || hasInitialized.current) return;
+    if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     // A successful Stripe checkout return is a trusted intent to advance to
@@ -115,11 +138,11 @@ export function useOnboardingPage() {
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-  }, [areFlagsReady, searchParams, goToStep, preparingStep]);
+  }, [isReady, searchParams, goToStep, preparingStep]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
-    if (!areFlagsReady) return;
+    if (!isReady) return;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     if (currentStep !== urlStep) {
       router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
@@ -127,7 +150,7 @@ export function useOnboardingPage() {
     if (currentStep > readHighestStep()) {
       writeHighestStep(currentStep);
     }
-  }, [areFlagsReady, currentStep, router, searchParams, preparingStep]);
+  }, [isReady, currentStep, router, searchParams, preparingStep]);
 
   // Check if onboarding already completed
   useEffect(() => {
@@ -203,7 +226,7 @@ export function useOnboardingPage() {
 
   return {
     currentStep,
-    isLoading: isOnboardingStateLoading || !areFlagsReady,
+    isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
     preparingStep,
