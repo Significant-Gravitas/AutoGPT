@@ -29,7 +29,10 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor.utils import schedule_turn
-from backend.copilot.graphiti.communities import rebuild_communities_for_user
+from backend.copilot.graphiti.communities import (
+    CommunityRebuildResult,
+    rebuild_communities_for_user,
+)
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
@@ -437,15 +440,15 @@ def execute_community_rebuild(user_id: str):
         return
 
     result = run_async(rebuild_communities_for_user(user_id))
-    if result.get("error"):
+    if result.error:
         logger.warning(
-            f"Community rebuild errored for user {user_id[:12]}: {result['error']}"
+            f"Community rebuild errored for user {user_id[:12]}: {result.error}"
         )
     else:
         logger.info(
             f"Community rebuild completed for user {user_id[:12]} in "
-            f"{result.get('elapsed_seconds') or 0.0:.1f}s: "
-            f"{result.get('communities_built')}"
+            f"{result.elapsed_seconds or 0.0:.1f}s: "
+            f"{result.communities_built}"
         )
 
 
@@ -1449,7 +1452,7 @@ class Scheduler(AppService):
         return True
 
     @expose
-    def execute_community_rebuild_pass(self, user_id: str) -> dict:
+    def execute_community_rebuild_pass(self, user_id: str) -> CommunityRebuildResult:
         """Manually trigger a community rebuild for one user (bypasses cron).
 
         Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` per-user — same
@@ -1464,11 +1467,12 @@ class Scheduler(AppService):
                 f"Manual community rebuild skipped for user {user_id[:12]} — "
                 f"GRAPHITI_COMMUNITIES_ENABLED flag is off."
             )
-            return {
-                "user_id": user_id,
-                "skipped": True,
-                "reason": "graphiti_communities_disabled",
-            }
+            return CommunityRebuildResult(
+                user_id=user_id,
+                started_at=datetime.now(timezone.utc).isoformat(),
+                skipped=True,
+                skipped_reason="graphiti_communities_disabled",
+            )
 
         return run_async(rebuild_communities_for_user(user_id))
 

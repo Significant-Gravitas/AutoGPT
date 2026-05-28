@@ -33,32 +33,52 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import BaseModel
+
 from .client import derive_group_id, get_graphiti_client
 
 logger = logging.getLogger(__name__)
 
 
-async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
+class CommunityRebuildResult(BaseModel):
+    """Outcome of one per-user community rebuild pass.
+
+    Returned by ``rebuild_communities_for_user`` on both success and
+    failure paths so the scheduler can record telemetry uniformly.
+    ``communities_built`` is a free-form summary because graphiti-core's
+    ``build_communities`` return shape changes between versions.
+
+    ``skipped`` is set by callers that gate the rebuild behind a flag
+    (e.g. the LD-gated manual trigger) so the response shape stays
+    uniform regardless of whether the rebuild actually ran.
+    """
+
+    user_id: str
+    started_at: str
+    elapsed_seconds: float | None = None
+    communities_built: dict[str, Any] | None = None
+    error: str | None = None
+    skipped: bool = False
+    skipped_reason: str | None = None
+
+
+async def rebuild_communities_for_user(user_id: str) -> CommunityRebuildResult:
     """Destroy and rebuild ``:Community`` nodes for one user's graph.
 
-    Returns a result dict with ``user_id``, ``communities_built``,
-    ``elapsed_seconds``, and ``error`` (if any). Always returns a dict
-    even on failure so the scheduler can record the outcome.
+    Always returns a ``CommunityRebuildResult`` even on failure so the
+    scheduler can record the outcome.
     """
     started_at = datetime.now(timezone.utc)
-    result: dict[str, Any] = {
-        "user_id": user_id,
-        "started_at": started_at.isoformat(),
-        "communities_built": None,
-        "elapsed_seconds": None,
-        "error": None,
-    }
+    result = CommunityRebuildResult(
+        user_id=user_id,
+        started_at=started_at.isoformat(),
+    )
 
     try:
         try:
             group_id = derive_group_id(user_id)
         except ValueError as exc:
-            result["error"] = f"invalid_user_id: {exc}"
+            result.error = f"invalid_user_id: {exc}"
             logger.warning(
                 f"Skipping community rebuild — invalid user_id {user_id[:12]}"
             )
@@ -89,21 +109,21 @@ async def rebuild_communities_for_user(user_id: str) -> dict[str, Any]:
             # versions; we record whatever it returns rather than asserting
             # a specific shape.
             summary = await client.build_communities(group_ids=[group_id])
-            result["communities_built"] = _summarize_communities(summary)
+            result.communities_built = _summarize_communities(summary)
 
         except Exception as exc:
-            result["error"] = f"{type(exc).__name__}: {exc}"
+            result.error = f"{type(exc).__name__}: {exc}"
             logger.warning(
                 f"Community rebuild failed for user {user_id[:12]}", exc_info=True
             )
     finally:
         ended_at = datetime.now(timezone.utc)
-        result["elapsed_seconds"] = (ended_at - started_at).total_seconds()
+        result.elapsed_seconds = (ended_at - started_at).total_seconds()
 
     return result
 
 
-def _summarize_communities(summary: Any) -> Any:
+def _summarize_communities(summary: Any) -> dict[str, Any] | None:
     """Reduce graphiti-core's build_communities return value to something
     JSON-loggable.
 

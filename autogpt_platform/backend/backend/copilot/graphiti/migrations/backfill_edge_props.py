@@ -39,6 +39,11 @@ SET e.status = 'active'
 RETURN count(e) AS updated
 """
 
+# Page size for the Postgres User scan. We process users in fixed-size
+# batches ordered by ``id`` so the migration's memory footprint stays
+# constant even when the user base grows to millions of rows.
+USER_BATCH_SIZE = 1000
+
 
 async def backfill_one_user(user_id: str) -> int:
     """Set default status='active' on edges for one user. Returns count updated."""
@@ -73,23 +78,40 @@ async def backfill_one_user(user_id: str) -> int:
 async def backfill_all_users() -> tuple[int, int]:
     """Walk every User row in Postgres and backfill their graph.
 
+    Pages through ``User`` ordered by ``id`` so the migration's memory
+    footprint stays bounded by ``USER_BATCH_SIZE`` regardless of how
+    large the user table grows. Each page is fetched with
+    ``id > last_seen_id`` (keyset / cursor pagination), which is
+    O(log n) per page on the primary-key index — no growing OFFSET cost.
+
     Returns (users_processed, edges_updated).
     """
     from prisma import Prisma
 
     db = Prisma()
     await db.connect()
-    try:
-        users = await db.user.find_many()
-    finally:
-        await db.disconnect()
-
     total_users = 0
     total_edges = 0
-    for user in users:
-        total_users += 1
-        updated = await backfill_one_user(user.id)
-        total_edges += updated
+    try:
+        last_seen_id: str | None = None
+        while True:
+            where = {"id": {"gt": last_seen_id}} if last_seen_id else {}
+            batch = await db.user.find_many(
+                where=where,
+                order={"id": "asc"},
+                take=USER_BATCH_SIZE,
+            )
+            if not batch:
+                break
+            for user in batch:
+                total_users += 1
+                updated = await backfill_one_user(user.id)
+                total_edges += updated
+            last_seen_id = batch[-1].id
+            if len(batch) < USER_BATCH_SIZE:
+                break
+    finally:
+        await db.disconnect()
 
     return total_users, total_edges
 

@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .communities import _summarize_communities, rebuild_communities_for_user
+from .communities import (
+    CommunityRebuildResult,
+    _summarize_communities,
+    rebuild_communities_for_user,
+)
 
 
 class TestSummarizeCommunities:
@@ -25,13 +29,14 @@ class TestSummarizeCommunities:
 
 class TestRebuildCommunitiesForUser:
     @pytest.mark.asyncio
-    async def test_invalid_user_id_returns_error_dict(self) -> None:
+    async def test_invalid_user_id_returns_error_result(self) -> None:
         result = await rebuild_communities_for_user("")
-        assert result["error"] is not None
-        assert result["communities_built"] is None
+        assert isinstance(result, CommunityRebuildResult)
+        assert result.error is not None
+        assert result.communities_built is None
         # Contract: result always carries elapsed_seconds, even on the
         # early-return invalid-user-id branch.
-        assert result["elapsed_seconds"] is not None
+        assert result.elapsed_seconds is not None
 
     @pytest.mark.asyncio
     async def test_success_path_calls_detach_delete_then_build(self) -> None:
@@ -51,9 +56,10 @@ class TestRebuildCommunitiesForUser:
                 "883cc9da-fe37-4863-839b-acba022bf3ef"
             )
 
-        assert result["error"] is None
-        assert result["communities_built"] == {"count": 1}
-        assert result["elapsed_seconds"] is not None
+        assert isinstance(result, CommunityRebuildResult)
+        assert result.error is None
+        assert result.communities_built == {"count": 1}
+        assert result.elapsed_seconds is not None
 
         # Defensive DETACH DELETE must run before build_communities
         cleanup_query = driver.execute_query.call_args.args[0]
@@ -78,7 +84,8 @@ class TestRebuildCommunitiesForUser:
                 "883cc9da-fe37-4863-839b-acba022bf3ef"
             )
 
-        assert result["error"] is not None
-        assert "RuntimeError" in result["error"]
+        assert isinstance(result, CommunityRebuildResult)
+        assert result.error is not None
+        assert "RuntimeError" in result.error
         # Always returns elapsed_seconds even on failure
-        assert result["elapsed_seconds"] is not None
+        assert result.elapsed_seconds is not None
