@@ -6,13 +6,22 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
+import { OriginFilter } from "./components/OriginFilter/OriginFilter";
 import { StorageUsage } from "./components/StorageUsage/StorageUsage";
 import { useArtifactsPage } from "./useArtifactsPage";
 
 export default function ArtifactsPage() {
   const isEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
-  const { files, isLoading, isError, error, searchTerm, setSearchTerm } =
-    useArtifactsPage();
+  const {
+    files,
+    isLoading,
+    isError,
+    error,
+    searchTerm,
+    setSearchTerm,
+    originFilter,
+    setOriginFilter,
+  } = useArtifactsPage();
 
   useEffect(() => {
     document.title = "Artifacts – AutoGPT Platform";
@@ -38,7 +47,10 @@ export default function ArtifactsPage() {
           setSearchTerm={setSearchTerm}
         />
       </div>
-      <StorageUsage />
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <StorageUsage />
+        <OriginFilter value={originFilter} onChange={setOriginFilter} />
+      </div>
       <ArtifactsList
         files={files}
         isLoading={isLoading}

@@ -9477,7 +9477,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Builder (root-level) and Autopilot (session-scoped) uploads.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -9512,6 +9512,31 @@
               "default": 0,
               "title": "Offset"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Case-insensitive substring search on file name. Applied in the database for fresh results without waiting on embedding generation.",
+              "title": "Q"
+            },
+            "description": "Case-insensitive substring search on file name. Applied in the database for fresh results without waiting on embedding generation."
+          },
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "enum": ["builder", "autopilot"], "type": "string" },
+                { "type": "null" }
+              ],
+              "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin).",
+              "title": "Origin"
+            },
+            "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin)."
           }
         ],
         "responses": {

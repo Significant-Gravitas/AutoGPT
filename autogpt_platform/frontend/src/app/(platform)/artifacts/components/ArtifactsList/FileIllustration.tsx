@@ -274,7 +274,9 @@ export function FileIllustration({
   const config = FILE_TYPE_CONFIGS[typeKey];
   const badgeLabel = label ?? config.label;
   return (
-    <div className={cn("relative shrink-0", SIZE_WRAPPER_CLASS[size], className)}>
+    <div
+      className={cn("relative shrink-0", SIZE_WRAPPER_CLASS[size], className)}
+    >
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
