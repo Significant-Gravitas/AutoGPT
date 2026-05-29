@@ -2187,6 +2187,9 @@
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
                     { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    {
+                      "$ref": "#/components/schemas/TaskDecompositionResponse"
+                    },
                     { "$ref": "#/components/schemas/ScheduleListResponse" },
                     { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
@@ -12064,6 +12067,53 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditTransactionItem": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "CreditTransactionItem"
+      },
       "CreditTransactionType": {
         "type": "string",
         "enum": [
@@ -12095,6 +12145,40 @@
           "max_window_days"
         ],
         "title": "CreditTransactionsExportResponse"
+      },
+      "DecompositionStepModel": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id",
+            "description": "Unique step identifier, e.g. 'step_1'"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Plain-English description of what this step does for the user. Do not put block class names or wiring verbs here — block_name and action carry that technical detail."
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "Action type: 'add_block', 'connect_blocks', 'configure', etc."
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name",
+            "description": "Block being added, if applicable"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Step status: pending, in_progress, completed, failed",
+            "default": "pending"
+          }
+        },
+        "type": "object",
+        "required": ["step_id", "description", "action"],
+        "title": "DecompositionStepModel",
+        "description": "A single step in a decomposed agent-building plan."
       },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
@@ -16129,6 +16213,7 @@
           "agent_builder_clarification_needed",
           "agent_builder_validation_result",
           "agent_builder_fix_result",
+          "task_decomposition",
           "block_list",
           "block_details",
           "block_output",
@@ -17977,6 +18062,39 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TaskDecompositionResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "task_decomposition"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "The original user goal"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/DecompositionStepModel" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "description": "Number of steps (auto-derived from steps list)",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["message", "goal", "steps"],
+        "title": "TaskDecompositionResponse",
+        "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
       "TimezoneResponse": {
         "properties": {
           "timezone": {
@@ -18796,7 +18914,7 @@
       "TransactionHistory": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": { "$ref": "#/components/schemas/CreditTransactionItem" },
             "type": "array",
             "title": "Transactions"
           },

@@ -31,6 +31,7 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-view_agent_output",
   "tool-search_feature_requests",
   "tool-create_feature_request",
+  "tool-decompose_goal",
 ]);
 
 const REASONING_TOOL_TYPES = new Set([
@@ -71,6 +72,7 @@ const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.suggested_goal,
   ResponseType.agent_builder_preview,
   ResponseType.agent_builder_saved,
+  ResponseType.task_decomposition,
 ]);
 
 export function isCompletedToolPart(part: MessagePart): part is ToolUIPart {
