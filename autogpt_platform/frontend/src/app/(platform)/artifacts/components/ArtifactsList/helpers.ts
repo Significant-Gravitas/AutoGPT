@@ -62,7 +62,8 @@ export function formatRelativeDate(input: string | Date): string {
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    year: date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+    year:
+      date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
   });
 }
 

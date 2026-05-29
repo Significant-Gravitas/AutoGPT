@@ -137,7 +137,7 @@ function ProgressBar() {
       className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-zinc-200/70"
       aria-hidden
     >
-      <div className="animate-progress-bar h-full w-1/3 rounded-full bg-zinc-500" />
+      <div className="h-full w-1/3 animate-progress-bar rounded-full bg-zinc-500" />
     </div>
   );
 }

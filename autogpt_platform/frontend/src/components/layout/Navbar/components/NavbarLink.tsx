@@ -1,7 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { FilesIcon, Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
+import {
+  FilesIcon,
+  Laptop,
+  ListChecksIcon,
+} from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
