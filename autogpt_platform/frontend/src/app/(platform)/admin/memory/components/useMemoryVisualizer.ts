@@ -18,13 +18,26 @@ import {
   usePostV2TriggerNightlyBatch,
   usePostV2TriggerRatificationPass,
 } from "@/app/api/__generated__/endpoints/admin/admin";
+import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
+import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
+import type { DreamJobStatusState } from "@/app/api/__generated__/models/dreamJobStatusState";
 import type { GraphResponse } from "@/app/api/__generated__/models/graphResponse";
-import type { JobStatusResponse } from "@/app/api/__generated__/models/jobStatusResponse";
-import type { JobStatusResponseState } from "@/app/api/__generated__/models/jobStatusResponseState";
 import type { JobTriggerResponse } from "@/app/api/__generated__/models/jobTriggerResponse";
 import type { MemoryOverview } from "@/app/api/__generated__/models/memoryOverview";
-import type { RatificationResultResponse } from "@/app/api/__generated__/models/ratificationResultResponse";
+import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
+import type { RatificationResult } from "@/app/api/__generated__/models/ratificationResult";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+
+// Polling envelope shared across all three job kinds — they're
+// structurally identical except for the typed ``result`` payload, so
+// the polling hook walks them as a union. Narrowing to a specific
+// kind happens at the view layer that reads ``status.result``.
+type AnyJobStatus = DreamJobStatus | NightlyJobStatus | CommunityRebuildJobStatus;
+
+// The state enum is identical across all three concrete envelopes
+// (same underlying Pydantic Literal). Pick the dream variant as the
+// canonical alias to avoid importing three identical types.
+type JobStateValue = DreamJobStatusState;
 
 const USER_ID = "me";
 
@@ -33,10 +46,10 @@ const USER_ID = "me";
 // (the BatchExecutor itself only walks every 10s anyway).
 const POLL_INTERVAL_MS = 3000;
 
-type TerminalState = Extract<JobStatusResponseState, "complete" | "errored">;
+type TerminalState = Extract<JobStateValue, "complete" | "errored">;
 
 function isTerminal(
-  state: JobStatusResponseState | undefined,
+  state: JobStateValue | undefined,
 ): state is TerminalState {
   return state === "complete" || state === "errored";
 }
@@ -123,7 +136,7 @@ export function useMemoryVisualizer() {
   const ratification = usePostV2TriggerRatificationPass({
     mutation: {
       onSuccess: (res) => {
-        const result = res.data as RatificationResultResponse;
+        const result = res.data as RatificationResult;
         if (result.error) {
           toast({
             title: "Ratification failed",
@@ -156,7 +169,7 @@ export function useMemoryVisualizer() {
     },
   });
 
-  // --- Status pollers (GET → JobStatusResponse) ----------------------------
+  // --- Status pollers (GET → AnyJobStatus) ----------------------------
   //
   // refetchInterval stops on terminal state OR on query error so a 5xx
   // status endpoint doesn't pin the button as forever-in-flight. The
@@ -165,10 +178,10 @@ export function useMemoryVisualizer() {
 
   const pollOptions = {
     refetchInterval: (query: {
-      state: { data?: { data?: JobStatusResponse | unknown }; status: string };
+      state: { data?: { data?: AnyJobStatus | unknown }; status: string };
     }) => {
       if (query.state.status === "error") return false;
-      const state = (query.state.data?.data as JobStatusResponse | undefined)
+      const state = (query.state.data?.data as AnyJobStatus | undefined)
         ?.state;
       return isTerminal(state) ? false : POLL_INTERVAL_MS;
     },
@@ -202,7 +215,7 @@ export function useMemoryVisualizer() {
   useTerminalEffect(
     "Dream pass",
     activeDreamJobId,
-    dreamStatus.data?.data as JobStatusResponse | undefined,
+    dreamStatus.data?.data as AnyJobStatus | undefined,
     dreamStatus.error,
     () => {
       setActiveDreamJobId(undefined);
@@ -222,7 +235,7 @@ export function useMemoryVisualizer() {
   useTerminalEffect(
     "Nightly batch",
     activeNightlyJobId,
-    nightlyStatus.data?.data as JobStatusResponse | undefined,
+    nightlyStatus.data?.data as AnyJobStatus | undefined,
     nightlyStatus.error,
     () => {
       setActiveNightlyJobId(undefined);
@@ -245,7 +258,7 @@ export function useMemoryVisualizer() {
   useTerminalEffect(
     "Community rebuild",
     activeRebuildJobId,
-    rebuildStatus.data?.data as JobStatusResponse | undefined,
+    rebuildStatus.data?.data as AnyJobStatus | undefined,
     rebuildStatus.error,
     () => {
       setActiveRebuildJobId(undefined);
@@ -286,13 +299,13 @@ export function useMemoryVisualizer() {
   const overviewData = overview.data?.data as MemoryOverview | undefined;
   const graphData = graph.data?.data as GraphResponse | undefined;
   const dreamStatusData = dreamStatus.data?.data as
-    | JobStatusResponse
+    | AnyJobStatus
     | undefined;
   const nightlyStatusData = nightlyStatus.data?.data as
-    | JobStatusResponse
+    | AnyJobStatus
     | undefined;
   const rebuildStatusData = rebuildStatus.data?.data as
-    | JobStatusResponse
+    | AnyJobStatus
     | undefined;
 
   return {
@@ -332,7 +345,7 @@ export function useMemoryVisualizer() {
 function useTerminalEffect(
   label: string,
   activeJobId: string | undefined,
-  status: JobStatusResponse | undefined,
+  status: AnyJobStatus | undefined,
   queryError: unknown,
   onTerminal: () => void,
   toast: ReturnType<typeof useToast>["toast"],
@@ -382,7 +395,7 @@ function useTerminalEffect(
   }, [activeJobId, status?.state, queryError]);
 }
 
-function completionSummary(status: JobStatusResponse): string {
+function completionSummary(status: AnyJobStatus): string {
   const result = status.result as Record<string, unknown> | null | undefined;
   if (!result) return "OK";
   // The result shape varies by kind; pick a few common fields and

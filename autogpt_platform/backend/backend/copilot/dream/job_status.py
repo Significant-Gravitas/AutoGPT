@@ -25,11 +25,18 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+# ``JobStatus`` is parametrized by the concrete ``result`` payload type.
+# Each job kind specializes T at the admin-route layer (e.g.
+# ``DreamJobStatus = JobStatus[DreamPassResult]``) so FastAPI emits the
+# full nested OpenAPI schema for the per-kind result without any
+# parallel ``*Response`` shim classes.
+ResultT = TypeVar("ResultT", bound=BaseModel)
 
 
 # Key prefix lives at the dream namespace today because all three job
@@ -54,7 +61,7 @@ JobState = Literal[
 ]
 
 
-class JobStatus(BaseModel):
+class JobStatus(BaseModel, Generic[ResultT]):
     """Status row for one fire-and-forget admin job.
 
     Stored as a JSON-serialized Redis string at
@@ -63,6 +70,12 @@ class JobStatus(BaseModel):
     same job_id concurrently — the last writer wins, but each writer
     has read the latest state before composing its update via the
     helpers in this module.
+
+    Generic over ``ResultT`` (the work body's return shape). The Redis
+    layer always reads and writes the row as JSON — the type parameter
+    only kicks in at the read-back seam where ``read_status`` is
+    parameterized by the caller (the admin route knows it expects a
+    ``DreamPassResult``; the polling internals don't need to).
     """
 
     job_id: str
@@ -85,9 +98,9 @@ class JobStatus(BaseModel):
     # eventual apply step lives in the batch result handler.
     batch_id: str | None = None
     # Populated at terminal state. ``result`` is the work body's return
-    # value serialized to dict; ``error`` is a short human-readable
+    # value typed as ``ResultT``; ``error`` is a short human-readable
     # error string.
-    result: dict[str, Any] | None = None
+    result: ResultT | None = None
     error: str | None = None
 
 
@@ -102,17 +115,18 @@ def _key(kind: JobKind, job_id: str) -> str:
 
 async def write_initial_status(
     *, kind: JobKind, job_id: str, user_id: str
-) -> JobStatus:
+) -> JobStatus[Any]:
     """Write the first ``state='queued'`` row at admin-trigger time.
 
     Called from the admin endpoint before it returns 202. The work
     body is responsible for flipping state to ``running`` when it
-    actually starts.
+    actually starts. ``result`` is ``None`` at this point — the type
+    parameter is only meaningful once the work body produces a result.
     """
     from backend.data.redis_client import get_redis_async
 
     now = datetime.now(timezone.utc)
-    status = JobStatus(
+    status: JobStatus[Any] = JobStatus(
         job_id=job_id,
         user_id=user_id,
         kind=kind,
@@ -136,7 +150,7 @@ async def update_status_phase(
     state: JobState | None = None,
     current_phase: str | None = None,
     batch_id: str | None = None,
-) -> JobStatus | None:
+) -> JobStatus[Any] | None:
     """Update one or more fields on an existing status row.
 
     Returns the updated status, or ``None`` if the row is missing (TTL
@@ -167,9 +181,14 @@ async def update_status_phase(
 
 
 async def mark_complete(
-    *, kind: JobKind, job_id: str, result: dict[str, Any]
-) -> JobStatus | None:
-    """Transition to ``state='complete'`` with the work body's result."""
+    *, kind: JobKind, job_id: str, result: BaseModel | dict[str, Any]
+) -> JobStatus[Any] | None:
+    """Transition to ``state='complete'`` with the work body's result.
+
+    Accepts either a Pydantic model (preferred — preserves typed
+    fields through JSON serialization) or a plain dict for legacy
+    callers that build the payload by hand.
+    """
     existing = await read_status(kind=kind, job_id=job_id)
     if existing is None:
         logger.warning(
@@ -178,20 +197,23 @@ async def mark_complete(
             job_id[:12],
         )
         return None
+    serialized = result.model_dump() if isinstance(result, BaseModel) else result
     now = datetime.now(timezone.utc)
     updated = existing.model_copy(
         update={
             "state": "complete",
             "updated_at": now,
             "completed_at": now,
-            "result": result,
+            "result": serialized,
         }
     )
     await _persist(updated)
     return updated
 
 
-async def mark_errored(*, kind: JobKind, job_id: str, error: str) -> JobStatus | None:
+async def mark_errored(
+    *, kind: JobKind, job_id: str, error: str
+) -> JobStatus[Any] | None:
     """Transition to ``state='errored'`` with a short error string."""
     existing = await read_status(kind=kind, job_id=job_id)
     if existing is None:
@@ -214,8 +236,17 @@ async def mark_errored(*, kind: JobKind, job_id: str, error: str) -> JobStatus |
     return updated
 
 
-async def read_status(*, kind: JobKind, job_id: str) -> JobStatus | None:
-    """Fetch a status row by ``(kind, job_id)``. Returns ``None`` if missing."""
+async def read_status(*, kind: JobKind, job_id: str) -> JobStatus[Any] | None:
+    """Fetch a status row by ``(kind, job_id)``. Returns ``None`` if missing.
+
+    Returns the row with ``result`` as the raw JSON-decoded value
+    (typically a ``dict`` from the work body's ``model_dump()``). Route
+    handlers re-validate the row through their kind-specific
+    ``JobStatus[T]`` subclass (e.g. ``DreamJobStatus``) at response
+    construction time — that walks the dict and types ``result`` per
+    the concrete subclass's parametrization, no extra read helper
+    needed.
+    """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
@@ -225,7 +256,7 @@ async def read_status(*, kind: JobKind, job_id: str) -> JobStatus | None:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        return JobStatus.model_validate(json.loads(raw))
+        return JobStatus[Any].model_validate(json.loads(raw))
     except Exception:
         logger.exception(
             "Corrupted job status row at key=%s — treating as missing",
@@ -239,7 +270,7 @@ async def read_status(*, kind: JobKind, job_id: str) -> JobStatus | None:
 # ---------------------------------------------------------------------------
 
 
-async def _persist(status: JobStatus) -> None:
+async def _persist(status: JobStatus[Any]) -> None:
     """Serialize + write with TTL. Single SET — no read-modify-write race."""
     from backend.data.redis_client import get_redis_async
 

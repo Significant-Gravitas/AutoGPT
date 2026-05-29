@@ -400,14 +400,34 @@ async def _finalize_complete(
     if job_id:
         try:
             from .job_status import mark_complete
+            from .schemas import DreamOperationsSnapshot, DreamPassResult
 
+            raw_snapshot = apply_stats.get("snapshot")
+            snapshot: DreamOperationsSnapshot | None = None
+            if isinstance(raw_snapshot, DreamOperationsSnapshot):
+                snapshot = raw_snapshot
+            elif isinstance(raw_snapshot, dict):
+                snapshot = DreamOperationsSnapshot.model_validate(raw_snapshot)
+
+            pass_result = DreamPassResult(
+                user_id=user_id,
+                pass_id=pass_id,
+                execution_path="anthropic_batch",
+                consolidated_count=int(apply_stats.get("consolidated_count", 0) or 0),
+                proposal_count=int(apply_stats.get("proposal_count", 0) or 0),
+                demotion_count=int(apply_stats.get("demotion_count", 0) or 0),
+                entity_invalidation_count=int(
+                    apply_stats.get("entity_invalidation_count", 0) or 0
+                ),
+                dream_session_id=(
+                    apply_stats.get("session_id")
+                    if isinstance(apply_stats.get("session_id"), str)
+                    else None
+                ),
+                operations=snapshot,
+            )
             await mark_complete(
-                kind="dream_pass",
-                job_id=job_id,
-                result={
-                    "pass_id": pass_id,
-                    "stats": {k: v for k, v in apply_stats.items() if k != "snapshot"},
-                },
+                kind="dream_pass", job_id=job_id, result=pass_result
             )
         except Exception:
             logger.exception("Failed to mark dream pass job %s complete", job_id)

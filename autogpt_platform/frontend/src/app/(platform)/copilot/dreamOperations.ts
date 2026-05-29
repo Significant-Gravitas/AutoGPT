@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai";
 
-import type { DreamOperationsSnapshotResponse } from "@/app/api/__generated__/models/dreamOperationsSnapshotResponse";
+import type { DreamOperationsSnapshot } from "@/app/api/__generated__/models/dreamOperationsSnapshot";
 
 /**
  * AI SDK v5 wire type for the dream-pass snapshot event emitted from
@@ -15,7 +15,7 @@ import type { DreamOperationsSnapshotResponse } from "@/app/api/__generated__/mo
 export const DREAM_OPERATIONS_PART_TYPE = "data-dream-operations" as const;
 
 export interface DreamOperationsPartData {
-  snapshot: DreamOperationsSnapshotResponse;
+  snapshot: DreamOperationsSnapshot;
   dream_pass_id: string;
   user_id: string;
 }
@@ -58,7 +58,7 @@ export function readDreamOperationsPart(
   const snapshot = candidate.snapshot;
   if (!snapshot || typeof snapshot !== "object") return null;
   return {
-    snapshot: snapshot as DreamOperationsSnapshotResponse,
+    snapshot: snapshot as DreamOperationsSnapshot,
     dream_pass_id: candidate.dream_pass_id,
     user_id: candidate.user_id,
   };

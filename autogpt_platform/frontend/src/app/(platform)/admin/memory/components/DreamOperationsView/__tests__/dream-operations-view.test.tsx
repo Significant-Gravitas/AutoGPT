@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import { render, screen } from "@/tests/integrations/test-utils";
-import type { DreamOperationsSnapshotResponse } from "@/app/api/__generated__/models/dreamOperationsSnapshotResponse";
+import type { DreamOperationsSnapshot } from "@/app/api/__generated__/models/dreamOperationsSnapshot";
 
 import { DreamOperationsView } from "../DreamOperationsView";
 
-function sampleSnapshot(): DreamOperationsSnapshotResponse {
+function sampleSnapshot(): DreamOperationsSnapshot {
   return {
     writes: [
       {
@@ -13,7 +13,7 @@ function sampleSnapshot(): DreamOperationsSnapshotResponse {
         content: "User prefers terse code reviews.",
         scope: "preferences",
         confidence: 0.92,
-        status: "consolidated",
+        status: "active",
         source_episode_uuids: ["epi-1", "epi-2"],
       },
     ],
@@ -23,21 +23,21 @@ function sampleSnapshot(): DreamOperationsSnapshotResponse {
         content: "User is exploring memory consolidation work.",
         scope: "interests",
         confidence: 0.6,
-        status: "proposed",
+        status: "tentative",
         source_episode_uuids: ["epi-3"],
       },
       {
         edge_uuid: "edge-prop-bbbbbbbbbbbbbbbbbb",
         content: "Possibly working at AutoGPT.",
         confidence: null,
-        status: "proposed",
+        status: "tentative",
       },
     ],
     demotions: [
       {
         edge_uuid: "edge-demo-ccccccccccccccccc",
         reason: "Contradicted by newer episode",
-        new_status: "demoted",
+        new_status: "superseded",
         applied: true,
       },
     ],

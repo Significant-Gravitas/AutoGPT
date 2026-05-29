@@ -1,9 +1,9 @@
-import type { DreamEntityInvalidationSummaryResponse } from "@/app/api/__generated__/models/dreamEntityInvalidationSummaryResponse";
+import type { EntityInvalidationSummary } from "@/app/api/__generated__/models/entityInvalidationSummary";
 import { Text } from "@/components/atoms/Text/Text";
 import { shortenUuid } from "../helpers";
 
 interface Props {
-  item: DreamEntityInvalidationSummaryResponse;
+  item: EntityInvalidationSummary;
 }
 
 export function DreamEntityInvalidationRow({ item }: Props) {

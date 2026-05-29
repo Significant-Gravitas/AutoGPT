@@ -23,9 +23,13 @@ from pydantic import BaseModel, Field
 from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
+    JobStatus,
     read_status,
     write_initial_status,
 )
+from backend.copilot.dream.nightly_batch import NightlyBatchResult
+from backend.copilot.dream.ratification import RatificationResult
+from backend.copilot.dream.schemas import DreamPassResult
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
@@ -143,8 +147,14 @@ class GraphResponse(BaseModel):
     )
 
 
-class RebuildResponse(BaseModel):
-    """Mirror of ``rebuild_communities_for_user``'s return dict."""
+class RebuildResult(BaseModel):
+    """Typed envelope around ``rebuild_communities_for_user``'s return dict.
+
+    Lives here (admin routes) rather than in ``copilot/graphiti/communities.py``
+    because the dict-returning rebuild function predates the admin-API
+    typing pass. Hoisting it to ``communities.py`` (and changing the
+    function signature) is a follow-up cleanup.
+    """
 
     user_id: str
     started_at: str | None = None
@@ -155,6 +165,10 @@ class RebuildResponse(BaseModel):
     skip_reason: str | None = None
     activity: dict[str, Any] | None = None
     forced: bool = False
+    execution_path: str | None = None
+    """``"flex"`` when the rebuild ran on OpenAI's flex service tier,
+    ``"sync"`` for the default. ``None`` when the rebuild was skipped
+    before a client was constructed."""
 
 
 # ---------------------------------------------------------------------------
@@ -554,92 +568,6 @@ async def get_graph(
     )
 
 
-class DreamWriteSummaryResponse(BaseModel):
-    edge_uuid: str | None = None
-    content: str
-    scope: str = "real:global"
-    confidence: float | None = None
-    status: str = "active"
-    source_episode_uuids: list[str] = Field(default_factory=list)
-
-
-class DreamDemotionSummaryResponse(BaseModel):
-    edge_uuid: str
-    reason: str
-    new_status: str
-    applied: bool = True
-
-
-class DreamEntityInvalidationSummaryResponse(BaseModel):
-    entity_uuid: str
-    reason: str
-    edges_touched: list[str] = Field(default_factory=list)
-
-
-class DreamOperationsSnapshotResponse(BaseModel):
-    writes: list[DreamWriteSummaryResponse] = Field(default_factory=list)
-    proposals: list[DreamWriteSummaryResponse] = Field(default_factory=list)
-    demotions: list[DreamDemotionSummaryResponse] = Field(default_factory=list)
-    entity_invalidations: list[DreamEntityInvalidationSummaryResponse] = Field(
-        default_factory=list
-    )
-
-
-class DreamPhaseUsageResponse(BaseModel):
-    phase: str
-    model: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cost_usd: float | None = None
-
-
-class DreamPassUsageResponse(BaseModel):
-    phases: list[DreamPhaseUsageResponse] = Field(default_factory=list)
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_cache_read_tokens: int = 0
-    total_cache_creation_tokens: int = 0
-    total_cost_usd: float | None = None
-    discount_applied: float = 0.0
-
-
-class DreamPassResponse(BaseModel):
-    """Mirror of ``DreamPassResult`` from the dream orchestrator.
-
-    Kept duplicated rather than importing the source model so the
-    admin route stays loosely-coupled to the dream module's internals.
-    """
-
-    user_id: str
-    pass_id: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    elapsed_seconds: float | None = None
-    execution_path: str = "sync_baseline"
-    consolidated_count: int = 0
-    proposal_count: int = 0
-    demotion_count: int = 0
-    entity_invalidation_count: int = 0
-    summary_for_user: str = ""
-    dream_session_id: str | None = None
-    # Detailed per-operation rollup — see DreamOperationsSnapshot in
-    # backend/copilot/dream/schemas.py. Consumed by the admin
-    # visualizer UI and the AgentProbe eval scorers (read via
-    # ``rawExchangeKey: "response.body.operations"``).
-    operations: DreamOperationsSnapshotResponse | None = None
-    # Token + cost telemetry across all phases that ran. ``None`` for
-    # skipped passes (lock_held / no_input / insufficient_credits).
-    # Populated even on partial failures — we still paid for the
-    # phases that ran before the failure, so billing has to charge
-    # for them.
-    usage: DreamPassUsageResponse | None = None
-    error: str | None = None
-    skipped: bool = False
-    skip_reason: str | None = None
-
-
 class JobTriggerResponse(BaseModel):
     """202 response from a fire-and-forget admin trigger.
 
@@ -656,21 +584,25 @@ class JobTriggerResponse(BaseModel):
     started_at: datetime
 
 
-class JobStatusResponse(BaseModel):
-    """Read-side of the JobStatus row, mirrored from
-    ``backend/copilot/dream/job_status.py``."""
+# Typed JobStatus envelopes per job kind. Each is a concrete
+# parametrization of ``JobStatus[T]`` from
+# ``backend/copilot/dream/job_status.py`` over the work body's result
+# shape. Declaring them as named subclasses (rather than inline
+# ``JobStatus[DreamPassResult]``) gives FastAPI a clean OpenAPI
+# component name (``DreamJobStatus`` instead of
+# ``JobStatus_DreamPassResult_``).
 
-    job_id: str
-    user_id: str
-    kind: JobKind
-    state: JobState
-    started_at: datetime
-    updated_at: datetime
-    completed_at: datetime | None = None
-    current_phase: str | None = None
-    batch_id: str | None = None
-    result: dict[str, Any] | None = None
-    error: str | None = None
+
+class DreamJobStatus(JobStatus[DreamPassResult]):
+    """JobStatus envelope for ``kind="dream_pass"``."""
+
+
+class NightlyJobStatus(JobStatus[NightlyBatchResult]):
+    """JobStatus envelope for ``kind="nightly"``."""
+
+
+class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
+    """JobStatus envelope for ``kind="rebuild"``."""
 
 
 @router.post(
@@ -727,13 +659,13 @@ async def trigger_dream_pass(
 
 @router.get(
     "/{user_id}/dream/{job_id}",
-    response_model=JobStatusResponse,
+    response_model=DreamJobStatus,
 )
 async def get_dream_pass_status(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> JobStatusResponse:
+) -> DreamJobStatus:
     """Read the current status of a fire-and-forget dream pass job."""
     target = _resolve_user_id(user_id, caller_id)
     status = await read_status(kind="dream_pass", job_id=job_id)
@@ -741,50 +673,14 @@ async def get_dream_pass_status(
         raise HTTPException(status_code=404, detail="job not found")
     if status.user_id != target:
         raise HTTPException(status_code=403, detail="job belongs to a different user")
-    return JobStatusResponse(**status.model_dump())
+    return DreamJobStatus.model_validate(status.model_dump())
 
 
-class RatificationResultResponse(BaseModel):
-    """Mirror of ``RatificationResult`` from dream/ratification.py.
-
-    Kept duplicated rather than importing the source model so the
-    admin route stays loosely-coupled to the dream module's internals.
-    """
-
-    user_id: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    examined_count: int = 0
-    ratified_count: int = 0
-    superseded_count: int = 0
-    error: str | None = None
-    skipped: bool = False
-    skip_reason: str | None = None
-    per_edge_errors: list[str] = Field(default_factory=list)
-
-
-class NightlyBatchResponse(BaseModel):
-    """Mirror of ``NightlyBatchResult`` from dream/nightly_batch.py."""
-
-    user_id: str
-    nightly_id: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    elapsed_seconds: float | None = None
-    # Per-submitter outcomes. None means the submitter was skipped
-    # (flag off, no input, etc.) or hasn't run.
-    dream: DreamPassResponse | None = None
-    ratification: RatificationResultResponse | None = None
-    skipped: bool = False
-    skip_reason: str | None = None
-    error: str | None = None
-
-
-@router.post("/{user_id}/ratification", response_model=RatificationResultResponse)
+@router.post("/{user_id}/ratification", response_model=RatificationResult)
 async def trigger_ratification_pass(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> RatificationResultResponse:
+) -> RatificationResult:
     """Trigger an on-demand ratification sweep for the user (in isolation).
 
     Forwards to ``Scheduler.execute_ratification_pass_now``. Runs ONLY
@@ -812,7 +708,7 @@ async def trigger_ratification_pass(
             status_code=500,
             detail=f"Ratification pass failed: {type(exc).__name__}: {exc}",
         )
-    return RatificationResultResponse(**result)
+    return RatificationResult.model_validate(result)
 
 
 @router.post(
@@ -868,13 +764,13 @@ async def trigger_nightly_batch(
 
 @router.get(
     "/{user_id}/nightly/{job_id}",
-    response_model=JobStatusResponse,
+    response_model=NightlyJobStatus,
 )
 async def get_nightly_batch_status(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> JobStatusResponse:
+) -> NightlyJobStatus:
     """Read the current status of a fire-and-forget nightly batch job."""
     target = _resolve_user_id(user_id, caller_id)
     status = await read_status(kind="nightly", job_id=job_id)
@@ -882,7 +778,7 @@ async def get_nightly_batch_status(
         raise HTTPException(status_code=404, detail="job not found")
     if status.user_id != target:
         raise HTTPException(status_code=403, detail="job belongs to a different user")
-    return JobStatusResponse(**status.model_dump())
+    return NightlyJobStatus.model_validate(status.model_dump())
 
 
 @router.post(
@@ -951,13 +847,13 @@ async def rebuild_communities(
 
 @router.get(
     "/{user_id}/communities/rebuild/{job_id}",
-    response_model=JobStatusResponse,
+    response_model=CommunityRebuildJobStatus,
 )
 async def get_community_rebuild_status(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
-) -> JobStatusResponse:
+) -> CommunityRebuildJobStatus:
     """Read the current status of a fire-and-forget community rebuild job."""
     target = _resolve_user_id(user_id, caller_id)
     status = await read_status(kind="rebuild", job_id=job_id)
@@ -965,4 +861,4 @@ async def get_community_rebuild_status(
         raise HTTPException(status_code=404, detail="job not found")
     if status.user_id != target:
         raise HTTPException(status_code=403, detail="job belongs to a different user")
-    return JobStatusResponse(**status.model_dump())
+    return CommunityRebuildJobStatus.model_validate(status.model_dump())

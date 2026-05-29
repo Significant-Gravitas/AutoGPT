@@ -1,10 +1,10 @@
-import type { DreamDemotionSummaryResponse } from "@/app/api/__generated__/models/dreamDemotionSummaryResponse";
+import type { DemotionSummary } from "@/app/api/__generated__/models/demotionSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import { shortenUuid } from "../helpers";
 
 interface Props {
-  item: DreamDemotionSummaryResponse;
+  item: DemotionSummary;
 }
 
 export function DreamDemotionRow({ item }: Props) {

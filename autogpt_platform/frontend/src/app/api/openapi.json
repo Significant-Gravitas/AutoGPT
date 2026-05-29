@@ -991,7 +991,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityRebuildJobStatus"
+                }
               }
             }
           },
@@ -1088,7 +1090,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
+                "schema": { "$ref": "#/components/schemas/DreamJobStatus" }
               }
             }
           },
@@ -1400,7 +1402,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
+                "schema": { "$ref": "#/components/schemas/NightlyJobStatus" }
               }
             }
           },
@@ -1485,9 +1487,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RatificationResultResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/RatificationResult" }
               }
             }
           },
@@ -11671,6 +11671,69 @@
         "required": ["user_id", "items"],
         "title": "CommunityListResponse"
       },
+      "CommunityRebuildJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RebuildResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "CommunityRebuildJobStatus",
+        "description": "JobStatus envelope for ``kind=\"rebuild\"``."
+      },
       "CommunitySummary": {
         "properties": {
           "uuid": { "type": "string", "title": "Uuid" },
@@ -12188,6 +12251,22 @@
         "required": ["success"],
         "title": "DeleteLinkResponse"
       },
+      "DemotionSummary": {
+        "properties": {
+          "edge_uuid": { "type": "string", "title": "Edge Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "new_status": {
+            "type": "string",
+            "enum": ["superseded", "contradicted"],
+            "title": "New Status"
+          },
+          "applied": { "type": "boolean", "title": "Applied", "default": true }
+        },
+        "type": "object",
+        "required": ["edge_uuid", "reason", "new_status"],
+        "title": "DemotionSummary",
+        "description": "One line per demoted RELATES_TO edge."
+      },
       "DiscoverToolsRequest": {
         "properties": {
           "server_url": {
@@ -12300,6 +12379,242 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "DreamJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "DreamJobStatus",
+        "description": "JobStatus envelope for ``kind=\"dream_pass\"``."
+      },
+      "DreamOperationsSnapshot": {
+        "properties": {
+          "writes": {
+            "items": { "$ref": "#/components/schemas/WriteSummary" },
+            "type": "array",
+            "title": "Writes"
+          },
+          "proposals": {
+            "items": { "$ref": "#/components/schemas/WriteSummary" },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "demotions": {
+            "items": { "$ref": "#/components/schemas/DemotionSummary" },
+            "type": "array",
+            "title": "Demotions"
+          },
+          "entity_invalidations": {
+            "items": {
+              "$ref": "#/components/schemas/EntityInvalidationSummary"
+            },
+            "type": "array",
+            "title": "Entity Invalidations"
+          }
+        },
+        "type": "object",
+        "title": "DreamOperationsSnapshot",
+        "description": "Detailed per-operation rollup of a single dream pass.\n\nShape used by three downstream consumers:\n  1. The admin memory-visualizer UI (renders the per-edge detail).\n  2. AgentProbe eval scorers (read via ``rawExchangeKey``).\n  3. The future chat-stream ``dream.operations`` SSE event (P6 + P9\n     daydreaming, see ``dream/TODO.md``).\n\nKept additive on ``DreamPassResult`` so adding fields here doesn't\nbump the count-only top-level columns existing clients rely on."
+      },
+      "DreamPassResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "pass_id": { "type": "string", "title": "Pass Id" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "execution_path": {
+            "type": "string",
+            "enum": ["sync_baseline", "anthropic_batch", "openai_batch"],
+            "title": "Execution Path",
+            "default": "sync_baseline"
+          },
+          "consolidated_count": {
+            "type": "integer",
+            "title": "Consolidated Count",
+            "default": 0
+          },
+          "proposal_count": {
+            "type": "integer",
+            "title": "Proposal Count",
+            "default": 0
+          },
+          "demotion_count": {
+            "type": "integer",
+            "title": "Demotion Count",
+            "default": 0
+          },
+          "entity_invalidation_count": {
+            "type": "integer",
+            "title": "Entity Invalidation Count",
+            "default": 0
+          },
+          "summary_for_user": {
+            "type": "string",
+            "title": "Summary For User",
+            "default": ""
+          },
+          "dream_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Session Id"
+          },
+          "operations": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
+              { "type": "null" }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassUsage" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "pass_id"],
+        "title": "DreamPassResult",
+        "description": "Return value of ``execute_dream_pass`` and the admin API.\n\nMirrors ``RebuildResponse`` from the community-rebuild endpoint so\nthe admin frontend can render both with the same toast logic."
+      },
+      "DreamPassUsage": {
+        "properties": {
+          "phases": {
+            "items": { "$ref": "#/components/schemas/PhaseUsage" },
+            "type": "array",
+            "title": "Phases"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Total Cost Usd"
+          },
+          "discount_applied": {
+            "type": "number",
+            "title": "Discount Applied",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "DreamPassUsage",
+        "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "EntityInvalidationSummary": {
+        "properties": {
+          "entity_uuid": { "type": "string", "title": "Entity Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "edges_touched": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Touched"
+          }
+        },
+        "type": "object",
+        "required": ["entity_uuid", "reason"],
+        "title": "EntityInvalidationSummary",
+        "description": "Per-entity invalidation rollup."
       },
       "EntityListResponse": {
         "properties": {
@@ -13833,69 +14148,6 @@
         "title": "InvoiceListItem",
         "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
       },
-      "JobStatusResponse": {
-        "properties": {
-          "job_id": { "type": "string", "title": "Job Id" },
-          "user_id": { "type": "string", "title": "User Id" },
-          "kind": {
-            "type": "string",
-            "enum": ["nightly", "dream_pass", "rebuild"],
-            "title": "Kind"
-          },
-          "state": {
-            "type": "string",
-            "enum": ["queued", "running", "submitted", "complete", "errored"],
-            "title": "State"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "completed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Completed At"
-          },
-          "current_phase": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Current Phase"
-          },
-          "batch_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Batch Id"
-          },
-          "result": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id",
-          "user_id",
-          "kind",
-          "state",
-          "started_at",
-          "updated_at"
-        ],
-        "title": "JobStatusResponse",
-        "description": "Read-side of the JobStatus row, mirrored from\n``backend/copilot/dream/job_status.py``."
-      },
       "JobTriggerResponse": {
         "properties": {
           "job_id": { "type": "string", "title": "Job Id" },
@@ -14888,6 +15140,124 @@
         "title": "NeedLoginResponse",
         "description": "Response when login is needed."
       },
+      "NightlyBatchResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "nightly_id": {
+            "type": "string",
+            "title": "Nightly Id",
+            "description": "UUID correlating every per-submitter cost-log row for this pass. The dream pass and ratification supersession sweep all share this id."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "dream": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassResult" },
+              { "type": "null" }
+            ]
+          },
+          "ratification": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RatificationResult" },
+              { "type": "null" }
+            ]
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "nightly_id", "started_at"],
+        "title": "NightlyBatchResult",
+        "description": "Structured outcome of one nightly-batch-submit pass.\n\nSurfaced via the scheduler wrapper + admin endpoint so we can\naudit \"what fired tonight for this user\" without scraping logs."
+      },
+      "NightlyJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/NightlyBatchResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "NightlyJobStatus",
+        "description": "JobStatus envelope for ``kind=\"nightly\"``."
+      },
       "NoResultsResponse": {
         "properties": {
           "type": {
@@ -15521,6 +15891,44 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PhaseUsage": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": ["consolidate", "recombine", "sanitize"],
+            "title": "Phase"
+          },
+          "model": { "type": "string", "title": "Model" },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_creation_tokens": {
+            "type": "integer",
+            "title": "Cache Creation Tokens",
+            "default": 0
+          },
+          "cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": ["phase", "model"],
+        "title": "PhaseUsage",
+        "description": "Per-phase token + cost telemetry."
       },
       "PickerTokenResponse": {
         "properties": {
@@ -16349,15 +16757,19 @@
         "title": "RateLimitResetResponse",
         "description": "Response from resetting the daily rate limit."
       },
-      "RatificationResultResponse": {
+      "RatificationResult": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
           "started_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
+            "format": "date-time",
             "title": "Started At"
           },
           "completed_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
             "title": "Completed At"
           },
           "examined_count": {
@@ -16395,9 +16807,52 @@
           }
         },
         "type": "object",
+        "required": ["user_id", "started_at"],
+        "title": "RatificationResult",
+        "description": "Structured outcome of a single ratification pass.\n\nSurfaced via the scheduler wrapper so admin / future metrics can\nread promotion vs. supersession counts without re-scanning Graphiti."
+      },
+      "RebuildResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "started_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Started At"
+          },
+          "communities_built": { "title": "Communities Built" },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "activity": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Activity"
+          },
+          "forced": { "type": "boolean", "title": "Forced", "default": false },
+          "execution_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Path"
+          }
+        },
+        "type": "object",
         "required": ["user_id"],
-        "title": "RatificationResultResponse",
-        "description": "Mirror of ``RatificationResult`` from dream/ratification.py.\n\nKept duplicated rather than importing the source model so the\nadmin route stays loosely-coupled to the dream module's internals."
+        "title": "RebuildResult",
+        "description": "Typed envelope around ``rebuild_communities_for_user``'s return dict.\n\nLives here (admin routes) rather than in ``copilot/graphiti/communities.py``\nbecause the dict-returning rebuild function predates the admin-API\ntyping pass. Hoisting it to ``communities.py`` (and changing the\nfunction signature) is a follow-up cleanup."
       },
       "RecentExecution": {
         "properties": {
@@ -20263,6 +20718,39 @@
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "WriteSummary": {
+        "properties": {
+          "edge_uuid": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Edge Uuid"
+          },
+          "content": { "type": "string", "title": "Content" },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": "real:global"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "tentative"],
+            "title": "Status",
+            "default": "active"
+          },
+          "source_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Episode Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["content"],
+        "title": "WriteSummary",
+        "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

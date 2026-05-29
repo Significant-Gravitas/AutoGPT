@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { JobStatusResponse } from "@/app/api/__generated__/models/jobStatusResponse";
+import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
+import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
+import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
+
+// Polling envelope shared across all three job kinds — see the matching
+// alias in useMemoryVisualizer.ts. Narrowed to a specific kind at the
+// view layer that reads ``status.result``.
+type AnyJobStatus = DreamJobStatus | NightlyJobStatus | CommunityRebuildJobStatus;
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
@@ -213,15 +220,15 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
 interface ControlBarProps {
   onRebuild: () => void;
   rebuildActiveJobId: string | undefined;
-  rebuildStatus: JobStatusResponse | undefined;
+  rebuildStatus: AnyJobStatus | undefined;
   onDream: () => void;
   dreamActiveJobId: string | undefined;
-  dreamStatus: JobStatusResponse | undefined;
+  dreamStatus: AnyJobStatus | undefined;
   onRatification: () => void;
   ratificationPending: boolean;
   onNightly: () => void;
   nightlyActiveJobId: string | undefined;
-  nightlyStatus: JobStatusResponse | undefined;
+  nightlyStatus: AnyJobStatus | undefined;
   force: boolean;
   setForce: (v: boolean) => void;
   includeEpisodes: boolean;
@@ -351,7 +358,7 @@ function ControlBar({
 }
 
 function jobButtonLabel(
-  status: JobStatusResponse | undefined,
+  status: AnyJobStatus | undefined,
   fallback: string,
 ): string {
   if (!status) return fallback;
@@ -366,7 +373,7 @@ function jobButtonLabel(
   return fallback;
 }
 
-function jobStateSummary(status: JobStatusResponse): string {
+function jobStateSummary(status: AnyJobStatus): string {
   if (status.state === "running" && status.current_phase) {
     return `${status.state} (${status.current_phase})`;
   }
@@ -490,7 +497,7 @@ interface DetailPanelProps {
 }
 
 interface DreamResultPanelProps {
-  status: JobStatusResponse | undefined;
+  status: AnyJobStatus | undefined;
 }
 
 function DreamResultPanel({ status }: DreamResultPanelProps) {

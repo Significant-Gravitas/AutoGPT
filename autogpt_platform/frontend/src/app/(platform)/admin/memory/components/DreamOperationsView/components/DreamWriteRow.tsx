@@ -1,10 +1,10 @@
-import type { DreamWriteSummaryResponse } from "@/app/api/__generated__/models/dreamWriteSummaryResponse";
+import type { WriteSummary } from "@/app/api/__generated__/models/writeSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatConfidence, shortenUuid } from "../helpers";
 
 interface Props {
-  item: DreamWriteSummaryResponse;
+  item: WriteSummary;
 }
 
 export function DreamWriteRow({ item }: Props) {

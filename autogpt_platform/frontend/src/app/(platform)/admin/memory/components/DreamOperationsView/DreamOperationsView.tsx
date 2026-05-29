@@ -1,6 +1,6 @@
 "use client";
 
-import type { DreamOperationsSnapshotResponse } from "@/app/api/__generated__/models/dreamOperationsSnapshotResponse";
+import type { DreamOperationsSnapshot } from "@/app/api/__generated__/models/dreamOperationsSnapshot";
 import {
   Accordion,
   AccordionContent,
@@ -20,7 +20,7 @@ import { DreamEntityInvalidationRow } from "./components/DreamEntityInvalidation
 import { sectionCounts } from "./helpers";
 
 interface Props {
-  operations: DreamOperationsSnapshotResponse | null | undefined;
+  operations: DreamOperationsSnapshot | null | undefined;
 }
 
 export function DreamOperationsView({ operations }: Props) {

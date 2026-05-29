@@ -1,4 +1,4 @@
-import type { DreamOperationsSnapshotResponse } from "@/app/api/__generated__/models/dreamOperationsSnapshotResponse";
+import type { DreamOperationsSnapshot } from "@/app/api/__generated__/models/dreamOperationsSnapshot";
 
 export function shortenUuid(uuid: string | null | undefined): string {
   if (!uuid) return "—";
@@ -12,7 +12,7 @@ export function formatConfidence(c: number | null | undefined): string {
 }
 
 export function sectionCounts(
-  ops: DreamOperationsSnapshotResponse | null | undefined,
+  ops: DreamOperationsSnapshot | null | undefined,
 ) {
   if (!ops) {
     return { writes: 0, proposals: 0, demotions: 0, entities: 0 };

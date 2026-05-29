@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -312,8 +313,16 @@ def execute_nightly_batch_sync(user_id: str):
     this body short-circuits before any submitter runs. The
     consolidation removes the separate dream / ratification crons —
     both are now submitters inside this single nightly cron.
+
+    Returns the typed ``NightlyBatchResult`` so the admin
+    ``*_with_status`` wrapper can persist it on the JobStatus row.
+    Returns ``None`` only when the runtime flag gate short-circuits
+    before the submitter runs.
     """
-    from backend.copilot.dream.nightly_batch import run_nightly_batch_submit
+    from backend.copilot.dream.nightly_batch import (
+        NightlyBatchResult,
+        run_nightly_batch_submit,
+    )
     from backend.util.feature_flag import Flag, is_feature_enabled
 
     if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
@@ -321,9 +330,9 @@ def execute_nightly_batch_sync(user_id: str):
             "Nightly batch skipped for user %s — DREAM_PASS_ENABLED flipped off",
             user_id[:12],
         )
-        return
+        return None
 
-    result = run_async(
+    result: NightlyBatchResult = run_async(
         run_nightly_batch_submit(user_id),
         timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
     )
@@ -359,6 +368,7 @@ def execute_nightly_batch_sync(user_id: str):
             rat_ratified,
             rat_superseded,
         )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +422,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
     try:
-        execute_nightly_batch_sync(user_id)
+        result = execute_nightly_batch_sync(user_id)
     except Exception as exc:
         logger.exception(
             "Admin-triggered nightly batch crashed for user %s job %s",
@@ -434,9 +444,25 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             )
         return
 
+    if result is None:
+        # Runtime flag gate short-circuit — record a minimal envelope
+        # so the polling client sees the run completed-as-skipped.
+        from backend.copilot.dream.nightly_batch import NightlyBatchResult
+
+        now = datetime.now(timezone.utc)
+        result = NightlyBatchResult(
+            user_id=user_id,
+            nightly_id="",
+            started_at=now,
+            completed_at=now,
+            elapsed_seconds=0.0,
+            skipped=True,
+            skip_reason="dream_pass_disabled_runtime",
+        )
+
     try:
         run_async(
-            mark_complete(kind="nightly", job_id=job_id, result={}),
+            mark_complete(kind="nightly", job_id=job_id, result=result),
             timeout=10,
         )
     except Exception:
@@ -530,11 +556,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         run_async(
-            mark_complete(
-                kind="dream_pass",
-                job_id=job_id,
-                result=result.model_dump(mode="json"),
-            ),
+            mark_complete(kind="dream_pass", job_id=job_id, result=result),
             timeout=10,
         )
     except Exception:
