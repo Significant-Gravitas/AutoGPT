@@ -1,5 +1,6 @@
 """Configuration management for chat system."""
 
+import logging
 import os
 from typing import Literal
 from urllib.parse import urlparse
@@ -15,6 +16,8 @@ from pydantic import (
 from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 
 def _host_matches(base_url: str | None, suffix: str) -> bool:
@@ -1027,31 +1030,70 @@ class ChatConfig(BaseSettings):
         surface until the first advanced-tier turn.
 
         Overrides fire when the field still carries the cloud default
-        OR any other ``provider/slug`` form (slash-delimited vendor
-        prefix). The provider-prefix check catches operators who pinned
-        a cloud slug to a non-default value (e.g.
-        ``CHAT_FAST_ADVANCED_MODEL=anthropic/claude-opus-4.6``) before
-        switching to local — without it, the request-time 404 would
-        only surface on first use and ``_validate_sdk_model_vendor_compatibility``
-        is explicitly skipped under ``use_local=True`` so nothing
-        catches it at boot. Bare slugs without a slash
-        (``llama3.1:8b-instruct-q4_K_M``) are treated as deliberate
-        local-side overrides and left alone.
+        OR carries a known cloud-vendor prefix (``openai/``,
+        ``anthropic/``, ``google/``, ``meta-llama/``, ``mistralai/``,
+        ``deepseek/``, ``qwen/``, ``x-ai/``, ``cohere/``). The
+        cloud-vendor check catches operators who pinned a non-default
+        cloud slug (e.g. ``CHAT_FAST_ADVANCED_MODEL=anthropic/claude-opus-4.6``)
+        before switching to local — without it, the request-time 404
+        would only surface on first use and
+        ``_validate_sdk_model_vendor_compatibility`` is explicitly
+        skipped under ``use_local=True`` so nothing catches it at boot.
+
+        Custom registry paths (``myregistry.io/llama3.1``,
+        ``huggingface.co/microsoft/phi-3``) are NOT touched — those are
+        legitimate Ollama / OAI-compat model references. Bare slugs
+        without a slash (``llama3.1:8b-instruct-q4_K_M``) are also
+        treated as deliberate local-side overrides and left alone.
+
+        For any slash-containing slug that does NOT match a known cloud
+        vendor, we log a single startup WARNING so an operator who
+        intentionally chose a non-default path sees a clear breadcrumb
+        if the model later 404s at request time, rather than scratching
+        their head about config-load behavior.
         """
         if not self.transport.inherit_fast_model_for_aux:
             return self
 
-        def _looks_like_cloud_slug(value: str, default: str) -> bool:
-            return value == default or "/" in value
+        # Vendor prefixes that exist in the OpenRouter catalog (i.e.
+        # accepted by the cloud transports and rejected by Ollama's
+        # OpenAI shim). Kept as an explicit set rather than detecting
+        # any '/' so a custom registry path ('myregistry.io/foo') used
+        # as a model name doesn't get silently rewritten.
+        _CLOUD_VENDOR_PREFIXES = (
+            "openai/",
+            "anthropic/",
+            "google/",
+            "meta-llama/",
+            "mistralai/",
+            "deepseek/",
+            "qwen/",
+            "x-ai/",
+            "cohere/",
+        )
 
-        if _looks_like_cloud_slug(self.title_model, _DEFAULT_TITLE_MODEL):
-            object.__setattr__(self, "title_model", self.fast_standard_model)
-        if _looks_like_cloud_slug(self.simulation_model, _DEFAULT_SIMULATION_MODEL):
-            object.__setattr__(self, "simulation_model", self.fast_standard_model)
-        if _looks_like_cloud_slug(
-            self.fast_advanced_model, _DEFAULT_FAST_ADVANCED_MODEL
+        def _is_cloud_default(value: str, default: str) -> bool:
+            return value == default or value.startswith(_CLOUD_VENDOR_PREFIXES)
+
+        for field_name, default in (
+            ("title_model", _DEFAULT_TITLE_MODEL),
+            ("simulation_model", _DEFAULT_SIMULATION_MODEL),
+            ("fast_advanced_model", _DEFAULT_FAST_ADVANCED_MODEL),
         ):
-            object.__setattr__(self, "fast_advanced_model", self.fast_standard_model)
+            current = getattr(self, field_name)
+            if _is_cloud_default(current, default):
+                object.__setattr__(self, field_name, self.fast_standard_model)
+            elif "/" in current:
+                logger.warning(
+                    "Local transport: %s=%r contains '/' but no known cloud "
+                    "vendor prefix; passing through unchanged. If Ollama "
+                    "404s on this slug, override CHAT_%s_MODEL with a bare "
+                    "Ollama tag (e.g. %s).",
+                    field_name,
+                    current,
+                    field_name.upper().replace("_MODEL", ""),
+                    self.fast_standard_model,
+                )
         return self
 
     @model_validator(mode="after")

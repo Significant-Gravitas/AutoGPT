@@ -567,8 +567,8 @@ class TestGenerateActivityStatusForExecution:
             # so the row reflects the backend that actually billed the call.
             # The test runs against whichever transport the ambient env
             # resolves to (``CHAT_USE_LOCAL`` / ``OPEN_ROUTER_API_KEY`` /
-            # ``ANTHROPIC_API_KEY``), so accept any of the cloud labels.
-            assert entry.provider in {"anthropic", "open_router"}
+            # ``ANTHROPIC_API_KEY``), so accept every transport's label.
+            assert entry.provider in {"anthropic", "open_router", "ollama"}
             assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"
             assert entry.tracking_amount == pytest.approx(0.0042)
