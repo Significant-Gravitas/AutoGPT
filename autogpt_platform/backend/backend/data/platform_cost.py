@@ -271,58 +271,88 @@ def _build_prisma_where(
     return where
 
 
-def _metadata_json_filter(field: str, value: str) -> dict:
-    """JSON-path WHERE clause for a string-valued ``metadata`` field.
-
-    Prisma Python's typed ``WhereInput`` doesn't surface JSON-path
-    operators directly, but the underlying engine accepts the
-    untyped shape ``{path, string_equals}`` for case-sensitive string
-    matches on a single JSON path. ``string_equals`` (not ``equals``)
-    is what the engine expects when the JSON value is known to be a
-    string — matches the convention already used by ``user.py`` for
-    its metadata filter.
-
-    Returns the inner dict for the ``metadata`` key; the caller
-    composes it into the outer WhereInput.
-    """
-    return {"path": [field], "string_equals": value}
-
-
-def _apply_metadata_filters_to_where(
-    where: PlatformCostLogWhereInput,
+async def _ids_matching_metadata_filter(
     *,
+    start: datetime | None,
+    end: datetime | None,
+    provider: str | None,
+    user_id: str | None,
+    model: str | None,
+    block_name: str | None,
+    tracking_type: str | None,
+    graph_exec_id: str | None,
     execution_path: str | None,
     source: str | None,
-) -> PlatformCostLogWhereInput:
-    """Wrap a non-JSON ``where`` with metadata-column filters.
+    limit: int,
+    offset: int,
+) -> tuple[list[str], int]:
+    """Return ``(ids, total)`` matching all filters via raw SQL.
 
-    Only the logs-list and export paths use this. The dashboard
-    aggregate path can NOT use JSON filters because Prisma Python's
-    ``group_by`` rejects them on its stricter WhereInput. Calling this
-    on the aggregate path would surface as ``Could not find field at
-    aggregatePlatformCostLog.where.metadata.string_equals``.
+    Prisma Python's typed ``count`` (implemented as
+    ``aggregate { _count }``) and ``find_many`` both reject
+    JSON-path filters on the ``metadata`` JSONB column — the engine
+    surfaces ``Could not find field at
+    aggregatePlatformCostLog.where.metadata.string_equals``. Raw SQL
+    sidesteps the typed-WhereInput validation entirely. The caller
+    hydrates the full row + User join via
+    ``find_many({"id": {"in": ids}})``.
 
-    When both filters are set, we combine via ``AND`` so each becomes
-    its own metadata clause — Prisma's typed WhereInput only accepts
-    one ``metadata`` key at the top level.
+    Only used when ``execution_path`` or ``source`` is set. The
+    happy-path query without metadata filters stays on the typed
+    Prisma helpers for speed + type-safety.
     """
-    if not execution_path and not source:
-        return where
-    metadata_clauses: list[dict] = []
+    clauses: list[str] = []
+    params: list = []
+
+    def _add(clause_tpl: str, *vals) -> None:
+        # Append values then format the clause with sequential $N
+        # placeholders matching the params order.
+        placeholders = [f"${len(params) + i + 1}" for i in range(len(vals))]
+        for v in vals:
+            params.append(v)
+        clauses.append(clause_tpl.format(*placeholders))
+
+    if start is not None:
+        _add('"createdAt" >= {0}', start)
+    if end is not None:
+        _add('"createdAt" <= {0}', end)
+    if provider:
+        _add("provider = {0}", provider.lower())
+    if user_id:
+        _add('"userId" = {0}', user_id)
+    if model:
+        _add("model = {0}", model)
+    if block_name:
+        # Match _build_prisma_where's case-insensitive blockName filter.
+        _add('LOWER("blockName") = LOWER({0})', block_name)
+    if tracking_type:
+        _add('"trackingType" = {0}', tracking_type)
+    if graph_exec_id:
+        _add('"graphExecId" = {0}', graph_exec_id)
     if execution_path:
-        metadata_clauses.append(
-            {"metadata": _metadata_json_filter("execution_path", execution_path)}
-        )
+        _add("metadata->>'execution_path' = {0}", execution_path)
     if source:
-        metadata_clauses.append({"metadata": _metadata_json_filter("source", source)})
-    if len(metadata_clauses) == 1:
-        where["metadata"] = metadata_clauses[0]["metadata"]  # type: ignore[typeddict-unknown-key]
-    else:
-        existing_and = where.get("AND")  # type: ignore[typeddict-item]
-        merged = list(existing_and) if isinstance(existing_and, list) else []
-        merged.extend(metadata_clauses)
-        where["AND"] = merged  # type: ignore[typeddict-item]
-    return where
+        _add("metadata->>'source' = {0}", source)
+
+    where_sql = " AND ".join(clauses) if clauses else "TRUE"
+
+    count_rows = await query_raw_with_schema(
+        f'SELECT COUNT(*)::bigint AS c FROM {{schema_prefix}}"PlatformCostLog" '
+        f"WHERE {where_sql}",
+        *params,
+    )
+    total = int(count_rows[0]["c"]) if count_rows else 0
+
+    id_rows = await query_raw_with_schema(
+        f'SELECT id FROM {{schema_prefix}}"PlatformCostLog" '
+        f"WHERE {where_sql} "
+        f'ORDER BY "createdAt" DESC, id DESC '
+        f"LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}",
+        *params,
+        limit,
+        offset,
+    )
+    return [r["id"] for r in id_rows], total
 
 
 def _build_raw_where(
@@ -755,35 +785,59 @@ async def get_platform_cost_logs(
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    where = _build_prisma_where(
-        start,
-        end,
-        provider,
-        user_id,
-        model,
-        block_name,
-        tracking_type,
-        graph_exec_id,
-    )
-    # JSON-path metadata filters live outside ``_build_prisma_where``
-    # because Prisma's group_by aggregate (used by the dashboard) does
-    # not accept JSON filters on its stricter WhereInput. Only the
-    # list + export paths layer them in.
-    where = _apply_metadata_filters_to_where(
-        where, execution_path=execution_path, source=source
-    )
     offset = (page - 1) * page_size
 
-    total, rows = await asyncio.gather(
-        PrismaLog.prisma().count(where=where),
-        PrismaLog.prisma().find_many(
-            where=where,
-            include={"User": True},
-            order=[{"createdAt": "desc"}, {"id": "desc"}],
-            take=page_size,
-            skip=offset,
-        ),
-    )
+    if execution_path or source:
+        # Metadata-filtered path: typed Prisma ``count`` (an aggregate
+        # under the hood) and ``find_many`` both reject JSON-column
+        # filters with ``Could not find field at
+        # aggregatePlatformCostLog.where.metadata.string_equals``.
+        # Use raw SQL to identify the matching IDs + total, then
+        # hydrate via ``find_many({"id": {"in": ids}})`` so the User
+        # join + return-shape match the unfiltered path.
+        ids, total = await _ids_matching_metadata_filter(
+            start=start,
+            end=end,
+            provider=provider,
+            user_id=user_id,
+            model=model,
+            block_name=block_name,
+            tracking_type=tracking_type,
+            graph_exec_id=graph_exec_id,
+            execution_path=execution_path,
+            source=source,
+            limit=page_size,
+            offset=offset,
+        )
+        if ids:
+            rows = await PrismaLog.prisma().find_many(
+                where={"id": {"in": ids}},
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+            )
+        else:
+            rows = []
+    else:
+        where = _build_prisma_where(
+            start,
+            end,
+            provider,
+            user_id,
+            model,
+            block_name,
+            tracking_type,
+            graph_exec_id,
+        )
+        total, rows = await asyncio.gather(
+            PrismaLog.prisma().count(where=where),
+            PrismaLog.prisma().find_many(
+                where=where,
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+                take=page_size,
+                skip=offset,
+            ),
+        )
 
     logs = [
         CostLogRow(
@@ -973,26 +1027,46 @@ async def get_platform_cost_logs_for_export(
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
-    where = _build_prisma_where(
-        start,
-        end,
-        provider,
-        user_id,
-        model,
-        block_name,
-        tracking_type,
-        graph_exec_id,
-    )
-    where = _apply_metadata_filters_to_where(
-        where, execution_path=execution_path, source=source
-    )
-
-    rows = await PrismaLog.prisma().find_many(
-        where=where,
-        include={"User": True},
-        order=[{"createdAt": "desc"}, {"id": "desc"}],
-        take=EXPORT_MAX_ROWS + 1,
-    )
+    if execution_path or source:
+        ids, _ = await _ids_matching_metadata_filter(
+            start=start,
+            end=end,
+            provider=provider,
+            user_id=user_id,
+            model=model,
+            block_name=block_name,
+            tracking_type=tracking_type,
+            graph_exec_id=graph_exec_id,
+            execution_path=execution_path,
+            source=source,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+        )
+        if ids:
+            rows = await PrismaLog.prisma().find_many(
+                where={"id": {"in": ids}},
+                include={"User": True},
+                order=[{"createdAt": "desc"}, {"id": "desc"}],
+            )
+        else:
+            rows = []
+    else:
+        where = _build_prisma_where(
+            start,
+            end,
+            provider,
+            user_id,
+            model,
+            block_name,
+            tracking_type,
+            graph_exec_id,
+        )
+        rows = await PrismaLog.prisma().find_many(
+            where=where,
+            include={"User": True},
+            order=[{"createdAt": "desc"}, {"id": "desc"}],
+            take=EXPORT_MAX_ROWS + 1,
+        )
 
     truncated = len(rows) > EXPORT_MAX_ROWS
     rows = rows[:EXPORT_MAX_ROWS]
