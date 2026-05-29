@@ -24,7 +24,9 @@ vi.mock("framer-motion", async (importActual) => {
 
 import ArtifactsPage from "../page";
 
-function makeFile(overrides: Partial<WorkspaceFileItem> = {}): WorkspaceFileItem {
+function makeFile(
+  overrides: Partial<WorkspaceFileItem> = {},
+): WorkspaceFileItem {
   return {
     id: "file-base",
     name: "base.txt",
@@ -89,7 +91,11 @@ describe("ArtifactsPage - basic rendering", () => {
     server.use(
       getListWorkspaceFilesMockHandler({
         files: [
-          makeFile({ id: "f1", name: "report.pdf", mime_type: "application/pdf" }),
+          makeFile({
+            id: "f1",
+            name: "report.pdf",
+            mime_type: "application/pdf",
+          }),
           makeFile({ id: "f2", name: "data.csv", mime_type: "text/csv" }),
         ],
         offset: 0,

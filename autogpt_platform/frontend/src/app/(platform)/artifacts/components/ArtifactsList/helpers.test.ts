@@ -129,7 +129,10 @@ describe("getFileTypeLabel + getFileTypeIcon", () => {
     ["text/html", "Web page"],
     ["application/xhtml+xml", "Web page"],
     ["text/csv", "Spreadsheet"],
-    ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Spreadsheet"],
+    [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Spreadsheet",
+    ],
     ["application/json", "JSON data"],
     ["text/markdown", "Markdown"],
     ["text/plain", "Document"],
