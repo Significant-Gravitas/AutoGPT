@@ -238,8 +238,6 @@ def _build_prisma_where(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
-    execution_path: str | None = None,
-    source: str | None = None,
 ) -> PlatformCostLogWhereInput:
     """Build a Prisma WhereInput for PlatformCostLog filters."""
     where: PlatformCostLogWhereInput = {}
@@ -270,32 +268,60 @@ def _build_prisma_where(
     if graph_exec_id:
         where["graphExecId"] = graph_exec_id
 
-    # JSON-path filters on the metadata column. Prisma's typed
-    # WhereInput doesn't surface the JSON ``path`` operator natively in
-    # Python; use the raw key on the dict — the underlying generated
-    # query DSL accepts it because Prisma's Python client forwards
-    # unknown keys when building the SQL.
-    if execution_path:
-        where["metadata"] = {  # type: ignore[typeddict-unknown-key]
-            "path": ["execution_path"],
-            "equals": execution_path,
-        }
-    if source:
-        # If both are set, merge — last writer wins on conflicting
-        # ``path`` so callers typically filter by one at a time. The
-        # generated SQL becomes an AND across the two metadata
-        # conditions via Prisma's array form.
-        existing_md = where.get("metadata")  # type: ignore[typeddict-item]
-        md_filter = {"path": ["source"], "equals": source}
-        if existing_md:
-            where["AND"] = [  # type: ignore[typeddict-item]
-                {"metadata": existing_md},
-                {"metadata": md_filter},
-            ]
-            del where["metadata"]  # type: ignore[misc]
-        else:
-            where["metadata"] = md_filter  # type: ignore[typeddict-unknown-key]
+    return where
 
+
+def _metadata_json_filter(field: str, value: str) -> dict:
+    """JSON-path WHERE clause for a string-valued ``metadata`` field.
+
+    Prisma Python's typed ``WhereInput`` doesn't surface JSON-path
+    operators directly, but the underlying engine accepts the
+    untyped shape ``{path, string_equals}`` for case-sensitive string
+    matches on a single JSON path. ``string_equals`` (not ``equals``)
+    is what the engine expects when the JSON value is known to be a
+    string — matches the convention already used by ``user.py`` for
+    its metadata filter.
+
+    Returns the inner dict for the ``metadata`` key; the caller
+    composes it into the outer WhereInput.
+    """
+    return {"path": [field], "string_equals": value}
+
+
+def _apply_metadata_filters_to_where(
+    where: PlatformCostLogWhereInput,
+    *,
+    execution_path: str | None,
+    source: str | None,
+) -> PlatformCostLogWhereInput:
+    """Wrap a non-JSON ``where`` with metadata-column filters.
+
+    Only the logs-list and export paths use this. The dashboard
+    aggregate path can NOT use JSON filters because Prisma Python's
+    ``group_by`` rejects them on its stricter WhereInput. Calling this
+    on the aggregate path would surface as ``Could not find field at
+    aggregatePlatformCostLog.where.metadata.string_equals``.
+
+    When both filters are set, we combine via ``AND`` so each becomes
+    its own metadata clause — Prisma's typed WhereInput only accepts
+    one ``metadata`` key at the top level.
+    """
+    if not execution_path and not source:
+        return where
+    metadata_clauses: list[dict] = []
+    if execution_path:
+        metadata_clauses.append(
+            {"metadata": _metadata_json_filter("execution_path", execution_path)}
+        )
+    if source:
+        metadata_clauses.append({"metadata": _metadata_json_filter("source", source)})
+    if len(metadata_clauses) == 1:
+        where["metadata"] = metadata_clauses[0]["metadata"]  # type: ignore[typeddict-unknown-key]
+    else:
+        existing_and = where.get("AND")  # type: ignore[typeddict-item]
+        merged = list(existing_and) if isinstance(existing_and, list) else []
+        merged.extend(metadata_clauses)
+        where["AND"] = merged  # type: ignore[typeddict-item]
     return where
 
 
@@ -738,8 +764,13 @@ async def get_platform_cost_logs(
         block_name,
         tracking_type,
         graph_exec_id,
-        execution_path,
-        source,
+    )
+    # JSON-path metadata filters live outside ``_build_prisma_where``
+    # because Prisma's group_by aggregate (used by the dashboard) does
+    # not accept JSON filters on its stricter WhereInput. Only the
+    # list + export paths layer them in.
+    where = _apply_metadata_filters_to_where(
+        where, execution_path=execution_path, source=source
     )
     offset = (page - 1) * page_size
 
@@ -951,8 +982,9 @@ async def get_platform_cost_logs_for_export(
         block_name,
         tracking_type,
         graph_exec_id,
-        execution_path,
-        source,
+    )
+    where = _apply_metadata_filters_to_where(
+        where, execution_path=execution_path, source=source
     )
 
     rows = await PrismaLog.prisma().find_many(
