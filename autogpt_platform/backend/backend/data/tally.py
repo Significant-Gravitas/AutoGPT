@@ -498,8 +498,21 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         if not settings.secrets.tally_api_key or not settings.secrets.tally_form_id:
             logger.debug("Tally: Tally config incomplete, skipping")
             return
-        if not settings.secrets.open_router_api_key:
-            logger.debug("Tally: no OpenRouter API key configured, skipping")
+        # Tally extraction needs an LLM. ``extract_business_understanding``
+        # routes through ``get_openai_client(prefer_openrouter=True)``,
+        # which returns the local-transport client when
+        # ``CHAT_USE_LOCAL=true`` (no OpenRouter key required) and the
+        # OpenRouter / direct-Anthropic client otherwise. The guard only
+        # bails when no LLM client is available at all — gating on
+        # ``open_router_api_key`` alone would silently skip Tally for
+        # every local install even though the local client is wired up.
+        from backend.copilot.sdk.env import config as chat_cfg
+
+        if (
+            chat_cfg.transport.name != "local"
+            and not settings.secrets.open_router_api_key
+        ):
+            logger.debug("Tally: no LLM client configured, skipping")
             return
 
         # Look up submission by email

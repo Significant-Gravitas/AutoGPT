@@ -266,24 +266,40 @@ _bootstrap_ollama_macos() {
     # Set Ollama env globally for launchd-spawned processes. On macOS,
     # ``launchctl setenv`` is the only knob that survives Ollama.app
     # being relaunched by launchd — exporting in shell won't reach it.
-    # The .app bound to localhost is reachable from Docker Desktop
-    # containers via host.docker.internal (Desktop auto-injects this),
-    # so we don't strictly need 0.0.0.0 — but binding it covers the
-    # ``brew services``-as-headless case where the .app isn't running.
+    # **But ``launchctl setenv`` does NOT update an already-running
+    # process** — it writes to launchd's env table, which is read at
+    # next spawn. If Ollama.app is already running (tray icon visible,
+    # carrying its old OLLAMA_HOST=127.0.0.1 default), the script will
+    # otherwise report success while the running app continues to
+    # truncate context at 4 k and bind only to loopback. Kill the
+    # existing instance(s) before re-launching so the new env takes
+    # effect.
     launchctl setenv OLLAMA_HOST "0.0.0.0:11434" \
         || handle_error "launchctl setenv OLLAMA_HOST failed"
     launchctl setenv OLLAMA_CONTEXT_LENGTH "32768" \
         || handle_error "launchctl setenv OLLAMA_CONTEXT_LENGTH failed"
-    # Restart Ollama so it picks up the env. The brew-formula install
-    # uses ``brew services``; the .app install uses ``open -a Ollama``.
-    # Probe both: whichever is in use will respond.
+    # Stop any currently-running Ollama (tray app, brew service, raw
+    # ``ollama serve``). ``pkill`` matches by name; ``|| true`` so the
+    # script doesn't abort when nothing is running.
+    osascript -e 'quit app "Ollama"' >/dev/null 2>&1 || true
+    pkill -f "ollama serve" >/dev/null 2>&1 || true
     if brew services list 2>/dev/null | grep -q '^ollama'; then
-        brew services restart ollama >/dev/null 2>&1 || true
+        brew services stop ollama >/dev/null 2>&1 || true
     fi
-    # Always (re)start the headless server in the background as a
-    # belt-and-suspenders measure — ``ollama serve`` exits if 11434 is
-    # already bound, which is exactly what we want.
+    # Wait briefly for the port to release.
+    for _ in $(seq 1 5); do
+        if ! lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    # Restart Ollama. Prefer the brew service when present; otherwise
+    # launch the headless server directly. ``disown`` so the background
+    # job survives this script's exit even in shells with
+    # ``shopt -s huponexit`` (login shells, some CI envs).
+    if brew services list 2>/dev/null | grep -q '^ollama'; then
+        brew services start ollama >/dev/null 2>&1 || true
+    fi
     nohup ollama serve >/dev/null 2>&1 &
+    disown 2>/dev/null || true
     for _ in $(seq 1 20); do
         curl -sf http://localhost:11434/api/version >/dev/null && break
         sleep 1
@@ -309,12 +325,31 @@ write_local_env() {
         # ``/v1`` from the operator-supplied URL; trust the normalized form.
         host_url="$OLLAMA_HOST_URL"
     elif [ "$OS_FAMILY" = "macos" ]; then
-        # Docker Desktop on macOS auto-injects ``host.docker.internal`` as
-        # an /etc/hosts entry inside every container — no compose
-        # ``extra_hosts`` needed, no LAN-IP guessing. Always prefer it
-        # over hard-coding the host's IPv4 (which a) varies per Wi-Fi
-        # network and b) doesn't survive sleep/wake on a laptop).
-        host_url="http://host.docker.internal:11434"
+        # On macOS Docker Desktop auto-injects ``host.docker.internal``
+        # into every container's /etc/hosts. Colima, Rancher Desktop,
+        # and Lima/nerdctl do NOT — those runtimes need the host's LAN
+        # IP instead, otherwise every container DNS lookup fails with
+        # ``getaddrinfo ENOTFOUND host.docker.internal`` and the
+        # installer would report success while the platform is unusable.
+        # Detect by probing ``docker context show`` for the Desktop
+        # context name; fall back to a LAN IP for non-Desktop runtimes.
+        local docker_ctx
+        docker_ctx=$(docker context show 2>/dev/null || echo "")
+        if [ "$docker_ctx" = "desktop-linux" ] || [ "$docker_ctx" = "default" ]; then
+            host_url="http://host.docker.internal:11434"
+        else
+            # Colima / Rancher Desktop / Lima — get the LAN IP that the
+            # VM can route to. ``ipconfig getifaddr en0`` is the canonical
+            # macOS one-liner for "the active interface's IPv4".
+            local host_ip
+            host_ip=$(ipconfig getifaddr en0 2>/dev/null \
+                      || ipconfig getifaddr en1 2>/dev/null \
+                      || echo "")
+            if [ -z "$host_ip" ]; then
+                handle_error "Could not detect a LAN IP for non-Docker-Desktop runtime ($docker_ctx). Re-run with --ollama-host=http://<your-LAN-IP>:11434."
+            fi
+            host_url="http://${host_ip}:11434"
+        fi
     else
         # Linux: containers can't reach the host via host.docker.internal
         # unless compose wires it. ``hostname -I`` (Linux-only) gives the

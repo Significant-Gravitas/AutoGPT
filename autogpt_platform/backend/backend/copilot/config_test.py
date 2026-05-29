@@ -561,6 +561,26 @@ class TestLocalAuxModels:
         assert cfg.simulation_model == "qwen3:4b"
         assert cfg.fast_advanced_model == "llama3.1:70b"
 
+    def test_non_default_cloud_slug_rewritten_under_local(self):
+        """Any ``provider/slug`` value is rewritten to ``fast_standard_model``
+        under local transport — not just the exact cloud default. Operators
+        who pinned a cloud slug (e.g. ``anthropic/claude-opus-4.6``) before
+        adding ``CHAT_USE_LOCAL=true`` would otherwise hit a 404 on the
+        first advanced-tier turn (``_validate_sdk_model_vendor_compatibility``
+        is skipped under local so nothing catches it at boot)."""
+        cfg = ChatConfig(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://h:11434/v1",
+            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            title_model="openai/gpt-4o-mini",
+            simulation_model="google/gemini-2.5-flash",
+            fast_advanced_model="anthropic/claude-opus-4.6",
+        )
+        assert cfg.title_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.simulation_model == "llama3.1:8b-instruct-q4_K_M"
+        assert cfg.fast_advanced_model == "llama3.1:8b-instruct-q4_K_M"
+
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
         operator might genuinely want gpt-4o-mini for titles even though
@@ -899,6 +919,23 @@ class TestAuxProviderLabel:
             aux_base_url=None,
         )
         assert cfg.aux_provider_label == "openai"
+
+    def test_local_transport_returns_ollama(self):
+        """Under local transport, aux falls back to main creds (the Ollama
+        URL). Without the explicit ``transport.name == 'local'`` short-circuit
+        the host-match cascade lands on the ``"openai"`` fallback, splitting
+        the admin dashboard's per-provider cost rollup between ``"openai"``
+        (title rows via this label) and ``"ollama"`` (turn rows via
+        ``transport.cost_log_provider``) for the same local-transport
+        deployment."""
+        cfg = ChatConfig(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://localhost:11434/v1",
+            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+        )
+        assert cfg.aux_provider_label == "ollama"
+        assert cfg.aux_provider_label == cfg.transport.cost_log_provider
 
 
 class TestAuxClientForDirectMainValidator:

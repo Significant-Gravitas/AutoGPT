@@ -14,7 +14,6 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings
 
-from backend.blocks.llm import LlmModel
 from backend.util.clients import OPENROUTER_BASE_URL
 
 
@@ -777,8 +776,15 @@ class ChatConfig(BaseSettings):
         """Cost-log ``provider`` label tracking the aux client's actual
         transport.
 
-        Three buckets:
+        Four buckets:
 
+        - ``"ollama"`` (or whatever the local transport's
+          ``cost_log_provider`` is) — local transport. Aux falls back to
+          main creds under local, so the host-match heuristics below
+          would otherwise mis-label the Ollama URL as ``"openai"`` and
+          split the admin dashboard's per-provider rollup between
+          ``"openai"`` (titles) and ``"ollama"`` (turns) for the same
+          deployment.
         - ``"open_router"`` — base URL points at OpenRouter.
         - ``"anthropic"`` — base URL points at api.anthropic.com.  A
           single-key direct-Anthropic deployment falls into this case
@@ -787,6 +793,8 @@ class ChatConfig(BaseSettings):
         - ``"openai"`` — anything else (custom OAI-compat endpoint,
           plain api.openai.com, ...).
         """
+        if self.transport.name == "local":
+            return self.transport.cost_log_provider
         _, base_url = self.aux_client_credentials
         if not base_url:
             return "openai"
@@ -1017,14 +1025,32 @@ class ChatConfig(BaseSettings):
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.
+
+        Overrides fire when the field still carries the cloud default
+        OR any other ``provider/slug`` form (slash-delimited vendor
+        prefix). The provider-prefix check catches operators who pinned
+        a cloud slug to a non-default value (e.g.
+        ``CHAT_FAST_ADVANCED_MODEL=anthropic/claude-opus-4.6``) before
+        switching to local — without it, the request-time 404 would
+        only surface on first use and ``_validate_sdk_model_vendor_compatibility``
+        is explicitly skipped under ``use_local=True`` so nothing
+        catches it at boot. Bare slugs without a slash
+        (``llama3.1:8b-instruct-q4_K_M``) are treated as deliberate
+        local-side overrides and left alone.
         """
         if not self.transport.inherit_fast_model_for_aux:
             return self
-        if self.title_model == _DEFAULT_TITLE_MODEL:
+
+        def _looks_like_cloud_slug(value: str, default: str) -> bool:
+            return value == default or "/" in value
+
+        if _looks_like_cloud_slug(self.title_model, _DEFAULT_TITLE_MODEL):
             object.__setattr__(self, "title_model", self.fast_standard_model)
-        if self.simulation_model == _DEFAULT_SIMULATION_MODEL:
+        if _looks_like_cloud_slug(self.simulation_model, _DEFAULT_SIMULATION_MODEL):
             object.__setattr__(self, "simulation_model", self.fast_standard_model)
-        if self.fast_advanced_model == _DEFAULT_FAST_ADVANCED_MODEL:
+        if _looks_like_cloud_slug(
+            self.fast_advanced_model, _DEFAULT_FAST_ADVANCED_MODEL
+        ):
             object.__setattr__(self, "fast_advanced_model", self.fast_standard_model)
         return self
 
