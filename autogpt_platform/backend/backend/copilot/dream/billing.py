@@ -108,6 +108,7 @@ async def check_dream_budget(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
+            skip_daily=True,
         )
     except RateLimitExceeded as exc:
         logger.info(
@@ -181,4 +182,7 @@ async def record_phase_cost(
             "dream_phase": phase_usage.phase,
             "execution_path": execution_path,
         },
+        # Dream is background work — it rolls up under the user's
+        # weekly cap but must not eat the interactive daily budget.
+        skip_daily=True,
     )

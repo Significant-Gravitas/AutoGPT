@@ -122,6 +122,7 @@ async def persist_and_record_usage(
     block_name_override: str | None = None,
     extra_metadata: dict | None = None,
     graph_exec_id_override: str | None = None,
+    skip_daily: bool = False,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -225,6 +226,7 @@ async def persist_and_record_usage(
         await record_cost_usage(
             user_id=user_id,
             cost_microdollars=cost_microdollars,
+            skip_daily=skip_daily,
         )
 
     # Log to PlatformCostLog for admin cost dashboard.
