@@ -188,15 +188,9 @@ class GetCurrentTimeBlock(Block):
         )
 
     async def run(
-        self,
-        input_data: Input,
-        *,
-        execution_context: ExecutionContext | None = None,
-        **kwargs,
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
-        effective_timezone = (
-            execution_context.user_timezone if execution_context else None
-        )
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)
@@ -304,15 +298,9 @@ class GetCurrentDateBlock(Block):
         )
 
     async def run(
-        self,
-        input_data: Input,
-        *,
-        execution_context: ExecutionContext | None = None,
-        **kwargs,
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
-        effective_timezone = (
-            execution_context.user_timezone if execution_context else None
-        )
+        effective_timezone = execution_context.user_timezone
 
         try:
             offset = int(input_data.offset)
@@ -416,15 +404,9 @@ class GetCurrentDateAndTimeBlock(Block):
         )
 
     async def run(
-        self,
-        input_data: Input,
-        *,
-        execution_context: ExecutionContext | None = None,
-        **kwargs,
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
-        effective_timezone = (
-            execution_context.user_timezone if execution_context else None
-        )
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)

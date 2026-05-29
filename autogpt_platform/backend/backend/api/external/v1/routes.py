@@ -19,6 +19,7 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.execution import ExecutionContext
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -26,6 +27,7 @@ from backend.executor.utils import (
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .integrations import integrations_router
 from .tools import tools_router
@@ -112,8 +114,20 @@ async def execute_graph_block(
             status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
         ) from e
 
+    user = await user_db.get_user_by_id(auth.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=auth.user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     output = defaultdict(list)
-    async for name, data in obj.execute(data):
+    async for name, data in obj.execute(data, execution_context=execution_context):
         output[name].append(data)
     return output
 

@@ -683,9 +683,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             uiType=self.block_type.value,
         )
 
-    async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+    async def execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
         try:
-            async for output_name, output_data in self._execute(input_data, **kwargs):
+            async for output_name, output_data in self._execute(
+                input_data, execution_context=execution_context, **kwargs
+            ):
                 yield output_name, output_data
         except Exception as ex:
             if isinstance(ex, BlockError):
@@ -767,21 +775,19 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
         return False, reviewed_data
 
-    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Check for review requirement only if running within a graph execution context
-        # Direct block execution (e.g., from chat) skips the review process
-        has_graph_context = all(
-            key in kwargs
-            for key in (
-                "node_exec_id",
-                "graph_exec_id",
-                "graph_id",
-                "execution_context",
-            )
-        )
-        if has_graph_context:
+    async def _execute(
+        self,
+        input_data: BlockInput,
+        *,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> BlockOutput:
+        # Review is only meaningful inside a graph execution. Direct block
+        # execution (e.g. from the /blocks/{id}/execute API) has no graph
+        # context and skips the review path.
+        if execution_context.graph_exec_id is not None:
             should_pause, input_data = await self.is_block_exec_need_review(
-                input_data, **kwargs
+                input_data, execution_context=execution_context, **kwargs
             )
             if should_pause:
                 return
@@ -791,7 +797,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # that would fail JSON schema required checks.  We still validate the
         # non-credential fields so blocks that execute for real during dry-run
         # (e.g. AgentExecutorBlock) get proper input validation.
-        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
+        is_dry_run = execution_context.dry_run
         if is_dry_run:
             # Credential fields may be absent (LLM-built agents often skip
             # wiring them) or nullified earlier in the pipeline. Validate
@@ -874,6 +880,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            execution_context=execution_context,
             **kwargs,
         ):
             if output_name == "error":

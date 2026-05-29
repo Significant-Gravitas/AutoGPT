@@ -88,6 +88,7 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
@@ -503,13 +504,21 @@ async def execute_graph_block(
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
