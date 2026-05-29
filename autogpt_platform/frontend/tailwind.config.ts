@@ -203,6 +203,10 @@ const config = {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
         },
+        "progress-bar": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -219,6 +223,8 @@ const config = {
         shake: "shake 0.5s ease-in-out",
         aurora: "aurora 60s linear infinite",
         "marquee-x": "marquee-x 40s linear infinite",
+        "progress-bar":
+          "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
       },
       transitionDuration: {
         "2000": "2000ms",

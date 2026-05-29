@@ -1,42 +1,87 @@
-import { useState } from "react";
-import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { useEffect, useState } from "react";
+import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
 export type OriginFilter = "all" | "builder" | "autopilot";
+
+const SEARCH_DEBOUNCE_MS = 250;
+const ARTIFACTS_PAGE_SIZE = 50;
+
+type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
 export function useArtifactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
 
-  const trimmedSearch = searchTerm.trim();
-
-  const { data, isLoading, isError, error } = useListWorkspaceFiles(
-    {
-      limit: 1000,
-      q: trimmedSearch || undefined,
-      origin: originFilter === "all" ? undefined : originFilter,
-    },
-    {
-      query: {
-        select: (res) =>
-          res.status === 200
-            ? (res.data.files ?? [])
-            : ([] as WorkspaceFileItem[]),
-        // Reduce flicker when the user types — keep the previous page of
-        // results visible until the new query lands.
-        placeholderData: (prev) => prev,
-      },
-    },
+  const debouncedSearch = useDebouncedValue(
+    searchTerm.trim(),
+    SEARCH_DEBOUNCE_MS,
   );
 
+  const q = debouncedSearch || undefined;
+  const origin = originFilter === "all" ? undefined : originFilter;
+
+  const query = useInfiniteQuery({
+    queryKey: [
+      "artifacts",
+      "list",
+      { q: q ?? null, origin: origin ?? null },
+    ] as const,
+    queryFn: ({ pageParam }) =>
+      listWorkspaceFiles({
+        limit: ARTIFACTS_PAGE_SIZE,
+        offset: pageParam,
+        q,
+        origin,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.status !== 200) return undefined;
+      if (!lastPage.data.has_more) return undefined;
+      return countLoadedFiles(allPages);
+    },
+  });
+
   return {
-    files: data ?? [],
-    isLoading,
-    isError,
-    error,
+    files: flattenFiles(query.data),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
     searchTerm,
     setSearchTerm,
     originFilter,
     setOriginFilter,
+    hasMore: !!query.hasNextPage,
+    isLoadingMore: query.isFetchingNextPage,
+    loadMore: () => {
+      query.fetchNextPage();
+    },
   };
+}
+
+function flattenFiles(
+  data: InfiniteData<ListPage> | undefined,
+): WorkspaceFileItem[] {
+  if (!data) return [];
+  return data.pages.flatMap((page) =>
+    page.status === 200 ? (page.data.files ?? []) : [],
+  );
+}
+
+function countLoadedFiles(pages: ListPage[]): number {
+  return pages.reduce(
+    (acc, page) =>
+      acc + (page.status === 200 ? (page.data.files?.length ?? 0) : 0),
+    0,
+  );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(handle);
+  }, [value, delayMs]);
+  return debounced;
 }
