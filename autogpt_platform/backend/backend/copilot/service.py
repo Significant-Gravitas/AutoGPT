@@ -646,13 +646,14 @@ async def _generate_session_title(
 
         # Route through the shared providers helper so future provider
         # work (flex tier, new SDK upgrades, etc.) propagates here
-        # without a parallel migration. ``LangfuseAsyncOpenAI`` is
-        # passed via ``client_factory`` so the title-gen span lands in
-        # the same trace tree as the originating chat turn.
-        aux_api_key, aux_base_url = config.aux_client_credentials
+        # without a parallel migration. Pass the cached
+        # ``_get_aux_client()`` singleton (a Langfuse-wrapped
+        # AsyncOpenAI) so the title-gen span lands in the same trace
+        # tree as the originating chat turn AND the httpx connection
+        # pool stays warm across calls — building a fresh client per
+        # title would cost a TCP+TLS handshake every session.
         response = await call_provider_openai_compat_sync(
-            base_url=aux_base_url,
-            api_key=aux_api_key,
+            client=_get_aux_client(),
             model=title_model,
             messages=[
                 {
@@ -667,7 +668,6 @@ async def _generate_session_title(
             ],
             max_tokens=20,
             extra_body=extra_body or None,
-            client_factory=LangfuseAsyncOpenAI,
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")

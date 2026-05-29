@@ -157,56 +157,40 @@ export function useMemoryVisualizer() {
   });
 
   // --- Status pollers (GET → JobStatusResponse) ----------------------------
+  //
+  // refetchInterval stops on terminal state OR on query error so a 5xx
+  // status endpoint doesn't pin the button as forever-in-flight. The
+  // useTerminalEffect handlers below also react to the error path so
+  // the toast fires + the active job id clears.
+
+  const pollOptions = {
+    refetchInterval: (query: {
+      state: { data?: { data?: JobStatusResponse | unknown }; status: string };
+    }) => {
+      if (query.state.status === "error") return false;
+      const state = (query.state.data?.data as JobStatusResponse | undefined)
+        ?.state;
+      return isTerminal(state) ? false : POLL_INTERVAL_MS;
+    },
+    staleTime: 0,
+  };
 
   const dreamStatus = useGetV2GetDreamPassStatus(
     USER_ID,
     activeDreamJobId ?? "",
-    {
-      query: {
-        enabled: !!activeDreamJobId,
-        refetchInterval: (query) =>
-          isTerminal(
-            (query.state.data?.data as JobStatusResponse | undefined)?.state,
-          )
-            ? false
-            : POLL_INTERVAL_MS,
-        staleTime: 0,
-      },
-    },
+    { query: { enabled: !!activeDreamJobId, ...pollOptions } },
   );
 
   const nightlyStatus = useGetV2GetNightlyBatchStatus(
     USER_ID,
     activeNightlyJobId ?? "",
-    {
-      query: {
-        enabled: !!activeNightlyJobId,
-        refetchInterval: (query) =>
-          isTerminal(
-            (query.state.data?.data as JobStatusResponse | undefined)?.state,
-          )
-            ? false
-            : POLL_INTERVAL_MS,
-        staleTime: 0,
-      },
-    },
+    { query: { enabled: !!activeNightlyJobId, ...pollOptions } },
   );
 
   const rebuildStatus = useGetV2GetCommunityRebuildStatus(
     USER_ID,
     activeRebuildJobId ?? "",
-    {
-      query: {
-        enabled: !!activeRebuildJobId,
-        refetchInterval: (query) =>
-          isTerminal(
-            (query.state.data?.data as JobStatusResponse | undefined)?.state,
-          )
-            ? false
-            : POLL_INTERVAL_MS,
-        staleTime: 0,
-      },
-    },
+    { query: { enabled: !!activeRebuildJobId, ...pollOptions } },
   );
 
   // --- Terminal-state handlers --------------------------------------------
@@ -219,6 +203,7 @@ export function useMemoryVisualizer() {
     "Dream pass",
     activeDreamJobId,
     dreamStatus.data?.data as JobStatusResponse | undefined,
+    dreamStatus.error,
     () => {
       setActiveDreamJobId(undefined);
       queryClient.invalidateQueries({
@@ -238,6 +223,7 @@ export function useMemoryVisualizer() {
     "Nightly batch",
     activeNightlyJobId,
     nightlyStatus.data?.data as JobStatusResponse | undefined,
+    nightlyStatus.error,
     () => {
       setActiveNightlyJobId(undefined);
       queryClient.invalidateQueries({
@@ -260,6 +246,7 @@ export function useMemoryVisualizer() {
     "Community rebuild",
     activeRebuildJobId,
     rebuildStatus.data?.data as JobStatusResponse | undefined,
+    rebuildStatus.error,
     () => {
       setActiveRebuildJobId(undefined);
       queryClient.invalidateQueries({
@@ -346,14 +333,32 @@ function useTerminalEffect(
   label: string,
   activeJobId: string | undefined,
   status: JobStatusResponse | undefined,
+  queryError: unknown,
   onTerminal: () => void,
   toast: ReturnType<typeof useToast>["toast"],
 ) {
-  // Reacts to ``status`` transitioning to a terminal state. Only fires
-  // when we have an active job — protects against late polls from a
-  // prior run.
+  // Reacts to ``status`` transitioning to a terminal state OR the
+  // status-endpoint poll erroring out. Only fires when we have an
+  // active job — protects against late polls from a prior run.
   useEffect(() => {
-    if (!activeJobId || !status) return;
+    if (!activeJobId) return;
+
+    // GET /status itself failed (5xx, auth drop, network) — clear the
+    // active job id so the button reactivates and the user can retry,
+    // rather than spinning forever on a broken endpoint.
+    if (queryError && !status) {
+      toast({
+        title: `${label} status unavailable`,
+        description: String(
+          (queryError as { message?: string } | null)?.message ?? queryError,
+        ),
+        variant: "destructive",
+      });
+      onTerminal();
+      return;
+    }
+
+    if (!status) return;
     if (!isTerminal(status.state)) return;
 
     if (status.state === "complete") {
@@ -371,9 +376,10 @@ function useTerminalEffect(
     onTerminal();
     // ``onTerminal`` and ``toast`` are intentionally omitted — they
     // change on every render and would cause infinite re-runs. The
-    // job_id + state transition is what we want to react to.
+    // job_id + state transition + query error are what we want to
+    // react to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeJobId, status?.state]);
+  }, [activeJobId, status?.state, queryError]);
 }
 
 function completionSummary(status: JobStatusResponse): string {

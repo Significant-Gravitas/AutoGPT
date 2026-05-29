@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
@@ -55,17 +56,12 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     setupBaseHandlers();
     render(<MemoryVisualizer />);
 
-    expect(
-      await screen.findByRole("button", { name: /rebuild communities/i }),
-    ).toBeDefined();
-    expect(
-      await screen.findByRole("button", { name: /dream pass/i }),
-    ).toBeDefined();
-    await waitFor(() => {
-      expect(
-        screen.queryByText((c) => /12/.test(c) && /entit/i.test(c)),
-      ).toBeDefined();
-    });
+    await screen.findByRole("button", { name: /rebuild communities/i });
+    await screen.findByRole("button", { name: /dream pass/i });
+    // Overview chip is rendered as two adjacent elements ("12" + "Entities"),
+    // so assert each label individually.
+    await screen.findByText("12");
+    await screen.findByText(/^Entities$/i);
   });
 
   test("clicking 'Rebuild communities' → 202 + polled status flips button label", async () => {
@@ -92,11 +88,9 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
 
     // After the 202 lands, the active job id is set and the poll
     // sees state=running with current_phase=rebuild → label morphs.
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /rebuild…/i }),
-      ).toBeDefined();
-    });
+    // findByRole throws if the morphed label never appears, so this
+    // genuinely fails on a broken poll loop.
+    await screen.findByRole("button", { name: /rebuild…/i });
   });
 
   test("clicking 'Dream pass' → 202 + polled status shows phase in label", async () => {
@@ -119,12 +113,39 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     const btn = await screen.findByRole("button", { name: /dream pass/i });
     await userEvent.click(btn);
 
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", {
-          name: /batch submitted \(consolidate\)/i,
-        }),
-      ).toBeDefined();
+    await screen.findByRole("button", {
+      name: /batch submitted \(consolidate\)/i,
     });
+  });
+
+  test("status-endpoint 500 stops polling + reactivates the dream button", async () => {
+    setupBaseHandlers();
+    server.use(
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-err",
+        state: "queued",
+      }),
+      // Status endpoint flakes — the poll loop must stop and the
+      // button must come back, not spin forever.
+      http.get("*/api/admin/memory/:userId/dream/:jobId", () =>
+        HttpResponse.json({ error: "boom" }, { status: 500 }),
+      ),
+    );
+    render(<MemoryVisualizer />);
+    const btn = await screen.findByRole("button", { name: /dream pass/i });
+    await userEvent.click(btn);
+
+    // The trigger button reactivates to its idle label after the
+    // status endpoint fails — proves the active job id was cleared.
+    await waitFor(
+      async () => {
+        const idle = await screen.findByRole("button", { name: /dream pass/i });
+        // The label morphs to "Dreaming…" briefly while we're between
+        // the POST and the error; check exact-match to the idle text.
+        expect(idle.textContent?.trim()).toBe("Dream pass");
+      },
+      { timeout: 5_000 },
+    );
   });
 });

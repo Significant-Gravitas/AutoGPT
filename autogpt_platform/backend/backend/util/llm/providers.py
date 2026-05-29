@@ -783,7 +783,7 @@ async def call_provider_stream(
     stream_options: dict[str, Any] | None = None,
     tools: list[dict] | None = None,
     max_tokens: int | openai.Omit = openai.omit,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout: float | openai.Omit = openai.omit,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> StreamResponse:
     """Open an OpenAI-compatible streaming chat completion and return
@@ -802,11 +802,14 @@ async def call_provider_stream(
     client. Default factory is ``openai.AsyncOpenAI`` — callers
     needing Langfuse spans pass the wrapped subclass.
 
-    Does NOT wrap the call in ``asyncio.wait_for`` — a streaming chat
-    request can legitimately run for minutes (long reasoning, large
-    tool-call payloads) and the streaming protocol already exposes
-    keepalive failures via chunk timeouts. The caller's outer cancel
-    scope is the right place to bound total time.
+    Does NOT wrap the call in ``asyncio.wait_for`` and defaults
+    ``timeout`` to ``openai.omit`` so the SDK / client's own per-request
+    default applies. A streaming chat request can legitimately run
+    minutes (long reasoning, large tool-call payloads) and the
+    streaming protocol already exposes keepalive failures via chunk
+    timeouts; the caller's outer cancel scope is the right place to
+    bound total time. Pass an explicit ``timeout`` only when you
+    really mean per-request inter-chunk read timeout.
     """
     sanitize_messages_for_utf8(messages)
     if client is None:
@@ -820,8 +823,9 @@ async def call_provider_stream(
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "stream": True,
-        "timeout": timeout_seconds,
     }
+    if not isinstance(timeout, openai.Omit):
+        create_kwargs["timeout"] = timeout
     # Only set ``max_tokens`` when the caller passed a real value. Some
     # transports (OpenRouter on thinking routes) inject their own
     # default and 400 on a redundant client-side limit, so the chat

@@ -472,6 +472,18 @@ class TestGenerateSessionTitle:
     """``_generate_session_title`` returns ``(title, response)`` — the
     caller owns both the persist and the cost-record decisions."""
 
+    @pytest.fixture(autouse=True)
+    def _stub_aux_client(self):
+        """Every title-gen test mocks ``call_provider_openai_compat_sync``,
+        but ``_generate_session_title`` still calls ``_get_aux_client()``
+        before reaching the helper. Stub that out so tests don't try to
+        instantiate a real LangfuseAsyncOpenAI from test-env config."""
+        with patch(
+            "backend.copilot.service._get_aux_client",
+            return_value=MagicMock(name="aux_client_stub"),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_valid_response_returns_cleaned_title_and_response(self):
         # Code strips whitespace, then strips ``"'`` — whitespace inside
@@ -566,7 +578,6 @@ class TestGenerateSessionTitle:
                 MagicMock(
                     aux_uses_openrouter=True,
                     title_model="anthropic/claude-haiku",
-                    aux_client_credentials=("ork-test", "https://openrouter.ai/api/v1"),
                 ),
             ),
         ):
@@ -598,7 +609,6 @@ class TestGenerateSessionTitle:
                     aux_uses_openrouter=False,
                     aux_provider_label="anthropic",
                     title_model="anthropic/claude-haiku-4.5",
-                    aux_client_credentials=("sk-ant", "https://api.anthropic.com/v1"),
                 ),
             ),
         ):
@@ -624,7 +634,6 @@ class TestGenerateSessionTitle:
                     aux_uses_openrouter=True,
                     aux_provider_label="open_router",
                     title_model="anthropic/claude-haiku-4.5",
-                    aux_client_credentials=("ork", "https://openrouter.ai/api/v1"),
                 ),
             ),
         ):
@@ -652,7 +661,6 @@ class TestGenerateSessionTitle:
                 MagicMock(
                     aux_uses_openrouter=False,
                     title_model="anthropic/claude-haiku",
-                    aux_client_credentials=("sk-ant", "https://api.anthropic.com/v1"),
                 ),
             ),
         ):

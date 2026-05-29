@@ -129,6 +129,70 @@ class TestExecutionModeStubs:
         assert captured.get("extra_body") == {"service_tier": "flex"}
 
     @pytest.mark.asyncio
+    async def test_flex_mode_passes_service_tier_via_openrouter_extra_body(
+        self,
+    ):
+        """OpenRouter forwards ``service_tier`` to OpenAI/Google upstreams
+        via ``extra_body``. The merge with the OpenRouter-extras
+        ``usage.include`` block must keep both keys — neither overrides
+        the other."""
+        from backend.util.llm.providers import _call_openai_compat
+
+        captured: dict[str, object] = {}
+
+        class _StubCompletions:
+            async def create(self, **kwargs):
+                captured.update(kwargs)
+                msg = MagicMock()
+                msg.content = ""
+                choice = MagicMock()
+                choice.message = msg
+                resp = MagicMock()
+                resp.choices = [choice]
+                resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+                return resp
+
+        class _StubClient:
+            def __init__(self, *args, **kwargs):
+                self.chat = SimpleNamespace(completions=_StubCompletions())
+
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
+        ), patch(
+            "backend.util.llm.providers._extract_openai_compat_cache_tokens",
+            return_value=(0, 0),
+        ), patch(
+            "backend.util.llm.providers.extract_openai_tool_calls",
+            return_value=None,
+        ), patch(
+            "backend.util.llm.providers.extract_openai_reasoning",
+            return_value=None,
+        ), patch(
+            "backend.util.llm.providers.extract_openrouter_cost",
+            return_value=None,
+        ):
+            await _call_openai_compat(
+                base_url="https://openrouter.ai/api/v1",
+                model="openai/gpt-4o",
+                api_key="ork-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                tools=None,
+                force_json_output=False,
+                parallel_tool_calls=False,
+                timeout_seconds=30.0,
+                include_openrouter_extras=True,
+                service_tier="flex",
+            )
+
+        extra_body = captured.get("extra_body")
+        assert isinstance(extra_body, dict)
+        assert extra_body.get("service_tier") == "flex"
+        # OpenRouter cost-include must survive the merge — losing it
+        # silently disables cost-based rate limiting on flex turns.
+        assert extra_body.get("usage") == {"include": True}
+
+    @pytest.mark.asyncio
     async def test_flex_mode_falls_through_to_sync_for_unsupported_provider(
         self, caplog
     ):
