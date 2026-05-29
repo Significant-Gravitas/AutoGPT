@@ -1,9 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { DreamPassResponse } from "@/app/api/__generated__/models/dreamPassResponse";
-import type { NightlyBatchResponse } from "@/app/api/__generated__/models/nightlyBatchResponse";
-import type { RebuildResponse } from "@/app/api/__generated__/models/rebuildResponse";
+import type { JobStatusResponse } from "@/app/api/__generated__/models/jobStatusResponse";
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
@@ -15,23 +13,23 @@ export function MemoryVisualizer() {
     overviewData,
     graph,
     graphData,
-    rebuild,
     triggerRebuild,
-    rebuildData,
-    dream,
     triggerDream,
-    dreamData,
     ratification,
     triggerRatification,
-    nightly,
     triggerNightly,
-    nightlyData,
     force,
     setForce,
     includeEpisodes,
     setIncludeEpisodes,
     includeCommunities,
     setIncludeCommunities,
+    dreamStatusData,
+    nightlyStatusData,
+    rebuildStatusData,
+    activeDreamJobId,
+    activeNightlyJobId,
+    activeRebuildJobId,
   } = useMemoryVisualizer();
 
   // Per-label / per-relationship visibility toggles. Selected via a Set
@@ -89,16 +87,16 @@ export function MemoryVisualizer() {
 
       <ControlBar
         onRebuild={triggerRebuild}
-        rebuildPending={rebuild.isPending}
-        rebuildResult={rebuildData}
+        rebuildActiveJobId={activeRebuildJobId}
+        rebuildStatus={rebuildStatusData}
         onDream={triggerDream}
-        dreamPending={dream.isPending}
-        dreamResult={dreamData}
+        dreamActiveJobId={activeDreamJobId}
+        dreamStatus={dreamStatusData}
         onRatification={triggerRatification}
         ratificationPending={ratification.isPending}
         onNightly={triggerNightly}
-        nightlyPending={nightly.isPending}
-        nightlyResult={nightlyData}
+        nightlyActiveJobId={activeNightlyJobId}
+        nightlyStatus={nightlyStatusData}
         force={force}
         setForce={setForce}
         includeEpisodes={includeEpisodes}
@@ -110,7 +108,7 @@ export function MemoryVisualizer() {
         edgeCount={edges.length}
       />
 
-      <DreamResultPanel result={dreamData} />
+      <DreamResultPanel status={dreamStatusData} />
 
       <div className="grid grid-cols-12 gap-4">
         <Sidebar
@@ -214,16 +212,16 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
 
 interface ControlBarProps {
   onRebuild: () => void;
-  rebuildPending: boolean;
-  rebuildResult: RebuildResponse | undefined;
+  rebuildActiveJobId: string | undefined;
+  rebuildStatus: JobStatusResponse | undefined;
   onDream: () => void;
-  dreamPending: boolean;
-  dreamResult: DreamPassResponse | undefined;
+  dreamActiveJobId: string | undefined;
+  dreamStatus: JobStatusResponse | undefined;
   onRatification: () => void;
   ratificationPending: boolean;
   onNightly: () => void;
-  nightlyPending: boolean;
-  nightlyResult: NightlyBatchResponse | undefined;
+  nightlyActiveJobId: string | undefined;
+  nightlyStatus: JobStatusResponse | undefined;
   force: boolean;
   setForce: (v: boolean) => void;
   includeEpisodes: boolean;
@@ -237,16 +235,16 @@ interface ControlBarProps {
 
 function ControlBar({
   onRebuild,
-  rebuildPending,
-  rebuildResult,
+  rebuildActiveJobId,
+  rebuildStatus,
   onDream,
-  dreamPending,
-  dreamResult,
+  dreamActiveJobId,
+  dreamStatus,
   onRatification,
   ratificationPending,
   onNightly,
-  nightlyPending,
-  nightlyResult,
+  nightlyActiveJobId,
+  nightlyStatus,
   force,
   setForce,
   includeEpisodes,
@@ -257,15 +255,20 @@ function ControlBar({
   nodeCount,
   edgeCount,
 }: ControlBarProps) {
+  const rebuildActive = !!rebuildActiveJobId;
+  const dreamActive = !!dreamActiveJobId;
+  const nightlyActive = !!nightlyActiveJobId;
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md border bg-white p-3 text-sm">
       <button
         type="button"
         onClick={onRebuild}
-        disabled={rebuildPending}
+        disabled={rebuildActive}
         className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {rebuildPending ? "Rebuilding…" : "Rebuild communities"}
+        {rebuildActive
+          ? jobButtonLabel(rebuildStatus, "Rebuilding…")
+          : "Rebuild communities"}
       </button>
       <label className="flex items-center gap-2 text-gray-700">
         <input
@@ -279,11 +282,11 @@ function ControlBar({
       <button
         type="button"
         onClick={onDream}
-        disabled={dreamPending}
+        disabled={dreamActive}
         className="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
         title="Run ONLY the dream pass (consolidate → recombine → sanitize) — skips community rebuild and ratification."
       >
-        {dreamPending ? "Dreaming…" : "Dream pass"}
+        {dreamActive ? jobButtonLabel(dreamStatus, "Dreaming…") : "Dream pass"}
       </button>
       <button
         type="button"
@@ -297,11 +300,13 @@ function ControlBar({
       <button
         type="button"
         onClick={onNightly}
-        disabled={nightlyPending}
+        disabled={nightlyActive}
         className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
         title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
       >
-        {nightlyPending ? "Running nightly…" : "Nightly batch"}
+        {nightlyActive
+          ? jobButtonLabel(nightlyStatus, "Running nightly…")
+          : "Nightly batch"}
       </button>
       <span className="mx-2 h-5 border-l border-gray-200" />
       <label className="flex items-center gap-2 text-gray-700">
@@ -327,40 +332,54 @@ function ControlBar({
             truncated
           </span>
         )}
-        {rebuildResult && (
+        {rebuildActive && rebuildStatus && (
           <span className="ml-2">
-            last rebuild:{" "}
-            {rebuildResult.skipped
-              ? `skipped (${rebuildResult.skip_reason})`
-              : `${rebuildResult.elapsed_seconds?.toFixed(1)}s`}
+            rebuild: {jobStateSummary(rebuildStatus)}
           </span>
         )}
-        {dreamResult && (
-          <span className="ml-2">
-            last dream:{" "}
-            {dreamResult.skipped
-              ? `skipped (${dreamResult.skip_reason})`
-              : dreamResult.error
-                ? "errored"
-                : `${dreamResult.elapsed_seconds?.toFixed(1)}s` +
-                  ` (w=${dreamResult.consolidated_count}` +
-                  ` p=${dreamResult.proposal_count}` +
-                  ` d=${dreamResult.demotion_count})`}
-          </span>
+        {dreamActive && dreamStatus && (
+          <span className="ml-2">dream: {jobStateSummary(dreamStatus)}</span>
         )}
-        {nightlyResult && (
+        {nightlyActive && nightlyStatus && (
           <span className="ml-2">
-            last nightly:{" "}
-            {nightlyResult.skipped
-              ? `skipped (${nightlyResult.skip_reason})`
-              : nightlyResult.error
-                ? "errored"
-                : `${nightlyResult.elapsed_seconds?.toFixed(1)}s`}
+            nightly: {jobStateSummary(nightlyStatus)}
           </span>
         )}
       </span>
     </div>
   );
+}
+
+function jobButtonLabel(
+  status: JobStatusResponse | undefined,
+  fallback: string,
+): string {
+  if (!status) return fallback;
+  if (status.state === "submitted") {
+    return status.current_phase
+      ? `Batch submitted (${status.current_phase})…`
+      : "Batch submitted…";
+  }
+  if (status.current_phase) {
+    return `${capitalize(status.current_phase)}…`;
+  }
+  return fallback;
+}
+
+function jobStateSummary(status: JobStatusResponse): string {
+  if (status.state === "running" && status.current_phase) {
+    return `${status.state} (${status.current_phase})`;
+  }
+  if (status.state === "submitted") {
+    return status.current_phase
+      ? `batch • ${status.current_phase}`
+      : "batch submitted";
+  }
+  return status.state;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 interface SidebarProps {
@@ -471,19 +490,31 @@ interface DetailPanelProps {
 }
 
 interface DreamResultPanelProps {
-  result: DreamPassResponse | undefined;
+  status: JobStatusResponse | undefined;
 }
 
-function DreamResultPanel({ result }: DreamResultPanelProps) {
+function DreamResultPanel({ status }: DreamResultPanelProps) {
+  if (!status || status.state !== "complete") return null;
+  const result = status.result as Record<string, unknown> | null | undefined;
   if (!result) return null;
-  if (result.skipped || result.error) return null;
+  // Only the sync_baseline path puts operations + usage on the result.
+  // For the anthropic_batch path the callback writes a smaller summary
+  // (pass_id + stats), so we just hide the panel — the graph itself
+  // refreshes via cache invalidation when the job completes.
+  const operations = result.operations as
+    | Parameters<typeof DreamOperationsView>[0]["operations"]
+    | undefined;
+  const usage = result.usage as
+    | Parameters<typeof DreamUsageSummary>[0]["usage"]
+    | undefined;
+  if (!operations || !usage) return null;
   return (
     <div
       className="grid grid-cols-1 gap-3 lg:grid-cols-2"
       data-testid="dream-result-panel"
     >
-      <DreamOperationsView operations={result.operations} />
-      <DreamUsageSummary usage={result.usage} />
+      <DreamOperationsView operations={operations} />
+      <DreamUsageSummary usage={usage} />
     </div>
   );
 }

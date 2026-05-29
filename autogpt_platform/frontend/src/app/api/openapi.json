@@ -904,7 +904,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Rebuild Communities",
-        "description": "Trigger an immediate community rebuild for the user.\n\nForwards to ``Scheduler.execute_community_rebuild_pass``. The\nactivity gate inside ``rebuild_communities_for_user`` is honoured\nby default — pass ``?force=true`` to bypass it.",
+        "description": "Fire a community rebuild and return 202 + job_id immediately.\n\nFrontend polls\n``GET /api/admin/memory/{user_id}/communities/rebuild/{job_id}``\nfor progress.",
         "operationId": "postV2RebuildCommunities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -925,11 +925,65 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Bypass the activity gate — rebuilds even on unchanged graph.",
+              "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper.",
               "default": false,
               "title": "Force"
             },
-            "description": "Bypass the activity gate — rebuilds even on unchanged graph."
+            "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/communities/rebuild/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Community Rebuild Status",
+        "description": "Read the current status of a fire-and-forget community rebuild job.",
+        "operationId": "getV2GetCommunityRebuildStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
           }
         ],
         "responses": {
@@ -937,7 +991,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/RebuildResponse" }
+                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
               }
             }
           },
@@ -959,7 +1013,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Dream Pass",
-        "description": "Trigger an on-demand dream pass for the user (in isolation).\n\nForwards to ``Scheduler.execute_dream_pass_now``. Runs ONLY the\ndream pass submitter — does NOT run community rebuild or\nratification. For the full nightly fan-out (matching what the\n03:00 cron does), use ``POST /{user_id}/nightly`` instead.",
+        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter — for the full\nnightly fan-out use ``POST /{user_id}/nightly``.",
         "operationId": "postV2TriggerDreamPass",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -976,11 +1030,65 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/dream/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Dream Pass Status",
+        "description": "Read the current status of a fire-and-forget dream pass job.",
+        "operationId": "getV2GetDreamPassStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
+          }
+        ],
+        "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/DreamPassResponse" }
+                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
               }
             }
           },
@@ -1217,7 +1325,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Nightly Batch",
-        "description": "Trigger the full nightly batch fan-out for the user.\n\nForwards to ``Scheduler.execute_nightly_batch_now``. Runs every\nenabled batch-family submitter in sequence (dream pass +\nratification sweep today; future P2/P3/P4/P11 stages as they\nland). One pre-flight billing check; per-submitter cost log rows\nshare the same ``nightly_id`` for downstream attribution.\n\nEquivalent to what the 03:00 cron does — use this when you want\nto exercise the full nightly composition on demand.",
+        "description": "Fire the full nightly batch fan-out and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/nightly/{job_id}``\nfor progress. Same composition as the 03:00 cron — every enabled\nbatch-family submitter runs in sequence sharing one ``nightly_id``\nfor cost-log attribution.",
         "operationId": "postV2TriggerNightlyBatch",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1234,13 +1342,65 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/nightly/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Nightly Batch Status",
+        "description": "Read the current status of a fire-and-forget nightly batch job.",
+        "operationId": "getV2GetNightlyBatchStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
+          }
+        ],
+        "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NightlyBatchResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/JobStatusResponse" }
               }
             }
           },
@@ -12093,252 +12253,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "DreamDemotionSummaryResponse": {
-        "properties": {
-          "edge_uuid": { "type": "string", "title": "Edge Uuid" },
-          "reason": { "type": "string", "title": "Reason" },
-          "new_status": { "type": "string", "title": "New Status" },
-          "applied": { "type": "boolean", "title": "Applied", "default": true }
-        },
-        "type": "object",
-        "required": ["edge_uuid", "reason", "new_status"],
-        "title": "DreamDemotionSummaryResponse"
-      },
-      "DreamEntityInvalidationSummaryResponse": {
-        "properties": {
-          "entity_uuid": { "type": "string", "title": "Entity Uuid" },
-          "reason": { "type": "string", "title": "Reason" },
-          "edges_touched": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Edges Touched"
-          }
-        },
-        "type": "object",
-        "required": ["entity_uuid", "reason"],
-        "title": "DreamEntityInvalidationSummaryResponse"
-      },
-      "DreamOperationsSnapshotResponse": {
-        "properties": {
-          "writes": {
-            "items": {
-              "$ref": "#/components/schemas/DreamWriteSummaryResponse"
-            },
-            "type": "array",
-            "title": "Writes"
-          },
-          "proposals": {
-            "items": {
-              "$ref": "#/components/schemas/DreamWriteSummaryResponse"
-            },
-            "type": "array",
-            "title": "Proposals"
-          },
-          "demotions": {
-            "items": {
-              "$ref": "#/components/schemas/DreamDemotionSummaryResponse"
-            },
-            "type": "array",
-            "title": "Demotions"
-          },
-          "entity_invalidations": {
-            "items": {
-              "$ref": "#/components/schemas/DreamEntityInvalidationSummaryResponse"
-            },
-            "type": "array",
-            "title": "Entity Invalidations"
-          }
-        },
-        "type": "object",
-        "title": "DreamOperationsSnapshotResponse"
-      },
-      "DreamPassResponse": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "pass_id": { "type": "string", "title": "Pass Id" },
-          "started_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Started At"
-          },
-          "completed_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Completed At"
-          },
-          "elapsed_seconds": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Elapsed Seconds"
-          },
-          "execution_path": {
-            "type": "string",
-            "title": "Execution Path",
-            "default": "sync_baseline"
-          },
-          "consolidated_count": {
-            "type": "integer",
-            "title": "Consolidated Count",
-            "default": 0
-          },
-          "proposal_count": {
-            "type": "integer",
-            "title": "Proposal Count",
-            "default": 0
-          },
-          "demotion_count": {
-            "type": "integer",
-            "title": "Demotion Count",
-            "default": 0
-          },
-          "entity_invalidation_count": {
-            "type": "integer",
-            "title": "Entity Invalidation Count",
-            "default": 0
-          },
-          "summary_for_user": {
-            "type": "string",
-            "title": "Summary For User",
-            "default": ""
-          },
-          "dream_session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dream Session Id"
-          },
-          "operations": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DreamOperationsSnapshotResponse"
-              },
-              { "type": "null" }
-            ]
-          },
-          "usage": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/DreamPassUsageResponse" },
-              { "type": "null" }
-            ]
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          },
-          "skipped": {
-            "type": "boolean",
-            "title": "Skipped",
-            "default": false
-          },
-          "skip_reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Skip Reason"
-          }
-        },
-        "type": "object",
-        "required": ["user_id", "pass_id"],
-        "title": "DreamPassResponse",
-        "description": "Mirror of ``DreamPassResult`` from the dream orchestrator.\n\nKept duplicated rather than importing the source model so the\nadmin route stays loosely-coupled to the dream module's internals."
-      },
-      "DreamPassUsageResponse": {
-        "properties": {
-          "phases": {
-            "items": { "$ref": "#/components/schemas/DreamPhaseUsageResponse" },
-            "type": "array",
-            "title": "Phases"
-          },
-          "total_input_tokens": {
-            "type": "integer",
-            "title": "Total Input Tokens",
-            "default": 0
-          },
-          "total_output_tokens": {
-            "type": "integer",
-            "title": "Total Output Tokens",
-            "default": 0
-          },
-          "total_cache_read_tokens": {
-            "type": "integer",
-            "title": "Total Cache Read Tokens",
-            "default": 0
-          },
-          "total_cache_creation_tokens": {
-            "type": "integer",
-            "title": "Total Cache Creation Tokens",
-            "default": 0
-          },
-          "total_cost_usd": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Total Cost Usd"
-          },
-          "discount_applied": {
-            "type": "number",
-            "title": "Discount Applied",
-            "default": 0.0
-          }
-        },
-        "type": "object",
-        "title": "DreamPassUsageResponse"
-      },
-      "DreamPhaseUsageResponse": {
-        "properties": {
-          "phase": { "type": "string", "title": "Phase" },
-          "model": { "type": "string", "title": "Model" },
-          "input_tokens": {
-            "type": "integer",
-            "title": "Input Tokens",
-            "default": 0
-          },
-          "output_tokens": {
-            "type": "integer",
-            "title": "Output Tokens",
-            "default": 0
-          },
-          "cache_read_tokens": {
-            "type": "integer",
-            "title": "Cache Read Tokens",
-            "default": 0
-          },
-          "cache_creation_tokens": {
-            "type": "integer",
-            "title": "Cache Creation Tokens",
-            "default": 0
-          },
-          "cost_usd": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Cost Usd"
-          }
-        },
-        "type": "object",
-        "required": ["phase", "model"],
-        "title": "DreamPhaseUsageResponse"
-      },
-      "DreamWriteSummaryResponse": {
-        "properties": {
-          "edge_uuid": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Edge Uuid"
-          },
-          "content": { "type": "string", "title": "Content" },
-          "scope": {
-            "type": "string",
-            "title": "Scope",
-            "default": "real:global"
-          },
-          "confidence": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Confidence"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "default": "active"
-          },
-          "source_episode_uuids": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Source Episode Uuids"
-          }
-        },
-        "type": "object",
-        "required": ["content"],
-        "title": "DreamWriteSummaryResponse"
-      },
       "EntityListResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -13871,6 +13785,94 @@
         "title": "InvoiceListItem",
         "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
       },
+      "JobStatusResponse": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase"
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "JobStatusResponse",
+        "description": "Read-side of the JobStatus row, mirrored from\n``backend/copilot/dream/job_status.py``."
+      },
+      "JobTriggerResponse": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": ["job_id", "user_id", "kind", "state", "started_at"],
+        "title": "JobTriggerResponse",
+        "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -14837,53 +14839,6 @@
         "required": ["message"],
         "title": "NeedLoginResponse",
         "description": "Response when login is needed."
-      },
-      "NightlyBatchResponse": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "nightly_id": { "type": "string", "title": "Nightly Id" },
-          "started_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Started At"
-          },
-          "completed_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Completed At"
-          },
-          "elapsed_seconds": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Elapsed Seconds"
-          },
-          "dream": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/DreamPassResponse" },
-              { "type": "null" }
-            ]
-          },
-          "ratification": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/RatificationResultResponse" },
-              { "type": "null" }
-            ]
-          },
-          "skipped": {
-            "type": "boolean",
-            "title": "Skipped",
-            "default": false
-          },
-          "skip_reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Skip Reason"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["user_id", "nightly_id"],
-        "title": "NightlyBatchResponse",
-        "description": "Mirror of ``NightlyBatchResult`` from dream/nightly_batch.py."
       },
       "NoResultsResponse": {
         "properties": {
@@ -16395,45 +16350,6 @@
         "required": ["user_id"],
         "title": "RatificationResultResponse",
         "description": "Mirror of ``RatificationResult`` from dream/ratification.py.\n\nKept duplicated rather than importing the source model so the\nadmin route stays loosely-coupled to the dream module's internals."
-      },
-      "RebuildResponse": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "started_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Started At"
-          },
-          "communities_built": { "title": "Communities Built" },
-          "elapsed_seconds": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Elapsed Seconds"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          },
-          "skipped": {
-            "type": "boolean",
-            "title": "Skipped",
-            "default": false
-          },
-          "skip_reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Skip Reason"
-          },
-          "activity": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Activity"
-          },
-          "forced": { "type": "boolean", "title": "Forced", "default": false }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "RebuildResponse",
-        "description": "Mirror of ``rebuild_communities_for_user``'s return dict."
       },
       "RecentExecution": {
         "properties": {

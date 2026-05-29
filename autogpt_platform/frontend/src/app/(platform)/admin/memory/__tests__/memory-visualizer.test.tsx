@@ -4,14 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
+  getGetV2GetCommunityRebuildStatusMockHandler200,
+  getGetV2GetCommunityRebuildStatusResponseMock200,
+  getGetV2GetDreamPassStatusMockHandler200,
+  getGetV2GetDreamPassStatusResponseMock200,
   getGetV2GetGraphMockHandler200,
   getGetV2GetGraphResponseMock200,
   getGetV2GetMemoryOverviewMockHandler200,
   getGetV2GetMemoryOverviewResponseMock200,
-  getPostV2RebuildCommunitiesMockHandler200,
-  getPostV2RebuildCommunitiesResponseMock200,
-  getPostV2TriggerDreamPassMockHandler200,
-  getPostV2TriggerDreamPassResponseMock200,
+  getPostV2RebuildCommunitiesMockHandler202,
+  getPostV2RebuildCommunitiesResponseMock202,
+  getPostV2TriggerDreamPassMockHandler202,
+  getPostV2TriggerDreamPassResponseMock202,
 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
 
 // react-force-graph-2d uses HTMLCanvas + window APIs and pulls in d3 at
@@ -23,7 +27,7 @@ vi.mock("react-force-graph-2d", () => ({
 
 import { MemoryVisualizer } from "../components/MemoryVisualizer";
 
-function setupHandlers() {
+function setupBaseHandlers() {
   server.use(
     getGetV2GetMemoryOverviewMockHandler200({
       ...getGetV2GetMemoryOverviewResponseMock200(),
@@ -43,38 +47,19 @@ function setupHandlers() {
       edges: [],
       truncated: false,
     }),
-    getPostV2RebuildCommunitiesMockHandler200({
-      ...getPostV2RebuildCommunitiesResponseMock200(),
-      user_id: "u-1",
-      skipped: false,
-      elapsed_seconds: 1.2,
-      communities_built: { total: 5 },
-    }),
-    getPostV2TriggerDreamPassMockHandler200({
-      ...getPostV2TriggerDreamPassResponseMock200(),
-      user_id: "u-1",
-      pass_id: "p-test",
-      skipped: false,
-      consolidated_count: 3,
-      proposal_count: 2,
-      demotion_count: 1,
-      elapsed_seconds: 4.2,
-      summary_for_user:
-        "Reviewed 30 recent episodes; consolidated 3 facts and proposed 2 new findings.",
-    }),
   );
 }
 
-describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
+describe("MemoryVisualizer — 202 + polling contract", () => {
   test("renders rebuild and dream buttons + the overview chip", async () => {
-    setupHandlers();
+    setupBaseHandlers();
     render(<MemoryVisualizer />);
 
     expect(
       await screen.findByRole("button", { name: /rebuild communities/i }),
     ).toBeDefined();
     expect(
-      await screen.findByRole("button", { name: /run dream pass/i }),
+      await screen.findByRole("button", { name: /dream pass/i }),
     ).toBeDefined();
     await waitFor(() => {
       expect(
@@ -83,40 +68,20 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
     });
   });
 
-  test("clicking 'Rebuild communities' surfaces the last-rebuild chip", async () => {
-    setupHandlers();
-    render(<MemoryVisualizer />);
-
-    const btn = await screen.findByRole("button", {
-      name: /rebuild communities/i,
-    });
-    await userEvent.click(btn);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /rebuilding…/i }),
-      ).toBeDefined();
-    });
-    await waitFor(() => {
-      expect(
-        screen.queryByText(
-          (c) => c.includes("last rebuild") && c.includes("1.2s"),
-        ),
-      ).toBeDefined();
-    });
-  });
-
-  test("rebuild skip result surfaces a skip-reason chip", async () => {
+  test("clicking 'Rebuild communities' → 202 + polled status flips button label", async () => {
+    setupBaseHandlers();
     server.use(
-      getGetV2GetMemoryOverviewMockHandler200(
-        getGetV2GetMemoryOverviewResponseMock200(),
-      ),
-      getGetV2GetGraphMockHandler200(getGetV2GetGraphResponseMock200()),
-      getPostV2RebuildCommunitiesMockHandler200({
-        ...getPostV2RebuildCommunitiesResponseMock200(),
-        skipped: true,
-        skip_reason: "no_activity",
-        elapsed_seconds: 0.05,
+      getPostV2RebuildCommunitiesMockHandler202({
+        ...getPostV2RebuildCommunitiesResponseMock202(),
+        job_id: "job-rebuild-1",
+        state: "queued",
+      }),
+      getGetV2GetCommunityRebuildStatusMockHandler200({
+        ...getGetV2GetCommunityRebuildStatusResponseMock200(),
+        job_id: "job-rebuild-1",
+        kind: "rebuild",
+        state: "running",
+        current_phase: "rebuild",
       }),
     );
     render(<MemoryVisualizer />);
@@ -125,63 +90,40 @@ describe("MemoryVisualizer — admin graph canvas, rebuild + dream", () => {
     });
     await userEvent.click(btn);
 
+    // After the 202 lands, the active job id is set and the poll
+    // sees state=running with current_phase=rebuild → label morphs.
     await waitFor(() => {
       expect(
-        screen.queryByText(
-          (c) =>
-            c.includes("last rebuild") && c.includes("skipped (no_activity)"),
-        ),
+        screen.queryByRole("button", { name: /rebuild…/i }),
       ).toBeDefined();
     });
   });
 
-  test("clicking 'Run dream pass' surfaces the last-dream chip with per-phase counts", async () => {
-    setupHandlers();
-    render(<MemoryVisualizer />);
-
-    const btn = await screen.findByRole("button", { name: /run dream pass/i });
-    await userEvent.click(btn);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /dreaming…/i }),
-      ).toBeDefined();
-    });
-    await waitFor(() => {
-      expect(
-        screen.queryByText(
-          (c) =>
-            c.includes("last dream") &&
-            c.includes("w=3") &&
-            c.includes("p=2") &&
-            c.includes("d=1"),
-        ),
-      ).toBeDefined();
-    });
-  });
-
-  test("dream skip result surfaces a skip-reason chip", async () => {
+  test("clicking 'Dream pass' → 202 + polled status shows phase in label", async () => {
+    setupBaseHandlers();
     server.use(
-      getGetV2GetMemoryOverviewMockHandler200(
-        getGetV2GetMemoryOverviewResponseMock200(),
-      ),
-      getGetV2GetGraphMockHandler200(getGetV2GetGraphResponseMock200()),
-      getPostV2TriggerDreamPassMockHandler200({
-        ...getPostV2TriggerDreamPassResponseMock200(),
-        skipped: true,
-        skip_reason: "no_input",
-        elapsed_seconds: 0.05,
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-1",
+        state: "queued",
+      }),
+      getGetV2GetDreamPassStatusMockHandler200({
+        ...getGetV2GetDreamPassStatusResponseMock200(),
+        job_id: "job-dream-1",
+        kind: "dream_pass",
+        state: "submitted",
+        current_phase: "consolidate",
       }),
     );
     render(<MemoryVisualizer />);
-    const btn = await screen.findByRole("button", { name: /run dream pass/i });
+    const btn = await screen.findByRole("button", { name: /dream pass/i });
     await userEvent.click(btn);
 
     await waitFor(() => {
       expect(
-        screen.queryByText(
-          (c) => c.includes("last dream") && c.includes("skipped (no_input)"),
-        ),
+        screen.queryByRole("button", {
+          name: /batch submitted \(consolidate\)/i,
+        }),
       ).toBeDefined();
     });
   });
