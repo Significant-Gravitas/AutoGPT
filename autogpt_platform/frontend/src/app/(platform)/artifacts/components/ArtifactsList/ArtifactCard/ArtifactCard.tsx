@@ -143,6 +143,13 @@ function CardMenu({
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Failed to download file",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsDownloading(false);
     }
