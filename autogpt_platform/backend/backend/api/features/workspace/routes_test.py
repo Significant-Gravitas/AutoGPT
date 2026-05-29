@@ -738,10 +738,10 @@ def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_list_files_empty_session_id_treated_as_omitted(
-    mock_manager_cls, mock_get_workspace
+    mock_manager_cls, mock_get_workspace, test_user_id
 ):
     """Empty session_id must not silently list files across every session."""
-    mock_get_workspace.return_value = _make_workspace(user_id="test-user-id")
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
     mock_instance = AsyncMock()
     mock_instance.list_files.return_value = []
     mock_manager_cls.return_value = mock_instance
@@ -749,7 +749,7 @@ def test_list_files_empty_session_id_treated_as_omitted(
     response = client.get("/files?session_id=")
     assert response.status_code == 200
     # Manager should be constructed with session_id=None, not ""
-    mock_manager_cls.assert_called_once_with("test-user-id", "ws-001", None)
+    mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", None)
     mock_instance.list_files.assert_called_once_with(
         path=None,
         limit=201,
