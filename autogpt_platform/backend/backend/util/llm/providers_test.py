@@ -78,16 +78,87 @@ class TestExecutionModeStubs:
             )
 
     @pytest.mark.asyncio
-    async def test_flex_mode_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError, match="Step 8"):
-            await call_provider(
-                provider="openai",
+    async def test_flex_mode_passes_service_tier_to_openai_responses(self):
+        """OpenAI native exposes ``service_tier="flex"`` via the Responses
+        API. The helper must inject it via ``extra_body`` so the SDK
+        forwards it on payloads even on SDK versions that don't surface
+        ``service_tier`` as a typed kwarg."""
+        from backend.util.llm.providers import _call_openai_responses
+
+        captured: dict[str, object] = {}
+
+        class _StubResponses:
+            async def create(self, **kwargs):
+                captured.update(kwargs)
+                resp = MagicMock()
+                resp.output = []
+                resp.usage = MagicMock(input_tokens=1, output_tokens=1)
+                return resp
+
+        class _StubClient:
+            def __init__(self, *args, **kwargs):
+                self.responses = _StubResponses()
+
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
+        ), patch(
+            "backend.util.llm.providers.extract_responses_content",
+            return_value="",
+        ), patch(
+            "backend.util.llm.providers.extract_responses_tool_calls",
+            return_value=[],
+        ), patch(
+            "backend.util.llm.providers.extract_responses_usage",
+            return_value=(1, 1),
+        ), patch(
+            "backend.util.llm.providers.extract_responses_reasoning",
+            return_value=None,
+        ):
+            await _call_openai_responses(
                 model="gpt-4o",
                 api_key="sk-test",
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
+                tools=None,
+                force_json_output=False,
+                parallel_tool_calls=False,
+                timeout_seconds=30.0,
+                service_tier="flex",
+            )
+
+        assert captured.get("extra_body") == {"service_tier": "flex"}
+
+    @pytest.mark.asyncio
+    async def test_flex_mode_falls_through_to_sync_for_unsupported_provider(
+        self, caplog
+    ):
+        """Anthropic + Groq + the open-weight gateways have no flex tier.
+        Callers must get a sync execution instead of a hard error, with
+        a log line so the dashboard can surface the silent fallback."""
+        sync_mock = AsyncMock(
+            return_value=MagicMock(
+                content="ok",
+                prompt_tokens=1,
+                completion_tokens=1,
+            )
+        )
+        with patch(
+            "backend.util.llm.providers._dispatch_sync", new=sync_mock
+        ), caplog.at_level("WARNING"):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-ant-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
                 execution_mode="flex",
             )
+        sync_mock.assert_awaited_once()
+        assert sync_mock.call_args.kwargs.get("service_tier") is None
+        assert any(
+            "execution_mode='flex' requested for provider=anthropic" in rec.message
+            for rec in caplog.records
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -919,3 +990,157 @@ def _fake_async_iter(items):
             return self._items.pop(0)
 
     return _Iter(items)
+
+
+# ---------------------------------------------------------------------------
+# Streaming + non-streaming OpenAI-compat helpers (chat dispatch)
+# ---------------------------------------------------------------------------
+
+
+class TestCallProviderStream:
+    """Regression coverage for ``call_provider_stream``. The chat
+    baseline path delegates here; behavior changes break chat in
+    user-facing ways (tokens stop streaming, tool calls drop, etc.)."""
+
+    @pytest.mark.asyncio
+    async def test_uses_provided_client_directly(self):
+        """When a ``client`` is passed, the helper does NOT construct a
+        new one — preserves the chat layer's module-cached
+        Langfuse-wrapped client + its pooled HTTP connections."""
+        from backend.util.llm.providers import call_provider_stream
+
+        sentinel_stream = MagicMock(name="async_stream")
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value=sentinel_stream)
+
+        result = await call_provider_stream(
+            client=client,
+            model="gpt-4o",
+            messages=[_msg("user", "hi")],
+            extra_body={"foo": "bar"},
+            stream_options={"include_usage": True},
+        )
+
+        assert result is sentinel_stream
+        client.chat.completions.create.assert_awaited_once()
+        kwargs = client.chat.completions.create.await_args.kwargs
+        assert kwargs["stream"] is True
+        assert kwargs["model"] == "gpt-4o"
+        assert kwargs["extra_body"] == {"foo": "bar"}
+        assert kwargs["stream_options"] == {"include_usage": True}
+
+    @pytest.mark.asyncio
+    async def test_builds_client_via_factory_when_not_provided(self):
+        """When no ``client`` is passed, the helper instantiates one
+        via ``client_factory(base_url, api_key)``. The chat layer uses
+        this branch to inject ``LangfuseAsyncOpenAI`` as the factory."""
+        from backend.util.llm.providers import call_provider_stream
+
+        captured: dict[str, object] = {}
+
+        class _StubClient:
+            def __init__(self, *, base_url: str, api_key: str):
+                captured["base_url"] = base_url
+                captured["api_key"] = api_key
+                self.chat = SimpleNamespace(completions=SimpleNamespace())
+                self.chat.completions.create = AsyncMock(return_value="stream")
+
+        result = await call_provider_stream(
+            model="claude-sonnet-4-6",
+            messages=[_msg("user", "hi")],
+            base_url="https://api.test/v1",
+            api_key="sk-test",
+            client_factory=_StubClient,
+        )
+
+        assert result == "stream"
+        assert captured == {
+            "base_url": "https://api.test/v1",
+            "api_key": "sk-test",
+        }
+
+    @pytest.mark.asyncio
+    async def test_omit_max_tokens_drops_field_from_create_call(self):
+        """OpenRouter's thinking routes inject their own ``max_tokens``
+        default and 400 if the client sends one too. The chat baseline
+        passes ``openai.omit`` to skip the field; the helper must
+        actually drop it from create_kwargs (not pass it as the omit
+        sentinel which would still register as 'present' on the dict)."""
+        import openai
+
+        from backend.util.llm.providers import call_provider_stream
+
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value="s")
+        await call_provider_stream(
+            client=client,
+            model="x",
+            messages=[_msg("user", "hi")],
+            max_tokens=openai.omit,
+        )
+        kwargs = client.chat.completions.create.await_args.kwargs
+        assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_real_max_tokens_lands_in_create_kwargs(self):
+        """Direct-Anthropic mode passes an explicit max_tokens because
+        Anthropic refuses to default it when thinking is enabled. That
+        value must reach the SDK call."""
+        from backend.util.llm.providers import call_provider_stream
+
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value="s")
+        await call_provider_stream(
+            client=client,
+            model="claude-opus-4-1",
+            messages=[_msg("user", "hi")],
+            max_tokens=8192,
+        )
+        kwargs = client.chat.completions.create.await_args.kwargs
+        assert kwargs["max_tokens"] == 8192
+
+    @pytest.mark.asyncio
+    async def test_raises_when_neither_client_nor_credentials(self):
+        from backend.util.llm.providers import call_provider_stream
+
+        with pytest.raises(ValueError, match="pass either"):
+            await call_provider_stream(
+                model="x",
+                messages=[_msg("user", "hi")],
+            )
+
+
+class TestCallProviderOpenAICompatSync:
+    @pytest.mark.asyncio
+    async def test_uses_provided_client_directly(self):
+        from backend.util.llm.providers import call_provider_openai_compat_sync
+
+        sentinel = MagicMock(name="response")
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value=sentinel)
+
+        result = await call_provider_openai_compat_sync(
+            client=client,
+            model="claude-haiku-4-5",
+            messages=[_msg("user", "hi")],
+            max_tokens=20,
+            extra_body={"usage": {"include": True}},
+        )
+
+        assert result is sentinel
+        kwargs = client.chat.completions.create.await_args.kwargs
+        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["max_tokens"] == 20
+        assert kwargs["extra_body"] == {"usage": {"include": True}}
+        assert "stream" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_raises_when_neither_client_nor_credentials(self):
+        from backend.util.llm.providers import call_provider_openai_compat_sync
+
+        with pytest.raises(ValueError, match="pass either"):
+            await call_provider_openai_compat_sync(
+                model="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=20,
+            )

@@ -33,7 +33,6 @@ from __future__ import annotations
 import asyncio
 import json as json_module
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -42,6 +41,8 @@ import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
@@ -91,6 +92,14 @@ ProviderLiteral = Literal[
 
 ExecutionMode = Literal["sync", "batch", "flex"]
 
+# Providers that accept ``service_tier="flex"``. OpenAI exposes it
+# natively on its Responses API; OpenRouter forwards the param through
+# to OpenAI- and Google-backed models (the only flex-capable upstreams
+# they support). Anthropic + Groq + Ollama + the open-weight gateways
+# have no flex equivalent — callers asking for flex on them get a
+# sync fallback with a log line.
+_FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+
 
 # ---------------------------------------------------------------------------
 # Result + submission carriers
@@ -115,8 +124,8 @@ class ProviderResponse:
     reasoning: str | None = None
     cost_usd: float | None = None
     # Provider-native response object for callers that need raw access.
-    # Not part of equality / serialization.
-    raw_response: Any = field(default=None, repr=False, compare=False)
+    # Kept out of repr + pydantic serialization (it's an opaque SDK object).
+    raw_response: Any = Field(default=None, repr=False, exclude=True)
 
 
 @dataclass(slots=True)
@@ -187,11 +196,23 @@ async def call_provider(
             tool_choice=tool_choice,
             custom_id=custom_id,
         )
+    # Flex tier is OpenAI's discounted-async-latency tier (~50% off, may
+    # queue for up to 15 min). OpenRouter forwards ``service_tier=flex``
+    # through to the upstream OpenAI/Google model. Other providers have
+    # no flex equivalent — Anthropic's cost-saver is batch (Step 4), not
+    # flex; Groq + the open-weight gateways just don't expose it. For
+    # those we log and fall through to sync so dream/chat callers don't
+    # have to know which providers support what.
+    service_tier: str | None = None
     if execution_mode == "flex":
-        raise NotImplementedError(
-            "execution_mode='flex' lands in Step 8 of the rollout. "
-            "Today every caller falls back to sync."
-        )
+        if provider in _FLEX_SUPPORTED_PROVIDERS:
+            service_tier = "flex"
+        else:
+            logger.warning(
+                "execution_mode='flex' requested for provider=%s which has "
+                "no flex tier; falling through to sync.",
+                provider,
+            )
 
     sanitize_messages_for_utf8(messages)
 
@@ -210,6 +231,7 @@ async def call_provider(
                 parallel_tool_calls=parallel_tool_calls,
                 ollama_host=ollama_host,
                 timeout_seconds=timeout_seconds,
+                service_tier=service_tier,
             ),
             timeout=timeout_seconds,
         )
@@ -239,6 +261,7 @@ async def _dispatch_sync(
     parallel_tool_calls: bool | openai.Omit,
     ollama_host: str,
     timeout_seconds: float,
+    service_tier: str | None = None,
 ) -> ProviderResponse:
     if provider == "openai":
         return await _call_openai_responses(
@@ -250,6 +273,7 @@ async def _dispatch_sync(
             force_json_output=force_json_output,
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
+            service_tier=service_tier,
         )
     if provider == "anthropic":
         return await _call_anthropic_messages(
@@ -293,6 +317,7 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=True,
+            service_tier=service_tier,
         )
     if provider == "llama_api":
         return await _call_openai_compat(
@@ -358,12 +383,21 @@ async def _call_openai_responses(
     force_json_output: bool,
     parallel_tool_calls: bool | openai.Omit,
     timeout_seconds: float,
+    service_tier: str | None = None,
 ) -> ProviderResponse:
     client = openai.AsyncOpenAI(api_key=api_key)
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
         text_config = {"format": {"type": "json_object"}}
+
+    # ``service_tier`` lives in ``extra_body`` because OpenAI ships it on
+    # the Responses payload but the openai-python SDK doesn't surface it
+    # as a typed kwarg on every SDK release. ``extra_body`` is the
+    # forward-compatible escape hatch.
+    extra_body: dict[str, Any] = {}
+    if service_tier:
+        extra_body["service_tier"] = service_tier
 
     response = await client.responses.create(
         model=model,
@@ -374,6 +408,7 @@ async def _call_openai_responses(
         text=text_config,  # type: ignore[arg-type]
         store=False,
         timeout=timeout_seconds,
+        extra_body=extra_body or openai.omit,  # type: ignore[arg-type]
     )
 
     raw_tool_calls = extract_responses_tool_calls(response)
@@ -615,6 +650,7 @@ async def _call_openai_compat(
     include_openrouter_extras: bool,
     extra_headers: dict[str, str] | None = None,
     default_headers: dict[str, str] | None = None,
+    service_tier: str | None = None,
 ) -> ProviderResponse:
     client_kwargs: dict[str, Any] = {"base_url": base_url, "api_key": api_key}
     if default_headers:
@@ -634,16 +670,24 @@ async def _call_openai_compat(
         ),
         timeout=timeout_seconds,
     )
+    extra_body: dict[str, Any] = {}
     if include_openrouter_extras:
         # Ask OpenRouter to surface per-request USD cost on `usage.cost`.
         # Same shape used by backend/executor/simulator.py — keep aligned.
-        call_kwargs["extra_body"] = {"usage": {"include": True}}
+        extra_body["usage"] = {"include": True}
         call_kwargs["extra_headers"] = {
             "HTTP-Referer": "https://agpt.co",
             "X-Title": "AutoGPT",
         }
     elif extra_headers:
         call_kwargs["extra_headers"] = extra_headers
+    if service_tier:
+        # OpenRouter forwards ``service_tier`` to OpenAI- and Google-backed
+        # models. Setting it for other upstreams is harmless — OpenRouter
+        # drops unknown params silently rather than failing the request.
+        extra_body["service_tier"] = service_tier
+    if extra_body:
+        call_kwargs["extra_body"] = extra_body
 
     response = await client.chat.completions.create(**call_kwargs)
     if not response.choices:
@@ -693,6 +737,154 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
         or 0
     )
     return cache_read, cache_creation
+
+
+# ---------------------------------------------------------------------------
+# Streaming dispatch (chat baseline)
+# ---------------------------------------------------------------------------
+#
+# The chat baseline path needs the raw provider stream so it can iterate
+# chunks for delta-emitted SSE events, accumulate per-chunk token /
+# cost / cache deltas into its ``_BaselineStreamState``, and react to
+# tool-call partials as they arrive. Returning a normalized
+# ``ProviderResponse`` would collapse those incremental signals — so
+# the streaming entry-point returns the SDK's ``AsyncStream`` object
+# directly. The caller still owns chunk parsing; the helper centralizes
+# client instantiation + the OpenAI-compat ``create_kwargs`` assembly
+# (``extra_body``, ``extra_headers``, ``stream_options``, tools).
+#
+# Client factory injection:
+#   The chat layer instantiates ``openai.AsyncOpenAI`` via a
+#   Langfuse-wrapped subclass (``langfuse.openai.AsyncOpenAI``) to
+#   thread OTel-style spans through every chat turn. To preserve that
+#   tracing, callers pass ``client_factory=LangfuseAsyncOpenAI`` (or
+#   any subclass with the same constructor) and the helper builds the
+#   client from it. Defaults to ``openai.AsyncOpenAI`` so non-traced
+#   callers (eval scripts, integration tests) need no extra wiring.
+
+
+# Wider than ``ProviderResponse`` because the caller picks up chunks
+# directly. Typed as ``Any`` to avoid importing the SDK's private
+# stream typevars across the helper boundary — the openai SDK is the
+# source of truth for chunk shape and callers are already openai-shape
+# aware (they came here from a direct SDK call).
+StreamResponse = Any
+
+
+async def call_provider_stream(
+    *,
+    model: str,
+    messages: list[dict],
+    client: openai.AsyncOpenAI | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    extra_body: dict[str, Any] | None = None,
+    extra_headers: dict[str, str] | None = None,
+    stream_options: dict[str, Any] | None = None,
+    tools: list[dict] | None = None,
+    max_tokens: int | openai.Omit = openai.omit,
+    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
+) -> StreamResponse:
+    """Open an OpenAI-compatible streaming chat completion and return
+    the raw ``AsyncStream`` for the caller to iterate.
+
+    Used by the chat baseline path. The non-streaming sync helper
+    (``call_provider``) is the right choice for everything else — only
+    consumers that need chunk-level deltas (tool partials, incremental
+    SSE tokens) belong here.
+
+    Either pass a pre-built ``client`` (the chat layer caches its
+    Langfuse-wrapped client at module level) OR pass
+    ``base_url`` + ``api_key`` and the helper builds one via
+    ``client_factory``. The chat layer prefers the pre-built path so
+    TCP connections stay pooled across turns; tests pass a mocked
+    client. Default factory is ``openai.AsyncOpenAI`` — callers
+    needing Langfuse spans pass the wrapped subclass.
+
+    Does NOT wrap the call in ``asyncio.wait_for`` — a streaming chat
+    request can legitimately run for minutes (long reasoning, large
+    tool-call payloads) and the streaming protocol already exposes
+    keepalive failures via chunk timeouts. The caller's outer cancel
+    scope is the right place to bound total time.
+    """
+    sanitize_messages_for_utf8(messages)
+    if client is None:
+        if base_url is None or api_key is None:
+            raise ValueError(
+                "call_provider_stream: pass either `client` or both "
+                "`base_url` and `api_key`."
+            )
+        client = client_factory(base_url=base_url, api_key=api_key)
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": cast(list[ChatCompletionMessageParam], messages),
+        "stream": True,
+        "timeout": timeout_seconds,
+    }
+    # Only set ``max_tokens`` when the caller passed a real value. Some
+    # transports (OpenRouter on thinking routes) inject their own
+    # default and 400 on a redundant client-side limit, so the chat
+    # baseline path passes ``openai.omit`` to skip the field
+    # entirely.
+    if not isinstance(max_tokens, openai.Omit):
+        create_kwargs["max_tokens"] = max_tokens
+    if extra_body:
+        create_kwargs["extra_body"] = extra_body
+    if extra_headers:
+        create_kwargs["extra_headers"] = extra_headers
+    if stream_options:
+        create_kwargs["stream_options"] = stream_options
+    if tools:
+        create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
+    return await client.chat.completions.create(**create_kwargs)
+
+
+async def call_provider_openai_compat_sync(
+    *,
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    client: openai.AsyncOpenAI | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    extra_body: dict[str, Any] | None = None,
+    extra_headers: dict[str, str] | None = None,
+    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
+) -> Any:
+    """Non-streaming OpenAI-compat chat call, returns the raw SDK
+    ``ChatCompletion`` so callers that already navigate
+    ``response.usage`` / ``response.choices`` directly don't need to
+    rewrite their extraction logic.
+
+    Used by the chat title-generation path. New callers without
+    SDK-specific extraction logic should prefer ``call_provider``
+    which normalizes into ``ProviderResponse``.
+
+    Either pass a pre-built ``client`` OR ``base_url`` + ``api_key``
+    + (optionally) ``client_factory``. See ``call_provider_stream``
+    for rationale.
+    """
+    sanitize_messages_for_utf8(messages)
+    if client is None:
+        if base_url is None or api_key is None:
+            raise ValueError(
+                "call_provider_openai_compat_sync: pass either `client` "
+                "or both `base_url` and `api_key`."
+            )
+        client = client_factory(base_url=base_url, api_key=api_key)
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": cast(list[ChatCompletionMessageParam], messages),
+        "max_tokens": max_tokens,
+        "timeout": timeout_seconds,
+    }
+    if extra_body:
+        create_kwargs["extra_body"] = extra_body
+    if extra_headers:
+        create_kwargs["extra_headers"] = extra_headers
+    return await client.chat.completions.create(**create_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -855,7 +1047,8 @@ class BatchResultRow:
     cache_creation_tokens: int = 0
     error: str | None = None
     # Provider-native result object for callers that need raw access.
-    raw_result: Any = field(default=None, repr=False, compare=False)
+    # Kept out of repr + pydantic serialization (it's an opaque SDK object).
+    raw_result: Any = Field(default=None, repr=False, exclude=True)
 
 
 async def poll_batch(

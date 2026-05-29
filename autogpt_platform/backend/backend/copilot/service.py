@@ -25,6 +25,7 @@ from backend.data.understanding import (
     format_understanding_for_prompt,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
@@ -643,7 +644,15 @@ async def _generate_session_title(
         # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
         title_model = _normalize_title_model_for_aux()
 
-        response = await _get_aux_client().chat.completions.create(
+        # Route through the shared providers helper so future provider
+        # work (flex tier, new SDK upgrades, etc.) propagates here
+        # without a parallel migration. ``LangfuseAsyncOpenAI`` is
+        # passed via ``client_factory`` so the title-gen span lands in
+        # the same trace tree as the originating chat turn.
+        aux_api_key, aux_base_url = config.aux_client_credentials
+        response = await call_provider_openai_compat_sync(
+            base_url=aux_base_url,
+            api_key=aux_api_key,
             model=title_model,
             messages=[
                 {
@@ -657,7 +666,8 @@ async def _generate_session_title(
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
             max_tokens=20,
-            extra_body=extra_body,
+            extra_body=extra_body or None,
+            client_factory=LangfuseAsyncOpenAI,
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")

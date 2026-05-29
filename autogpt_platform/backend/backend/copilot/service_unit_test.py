@@ -479,11 +479,10 @@ class TestGenerateSessionTitle:
         # better than ``MyAgent``).  Test keeps the outer quotes + inner
         # whitespace distinct so the ordering is pinned.
         resp = _build_completion(content='"Clean Me"  ')
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title(
                 "first message", user_id="u", session_id="s"
@@ -496,11 +495,10 @@ class TestGenerateSessionTitle:
         """Titles >50 chars get truncated to 47 + '...'."""
         long_title = "A" * 80
         resp = _build_completion(content=long_title)
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, _ = await _generate_session_title("x", user_id=None)
         assert title is not None
@@ -513,11 +511,10 @@ class TestGenerateSessionTitle:
         typing) must not raise IndexError — response is preserved so the
         caller can still record the paid-for cost."""
         resp = _build_completion(choices=[])
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("x")
         assert title is None
@@ -529,11 +526,10 @@ class TestGenerateSessionTitle:
         but the response still lands on the caller."""
         fake_choice = SimpleNamespace(message=None)
         fake_response = SimpleNamespace(choices=[fake_choice])
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=fake_response)
+        helper = AsyncMock(return_value=fake_response)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("x")
         assert title is None
@@ -544,13 +540,10 @@ class TestGenerateSessionTitle:
         """Network / API errors on the create call are swallowed;
         ``(None, None)`` ensures the caller skips both title and cost
         without crashing the background task."""
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(
-            side_effect=RuntimeError("connection reset")
-        )
+        helper = AsyncMock(side_effect=RuntimeError("connection reset"))
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("x")
         assert title is None
@@ -562,26 +555,26 @@ class TestGenerateSessionTitle:
         real billed cost into the final usage chunk — only when the aux
         transport is OR (Anthropic-direct rejects unknown extras)."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=True,
                     title_model="anthropic/claude-haiku",
+                    aux_client_credentials=("ork-test", "https://openrouter.ai/api/v1"),
                 ),
             ),
         ):
             await _generate_session_title(
                 "hello world", user_id="user-abc", session_id="sess-abc"
             )
-        client.chat.completions.create.assert_awaited_once()
-        extra_body = client.chat.completions.create.await_args.kwargs["extra_body"]
+        helper.assert_awaited_once()
+        extra_body = helper.await_args.kwargs["extra_body"]
         assert extra_body["usage"] == {"include": True}
         assert extra_body["user"] == "user-abc"
         assert extra_body["session_id"] == "sess-abc"
@@ -593,12 +586,11 @@ class TestGenerateSessionTitle:
         ``anthropic/`` prefix and dot-separated version stripped before
         being sent — Anthropic's OpenAI-compat endpoint rejects both."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -606,12 +598,13 @@ class TestGenerateSessionTitle:
                     aux_uses_openrouter=False,
                     aux_provider_label="anthropic",
                     title_model="anthropic/claude-haiku-4.5",
+                    aux_client_credentials=("sk-ant", "https://api.anthropic.com/v1"),
                 ),
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
-        client.chat.completions.create.assert_awaited_once()
-        kwargs = client.chat.completions.create.await_args.kwargs
+        helper.assert_awaited_once()
+        kwargs = helper.await_args.kwargs
         assert kwargs["model"] == "claude-haiku-4-5"
 
     @pytest.mark.asyncio
@@ -619,12 +612,11 @@ class TestGenerateSessionTitle:
         """OpenRouter routes by full ``vendor/model`` slug — the
         normalization branch must NOT fire for OR-routed aux."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -632,40 +624,41 @@ class TestGenerateSessionTitle:
                     aux_uses_openrouter=True,
                     aux_provider_label="open_router",
                     title_model="anthropic/claude-haiku-4.5",
+                    aux_client_credentials=("ork", "https://openrouter.ai/api/v1"),
                 ),
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
-        client.chat.completions.create.assert_awaited_once()
-        kwargs = client.chat.completions.create.await_args.kwargs
+        helper.assert_awaited_once()
+        kwargs = helper.await_args.kwargs
         assert kwargs["model"] == "anthropic/claude-haiku-4.5"
 
     @pytest.mark.asyncio
     async def test_create_omits_extra_body_when_aux_not_openrouter(self):
         """When aux client is pointed at a non-OR endpoint (e.g.
         Anthropic OAI-compat), the OR-specific extras must not be sent
-        — Anthropic's compat endpoint 400s on unknown fields."""
+        — Anthropic's compat endpoint 400s on unknown fields. The
+        helper normalizes empty dict to None so the kwarg drops off
+        the final SDK call entirely."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=False,
                     title_model="anthropic/claude-haiku",
+                    aux_client_credentials=("sk-ant", "https://api.anthropic.com/v1"),
                 ),
             ),
         ):
             await _generate_session_title(
                 "hello world", user_id="user-abc", session_id="sess-abc"
             )
-        client.chat.completions.create.assert_awaited_once()
-        extra_body = client.chat.completions.create.await_args.kwargs["extra_body"]
-        assert "usage" not in extra_body
-        assert "user" not in extra_body
-        assert "session_id" not in extra_body
+        helper.assert_awaited_once()
+        extra_body = helper.await_args.kwargs.get("extra_body")
+        assert extra_body is None

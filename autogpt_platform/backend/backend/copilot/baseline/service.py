@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
@@ -111,6 +112,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
     estimate_token_count,
@@ -687,26 +689,31 @@ async def _baseline_llm_caller(
             )
             if thinking_param:
                 extra_body.update(thinking_param)
-        create_kwargs: dict[str, Any] = {
-            "model": state.model,
-            "messages": typed_messages,
-            "stream": True,
-            "extra_body": extra_body,
-        }
-        # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
-        if config.openrouter_active:
-            create_kwargs["stream_options"] = {"include_usage": True}
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
+        max_tokens_arg: int | Any = openai_omit
         if not config.openrouter_active and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
-            create_kwargs["max_tokens"] = min(budget + 4096, model_max)
-        if extra_headers:
-            create_kwargs["extra_headers"] = extra_headers
-        if tools:
-            create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
-        response = await client.chat.completions.create(**create_kwargs)
+            max_tokens_arg = min(budget + 4096, model_max)
+        # Route through the shared providers helper so future provider
+        # work (streaming flex tier, new SDK upgrades) propagates here
+        # without a parallel migration. The pre-built ``client`` is
+        # passed through so the module-level Langfuse-wrapped client
+        # keeps its HTTP connection pool warm across turns.
+        response = await call_provider_stream(
+            client=client,
+            model=state.model,
+            messages=cast(list[dict[str, Any]], typed_messages),
+            extra_body=extra_body,
+            extra_headers=extra_headers,
+            # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
+            stream_options=(
+                {"include_usage": True} if config.openrouter_active else None
+            ),
+            tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
+            max_tokens=max_tokens_arg,
+        )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
