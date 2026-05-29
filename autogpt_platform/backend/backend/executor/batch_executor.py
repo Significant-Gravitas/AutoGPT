@@ -29,9 +29,10 @@ import asyncio
 import json
 import logging
 import threading
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
+
+from pydantic import BaseModel, Field
 
 from backend.util.llm.providers import (
     BatchResultRow,
@@ -68,8 +69,7 @@ MAX_POLL_DELAY_SECONDS = 300
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
-class PendingEntry:
+class PendingEntry(BaseModel):
     """One submitted batch we're waiting on.
 
     ``callback_namespace`` is the dispatcher's primary routing key:
@@ -86,7 +86,7 @@ class PendingEntry:
     submitted_at: datetime
     next_poll_at: datetime
     poll_delay_seconds: int = INITIAL_POLL_DELAY_SECONDS
-    payload: dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 async def enqueue_pending(entry: PendingEntry) -> None:

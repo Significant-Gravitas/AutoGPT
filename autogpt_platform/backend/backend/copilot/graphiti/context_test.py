@@ -353,9 +353,7 @@ class TestRatificationHitHookFiresFireAndForget:
 
         from backend.copilot.dream import ratification as ratification_mod
 
-        monkeypatch.setattr(
-            ratification_mod, "try_ratify_on_hit", fake_try_ratify
-        )
+        monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
 
         # asyncio.create_task needs an event loop — exercise via
         # run_until_complete instead of an actual task spawn.

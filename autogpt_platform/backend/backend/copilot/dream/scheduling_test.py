@@ -138,7 +138,9 @@ async def test_both_crons_register_when_their_flags_are_on():
         _PATH_TZ, new=AsyncMock(return_value="America/New_York")
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"]["id"] == "community_rebuild_abc"
@@ -168,7 +170,9 @@ async def test_community_flag_off_skips_only_community():
         _PATH_TZ, new=AsyncMock(return_value="UTC")
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"] == {
@@ -188,7 +192,9 @@ async def test_dream_flag_off_skips_only_nightly_batch():
         _PATH_TZ, new=AsyncMock(return_value="UTC")
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"]["id"] == "community_rebuild_abc"
@@ -228,9 +234,11 @@ async def test_no_drift_returns_none_without_rpc():
     client = _mock_scheduler_client()
     with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
         _PATH_TZ, new=AsyncMock(return_value="America/New_York")
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
+        _PATH_WRITE_TZ, new=AsyncMock()
     ), patch(
-        _PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_WRITE_TZ, new=AsyncMock()), patch(_PATH_CLIENT, return_value=client):
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"] is None
@@ -247,9 +255,11 @@ async def test_timezone_drift_re_registers_via_replace_existing():
     write_spy = AsyncMock()
     with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
         _PATH_TZ, new=AsyncMock(return_value="Europe/Paris")
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
+        _PATH_WRITE_TZ, new=write_spy
     ), patch(
-        _PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_WRITE_TZ, new=write_spy), patch(_PATH_CLIENT, return_value=client):
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     # Both crons re-registered with the new tz.
@@ -276,7 +286,9 @@ async def test_force_refresh_skips_drift_check_and_always_re_registers():
         _PATH_TZ, new=AsyncMock(return_value="America/New_York")
     ), patch(_PATH_READ_TZ, new=read_spy), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc", force_refresh=True)
 
     # Read NEVER consulted when force_refresh=True — saves a Redis
@@ -297,7 +309,9 @@ async def test_redis_read_failure_treats_as_first_registration():
         _PATH_TZ, new=AsyncMock(return_value="UTC")
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"]["id"] == "community_rebuild_abc"
@@ -319,7 +333,9 @@ async def test_one_cron_rpc_failure_does_not_block_the_other():
         _PATH_TZ, new=AsyncMock(return_value="UTC")
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         result = await ensure_dream_system_scheduled("abc")
 
     assert result["community_rebuild"] == {
@@ -344,7 +360,9 @@ async def test_timezone_lookup_runs_at_most_once_per_invocation():
         _PATH_TZ, new=tz_mock
     ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
         _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(_PATH_CLIENT, return_value=client):
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
         await ensure_dream_system_scheduled("abc")
 
     tz_mock.assert_awaited_once_with("abc")

@@ -295,9 +295,7 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
     try:
         group_id = derive_group_id(user_id)
     except ValueError as exc:
-        logger.debug(
-            "try_ratify_on_hit: invalid user_id %s: %s", user_id[:12], exc
-        )
+        logger.debug("try_ratify_on_hit: invalid user_id %s: %s", user_id[:12], exc)
         return 0
 
     promoted_count = 0
@@ -336,9 +334,7 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
     return promoted_count
 
 
-async def _promote_if_tentative(
-    driver: AutoGPTFalkorDriver, edge_uuid: str
-) -> bool:
+async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     """``_promote_edge`` with a ``status='tentative'`` guard.
 
     Distinct from ``_promote_edge`` because the hit-hook fires on

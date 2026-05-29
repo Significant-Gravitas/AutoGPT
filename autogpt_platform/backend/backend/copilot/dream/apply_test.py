@@ -203,9 +203,7 @@ async def test_apply_operations_never_auto_connects_prisma(mocker):
     # explicit.
     for is_conn in (False, True):
         mocker.patch("backend.data.db.is_connected", return_value=is_conn)
-        connect_spy = mocker.patch(
-            "backend.data.db.connect", new_callable=AsyncMock
-        )
+        connect_spy = mocker.patch("backend.data.db.connect", new_callable=AsyncMock)
 
         await apply_mod.apply_operations(
             user_id="u-1",

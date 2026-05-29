@@ -14,8 +14,9 @@ Caps (copied here so they live next to the code that enforces them):
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+
+from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
@@ -31,8 +32,7 @@ MAX_RECENT_SESSIONS = 10
 MAX_SESSION_BODY_BYTES = 8 * 1024  # 8 KB per p0-spec.md §2
 
 
-@dataclass
-class EpisodeRow:
+class EpisodeRow(BaseModel):
     uuid: str
     name: str | None
     content: str | None
@@ -41,8 +41,7 @@ class EpisodeRow:
     created_at: str | None
 
 
-@dataclass
-class FactRow:
+class FactRow(BaseModel):
     uuid: str
     source: str | None
     target: str | None
@@ -54,29 +53,27 @@ class FactRow:
     created_at: str | None
 
 
-@dataclass
-class SessionRow:
+class SessionRow(BaseModel):
     session_id: str
     title: str | None
     created_at: datetime | None
     body: str  # truncated to MAX_SESSION_BODY_BYTES
 
 
-@dataclass
-class DreamInput:
+class DreamInput(BaseModel):
     """The whole gather-step bundle handed to the phase 1 prompt."""
 
     user_id: str
     group_id: str
     window_start: datetime
     window_end: datetime
-    episodes: list[EpisodeRow] = field(default_factory=list)
-    facts: list[FactRow] = field(default_factory=list)
-    recent_sessions: list[SessionRow] = field(default_factory=list)
+    episodes: list[EpisodeRow] = Field(default_factory=list)
+    facts: list[FactRow] = Field(default_factory=list)
+    recent_sessions: list[SessionRow] = Field(default_factory=list)
     # Convenience — phase 3 sanitizer needs to know which uuids the dream
     # is "aware of" so it can reject demotions for unknown edges.
-    known_fact_uuids: set[str] = field(default_factory=set)
-    known_episode_uuids: set[str] = field(default_factory=set)
+    known_fact_uuids: set[str] = Field(default_factory=set)
+    known_episode_uuids: set[str] = Field(default_factory=set)
 
 
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
@@ -260,7 +257,8 @@ async def _fetch_recent_sessions(
             SessionRow(
                 session_id=sid,
                 title=s.title,
-                created_at=getattr(s, "createdAt", None) or getattr(s, "created_at", None),
+                created_at=getattr(s, "createdAt", None)
+                or getattr(s, "created_at", None),
                 body=body,
             )
         )

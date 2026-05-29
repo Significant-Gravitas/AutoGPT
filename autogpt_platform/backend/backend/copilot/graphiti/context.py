@@ -103,11 +103,7 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
     users on the rare GRAPHITI_MEMORY=on / DREAM_PASS_ENABLED=off
     combination.
     """
-    edge_uuids = [
-        uuid
-        for uuid in (getattr(e, "uuid", None) for e in edges)
-        if uuid
-    ]
+    edge_uuids = [uuid for uuid in (getattr(e, "uuid", None) for e in edges) if uuid]
     if not edge_uuids:
         return
 

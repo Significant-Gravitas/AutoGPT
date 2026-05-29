@@ -30,7 +30,9 @@ from . import nightly_batch
 from .nightly_batch import run_nightly_batch_submit
 
 
-def _dream_result(*, error: str | None = None, skipped: bool = False) -> DreamPassResult:
+def _dream_result(
+    *, error: str | None = None, skipped: bool = False
+) -> DreamPassResult:
     return DreamPassResult(
         user_id="u",
         pass_id="dream-1",
@@ -79,7 +81,9 @@ async def test_paywalled_user_skips_entire_fanout_no_submitters_run():
         new=AsyncMock(return_value=(False, "insufficient_credits")),
     ), patch(
         "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
         result = await run_nightly_batch_submit("u")
 
     assert result.skipped is True
@@ -119,7 +123,9 @@ async def test_happy_path_runs_dream_then_ratification_sharing_nightly_id():
         new=AsyncMock(return_value=(True, None)),
     ), patch(
         "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
         result = await run_nightly_batch_submit("u")
 
     assert result.skipped is False
@@ -141,15 +147,22 @@ async def test_submitters_called_in_documented_order_dream_then_ratification():
     P4 pre-warm after). Pin the order so future re-orderings are
     intentional."""
     call_order: list[str] = []
-    dream_spy = AsyncMock(side_effect=lambda *_a, **_kw: call_order.append("dream") or _dream_result())
-    rat_spy = AsyncMock(side_effect=lambda *_a, **_kw: call_order.append("rat") or _ratification_result())
+    dream_spy = AsyncMock(
+        side_effect=lambda *_a, **_kw: call_order.append("dream") or _dream_result()
+    )
+    rat_spy = AsyncMock(
+        side_effect=lambda *_a, **_kw: call_order.append("rat")
+        or _ratification_result()
+    )
     with patch.object(
         nightly_batch,
         "check_dream_budget",
         new=AsyncMock(return_value=(True, None)),
     ), patch(
         "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
         await run_nightly_batch_submit("u")
 
     assert call_order == ["dream", "rat"]
@@ -172,7 +185,9 @@ async def test_dream_crash_still_lets_ratification_sweep_run():
     ), patch(
         "backend.copilot.dream.orchestrator.execute_dream_pass",
         new=AsyncMock(side_effect=RuntimeError("dream boom")),
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
         result = await run_nightly_batch_submit("u")
 
     assert result.error is not None
@@ -220,7 +235,9 @@ async def test_dream_internal_error_propagates_via_result_dream_error_not_top_le
         new=AsyncMock(return_value=(True, None)),
     ), patch(
         "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
         result = await run_nightly_batch_submit("u")
 
     # Top-level error stays None — submitter reported its own error.

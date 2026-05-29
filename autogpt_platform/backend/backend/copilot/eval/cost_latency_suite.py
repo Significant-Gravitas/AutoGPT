@@ -29,8 +29,9 @@ Per ``dream/p0-spec.md`` §7 the report shape is::
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
 from typing import Sequence
+
+from pydantic.dataclasses import dataclass
 
 from backend.copilot.dream.schemas import DreamPassResult
 

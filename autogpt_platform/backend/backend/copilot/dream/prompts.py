@@ -101,7 +101,7 @@ CONSOLIDATE_SYSTEM = (
     "JSON SCHEMA (your response MUST match this shape):\n"
     '{ "facts": [ { "content": str, "scope": str, "confidence": float, '
     '"source_episode_uuids": [str, ...] } ] }\n\n'
-    "If you have nothing to emit, return `{\"facts\": []}` — still JSON, "
+    'If you have nothing to emit, return `{"facts": []}` — still JSON, '
     "still starting with `{`."
 )
 
@@ -134,7 +134,7 @@ RECOMBINE_SYSTEM = (
     "Do NOT preface with prose. Do NOT wrap the JSON in markdown "
     "code fences. Do NOT use markdown formatting anywhere. Do NOT "
     "explain reasoning before or after the JSON. Empty result is "
-    "`{\"proposals\": []}`.\n\n"
+    '`{"proposals": []}`.\n\n'
     "ROLE:\n"
     "You are the recombination step of a sleep-time memory pass. The "
     "previous step consolidated the user's recent facts. Your job is to "
@@ -151,9 +151,9 @@ RECOMBINE_SYSTEM = (
     f" * Output AT MOST {MAX_PROPOSALS_PER_PASS} proposals. Quality > quantity.\n"
     " * Confidence here is your own self-rating of how likely the "
     "proposed finding is to be useful to the user.\n"
-    " * ``memory_kind`` MUST be one of: \"finding\", \"rule\", "
-    "\"preference\", \"plan\". Do NOT invent new values (e.g. "
-    "\"inferred_fact\", \"recommendation\", \"insight\") — those "
+    ' * ``memory_kind`` MUST be one of: "finding", "rule", '
+    '"preference", "plan". Do NOT invent new values (e.g. '
+    '"inferred_fact", "recommendation", "insight") — those '
     "proposals are silently dropped.\n\n"
     "JSON SCHEMA (your response MUST match this shape):\n"
     '{ "proposals": [ { "content": str, "scope": str, "memory_kind": str, '
@@ -192,8 +192,8 @@ SANITIZE_SYSTEM = (
     "Do NOT preface with prose. Do NOT wrap the JSON in markdown "
     "code fences. Do NOT use markdown formatting anywhere. Do NOT "
     "explain reasoning before or after the JSON. An empty result is "
-    "still JSON: `{\"writes\": [], \"proposals\": [], \"demotions\": [], "
-    "\"entity_invalidations\": [], \"summary_for_user\": \"\"}`.\n\n"
+    'still JSON: `{"writes": [], "proposals": [], "demotions": [], '
+    '"entity_invalidations": [], "summary_for_user": ""}`.\n\n'
     "ROLE:\n"
     "You are the sanitizer step of a sleep-time memory pass. You receive "
     "the consolidated facts and the recombination proposals; you decide "

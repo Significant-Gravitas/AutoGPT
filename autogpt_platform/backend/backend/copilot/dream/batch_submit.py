@@ -42,11 +42,7 @@ from .prompts import (
     build_recombine_prompt,
     build_sanitize_prompt,
 )
-from .schemas import (
-    ConsolidationOutput,
-    DreamOperations,
-    RecombinationOutput,
-)
+from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
 
 logger = logging.getLogger(__name__)
 

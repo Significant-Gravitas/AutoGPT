@@ -51,8 +51,9 @@ failed.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
+
+from pydantic.dataclasses import dataclass
 
 from backend.util.feature_flag import Flag, is_feature_enabled
 

@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -54,8 +53,7 @@ class DreamLLMError(RuntimeError):
     """Raised when a dream-pass LLM call cannot be parsed into the target schema."""
 
 
-@dataclass(slots=True)
-class CompletionUsage:
+class CompletionUsage(BaseModel):
     """Token + cost telemetry from a single LLM call.
 
     Carries the provider-reported cost when present (OpenRouter
@@ -72,8 +70,7 @@ class CompletionUsage:
     cost_usd: float | None = None
 
 
-@dataclass(slots=True)
-class StructuredCompletion(Generic[T]):
+class StructuredCompletion(BaseModel, Generic[T]):
     """Return value of ``structured_completion``: parsed model + usage."""
 
     value: T

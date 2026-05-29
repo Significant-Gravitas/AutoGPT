@@ -300,13 +300,9 @@ async def test_try_ratify_on_hit_records_hits_for_every_retrieved_edge(mocker):
     mocker.patch.object(ratification_mod, "record_memory_hit", new=record_spy)
     # Driver returns no promotions (everything already-active).
     driver = _make_driver(records_for_list=[], records_for_promote=[])
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
-    )
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
 
-    await ratification_mod.try_ratify_on_hit(
-        "u1", ["edge-a", "edge-b", "edge-c"]
-    )
+    await ratification_mod.try_ratify_on_hit("u1", ["edge-a", "edge-b", "edge-c"])
 
     assert record_spy.await_count == 3
     called_uuids = [c.args[1] for c in record_spy.await_args_list]
@@ -320,14 +316,16 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
     number we attempted."""
     mocker.patch.object(ratification_mod, "record_memory_hit", new=AsyncMock())
 
-    promote_results = iter([
-        # First uuid promotes (was tentative)
-        [{"uuid": "edge-1"}],
-        # Second uuid: already active, Cypher WHERE filters → no row
-        [],
-        # Third uuid promotes
-        [{"uuid": "edge-3"}],
-    ])
+    promote_results = iter(
+        [
+            # First uuid promotes (was tentative)
+            [{"uuid": "edge-1"}],
+            # Second uuid: already active, Cypher WHERE filters → no row
+            [],
+            # Third uuid promotes
+            [{"uuid": "edge-3"}],
+        ]
+    )
 
     driver = MagicMock()
     driver.close = AsyncMock(return_value=None)
@@ -336,9 +334,7 @@ async def test_try_ratify_on_hit_returns_count_of_actually_promoted_edges(mocker
         return (list(next(promote_results)), None, None)
 
     driver.execute_query = AsyncMock(side_effect=fake_execute)
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
-    )
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
 
     promoted = await ratification_mod.try_ratify_on_hit(
         "u1", ["edge-1", "edge-2", "edge-3"]
@@ -364,9 +360,7 @@ async def test_try_ratify_on_hit_swallows_per_edge_cypher_failures(mocker):
     driver = MagicMock()
     driver.close = AsyncMock(return_value=None)
     driver.execute_query = AsyncMock(side_effect=fake_execute)
-    mocker.patch.object(
-        ratification_mod, "AutoGPTFalkorDriver", return_value=driver
-    )
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", return_value=driver)
 
     promoted = await ratification_mod.try_ratify_on_hit(
         "u1", ["edge-a", "edge-poison", "edge-c"]

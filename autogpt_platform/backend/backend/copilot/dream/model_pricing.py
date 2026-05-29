@@ -19,8 +19,9 @@ shared cost ledger.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Literal
+
+from pydantic.dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 

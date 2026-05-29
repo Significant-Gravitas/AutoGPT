@@ -33,9 +33,12 @@ from __future__ import annotations
 
 import json
 import platform
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Sequence
+
+from pydantic import Field
+from pydantic.dataclasses import dataclass
+from pydantic_core import to_jsonable_python
 
 from backend.copilot.dream.schemas import DreamPassResult
 
@@ -54,7 +57,7 @@ class DreamEvalConfig:
 
     run_staleness: bool = True
     run_cost_latency: bool = True
-    staleness_fixtures: Sequence[StalenessFixture] = field(
+    staleness_fixtures: Sequence[StalenessFixture] = Field(
         default_factory=lambda: tuple(ALL_STALENESS_FIXTURES)
     )
 
@@ -67,16 +70,7 @@ class DreamEvalResult:
     suites: dict[str, Any]
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(asdict(self), indent=indent, default=_dataclass_default)
-
-
-def _dataclass_default(obj: Any) -> Any:
-    """JSON encoder fallback so dataclasses inside ``suites`` serialize
-    cleanly without a custom encoder class per call site."""
-    try:
-        return asdict(obj)
-    except TypeError:
-        raise
+        return json.dumps(to_jsonable_python(self), indent=indent)
 
 
 def run_dream_eval(
@@ -112,5 +106,5 @@ def run_dream_eval(
         run_id=run_id,
         ts=now.isoformat().replace("+00:00", "Z"),
         python_version=platform.python_version(),
-        suites={k: asdict(v) for k, v in suites.items()},
+        suites={k: to_jsonable_python(v) for k, v in suites.items()},
     )

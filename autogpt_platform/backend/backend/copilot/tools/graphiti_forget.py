@@ -26,6 +26,7 @@ def _now_iso() -> str:
     """
     return datetime.now(timezone.utc).isoformat()
 
+
 from .base import BaseTool
 from .models import (
     ErrorResponse,
