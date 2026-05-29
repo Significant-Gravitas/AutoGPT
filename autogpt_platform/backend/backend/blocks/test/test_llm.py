@@ -1142,6 +1142,80 @@ class TestUserErrorStatusCodeHandling:
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors should surface a targeted remediation hint."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                (
+                    "Error code: 400 - {'error': {'message': "
+                    "'invalid model ID: claude-haiku-4-5-20251001'}}"
+                ),
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        assert "check anthropic's current model list" in str(exc_info.value).lower()
+        assert "update the block's model configuration" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_does_not_append_model_guidance(self):
+        """Non-model 400 errors should keep their original provider message."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+
+        async def mock_llm_call(*args, **kwargs):
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                "Error code: 400 - {'error': {'message': 'prompt rejected by moderation'}}",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=1,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" not in error_message
+        assert "update the block's model configuration" not in error_message
+
 
 class TestLlmModelMissing:
     """Test that LlmModel handles provider-prefixed model names."""
