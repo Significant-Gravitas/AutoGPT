@@ -12123,6 +12123,53 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditTransactionItem": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "CreditTransactionItem"
+      },
       "CreditTransactionType": {
         "type": "string",
         "enum": [
@@ -18923,7 +18970,7 @@
       "TransactionHistory": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": { "$ref": "#/components/schemas/CreditTransactionItem" },
             "type": "array",
             "title": "Transactions"
           },
