@@ -37,6 +37,7 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
@@ -422,6 +423,11 @@ app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
+)
+app.include_router(
+    search_routes.router,
+    tags=["search"],
+    prefix="/api/search",
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,

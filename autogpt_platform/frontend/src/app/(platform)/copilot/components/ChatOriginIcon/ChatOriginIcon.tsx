@@ -2,24 +2,14 @@
 
 import Image from "next/image";
 import { useState } from "react";
-
-const PLATFORM_LOGOS: Record<string, { name: string; src: string }> = {
-  discord: { name: "Discord", src: "/integrations/discord.png" },
-  github: { name: "GitHub", src: "/integrations/github.png" },
-  linear: { name: "Linear", src: "/integrations/linear.png" },
-  slack: { name: "Slack", src: "/integrations/slack.png" },
-  teams: { name: "Teams", src: "/integrations/teams.png" },
-  telegram: { name: "Telegram", src: "/integrations/telegram.png" },
-  whatsapp: { name: "WhatsApp", src: "/integrations/whatsapp.png" },
-};
+import { resolvePlatformLogo } from "./platformLogos";
 
 interface Props {
   sourcePlatform?: string | null;
 }
 
 export function ChatOriginIcon({ sourcePlatform }: Props) {
-  const platform = sourcePlatform?.trim().toLowerCase();
-  const logo = platform ? PLATFORM_LOGOS[platform] : undefined;
+  const logo = resolvePlatformLogo(sourcePlatform);
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 
   if (!logo || brokenSrc === logo.src) return null;

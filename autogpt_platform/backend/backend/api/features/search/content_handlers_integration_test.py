@@ -1,7 +1,7 @@
 """
 Integration tests for content handlers using real DB.
 
-Run with: poetry run pytest backend/api/features/store/content_handlers_integration_test.py -xvs
+Run with: poetry run pytest backend/api/features/search/content_handlers_integration_test.py -xvs
 
 These tests use the real database but mock OpenAI calls.
 """
@@ -10,13 +10,13 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.api.features.store.content_handlers import (
+from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
     DocumentationHandler,
     StoreAgentHandler,
 )
-from backend.api.features.store.embeddings import (
+from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
     backfill_all_content_types,
     ensure_content_embedding,
@@ -138,7 +138,7 @@ async def test_get_embedding_stats_all_types():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.generate_embedding")
+@patch("backend.api.features.search.embeddings.generate_embedding")
 async def test_ensure_content_embedding_blocks(mock_generate):
     """Test creating embeddings for blocks (mocked OpenAI)."""
     # Mock OpenAI to return fake embedding
@@ -168,7 +168,7 @@ async def test_ensure_content_embedding_blocks(mock_generate):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.generate_embedding")
+@patch("backend.api.features.search.embeddings.generate_embedding")
 async def test_backfill_all_content_types_dry_run(mock_generate):
     """Test backfill_all_content_types processes all handlers in order."""
     # Mock OpenAI to return fake embedding
