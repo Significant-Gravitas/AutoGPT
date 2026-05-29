@@ -21,6 +21,7 @@ import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
+import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 
@@ -176,6 +177,11 @@ export function LibraryAgentList({
       )}
 
       <div className="pt-4">
+        {!selectedFolderId && activeTab === "all" && (
+          <div className="mb-4">
+            <LowCreditBanner />
+          </div>
+        )}
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button

@@ -11,7 +11,7 @@ For generic cross-content search use ``search.hybrid_search.unified_hybrid_searc
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
@@ -20,6 +20,7 @@ from backend.api.features.search.embeddings import (
 )
 from backend.api.features.search.hybrid_search import (
     DEFAULT_STORE_AGENT_MIN_SCORE,
+    HybridSearchRow,
     _log_vector_error_diagnostics,
     bm25_rerank,
 )
@@ -326,12 +327,15 @@ async def hybrid_search(
     """
 
     try:
-        results = await query_raw_with_schema(sql_query, *params)
+        raw_results = await query_raw_with_schema(sql_query, *params)
     except Exception as e:
         await _log_vector_error_diagnostics(e)
         raise
 
-    total = results[0]["total_count"] if results else 0
+    # Cast at the SQL boundary so the rest of the pipeline operates on
+    # the typed row shape (matches search/hybrid_search.py's pattern).
+    results: list[HybridSearchRow] = cast(list[HybridSearchRow], raw_results)
+    total = results[0].get("total_count", 0) if results else 0
 
     # Apply BM25 reranking
     if results:
@@ -349,7 +353,7 @@ async def hybrid_search(
 
     logger.info(f"Hybrid search (store agents): {len(results)} results, {total} total")
 
-    return results, total
+    return cast(list[dict[str, Any]], results), total
 
 
 async def hybrid_search_simple(

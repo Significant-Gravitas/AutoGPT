@@ -40,22 +40,40 @@ def _stub_block(
     block_id: str = "00000000-0000-0000-0000-000000000001",
     name: str = "TestBlock",
     disabled: bool = False,
+    capture: dict | None = None,
 ):
     """Build a minimal block stub for get_block(...) replacement.
 
     Async-iterable execute() yields one (name, value) pair so the route's
-    `async for` loop can iterate without touching real block logic.
+    `async for` loop can iterate without touching real block logic. If
+    ``capture`` is supplied, the stub stores the kwargs it was called with
+    so tests can assert on them (e.g. ``execution_context``).
     """
     block = MagicMock()
     block.id = block_id
     block.name = name
     block.disabled = disabled
 
-    async def _execute(_data):
+    async def _execute(_data, **kwargs):
+        if capture is not None:
+            capture.update(kwargs)
         yield "result", "ok"
 
     block.execute = _execute
     return block
+
+
+@pytest.fixture(autouse=True)
+def stub_user_lookup(monkeypatch: pytest.MonkeyPatch, test_user_id: str):
+    """The direct-block-execute route fetches the user to build an
+    ExecutionContext; stub it so block-route tests don't need a real DB."""
+    user = MagicMock()
+    user.id = test_user_id
+    user.timezone = "UTC"
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.user_db.get_user_by_id",
+        AsyncMock(return_value=user),
+    )
 
 
 def test_zero_balance_returns_402_on_paid_block(monkeypatch: pytest.MonkeyPatch):
@@ -132,6 +150,37 @@ def test_free_block_runs_without_charging(monkeypatch: pytest.MonkeyPatch):
     assert response.status_code == 200, f"got {response.status_code}: {response.text}"
     assert response.json() == {"result": ["ok"]}
     spend_mock.assert_not_awaited()
+
+
+def test_execute_block_forwards_execution_context(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    """Regression for #12648: blocks that read ``execution_context`` (e.g.
+    time blocks) crashed because this route didn't forward one. The route
+    must build an ExecutionContext carrying the caller's user_id +
+    timezone and pass it through to ``Block.execute``."""
+    captured: dict = {}
+    block = _stub_block(name="FreeBlock", capture=captured)
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    user = MagicMock()
+    user.id = test_user_id
+    user.timezone = "Europe/Amsterdam"
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.user_db.get_user_by_id",
+        AsyncMock(return_value=user),
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 200, f"got {response.status_code}: {response.text}"
+    assert "execution_context" in captured
+    ctx = captured["execution_context"]
+    assert ctx.user_id == test_user_id
+    assert ctx.user_timezone == "Europe/Amsterdam"
 
 
 def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):

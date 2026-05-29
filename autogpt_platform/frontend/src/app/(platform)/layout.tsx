@@ -4,6 +4,7 @@ import { PushNotificationProvider } from "@/services/push-notifications/PushNoti
 import { ReactNode } from "react";
 import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
 import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
+import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { PaywallGate } from "./PaywallGate/PaywallGate";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
@@ -15,7 +16,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         <Navbar />
         <AdminImpersonationBanner />
         <section className="flex-1">
-          <PaywallGate>{children}</PaywallGate>
+          <TopUpPromptProvider>
+            <PaywallGate>{children}</PaywallGate>
+          </TopUpPromptProvider>
         </section>
       </main>
     </AutoPilotBridgeProvider>

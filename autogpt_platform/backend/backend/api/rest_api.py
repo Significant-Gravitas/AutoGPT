@@ -26,6 +26,7 @@ import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
+import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -394,6 +395,16 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
+    chat_share.owner_router,
+    tags=["v2", "chat", "share"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_share.public_router,
+    tags=["v2", "chat", "share", "public"],
+    prefix="/api/public/shared/chats",
+)
+app.include_router(
     workspace_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
@@ -415,7 +426,7 @@ app.include_router(
 )
 app.include_router(
     search_routes.router,
-    tags=["v2", "search"],
+    tags=["search"],
     prefix="/api/search",
 )
 app.include_router(

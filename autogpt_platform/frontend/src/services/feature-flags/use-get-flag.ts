@@ -15,6 +15,7 @@ export enum Flag {
   AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
+  CHAT_SHARING = "chat-sharing",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -30,6 +31,7 @@ const defaultFlags = {
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
+  [Flag.CHAT_SHARING]: false,
 };
 
 type FlagValues = typeof defaultFlags;

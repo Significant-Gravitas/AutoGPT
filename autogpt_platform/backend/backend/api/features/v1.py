@@ -2,7 +2,6 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Sequence, cast, get_args
@@ -89,6 +88,7 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
@@ -108,6 +108,7 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -503,13 +504,21 @@ async def execute_graph_block(
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
@@ -1693,6 +1702,15 @@ async def update_graph(
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
+
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
@@ -1744,6 +1762,15 @@ async def set_graph_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=user_id,
+            graph_id=graph_id,
+            new_version=new_active_version,
+        )
 
 
 @v1_router.patch(
@@ -2117,20 +2144,26 @@ async def enable_execution_sharing(
         raise HTTPException(status_code=404, detail="Execution not found")
 
     # Generate a unique share token
-    share_token = str(uuid.uuid4())
+    share_token = generate_share_token()
 
     # Remove stale allowlist records before updating the token — prevents a
     # window where old records + new token could coexist.
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Update the execution with share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=True,
-        share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
-    )
+    # Update the execution with share info — the underlying update_many
+    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
+    # between the pre-check above and this write surfaces as 404 rather
+    # than a silent no-op.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=True,
+            share_token=share_token,
+            shared_at=datetime.now(timezone.utc),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
@@ -2168,21 +2201,25 @@ async def disable_execution_sharing(
     # Remove shared file allowlist records
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Remove share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    # Remove share info — owner-gated at the DB layer; TOCTOU delete
+    # after the pre-check surfaces as 404.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=False,
+            share_token=None,
+            shared_at=None,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
@@ -2202,11 +2239,11 @@ async def get_shared_execution(
 async def download_shared_file(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
     file_id: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> Response:
     """Download a workspace file from a shared execution (no auth required).

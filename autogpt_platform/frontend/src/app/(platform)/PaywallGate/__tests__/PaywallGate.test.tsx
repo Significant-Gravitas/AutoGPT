@@ -25,6 +25,13 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useGetSubscriptionStatus: () => mockSubscriptionResult,
 }));
 
+// Mock environment — default to cloud so the gate logic is exercised; flip to
+// local per test to assert the local-dev bypass.
+let mockIsLocal = false;
+vi.mock("@/services/environment", () => ({
+  environment: { isLocal: () => mockIsLocal },
+}));
+
 // Mock PaywallModal — actual rendering depends on Radix portals + the full
 // SubscriptionTierSection, neither of which behave well under jsdom. Stand-in
 // placeholder lets us assert the gate-vs-no-gate decision without booting the
@@ -40,6 +47,7 @@ describe("PaywallGate", () => {
     mockPathname = "/build";
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
+    mockIsLocal = false;
   });
 
   it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
@@ -64,6 +72,19 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+  });
+
+  it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
+    mockIsPaymentEnabled = true;
+    mockIsLocal = true;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
   it("does not render modal when paid cohort + tier is PRO/MAX/BUSINESS", () => {

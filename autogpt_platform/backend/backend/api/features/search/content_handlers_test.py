@@ -118,6 +118,11 @@ async def test_store_agent_handler_get_missing_items(mocker):
             "description": "A test agent",
             "subHeading": "Test heading",
             "categories": ["AI", "Testing"],
+            # SELECT now joins StoreListing + Profile so the embedding
+            # row carries the marketplace URL fields the FE click
+            # handler needs (see service._enrich_store_agent_metadata).
+            "slug": "test-agent",
+            "creator": "alice",
         }
     ]
 
@@ -133,6 +138,8 @@ async def test_store_agent_handler_get_missing_items(mocker):
         assert "Test Agent" in items[0].searchable_text
         assert "A test agent" in items[0].searchable_text
         assert items[0].metadata["name"] == "Test Agent"
+        assert items[0].metadata["creator"] == "alice"
+        assert items[0].metadata["slug"] == "test-agent"
         assert items[0].user_id is None
 
 

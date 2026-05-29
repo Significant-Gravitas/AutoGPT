@@ -298,6 +298,7 @@ async def list_workspace_files(
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
+
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
         order={"createdAt": "desc"},

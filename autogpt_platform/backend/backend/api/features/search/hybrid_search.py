@@ -15,10 +15,11 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime
+from typing import Any, NotRequired, TypedDict, cast
 
 from prisma.enums import ContentType
-from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
+from rank_bm25 import BM25Okapi
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
@@ -26,6 +27,38 @@ from backend.api.features.search.embeddings import (
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+
+
+class HybridSearchRow(TypedDict):
+    """One row from :func:`unified_hybrid_search`.
+
+    The SQL CTE always populates the core columns
+    (``content_id``/``content_type``/``searchable_text``/``metadata``/
+    ``updated_at`` and the score breakdown). Optional fields are either
+    attached by post-processing (``bm25_rerank``) or stripped before
+    the row leaves this module (``total_count``).
+    """
+
+    content_type: ContentType | str
+    content_id: str
+    searchable_text: str
+    metadata: dict[str, Any]
+    updated_at: datetime | None
+    semantic_score: float
+    lexical_score: float
+    lexical_raw: float
+    category_score: float
+    recency_score: float
+    combined_score: float
+    # Window-function side car, identical across all rows in one
+    # response. Popped before the row leaves ``unified_hybrid_search``.
+    total_count: NotRequired[int]
+    # Added by ``bm25_rerank`` after the SQL roundtrip — absent when
+    # rerank short-circuits (empty corpus / empty query tokens).
+    bm25_score: NotRequired[float]
+    final_score: NotRequired[float]
+    relevance: NotRequired[float]
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +77,11 @@ def tokenize(text: str) -> list[str]:
 
 def bm25_rerank(
     query: str,
-    results: list[dict[str, Any]],
+    results: list[HybridSearchRow],
     text_field: str = "searchable_text",
     bm25_weight: float = 0.3,
     original_score_field: str = "combined_score",
-) -> list[dict[str, Any]]:
+) -> list[HybridSearchRow]:
     """
     Rerank search results using BM25.
 
@@ -147,7 +180,7 @@ async def unified_hybrid_search(
     user_id: str | None = None,
     lexical_query: str | None = None,
     prefix_match: bool = False,
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[HybridSearchRow], int]:
     """
     Unified hybrid search across all content types.
 
@@ -334,11 +367,17 @@ async def unified_hybrid_search(
     sql_query = f"""
         WITH candidates AS (
             -- Lexical matches (uses GIN index on search column)
-            SELECT uce.id, uce."contentType", uce."contentId"
-            FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
-            WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
-            {user_filter}
-            AND uce.search @@ {lexical_fn}('english', {query_param})
+            -- Bounded to 500 rows so a broad prefix like ``a:*`` can't
+            -- drag the whole table into ts_rank_cd scoring. Matches the
+            -- semantic branch's bounded design.
+            (
+                SELECT uce.id, uce."contentType", uce."contentId"
+                FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
+                WHERE uce."contentType" = ANY({content_types_param}::{{schema_prefix}}"ContentType"[])
+                {user_filter}
+                AND uce.search @@ {lexical_fn}('english', {query_param})
+                LIMIT 500
+            )
 
             UNION
 
@@ -422,12 +461,18 @@ async def unified_hybrid_search(
     """
 
     try:
-        results = await query_raw_with_schema(sql_query, *params)
+        raw_results = await query_raw_with_schema(sql_query, *params)
     except Exception as e:
         await _log_vector_error_diagnostics(e)
         raise
 
-    total = results[0]["total_count"] if results else 0
+    # ``query_raw_with_schema`` returns ``list[dict[str, Any]]`` — the
+    # SQL columns align with the ``HybridSearchRow`` shape, so a single
+    # cast at the boundary lets the rest of the pipeline operate on a
+    # typed row without per-call ``# type: ignore``s.
+    results: list[HybridSearchRow] = cast(list[HybridSearchRow], raw_results)
+
+    total = results[0].get("total_count", 0) if results else 0
     # Apply BM25 reranking
     if results:
         results = bm25_rerank(

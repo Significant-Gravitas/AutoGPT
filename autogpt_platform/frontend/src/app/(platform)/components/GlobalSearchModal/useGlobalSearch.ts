@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGetV2GlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
+import { useGetSearchGlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { buildBucketsFromResponse } from "./helpers";
 
@@ -24,7 +24,7 @@ export function useGlobalSearch(isOpen: boolean) {
     return () => window.clearTimeout(timeout);
   }, [query]);
 
-  const { data, isFetching, isError } = useGetV2GlobalSearch(
+  const { data, isFetching, isError } = useGetSearchGlobalSearch(
     { q: debouncedQuery.trim(), per_type_limit: PER_TYPE_LIMIT },
     {
       query: {

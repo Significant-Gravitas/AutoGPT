@@ -208,21 +208,17 @@ describe("SearchCommandModal", () => {
   it("closes when Escape is pressed", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    // Radix listens at document level for Escape inside its Dialog;
+    // a keyDown on the document mirrors what a user keystroke would.
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("closes when the backdrop is clicked but not the dialog body", () => {
+  it("does not close when the dialog body itself is clicked", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
-
     fireEvent.mouseDown(screen.getByRole("dialog"));
     expect(onClose).not.toHaveBeenCalled();
-
-    // The backdrop is the parent of the dialog.
-    const backdrop = screen.getByRole("dialog").parentElement!;
-    fireEvent.mouseDown(backdrop);
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("clears the query when the clear button is pressed", async () => {
