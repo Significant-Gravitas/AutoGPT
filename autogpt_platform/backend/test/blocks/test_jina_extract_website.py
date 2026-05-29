@@ -11,6 +11,8 @@ from backend.blocks.jina.search import (
     NO_SEARCH_RESULTS_OUTPUT,
     ExtractWebsiteContentBlock,
     SearchTheWebBlock,
+    _extract_json_body,
+    _is_no_results_error,
 )
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError
@@ -147,6 +149,49 @@ async def test_search_the_web_raises_for_422_with_unrelated_body(monkeypatch):
                 input_data=input_data, credentials=TEST_CREDENTIALS
             )
         ]
+
+
+@pytest.mark.asyncio
+async def test_search_the_web_raises_for_non_client_exceptions(monkeypatch):
+    block = SearchTheWebBlock()
+    input_data = block.Input(
+        query="Artificial Intelligence",
+        credentials=cast(JinaCredentialsInput, TEST_CREDENTIALS_INPUT),
+    )
+
+    async def fake_get_request(_url, headers=None, json=False):
+        raise RuntimeError("upstream timeout")
+
+    monkeypatch.setattr(block, "get_request", fake_get_request)
+
+    with pytest.raises(BlockExecutionError, match="Search failed: upstream timeout"):
+        [
+            output
+            async for output in block.run(
+                input_data=input_data, credentials=TEST_CREDENTIALS
+            )
+        ]
+
+
+def test_extract_json_body_returns_none_for_missing_or_invalid_payload():
+    assert _extract_json_body("HTTP 422 Error: Unprocessable Entity") is None
+    assert _extract_json_body("Body: not-json") is None
+    assert _extract_json_body('Body: ["not", "an", "object"]') is None
+
+
+def test_is_no_results_error_matches_fallback_string_without_parseable_json():
+    error = HTTPClientError(
+        "HTTP 422 Error: Unprocessable Entity - no search results available",
+        422,
+    )
+
+    assert _is_no_results_error(error) is True
+
+
+def test_is_no_results_error_rejects_unparseable_422_without_no_results_text():
+    error = HTTPClientError("HTTP 422 Error: Unprocessable Entity, Body: not-json", 422)
+
+    assert _is_no_results_error(error) is False
 
 
 @pytest.mark.asyncio
