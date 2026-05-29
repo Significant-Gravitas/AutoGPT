@@ -24,17 +24,22 @@ async def graph_cleanup():  # type: ignore[override]
 
 
 @pytest.fixture(autouse=True)
-def stub_user_lookup(monkeypatch):
-    """Stub ``user_db.get_user_by_id`` for every test in this dir.
+def stub_user_lookup_in_helpers(monkeypatch):
+    """Stub ``user_db.get_user_by_id`` ONLY for the helpers.py-local binding.
 
     ``prepare_block_for_execution`` reads the user record to plumb
     ``user_timezone`` into ``ExecutionContext``. The existing tests don't
-    need a real DB — return a minimal user with ``timezone='UTC'`` so the
-    timezone resolves to UTC (matches `ExecutionContext`'s default).
+    need a real DB for that.
+
+    ⚠️ We must patch the ``user_db`` name on the helpers module itself,
+    NOT ``helpers.user_db.get_user_by_id`` — the latter resolves through
+    the module reference and mutates ``backend.data.user.get_user_by_id``
+    globally, which leaks into unrelated callers (e.g. ``rate_limit``'s
+    ``user_db().get_user_by_id`` in ``run_agent_test``) and clobbers
+    their real-DB test users with our MagicMock.
     """
     user = MagicMock()
     user.timezone = "UTC"
-    monkeypatch.setattr(
-        "backend.copilot.tools.helpers.user_db.get_user_by_id",
-        AsyncMock(return_value=user),
-    )
+    stub = MagicMock()
+    stub.get_user_by_id = AsyncMock(return_value=user)
+    monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
