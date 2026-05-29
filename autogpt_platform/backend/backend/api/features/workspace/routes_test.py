@@ -106,7 +106,12 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["metadata"] == {"origin": "user-upload"}
     assert data["files"][1]["id"] == "f2"
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=True
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -128,7 +133,12 @@ def test_list_files_scopes_to_session_when_provided(
     assert data["has_more"] is False
     mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", "sess-123")
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=False
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -544,7 +554,12 @@ def test_list_files_has_more_true_when_limit_exceeded(
     assert data["files"][0]["id"] == "f1"
     assert data["files"][1]["id"] == "f2"
     mock_instance.list_files.assert_called_once_with(
-        limit=3, offset=0, include_all_sessions=True
+        path=None,
+        limit=3,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -579,7 +594,12 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     assert response.status_code == 200
     assert response.json()["offset"] == 50
     mock_instance.list_files.assert_called_once_with(
-        limit=11, offset=50, include_all_sessions=True
+        path=None,
+        limit=11,
+        offset=50,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
