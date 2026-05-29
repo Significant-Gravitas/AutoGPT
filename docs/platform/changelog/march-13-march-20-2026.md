@@ -58,7 +58,7 @@ The **feedback button** has moved to the header, making it accessible from any p
 * Fixed long filenames being truncated incorrectly [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12025)
 * Allowed falsy values in list building blocks [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12028)
 * Renamed "CoPilot" to "AutoPilot" on the credits page [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12481)
-* Constrained markdown heading sizes in chat messages [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12463)
+* Constrained Markdown heading sizes in chat messages [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12463)
 
 </details>
 

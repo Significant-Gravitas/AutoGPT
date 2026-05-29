@@ -35,7 +35,7 @@ Depending on the service, you'll be prompted to authenticate in one of three way
 | Type | Description | Example Services |
 |------|-------------|------------------|
 | **OAuth** | Click to authorise via the service's login page | Google, GitHub, Twitter |
-| **API Key** | Paste your API key from the service's dashboard | Linear, OpenAI (if self-hosting) |
+| **API Key** | Paste your API key from the service's dashboard | Linear, OpenAI |
 | **Username & Password** | Enter your account credentials | Varies by service |
 
 {% hint style="info" %}

@@ -52,7 +52,7 @@ Click **Home** in the nav bar to open AutoPilot. You can ask it to do almost any
 2. Open the Blocks menu on the left-hand side
 3. Add an **Input Block**, an **AI Text Generator Block**, and an **Output Block**
 4. Connect them together by dragging between their pins
-5. Press **Ctrl+S** or click the save button to save your agent
+5. Press **Ctrl+S** (or **Cmd+S** on Mac) or click the save button to save your agent
 6. Navigate to **Agents** to find and run it
 
 For a detailed walkthrough, see [Creating a Basic Agent](create-basic-agent.md).

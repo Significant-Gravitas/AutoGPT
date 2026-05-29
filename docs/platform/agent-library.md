@@ -17,7 +17,7 @@ Your library displays all of your agents, including agents you've built yourself
 To keep important agents easy to find, click the **heart icon** on any agent to favourite it. Favourited agents are pinned to the top of your library.
 
 {% hint style="info" %}
-There is currently no folder system for organising agents. Use favourites to pin your most-used agents to the top.
+Use **folders** to group related agents and **favourites** to pin your most-used agents to the top.
 {% endhint %}
 
 ## Agent Detail View
@@ -69,7 +69,7 @@ A task detail view shows:
 - **Outputs**: The results the agent produced
 - **Cost**: The total credit cost for this task execution, displayed at the top of the task
 
-You can also **share a task** by copying its URL, which allows others to view the task output directly.
+You can also **share a task** via the Share action, which generates a public link anyone can open without logging in. See [Sharing & Exporting Agents](sharing-and-exporting.md#share-task-output-via-url) for details on link visibility and revocation.
 
 ## Uploading an Agent
 

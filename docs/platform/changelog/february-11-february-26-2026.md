@@ -2,45 +2,45 @@
 
 *February 11 – 26, 2026*
 
-***
+**Platform version:** `v0.6.49`
 
 ## AutoPilot got a major brain upgrade
 
-AutoPilot is now powered by a completely new AI engine. It can hold real multi-step conversations, use tools behind the scenes, and handle complex requests that would have confused it before. When you need multiple things done at once, it runs them in parallel instead of one at a time — so everything finishes faster. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12103)
+AutoPilot is now powered by a completely new AI engine. It can hold real multi-step conversations, use tools behind the scenes, and handle complex requests that would have confused it before. When you need multiple things done at once, it runs them in parallel instead of one at a time — so everything finishes faster. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12103)
 
-Ask it to run one of your agents and it will actually wait for the result and tell you what happened — no more "your agent started, go check later." [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12147)
+Ask it to run one of your agents and it will actually wait for the result and tell you what happened — no more "your agent started, go check later." [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12147)
 
 {% hint style="info" %}
-If your connection drops while AutoPilot is working on something, it keeps going in the background and picks up right where you left off when you reconnect. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12057)
+If your connection drops while AutoPilot is working on something, it keeps going in the background and picks up right where you left off when you reconnect. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12057)
 {% endhint %}
 
 ## Automate your Telegram bots
 
-Thirteen new Telegram blocks let you build agents that respond to messages, photos, voice notes, videos, and reactions. Set up triggers for incoming content, then reply with text, images, audio, documents, or video. Connect your bot token from [@BotFather](https://t.me/BotFather) and you're ready to go. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12141)
+Thirteen new Telegram blocks let you build agents that respond to messages, photos, voice notes, videos, and reactions. Set up triggers for incoming content, then reply with text, images, audio, documents, or video. Connect your bot token from [@BotFather](https://t.me/BotFather) and you're ready to go. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12141)
 
 ## The builder has been rebuilt
 
-The old agent builder is gone. Everyone now uses the new flow editor — a cleaner, faster interface with improved node rendering and no more toggling between views. If you've been using the legacy builder, the experience should feel familiar but noticeably more polished. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12081)
+The old agent builder is gone. Everyone now uses the new flow editor — a cleaner, faster interface with improved node rendering and no more toggling between views. If you've been using the legacy builder, the experience should feel familiar but noticeably more polished. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12081)
 
 ## Organize agents into folders
 
-Your agent library now supports folders. Create them with custom names, emoji icons, and colors, then drag-and-drop agents into them or right-click to move. Folders can be nested up to five levels deep, and a breadcrumb bar helps you navigate. Search still works across everything regardless of which folder you're in. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12101)
+Your agent library now supports folders. Create them with custom names, emoji icons, and colors, then drag-and-drop agents into them or right-click to move. Folders can be nested up to five levels deep, and a breadcrumb bar helps you navigate. Search still works across everything regardless of which folder you're in. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12101)
 
 ## Your files follow you everywhere
 
-Files created during agent runs — whether from code execution, image generation, or document creation — now persist in your workspace automatically. They're accessible across conversations and sessions, and images render inline in chat. AutoPilot also retains full context about files and tools it used earlier in the conversation, so it won't "forget" what just happened. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12073) [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12164)
+Files created during agent runs — whether from code execution, image generation, or document creation — now persist in your workspace automatically. They're accessible across conversations and sessions, and images render inline in chat. AutoPilot also retains full context about files and tools it used earlier in the conversation, so it won't "forget" what just happened. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12073) [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12164)
 
 ## Tell us what to build next
 
-You can now submit feature requests directly through AutoPilot chat. Describe what you want — it checks for existing requests first and either creates a new one or adds your vote to a matching request so the team can see demand. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12102)
+You can now submit feature requests directly through AutoPilot chat. Describe what you want — it checks for existing requests first and either creates a new one or adds your vote to a matching request so the team can see demand. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12102)
 
 ## Vague goals get refined, not rejected
 
-If you ask AutoPilot to create an agent with a vague goal like "monitor social media," it now suggests a clearer, more actionable version instead of returning an error. Accept the suggestion with one click or refine it further. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12139)
+If you ask AutoPilot to create an agent with a vague goal like "monitor social media," it now suggests a clearer, more actionable version instead of returning an error. Accept the suggestion with one click or refine it further. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12139)
 
 ## The stop button actually stops things
 
-Clicking Stop now sends a real cancellation signal through the entire system. Previously it didn't always halt what was running behind the scenes — now it does. [*↗*](https://github.com/Significant-Gravitas/AutoGPT/pull/12171)
+Clicking Stop now sends a real cancellation signal through the entire system. Previously it didn't always halt what was running behind the scenes — now it does. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12171)
 
 ***
 
