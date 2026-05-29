@@ -62,6 +62,23 @@ class CommunityRebuildResult(BaseModel):
     skipped_reason: str | None = None
 
 
+class CommunityRebuildEnqueueResult(BaseModel):
+    """Outcome of enqueuing a manual community rebuild.
+
+    The manual-trigger endpoint enqueues the rebuild as a one-shot
+    APScheduler job and returns immediately so the caller doesn't block
+    the small APScheduler thread pool on Leiden + LLM-summarization. The
+    actual rebuild outcome is logged from ``execute_community_rebuild``;
+    callers that need the result can poll their own job-status surface.
+    """
+
+    user_id: str
+    job_id: str | None = None
+    queued: bool = False
+    skipped: bool = False
+    skipped_reason: str | None = None
+
+
 async def rebuild_communities_for_user(user_id: str) -> CommunityRebuildResult:
     """Destroy and rebuild ``:Community`` nodes for one user's graph.
 

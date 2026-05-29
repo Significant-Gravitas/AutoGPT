@@ -81,7 +81,11 @@ class Organization(BaseModel):
 
 
 class Project(BaseModel):
-    status: str | None = Field(
+    # Named ``project_status`` (not ``status``) to disambiguate from
+    # ``MemoryFact.status`` (lifecycle of a fact) — different Cypher
+    # namespaces but readers see the same field name with conflicting
+    # types otherwise.
+    project_status: str | None = Field(
         default=None,
         description="Project status — active, completed, paused, cancelled.",
     )

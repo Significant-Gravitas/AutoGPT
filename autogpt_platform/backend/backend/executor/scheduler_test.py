@@ -1,13 +1,22 @@
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytz
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 
 from backend.api.model import CreateGraph
+from backend.copilot.graphiti.communities import CommunityRebuildEnqueueResult
 from backend.data import db
-from backend.executor.scheduler import _build_trigger, _normalize_cron_day_of_week
+from backend.executor.scheduler import (
+    Jobstores,
+    Scheduler,
+    _build_trigger,
+    _normalize_cron_day_of_week,
+    execute_community_rebuild,
+)
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.test import SpinTestServer
@@ -179,3 +188,65 @@ def test_build_trigger_unix_dow_various_cases(
     nxt = trigger.get_next_fire_time(None, start)
     assert nxt is not None
     assert nxt.strftime("%A") == expected_dow
+
+
+def _make_scheduler_with_mock_aps():
+    """Build a ``Scheduler`` whose APScheduler is a MagicMock.
+
+    Lets us assert on ``add_job`` kwargs without spinning up the real
+    SQLAlchemyJobStore / event loop / thread pool.
+    """
+    scheduler = Scheduler(register_system_tasks=False)
+    scheduler.scheduler = MagicMock()
+    return scheduler
+
+
+def test_execute_community_rebuild_pass_skipped_when_flag_off():
+    """LD flag off -> return skipped, never touch the APScheduler."""
+    scheduler = _make_scheduler_with_mock_aps()
+
+    with patch(
+        "backend.executor.scheduler.run_async", return_value=False
+    ) as run_async_mock:
+        result = scheduler.execute_community_rebuild_pass(user_id="user-flag-off")
+
+    assert isinstance(result, CommunityRebuildEnqueueResult)
+    assert result.skipped is True
+    assert result.queued is False
+    assert result.skipped_reason == "graphiti_communities_disabled"
+    assert result.job_id is None
+    scheduler.scheduler.add_job.assert_not_called()
+    # Only the flag-check ran_async — no rebuild was driven inline.
+    assert run_async_mock.call_count == 1
+
+
+def test_execute_community_rebuild_pass_enqueues_when_flag_on():
+    """LD flag on -> enqueue a one-shot job, return immediately.
+
+    Guards the fix for the original review thread: the @expose endpoint
+    must NOT call ``rebuild_communities_for_user`` inline (it'd block
+    the small APScheduler thread pool on Leiden + LLM summarization).
+    """
+    scheduler = _make_scheduler_with_mock_aps()
+    fake_job = MagicMock()
+    fake_job.id = "community_rebuild_manual_user-flag-on_deadbeef"
+    scheduler.scheduler.add_job.return_value = fake_job
+
+    with patch("backend.executor.scheduler.run_async", return_value=True):
+        result = scheduler.execute_community_rebuild_pass(user_id="user-flag-on")
+
+    assert isinstance(result, CommunityRebuildEnqueueResult)
+    assert result.queued is True
+    assert result.skipped is False
+    assert result.job_id == fake_job.id
+    assert result.user_id == "user-flag-on"
+
+    scheduler.scheduler.add_job.assert_called_once()
+    _, kwargs = scheduler.scheduler.add_job.call_args
+    assert kwargs["kwargs"] == {"user_id": "user-flag-on"}
+    assert kwargs["jobstore"] == Jobstores.EXECUTION.value
+    assert kwargs["max_instances"] == 1
+    assert isinstance(kwargs["trigger"], DateTrigger)
+    # Sanity: the enqueued callable is the same sync wrapper the cron job uses.
+    args, _ = scheduler.scheduler.add_job.call_args
+    assert args[0] is execute_community_rebuild
