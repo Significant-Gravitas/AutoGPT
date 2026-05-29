@@ -115,8 +115,10 @@ config is forwarded **for OpenAI-compatible backends that DO honor it
 in the request body** (vLLM, LM Studio, LiteLLM proxy …).
 
 For Ollama specifically, set the context at the **server** via the
-`OLLAMA_CONTEXT_LENGTH` env var on the systemd unit — this is what
-the bundled installer's `--with-ollama` flag does:
+`OLLAMA_CONTEXT_LENGTH` env var. The installer scripts do this for
+you — manual setup looks different per platform:
+
+**Linux** (systemd drop-in):
 
 ```ini
 # /etc/systemd/system/ollama.service.d/host.conf
@@ -125,8 +127,29 @@ Environment="OLLAMA_HOST=0.0.0.0:11434"
 Environment="OLLAMA_CONTEXT_LENGTH=32768"
 ```
 
-Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`
-and verify with `ollama ps` (the `CONTEXT` column should show 32768).
+Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`.
+
+**macOS** (launchctl, persists across logins for launchd-spawned processes):
+
+```bash
+launchctl setenv OLLAMA_HOST 0.0.0.0:11434
+launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
+# Then restart Ollama — either:
+brew services restart ollama        # if installed via the brew formula
+# …or quit the menu-bar app and relaunch it (the .dmg install)
+```
+
+**Windows** (user-scope env vars, persists across reboots):
+
+```powershell
+setx OLLAMA_HOST "0.0.0.0:11434"
+setx OLLAMA_CONTEXT_LENGTH "32768"
+# Then quit Ollama from the system tray and relaunch it
+# (setx writes to HKCU but does NOT update already-running processes).
+```
+
+Verify on any platform with `ollama ps` (the `CONTEXT` column should
+show 32768).
 
 ## Networking — same host, different host, or remote
 
@@ -135,19 +158,37 @@ internet-reachable. Pick whichever matches your deployment shape:
 
 ### Same host as the AutoGPT containers
 
-On Linux, containers can't reach the host via `localhost` /
-`host.docker.internal` unless you wire it explicitly. Either:
+How containers reach the host depends on whether you're on Docker
+Desktop (macOS / Windows) or native Docker (Linux):
+
+**macOS + Windows (Docker Desktop)** — every container already has a
+`host.docker.internal` entry pointing at the host. No extra wiring:
+
+```bash
+CHAT_BASE_URL=http://host.docker.internal:11434/v1
+```
+
+Still set `OLLAMA_HOST=0.0.0.0:11434` so the .app/tray-managed Ollama
+accepts the connection from the Desktop network — by default it binds
+only to `127.0.0.1`.
+
+**Linux (native Docker)** — there's no auto-injected
+`host.docker.internal`. Pick one:
 
 1. **Use the LAN IP** in `CHAT_BASE_URL` — simplest, works everywhere.
 2. **Bind Ollama to all interfaces:** `OLLAMA_HOST=0.0.0.0:11434` (set
    in the systemd unit or a drop-in), so containers reach it via the
    bridge gateway.
 3. **Add `extra_hosts: ["host.docker.internal:host-gateway"]`** to the
-   chat services in `autogpt_platform/docker-compose.yml` — works on
-   Linux + already automatic on Docker Desktop.
+   chat services in `autogpt_platform/docker-compose.yml`.
 
-The bundled `installer/setup-autogpt.sh --with-ollama` flag does
-options (1) + (2) for you on a fresh Linux box.
+The bundled installer does these for you on a fresh box:
+
+| Platform | Command |
+| --- | --- |
+| Linux | `installer/setup-autogpt.sh --with-ollama` |
+| macOS | `installer/setup-autogpt.sh --with-ollama` |
+| Windows | `installer\setup-autogpt.bat /with-ollama` |
 
 ### Different LAN box (dedicated GPU server, NAS, …)
 
@@ -248,9 +289,19 @@ docker exec autogpt_platform-copilot_executor-1 env | grep ^CHAT_
 docker logs autogpt_platform-copilot_executor-1 | grep -E "Using.*service"
 #   [CoPilotExecutor|...] Using baseline service (mode=default)
 
-# 3. Confirm Ollama saw the request
+# 3. Confirm Ollama saw the request — per platform:
+
+# Linux (systemd-managed Ollama):
 journalctl -u ollama --since "1 minute ago" | grep "POST"
 #   [GIN] ... | 200 | 7.5s |  ... | POST "/v1/chat/completions"
+
+# macOS (brew formula):
+tail -F "$(brew --prefix)/var/log/ollama.log" | grep "POST"
+# macOS (.app from ollama.com): logs live in ~/.ollama/logs/server.log
+tail -F ~/.ollama/logs/server.log | grep "POST"
+
+# Windows: the Ollama tray app writes to %LOCALAPPDATA%\Ollama\server.log
+powershell -Command "Get-Content $env:LOCALAPPDATA\Ollama\server.log -Wait | Select-String POST"
 ```
 
 If `Using baseline service` appears and Ollama logs a 200, the
@@ -289,7 +340,7 @@ prompt before the first output token is emitted. On 4 CPU cores an
 takes ~10-15 min just to start generating. Title generation (~70-token
 prompt) finishes in seconds because there's almost nothing to prefill.
 A consumer GPU brings this down to seconds. If you're CPU-only and
-just want to validate the install end-to-end, watch
-`journalctl -u ollama -f` for the `POST /v1/chat/completions` line —
-once it appears with a 200, prefill finished and the model is
-generating.
+just want to validate the install end-to-end, tail the Ollama server
+log (see the per-platform commands in "Verifying the wiring" above)
+and watch for the `POST /v1/chat/completions` line — once it appears
+with a 200, prefill finished and the model is generating.

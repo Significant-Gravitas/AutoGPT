@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # ------------------------------------------------------------------------------
-# AutoGPT Setup Script
+# AutoGPT Setup Script (Linux + macOS)
 # ------------------------------------------------------------------------------
-# This script automates the installation and setup of AutoGPT on Linux systems.
+# This script automates the installation and setup of AutoGPT.
 # It checks prerequisites, clones the repository, and starts all services.
+# Windows users: see setup-autogpt.bat.
 #
 # Optional flags:
 #   --with-ollama          Also install Ollama, pull a default chat model, and
@@ -35,12 +36,25 @@ WITH_OLLAMA=false
 OLLAMA_MODEL="llama3.1:8b-instruct-q4_K_M"
 OLLAMA_HOST_URL=""
 
+# OS-family detection — Linux and macOS install Ollama very differently
+# (systemd unit + curl-pipe-sh vs launchd-managed brew/dmg app), bind the
+# host-to-container reachable IP differently (LAN IP / bridge vs
+# host.docker.internal), and set Ollama env differently (drop-in
+# /etc/systemd vs launchctl setenv). One central detector beats sprinkling
+# ``uname -s`` checks through every helper.
+OS_FAMILY="unknown"
+case "$(uname -s)" in
+    Linux*)  OS_FAMILY="linux" ;;
+    Darwin*) OS_FAMILY="macos" ;;
+    *)       OS_FAMILY="unknown" ;;
+esac
+
 for arg in "$@"; do
     case "$arg" in
         --with-ollama)        WITH_OLLAMA=true ;;
         --ollama-model=*)     OLLAMA_MODEL="${arg#*=}"; WITH_OLLAMA=true ;;
         --ollama-host=*)      OLLAMA_HOST_URL="${arg#*=}"; WITH_OLLAMA=true ;;
-        -h|--help)            sed -n '4,18p' "$0"; exit 0 ;;
+        -h|--help)            sed -n '4,19p' "$0"; exit 0 ;;
         *) echo "Unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -72,6 +86,11 @@ handle_error() {
 
 check_prerequisites() {
     print_color "BLUE" "Checking prerequisites..."
+
+    if [ "$OS_FAMILY" = "unknown" ]; then
+        handle_error "Unsupported OS: $(uname -s). This script supports Linux and macOS — Windows users should run setup-autogpt.bat."
+    fi
+    print_color "GREEN" "✓ OS family: $OS_FAMILY"
 
     if ! command -v git &> /dev/null; then
         handle_error "Git is not installed. Please install it and try again."
@@ -191,6 +210,14 @@ bootstrap_ollama() {
         OLLAMA_HOST_URL="$OLLAMA_ROOT"
         return
     fi
+    if [ "$OS_FAMILY" = "macos" ]; then
+        _bootstrap_ollama_macos
+    else
+        _bootstrap_ollama_linux
+    fi
+}
+
+_bootstrap_ollama_linux() {
     if ! command -v ollama &> /dev/null; then
         print_color "BLUE" "Installing Ollama (https://ollama.com/install.sh)..."
         curl -fsSL https://ollama.com/install.sh | sh || handle_error "Ollama install failed"
@@ -220,6 +247,55 @@ OLLAMA_DROPIN
     print_color "GREEN" "✓ Ollama ready: http://localhost:11434"
 }
 
+_bootstrap_ollama_macos() {
+    # macOS Ollama is a launchd-managed .app, not a systemd unit. The
+    # canonical install paths are (1) ``brew install ollama`` (formula
+    # = headless server; cask = full .app), or (2) the official .dmg
+    # from ollama.com. We prefer brew when present because it's
+    # scriptable; otherwise we point the operator at the .dmg.
+    if ! command -v ollama &> /dev/null; then
+        if command -v brew &> /dev/null; then
+            print_color "BLUE" "Installing Ollama via Homebrew..."
+            brew install ollama || handle_error "brew install ollama failed"
+        else
+            handle_error "Ollama is not installed and Homebrew is not available. Install Homebrew (https://brew.sh) and re-run, or download Ollama from https://ollama.com/download/mac and re-run with --ollama-host=http://localhost:11434."
+        fi
+    else
+        print_color "GREEN" "✓ Ollama already installed ($(ollama --version 2>&1 | head -1))"
+    fi
+    # Set Ollama env globally for launchd-spawned processes. On macOS,
+    # ``launchctl setenv`` is the only knob that survives Ollama.app
+    # being relaunched by launchd — exporting in shell won't reach it.
+    # The .app bound to localhost is reachable from Docker Desktop
+    # containers via host.docker.internal (Desktop auto-injects this),
+    # so we don't strictly need 0.0.0.0 — but binding it covers the
+    # ``brew services``-as-headless case where the .app isn't running.
+    launchctl setenv OLLAMA_HOST "0.0.0.0:11434" \
+        || handle_error "launchctl setenv OLLAMA_HOST failed"
+    launchctl setenv OLLAMA_CONTEXT_LENGTH "32768" \
+        || handle_error "launchctl setenv OLLAMA_CONTEXT_LENGTH failed"
+    # Restart Ollama so it picks up the env. The brew-formula install
+    # uses ``brew services``; the .app install uses ``open -a Ollama``.
+    # Probe both: whichever is in use will respond.
+    if brew services list 2>/dev/null | grep -q '^ollama'; then
+        brew services restart ollama >/dev/null 2>&1 || true
+    fi
+    # Always (re)start the headless server in the background as a
+    # belt-and-suspenders measure — ``ollama serve`` exits if 11434 is
+    # already bound, which is exactly what we want.
+    nohup ollama serve >/dev/null 2>&1 &
+    for _ in $(seq 1 20); do
+        curl -sf http://localhost:11434/api/version >/dev/null && break
+        sleep 1
+    done
+    if ! curl -sf http://localhost:11434/api/version >/dev/null; then
+        handle_error "Ollama did not become reachable on localhost:11434. If you installed via the .dmg, open Ollama.app once to grant it network permissions, then re-run."
+    fi
+    print_color "BLUE" "Pulling model: $OLLAMA_MODEL (this may take several minutes)..."
+    ollama pull "$OLLAMA_MODEL" || handle_error "Failed to pull $OLLAMA_MODEL"
+    print_color "GREEN" "✓ Ollama ready: http://localhost:11434"
+}
+
 write_local_env() {
     # Wire backend/.env so the new ChatConfig.local transport activates and
     # AutoPilot routes through Ollama with no cloud API keys. Uses the host
@@ -232,7 +308,20 @@ write_local_env() {
         # ``bootstrap_ollama`` already stripped the trailing slash + any
         # ``/v1`` from the operator-supplied URL; trust the normalized form.
         host_url="$OLLAMA_HOST_URL"
+    elif [ "$OS_FAMILY" = "macos" ]; then
+        # Docker Desktop on macOS auto-injects ``host.docker.internal`` as
+        # an /etc/hosts entry inside every container — no compose
+        # ``extra_hosts`` needed, no LAN-IP guessing. Always prefer it
+        # over hard-coding the host's IPv4 (which a) varies per Wi-Fi
+        # network and b) doesn't survive sleep/wake on a laptop).
+        host_url="http://host.docker.internal:11434"
     else
+        # Linux: containers can't reach the host via host.docker.internal
+        # unless compose wires it. ``hostname -I`` (Linux-only) gives the
+        # first non-loopback IPv4, which the bridge network always reaches.
+        # We fall back to 127.0.0.1 only when -I returns nothing
+        # (e.g. a host with no LAN IPs); in that case the operator will
+        # need to override CHAT_BASE_URL by hand.
         local host_ip
         host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
         : "${host_ip:=127.0.0.1}"
@@ -258,7 +347,11 @@ write_local_env() {
         local START_RE END_RE
         START_RE=$(printf '%s\n' "$START_MARKER" | sed 's/[].[\*^$/]/\\&/g')
         END_RE=$(printf '%s\n' "$END_MARKER" | sed 's/[].[\*^$/]/\\&/g')
-        sed -i "/$START_RE/,/$END_RE/d" .env
+        # ``sed -i`` is incompatible between GNU (Linux) and BSD (macOS):
+        # GNU treats ``-i`` alone as in-place; BSD requires an extension
+        # argument (``-i ''``) or it eats the next arg as the suffix.
+        # ``sed -i.bak`` works on both — we delete the .bak afterwards.
+        sed -i.bak "/$START_RE/,/$END_RE/d" .env && rm -f .env.bak
     fi
     {
         echo
