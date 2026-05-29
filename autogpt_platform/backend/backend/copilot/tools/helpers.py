@@ -229,7 +229,14 @@ async def execute_block(
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
-        user = await user_db.get_user_by_id(user_id)
+        # get_user_by_id raises ValueError on missing user; fall back to UTC
+        # so an orphaned-session block call still runs instead of crashing.
+        try:
+            user_timezone = get_user_timezone_or_utc(
+                (await user_db.get_user_by_id(user_id)).timezone
+            )
+        except ValueError:
+            user_timezone = "UTC"
 
         synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
         synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -244,7 +251,7 @@ async def execute_block(
             workspace_id=workspace.id,
             session_id=session_id,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
-            user_timezone=get_user_timezone_or_utc(user.timezone if user else None),
+            user_timezone=user_timezone,
         )
 
         exec_kwargs: dict[str, Any] = {
