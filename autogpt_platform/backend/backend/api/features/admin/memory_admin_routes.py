@@ -4,10 +4,11 @@ Powers the admin memory-visualizer page in the frontend (Task #10).
 All routes are gated by ``requires_admin_user`` so non-admin callers
 get a 403 before any FalkorDB query runs.
 
-Initially scoped to "admin views their OWN memory" — every route
-accepts ``user_id="me"`` and resolves to the caller's user id via
-``get_user_id`` (which also honours the existing admin-impersonation
-``X-Act-As-User-Id`` header for cross-user inspection).
+Admins can inspect any user's memory by passing the target user id in
+the path; ``user_id="me"`` is a convenience shorthand that resolves to
+the caller's own id via ``get_user_id`` (which also honours the
+``X-Act-As-User-Id`` impersonation header). Cross-user reads/writes are
+audited in ``_audit_cross_user_access``.
 """
 
 import logging
@@ -17,6 +18,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
 from pydantic import BaseModel
+from redis.exceptions import ResponseError
 
 from backend.copilot.graphiti.client import derive_group_id
 from backend.copilot.graphiti.config import graphiti_config
@@ -167,16 +169,32 @@ def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     )
 
 
+_MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
+
+
+def _is_missing_graph_error(exc: BaseException) -> bool:
+    """FalkorDB returns ``ResponseError`` with a graph-not-found message
+    when querying a database the user has never populated."""
+    if not isinstance(exc, ResponseError):
+        return False
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _MISSING_GRAPH_MARKERS)
+
+
 async def _count(driver, query: str) -> int:
-    """Run a ``RETURN count(...) AS c`` query; return 0 on empty."""
+    """Run a ``RETURN count(...) AS c`` query; return 0 on empty.
+
+    Swallows only the "no graph yet" case — the user just hasn't used
+    memory. Other Cypher errors (typos, schema issues) propagate so
+    they're visible to admins rather than silently zeroed.
+    """
     try:
         rows, _, _ = await driver.execute_query(query)
         return int(rows[0]["c"]) if rows else 0
-    except Exception:
-        # FalkorDB returns an error for queries against a database that
-        # doesn't exist yet. Treat as zero — the user just hasn't used
-        # memory.
-        return 0
+    except ResponseError as exc:
+        if _is_missing_graph_error(exc):
+            return 0
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +278,9 @@ async def list_entities(
             g=group_id,
             limit=limit,
         )
-    except Exception:
+    except ResponseError as exc:
+        if not _is_missing_graph_error(exc):
+            raise
         rows = []
     finally:
         await driver.close()
@@ -332,7 +352,9 @@ async def list_facts(
             """,
             **params,
         )
-    except Exception:
+    except ResponseError as exc:
+        if not _is_missing_graph_error(exc):
+            raise
         rows = []
     finally:
         await driver.close()
@@ -394,7 +416,9 @@ async def list_communities(
             g=group_id,
             limit=limit,
         )
-    except Exception:
+    except ResponseError as exc:
+        if not _is_missing_graph_error(exc):
+            raise
         rows = []
     finally:
         await driver.close()
