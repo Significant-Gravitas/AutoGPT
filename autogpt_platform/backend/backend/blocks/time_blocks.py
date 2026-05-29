@@ -298,9 +298,15 @@ class GetCurrentDateBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+        self,
+        input_data: Input,
+        *,
+        execution_context: ExecutionContext | None = None,
+        **kwargs,
     ) -> BlockOutput:
-        effective_timezone = execution_context.user_timezone
+        effective_timezone = (
+            execution_context.user_timezone if execution_context else None
+        )
 
         try:
             offset = int(input_data.offset)
