@@ -4,15 +4,18 @@ import { useMemo, useState } from "react";
 import type { CommunityRebuildJobStatus } from "@/app/api/__generated__/models/communityRebuildJobStatus";
 import type { DreamJobStatus } from "@/app/api/__generated__/models/dreamJobStatus";
 import type { NightlyJobStatus } from "@/app/api/__generated__/models/nightlyJobStatus";
-
-// Polling envelope shared across all three job kinds — see the matching
-// alias in useMemoryVisualizer.ts. Narrowed to a specific kind at the
-// view layer that reads ``status.result``.
-type AnyJobStatus = DreamJobStatus | NightlyJobStatus | CommunityRebuildJobStatus;
 import { GraphCanvas } from "./GraphCanvas";
 import { useMemoryVisualizer } from "./useMemoryVisualizer";
 import { DreamOperationsView } from "./DreamOperationsView/DreamOperationsView";
 import { DreamUsageSummary } from "./DreamUsageSummary/DreamUsageSummary";
+
+// Polling envelope shared across all three job kinds — see the matching
+// alias in useMemoryVisualizer.ts. Narrowed to a specific kind at the
+// view layer that reads ``status.result``.
+type AnyJobStatus =
+  | DreamJobStatus
+  | NightlyJobStatus
+  | CommunityRebuildJobStatus;
 
 export function MemoryVisualizer() {
   const {

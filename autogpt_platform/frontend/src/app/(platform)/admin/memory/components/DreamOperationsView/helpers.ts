@@ -11,9 +11,7 @@ export function formatConfidence(c: number | null | undefined): string {
   return `${(c * 100).toFixed(0)}%`;
 }
 
-export function sectionCounts(
-  ops: DreamOperationsSnapshot | null | undefined,
-) {
+export function sectionCounts(ops: DreamOperationsSnapshot | null | undefined) {
   if (!ops) {
     return { writes: 0, proposals: 0, demotions: 0, entities: 0 };
   }

@@ -32,7 +32,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 // structurally identical except for the typed ``result`` payload, so
 // the polling hook walks them as a union. Narrowing to a specific
 // kind happens at the view layer that reads ``status.result``.
-type AnyJobStatus = DreamJobStatus | NightlyJobStatus | CommunityRebuildJobStatus;
+type AnyJobStatus =
+  | DreamJobStatus
+  | NightlyJobStatus
+  | CommunityRebuildJobStatus;
 
 // The state enum is identical across all three concrete envelopes
 // (same underlying Pydantic Literal). Pick the dream variant as the
@@ -48,9 +51,7 @@ const POLL_INTERVAL_MS = 3000;
 
 type TerminalState = Extract<JobStateValue, "complete" | "errored">;
 
-function isTerminal(
-  state: JobStateValue | undefined,
-): state is TerminalState {
+function isTerminal(state: JobStateValue | undefined): state is TerminalState {
   return state === "complete" || state === "errored";
 }
 
@@ -181,8 +182,7 @@ export function useMemoryVisualizer() {
       state: { data?: { data?: AnyJobStatus | unknown }; status: string };
     }) => {
       if (query.state.status === "error") return false;
-      const state = (query.state.data?.data as AnyJobStatus | undefined)
-        ?.state;
+      const state = (query.state.data?.data as AnyJobStatus | undefined)?.state;
       return isTerminal(state) ? false : POLL_INTERVAL_MS;
     },
     staleTime: 0,
@@ -298,9 +298,7 @@ export function useMemoryVisualizer() {
 
   const overviewData = overview.data?.data as MemoryOverview | undefined;
   const graphData = graph.data?.data as GraphResponse | undefined;
-  const dreamStatusData = dreamStatus.data?.data as
-    | AnyJobStatus
-    | undefined;
+  const dreamStatusData = dreamStatus.data?.data as AnyJobStatus | undefined;
   const nightlyStatusData = nightlyStatus.data?.data as
     | AnyJobStatus
     | undefined;
