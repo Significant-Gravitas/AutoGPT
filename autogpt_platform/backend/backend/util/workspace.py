@@ -326,6 +326,21 @@ class WorkspaceManager:
             f"at path {path}, size={len(content)} bytes"
         )
 
+        # Fire-and-forget: index this file in the hybrid-search store so
+        # the user can find it from /search/global by name. No-ops cheaply
+        # when the existing embedding's text is unchanged.
+        try:
+            from backend.api.features.workspace.embeddings import (
+                schedule_workspace_file_embedding,
+            )
+
+            schedule_workspace_file_embedding(
+                file_id=file.id, user_id=self.user_id, name=file.name, path=file.path
+            )
+        except Exception as e:
+            # Embedding is purely a search-quality concern — never block writes.
+            logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
+
         return file
 
     async def list_files(
@@ -334,6 +349,7 @@ class WorkspaceManager:
         limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
+        name_contains: Optional[str] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -359,6 +375,7 @@ class WorkspaceManager:
             path_prefix=effective_path,
             limit=limit,
             offset=offset,
+            name_contains=name_contains,
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -386,6 +403,21 @@ class WorkspaceManager:
 
         # Soft-delete database record
         result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
+
+        # Best-effort cleanup of the search index so deleted files don't
+        # keep showing up in /search/global hits.
+        if result is not None:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=file_id, user_id=self.user_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to delete file embedding for {file_id}: {e}")
+
         return result is not None
 
     async def get_download_url(self, file_id: str, expires_in: int = 3600) -> str:

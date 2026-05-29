@@ -82,6 +82,20 @@ class ContentHandler(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_valid_content_ids(self) -> set[str]:
+        """Return the set of ``contentId`` values that should currently
+        have an embedding for this content type.
+
+        Used by :func:`cleanup_orphaned_embeddings` to compute the
+        difference against ``UnifiedContentEmbedding`` and delete rows
+        whose source content has been removed / hidden / untitled. The
+        definition of "valid" must match the corresponding handler's
+        :meth:`get_missing_items` filter so the embedder isn't fighting
+        the orphan-cleaner.
+        """
+        pass
+
 
 class StoreAgentHandler(ContentHandler):
     """Handler for marketplace store agent listings."""
@@ -92,7 +106,7 @@ class StoreAgentHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch approved store listings without embeddings."""
-        from backend.api.features.store.embeddings import build_searchable_text
+        from backend.api.features.search.embeddings import build_searchable_text
 
         missing = await query_raw_with_schema(
             """
@@ -101,12 +115,19 @@ class StoreAgentHandler(ContentHandler):
                 slv.name,
                 slv.description,
                 slv."subHeading",
-                slv.categories
+                slv.categories,
+                sl.slug,
+                p.username AS creator
             FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"StoreListing" sl
+                ON slv."storeListingId" = sl.id
+            JOIN {schema_prefix}"Profile" p
+                ON p."userId" = sl."owningUserId"
             LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
                 ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'::{schema_prefix}"ContentType"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
+            AND sl."isDeleted" = false
             AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -123,9 +144,16 @@ class StoreAgentHandler(ContentHandler):
                     sub_heading=row["subHeading"],
                     categories=row["categories"] or [],
                 ),
+                # ``creator`` (Profile.username) + ``slug`` (StoreListing.slug)
+                # build the marketplace URL — the FE search-result click
+                # handler in ChatSidebar.tsx routes to
+                # ``/marketplace/agent/{creator}/{slug}`` and silently no-ops
+                # without them.
                 metadata={
                     "name": row["name"],
                     "categories": row["categories"] or [],
+                    "creator": row["creator"],
+                    "slug": row["slug"],
                 },
                 user_id=None,  # Store agents are public
             )
@@ -162,6 +190,22 @@ class StoreAgentHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_approved - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Approved StoreListingVersion rows from non-deleted listings
+        # mirror ``get_missing_items``: rejected / soft-deleted listings
+        # should have their embeddings cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT slv.id
+            FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"StoreListing" sl ON slv."storeListingId" = sl.id
+            WHERE slv."submissionStatus" = 'APPROVED'
+              AND slv."isDeleted" = false
+              AND sl."isDeleted" = false
+            """,
+        )
+        return {row["id"] for row in rows}
 
 
 @functools.lru_cache(maxsize=1)
@@ -315,6 +359,13 @@ class BlockHandler(ContentHandler):
             "with_embeddings": with_embeddings,
             "without_embeddings": total_blocks - with_embeddings,
         }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # The enabled-block registry is the source of truth — a block
+        # that's been removed from the registry or disabled is no
+        # longer a valid embedding target.
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
+        return set(enabled.keys())
 
 
 @dataclass
@@ -643,6 +694,16 @@ class DocumentationHandler(ContentHandler):
             "without_embeddings": total_sections - with_embeddings,
         }
 
+    async def get_valid_content_ids(self) -> set[str]:
+        # Section IDs are derived from on-disk markdown — a deleted file
+        # or removed section drops from this set and its embedding gets
+        # cleaned up.
+        docs_root = self._get_docs_root()
+        if not docs_root.exists():
+            return set()
+        # Filesystem walk is sync; keep it off the event loop.
+        return await asyncio.to_thread(self._get_all_section_content_ids, docs_root)
+
 
 class LibraryAgentHandler(ContentHandler):
     """Handler for user-scoped library agents.
@@ -729,6 +790,236 @@ class LibraryAgentHandler(ContentHandler):
             "without_embeddings": total - with_embeddings,
         }
 
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: only non-deleted, non-hidden
+        # LibraryAgent rows are considered valid embedding targets.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"LibraryAgent"
+            WHERE "isDeleted" = false AND "isHidden" = false
+            """,
+        )
+        return {row["id"] for row in rows}
+
+
+def build_workspace_file_text(name: str, path: str) -> str:
+    """Build the embedding-searchable text for a workspace file.
+
+    Shared between :class:`WorkspaceFileHandler` (batch backfill) and
+    the per-write indexer in ``workspace/embeddings.py`` so both encode
+    the file under the same ``searchableText`` representation. If they
+    drift, the "skip if unchanged" guard in the indexer keeps re-
+    embedding the same row forever.
+    """
+    # Strip the leading slash and extension from the path stem so the
+    # token "report" from "/documents/report.pdf" reinforces a rename
+    # to "Final.pdf" without polluting the text with directory noise.
+    from pathlib import PurePosixPath
+
+    stem = PurePosixPath(path).stem if path else ""
+    parts = [name or "", stem]
+    # Dedup while preserving order: a freshly-created file usually has
+    # ``name == stem`` and we don't want the same token weighted twice.
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            out.append(p)
+    return " ".join(out)
+
+
+class WorkspaceFileHandler(ContentHandler):
+    """Handler for user-scoped workspace files.
+
+    Files are private per workspace owner. ``searchable_text`` is the
+    user-visible ``name`` (plus the path stem when it adds extra signal —
+    e.g. files renamed to a generic name still match against their path)
+    so search results surface meaningful matches without us having to
+    embed file contents.
+    """
+
+    @property
+    def content_type(self) -> ContentType:
+        return ContentType.WORKSPACE_FILE
+
+    async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        missing = await query_raw_with_schema(
+            """
+            SELECT
+                uwf.id,
+                uwf.name,
+                uwf.path,
+                uwf."mimeType",
+                uw."userId"
+            FROM {schema_prefix}"UserWorkspaceFile" uwf
+            JOIN {schema_prefix}"UserWorkspace" uw ON uw.id = uwf."workspaceId"
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = uwf.id
+              AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
+              AND uce."userId" = uw."userId"
+            WHERE uwf."isDeleted" = false
+              AND uce."contentId" IS NULL
+            LIMIT $1
+            """,
+            batch_size,
+        )
+
+        items: list[ContentItem] = []
+        for row in missing:
+            text = build_workspace_file_text(row["name"] or "", row["path"] or "")
+            if not text:
+                continue
+            items.append(
+                ContentItem(
+                    content_id=row["id"],
+                    content_type=ContentType.WORKSPACE_FILE,
+                    searchable_text=text,
+                    metadata={
+                        "name": row["name"] or "",
+                        "path": row["path"] or "",
+                        "mime_type": row["mimeType"] or "",
+                    },
+                    user_id=row["userId"],
+                )
+            )
+        return items
+
+    async def get_stats(self) -> dict[str, int]:
+        total_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"UserWorkspaceFile"
+            WHERE "isDeleted" = false
+            """
+        )
+        total = total_result[0]["count"] if total_result else 0
+
+        with_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"UserWorkspaceFile" uwf
+            JOIN {schema_prefix}"UserWorkspace" uw ON uw.id = uwf."workspaceId"
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = uwf.id
+              AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
+              AND uce."userId" = uw."userId"
+            WHERE uwf."isDeleted" = false
+            """
+        )
+        with_embeddings = with_result[0]["count"] if with_result else 0
+
+        return {
+            "total": total,
+            "with_embeddings": with_embeddings,
+            "without_embeddings": total - with_embeddings,
+        }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: a soft-deleted file's embedding
+        # is orphaned and should be cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"UserWorkspaceFile"
+            WHERE "isDeleted" = false
+            """,
+        )
+        return {row["id"] for row in rows}
+
+
+class ChatSessionHandler(ContentHandler):
+    """Handler for user-scoped chat sessions.
+
+    Only sessions with a non-empty ``title`` are embedded — untitled
+    sessions are noise for search and CoPilot auto-fills the title within
+    the first turn anyway.
+    """
+
+    @property
+    def content_type(self) -> ContentType:
+        return ContentType.CHAT_SESSION
+
+    async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
+        missing = await query_raw_with_schema(
+            """
+            SELECT
+                cs.id,
+                cs."userId",
+                cs.title
+            FROM {schema_prefix}"ChatSession" cs
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = cs.id
+              AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
+              AND uce."userId" = cs."userId"
+            WHERE cs.title IS NOT NULL
+              AND btrim(cs.title) <> ''
+              AND uce."contentId" IS NULL
+            LIMIT $1
+            """,
+            batch_size,
+        )
+
+        items: list[ContentItem] = []
+        for row in missing:
+            title = (row["title"] or "").strip()
+            if not title:
+                continue
+            items.append(
+                ContentItem(
+                    content_id=row["id"],
+                    content_type=ContentType.CHAT_SESSION,
+                    searchable_text=title,
+                    metadata={"title": title},
+                    user_id=row["userId"],
+                )
+            )
+        return items
+
+    async def get_stats(self) -> dict[str, int]:
+        total_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"ChatSession"
+            WHERE title IS NOT NULL AND btrim(title) <> ''
+            """
+        )
+        total = total_result[0]["count"] if total_result else 0
+
+        with_result = await query_raw_with_schema(
+            """
+            SELECT COUNT(*) as count
+            FROM {schema_prefix}"ChatSession" cs
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce
+              ON uce."contentId" = cs.id
+              AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
+              AND uce."userId" = cs."userId"
+            WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
+            """
+        )
+        with_embeddings = with_result[0]["count"] if with_result else 0
+
+        return {
+            "total": total,
+            "with_embeddings": with_embeddings,
+            "without_embeddings": total - with_embeddings,
+        }
+
+    async def get_valid_content_ids(self) -> set[str]:
+        # Mirrors ``get_missing_items``: sessions without a non-empty
+        # title aren't embedded; a session that was deleted or had its
+        # title cleared should have its embedding cleaned up.
+        rows = await query_raw_with_schema(
+            """
+            SELECT id
+            FROM {schema_prefix}"ChatSession"
+            WHERE title IS NOT NULL AND btrim(title) <> ''
+            """,
+        )
+        return {row["id"] for row in rows}
+
 
 # Content handler registry
 CONTENT_HANDLERS: dict[ContentType, ContentHandler] = {
@@ -736,4 +1027,6 @@ CONTENT_HANDLERS: dict[ContentType, ContentHandler] = {
     ContentType.BLOCK: BlockHandler(),
     ContentType.DOCUMENTATION: DocumentationHandler(),
     ContentType.LIBRARY_AGENT: LibraryAgentHandler(),
+    ContentType.WORKSPACE_FILE: WorkspaceFileHandler(),
+    ContentType.CHAT_SESSION: ChatSessionHandler(),
 }
