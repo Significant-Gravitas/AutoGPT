@@ -71,12 +71,15 @@ async def test_get_current_date_uses_user_timezone_from_execution_context():
     )
     execution_context = ExecutionContext(user_timezone="America/New_York")
 
+    before = datetime.now(tz=ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
     key, value = await _collect_single_output(
         block.run(input_data=input_data, execution_context=execution_context)
     )
+    after = datetime.now(tz=ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
     assert key == "date"
-    assert value == datetime.now(tz=ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    # Window allows for midnight rollover between capture points.
+    assert value in {before, after}
 
 
 @pytest.mark.asyncio

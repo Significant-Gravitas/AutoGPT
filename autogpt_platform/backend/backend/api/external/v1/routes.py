@@ -105,6 +105,10 @@ async def execute_graph_block(
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
 
+    user = await user_db.get_user_by_id(auth.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
     try:
         await charge_for_direct_block_execution(
             user_id=auth.user_id, block=obj, input_data=data, source="external"
@@ -113,10 +117,6 @@ async def execute_graph_block(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
         ) from e
-
-    user = await user_db.get_user_by_id(auth.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
 
     # Direct block execution has no graph; build a minimal ExecutionContext
     # carrying the caller's identity + timezone so blocks that depend on
