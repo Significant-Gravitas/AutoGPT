@@ -284,16 +284,30 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 # (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
 # generic provider-prefix strip in ``_missing_`` can't reverse the date
 # truncation, so map the OpenRouter slugs to ``LlmModel`` members here.
-# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
-# suffix need entries; values without a snapshot (4.6/4.7+) are already
-# covered by the prefix-strip path alone. Stored as ``LlmModel`` instances
-# (not strings) so a rename or snapshot rotation on the enum follows the
-# alias automatically — a stale entry becomes a load-time ``AttributeError``
-# rather than a silent ``_missing_`` miss at runtime.
+# Stored as ``LlmModel`` instances (not strings) so a rename or snapshot
+# rotation on the enum follows the alias automatically — a stale entry
+# becomes a load-time ``AttributeError`` rather than a silent ``_missing_``
+# miss at runtime.
 _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
+    # Claude 4.5 models (snapshot suffixes)
     "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
     "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
     "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+    # Claude 4.6/4.7 models — _missing_ handles forward (slug → enum)
+    # construction, but entries here are required so _OPENROUTER_REVERSE
+    # can produce the correct provider-prefixed slug for dispatch.
+    "anthropic/claude-opus-4-6": LlmModel.CLAUDE_4_6_OPUS,
+    "anthropic/claude-sonnet-4-6": LlmModel.CLAUDE_4_6_SONNET,
+    "anthropic/claude-opus-4-7": LlmModel.CLAUDE_4_7_OPUS,
+}
+
+# Reverse mapping: LlmModel → OpenRouter slug for provider dispatch.
+# When sending requests to OpenRouter we must use the provider-prefixed
+# slug (e.g. ``anthropic/claude-opus-4-7``) rather than the bare enum
+# value (``claude-opus-4-7``).  Built lazily from _OPENROUTER_ALIASES
+# so the two tables stay in sync.
+_OPENROUTER_REVERSE: dict[LlmModel, str] = {
+    v: k for k, v in _OPENROUTER_ALIASES.items()
 }
 
 
@@ -1201,7 +1215,7 @@ async def _llm_call(
             # Ask OpenRouter to include the per-request USD cost on the usage
             # object. Same shape used by simulator.py — keep aligned.
             extra_body={"usage": {"include": True}},
-            model=llm_model.value,
+            model=_OPENROUTER_REVERSE.get(llm_model) or llm_model.value,
             messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
             tools=(

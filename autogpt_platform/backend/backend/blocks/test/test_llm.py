@@ -1605,3 +1605,58 @@ class TestLlmModelMissingHandler:
                 f"OpenRouter alias missing for {member.value} — expected slug "
                 f"{slug!r} to resolve back to {member.name}"
             )
+
+
+class TestOpenRouterAliases:
+    """Test that OpenRouter aliases correctly resolve Claude 4.6/4.7 models.
+
+    These tests guard the reverse mapping used at provider dispatch time,
+    not just the forward enum construction in ``LlmModel._missing_``.
+    """
+
+    @pytest.mark.parametrize(
+        ("slug", "expected"),
+        [
+            ("anthropic/claude-opus-4-7", llm.LlmModel.CLAUDE_4_7_OPUS),
+            ("anthropic/claude-opus-4-6", llm.LlmModel.CLAUDE_4_6_OPUS),
+            ("anthropic/claude-sonnet-4-6", llm.LlmModel.CLAUDE_4_6_SONNET),
+            # Existing 4.5 aliases (regression guard)
+            ("anthropic/claude-opus-4-5", llm.LlmModel.CLAUDE_4_5_OPUS),
+            ("anthropic/claude-sonnet-4-5", llm.LlmModel.CLAUDE_4_5_SONNET),
+            ("anthropic/claude-haiku-4-5", llm.LlmModel.CLAUDE_4_5_HAIKU),
+        ],
+    )
+    def test_openrouter_alias_registry_contains_entry(
+        self, slug: str, expected: llm.LlmModel
+    ):
+        """Assert the alias mapping exists and points to the correct enum member.
+
+        This directly exercises ``_OPENROUTER_ALIASES``, which is the table
+        consulted when converting an OpenRouter slug back to an ``LlmModel``
+        for provider dispatch.  If the mapping is missing or stale, the
+        provider will receive the bare snapshot-less ID and return 400.
+        """
+        assert llm._OPENROUTER_ALIASES[slug] is expected
+
+    @pytest.mark.parametrize(
+        ("model", "expected_slug"),
+        [
+            (llm.LlmModel.CLAUDE_4_7_OPUS, "anthropic/claude-opus-4-7"),
+            (llm.LlmModel.CLAUDE_4_6_OPUS, "anthropic/claude-opus-4-6"),
+            (llm.LlmModel.CLAUDE_4_6_SONNET, "anthropic/claude-sonnet-4-6"),
+            # Existing 4.5 aliases (regression guard)
+            (llm.LlmModel.CLAUDE_4_5_OPUS, "anthropic/claude-opus-4-5"),
+            (llm.LlmModel.CLAUDE_4_5_SONNET, "anthropic/claude-sonnet-4-5"),
+            (llm.LlmModel.CLAUDE_4_5_HAIKU, "anthropic/claude-haiku-4-5"),
+        ],
+    )
+    def test_openrouter_reverse_mapping_for_dispatch(
+        self, model: llm.LlmModel, expected_slug: str
+    ):
+        """Assert the reverse mapping returns the correct OpenRouter slug.
+
+        This exercises ``_OPENROUTER_REVERSE``, which is used at provider
+        dispatch time to convert an ``LlmModel`` back to the provider-prefixed
+        slug required by OpenRouter.
+        """
+        assert llm._OPENROUTER_REVERSE[model] == expected_slug
