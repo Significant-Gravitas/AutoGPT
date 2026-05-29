@@ -504,7 +504,11 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
     # transition; this wrapper must NOT close the row out early or
     # the GET status endpoint will report ``complete`` while the batch
     # is still processing.
-    if result.execution_path == "anthropic_batch" and not result.skipped and not result.error:
+    if (
+        result.execution_path == "anthropic_batch"
+        and not result.skipped
+        and not result.error
+    ):
         try:
             run_async(
                 update_status_phase(
@@ -1292,10 +1296,12 @@ class Scheduler(AppService):
     # sync_baseline mode (today, until P0.1 adapter stubs are filled
     # in) each submitter inlines its work.
     #
-    # ``execute_dream_pass_now`` and ``execute_ratification_pass_now``
-    # remain as admin-callable debug endpoints for triggering a
-    # single submitter in isolation; the cron-fired path goes through
-    # ``execute_nightly_batch_sync``.
+    # ``execute_ratification_pass_now`` remains as an admin-callable
+    # sync endpoint because ratification is Cypher-only and finishes in
+    # seconds (no batch SLA to amortise). The dream pass + nightly fan-
+    # out moved to fire-and-forget + JobStatus polling — see
+    # ``schedule_immediate_*`` below — so their old sync ``_now``
+    # methods were removed in Step 9 of the providers rollout.
 
     @expose
     def add_nightly_batch_schedule(
@@ -1455,41 +1461,6 @@ class Scheduler(AppService):
         return {"scheduled": True, "job_id": job_id, "kind": "rebuild"}
 
     @expose
-    def execute_nightly_batch_now(self, user_id: str) -> dict:
-        """Manually trigger the full nightly batch fan-out (bypasses cron).
-
-        DEPRECATED for admin UI use — kept for the AgentProbe eval
-        runner which expects synchronous return + result. The admin
-        UI path uses ``schedule_immediate_nightly_batch`` (fire-and-
-        forget + JobStatus polling). New eval/test code should prefer
-        this synchronous path so they can assert on the result; new
-        UI code should prefer the polling pattern.
-        """
-        from backend.copilot.dream.nightly_batch import run_nightly_batch_submit
-
-        result = run_async(
-            run_nightly_batch_submit(user_id),
-            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
-        )
-        return result.model_dump(mode="json")
-
-    @expose
-    def execute_dream_pass_now(self, user_id: str) -> dict:
-        """Run the dream pass in isolation (admin debug endpoint).
-
-        Bypasses the nightly batch cron and runs only the dream pass
-        submitter. Useful for testing dream output without waiting
-        for / running the full nightly fan-out.
-        """
-        from backend.copilot.dream.orchestrator import execute_dream_pass
-
-        result = run_async(
-            execute_dream_pass(user_id),
-            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
-        )
-        return result.model_dump(mode="json")
-
-    @expose
     def execute_ratification_pass_now(self, user_id: str) -> dict:
         """Run the ratification sweep in isolation (admin debug endpoint).
 
@@ -1526,12 +1497,9 @@ class SchedulerClient(AppServiceClient):
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )
-    execute_nightly_batch_now = endpoint_to_async(Scheduler.execute_nightly_batch_now)
 
-    # Per-submitter admin debug endpoints — bypass the nightly batch
-    # and run only their submitter. Used by the admin viz's individual
-    # "Run dream pass" / "Run ratification" buttons.
-    execute_dream_pass_now = endpoint_to_async(Scheduler.execute_dream_pass_now)
+    # Ratification stays synchronous — Cypher-only, finishes in seconds.
+    # The admin viz "Ratification" button still calls this directly.
     execute_ratification_pass_now = endpoint_to_async(
         Scheduler.execute_ratification_pass_now
     )

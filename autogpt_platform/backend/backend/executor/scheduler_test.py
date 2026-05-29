@@ -170,9 +170,10 @@ class TestExecuteCommunityRebuildPass:
 # Dream nightly batch @expose methods — registration-time flag gating
 #
 # The dream pass and ratification pass crons were consolidated into a
-# single nightly batch cron. The underlying ``execute_dream_pass_now``
-# and ``execute_ratification_pass_now`` @expose methods remain as
-# admin debug endpoints (not cron-registered) — tested below.
+# single nightly batch cron. The dream pass + nightly fan-out admin
+# entry points moved to fire-and-forget + JobStatus polling via
+# ``schedule_immediate_*``; only ``execute_ratification_pass_now``
+# remains as a sync @expose method (Cypher-only, finishes in seconds).
 # ---------------------------------------------------------------------------
 
 
