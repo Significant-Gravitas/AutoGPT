@@ -45,6 +45,7 @@ export function CopilotChatHost({
     rateLimitMessage,
     dismissRateLimit,
     sessionDryRun,
+    sessionChatStatus,
   } = useCopilotPage();
 
   return (
@@ -64,6 +65,7 @@ export function CopilotChatHost({
           status={status}
           error={error}
           sessionId={sessionId}
+          sessionChatStatus={sessionChatStatus}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -84,7 +85,7 @@ class TestLLMStatsTracking:
 
             response = await llm.llm_call(
                 credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
+                llm_model=llm.LlmModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
             )
@@ -1548,3 +1549,59 @@ class TestLLMRequestTimeout:
         assert (
             call_count["n"] == 1
         ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+
+
+class TestLlmModelMissingHandler:
+    """``LlmModel._missing_`` resolves provider-prefixed slugs back to enum
+    members.  Used by the dry-run simulator to send an OpenRouter slug
+    (``anthropic/claude-haiku-4-5``) that OpenRouter's OpenAI-compat endpoint
+    accepts, while still validating through ``OrchestratorBlock.Input.model``
+    which is typed as ``LlmModel``."""
+
+    def test_openrouter_alias_maps_to_canonical(self) -> None:
+        # The OpenRouter slug for Haiku 4.5 drops the snapshot suffix that
+        # Anthropic's direct API uses — pure prefix strip wouldn't find it,
+        # so the alias map is required.
+        assert (
+            llm.LlmModel("anthropic/claude-haiku-4-5") is llm.LlmModel.CLAUDE_4_5_HAIKU
+        )
+        assert llm.LlmModel("anthropic/claude-opus-4-5") is llm.LlmModel.CLAUDE_4_5_OPUS
+        assert (
+            llm.LlmModel("anthropic/claude-sonnet-4-5")
+            is llm.LlmModel.CLAUDE_4_5_SONNET
+        )
+
+    def test_prefix_strip_still_works(self) -> None:
+        # 4.6/4.7 enum values already match OpenRouter's slug after prefix
+        # strip — no alias-map entry needed.
+        assert llm.LlmModel("anthropic/claude-opus-4-7") is llm.LlmModel.CLAUDE_4_7_OPUS
+        assert llm.LlmModel("anthropic/claude-opus-4-6") is llm.LlmModel.CLAUDE_4_6_OPUS
+
+    def test_unknown_slug_raises(self) -> None:
+        # Bare unknown strings still fail loudly — the alias map is an
+        # additive shortcut, not a silent catch-all.
+        with pytest.raises(ValueError):
+            llm.LlmModel("anthropic/claude-haiku-999")
+
+    def test_all_claude_snapshots_reachable_via_openrouter_slug(self) -> None:
+        """Every Claude enum value whose canonical form carries a trailing
+        ``-YYYYMMDD`` snapshot suffix must be reachable via the OpenRouter
+        ``anthropic/<base>`` slug — otherwise the dry-run simulator (and any
+        other caller passing the OpenRouter form) hits ``_missing_``'s
+        prefix-strip path with a string the enum doesn't recognise and
+        validation fails. Catches the drift class where a new snapshot-
+        dated Claude member is added without updating ``_OPENROUTER_ALIASES``.
+        """
+        # Capture the full ``claude-...`` base so the OpenRouter slug is
+        # constructed correctly: ``claude-haiku-4-5-20251001`` →
+        # ``anthropic/claude-haiku-4-5`` (NOT ``anthropic/haiku-4-5``).
+        snapshot_re = re.compile(r"^(claude-.+)-\d{8}$")
+        for member in llm.LlmModel:
+            match = snapshot_re.match(member.value)
+            if match is None:
+                continue
+            slug = f"anthropic/{match.group(1)}"
+            assert llm.LlmModel(slug) is member, (
+                f"OpenRouter alias missing for {member.value} — expected slug "
+                f"{slug!r} to resolve back to {member.name}"
+            )

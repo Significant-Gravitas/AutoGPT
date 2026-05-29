@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
-from backend.blocks._base import Block, BlockCost, BlockCostType
+from backend.blocks._base import Block, BlockCost, BlockCostType, TokenRateDisplay
 from backend.data.block import BlockInput
+from backend.data.model import APIKeyCredentials
 
 if TYPE_CHECKING:
     from backend.data.model import NodeExecutionStats
@@ -91,6 +92,7 @@ from backend.integrations.credentials_store import (
     llama_api_credentials,
     mem0_credentials,
     nvidia_credentials,
+    ollama_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
@@ -108,8 +110,6 @@ from backend.integrations.credentials_store import (
 MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,
-    LlmModel.O1: 16,
-    LlmModel.O1_MINI: 4,
     # GPT-5 models
     LlmModel.GPT5_2: 6,
     LlmModel.GPT5_1: 5,
@@ -121,22 +121,13 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
-    LlmModel.GPT4_TURBO: 10,
-    LlmModel.CLAUDE_4_1_OPUS: 21,
-    LlmModel.CLAUDE_4_OPUS: 21,
-    LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_4_6_OPUS: 14,
     LlmModel.CLAUDE_4_7_OPUS: 14,
     LlmModel.CLAUDE_4_6_SONNET: 9,
     LlmModel.CLAUDE_4_5_HAIKU: 4,
     LlmModel.CLAUDE_4_5_OPUS: 14,
     LlmModel.CLAUDE_4_5_SONNET: 9,
-    LlmModel.CLAUDE_3_HAIKU: 1,
-    LlmModel.AIML_API_QWEN2_5_72B: 1,
-    LlmModel.AIML_API_LLAMA3_1_70B: 1,
     LlmModel.AIML_API_LLAMA3_3_70B: 1,
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: 1,
-    LlmModel.AIML_API_LLAMA_3_2_3B: 1,
     LlmModel.LLAMA3_3_70B: 1,
     LlmModel.LLAMA3_1_8B: 1,
     LlmModel.OLLAMA_LLAMA3_3: 1,
@@ -146,22 +137,18 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OLLAMA_DOLPHIN: 1,
     LlmModel.OPENAI_GPT_OSS_120B: 1,
     LlmModel.OPENAI_GPT_OSS_20B: 1,
-    LlmModel.GEMINI_2_5_PRO_PREVIEW: 4,
     LlmModel.GEMINI_2_5_PRO: 4,
     LlmModel.GEMINI_3_1_PRO_PREVIEW: 5,
     LlmModel.GEMINI_3_FLASH_PREVIEW: 2,
     LlmModel.GEMINI_2_5_FLASH: 1,
     LlmModel.GEMINI_2_0_FLASH: 1,
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: 1,
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
+    LlmModel.GEMINI_2_5_FLASH_LITE: 1,
     LlmModel.GEMINI_2_0_FLASH_LITE: 1,
-    LlmModel.MISTRAL_NEMO: 1,
     LlmModel.MISTRAL_LARGE_3: 2,
     LlmModel.MISTRAL_MEDIUM_3_1: 2,
     LlmModel.MISTRAL_SMALL_3_2: 1,
     LlmModel.CODESTRAL: 1,
-    LlmModel.COHERE_COMMAND_R_08_2024: 1,
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
     LlmModel.COHERE_COMMAND_A_03_2025: 3,
     LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: 3,
     LlmModel.COHERE_COMMAND_A_REASONING_08_2025: 6,
@@ -177,7 +164,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AMAZON_NOVA_LITE_V1: 1,
     LlmModel.AMAZON_NOVA_MICRO_V1: 1,
     LlmModel.AMAZON_NOVA_PRO_V1: 1,
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: 1,
     LlmModel.MICROSOFT_PHI_4: 1,
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
     LlmModel.META_LLAMA_4_SCOUT: 1,
@@ -193,19 +179,12 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GROK_4_20: 5,
     LlmModel.GROK_4_20_MULTI_AGENT: 5,
     LlmModel.GROK_CODE_FAST_1: 1,
-    LlmModel.KIMI_K2: 1,
-    LlmModel.KIMI_K2_0905: 1,
     LlmModel.KIMI_K2_5: 1,
     LlmModel.KIMI_K2_6: 2,
     LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
     # Z.ai (Zhipu) models
-    LlmModel.ZAI_GLM_4_32B: 1,
-    LlmModel.ZAI_GLM_4_5: 2,
-    LlmModel.ZAI_GLM_4_5_AIR: 1,
-    LlmModel.ZAI_GLM_4_5_AIR_FREE: 1,
-    LlmModel.ZAI_GLM_4_5V: 2,
     LlmModel.ZAI_GLM_4_6: 1,
     LlmModel.ZAI_GLM_4_6V: 1,
     LlmModel.ZAI_GLM_4_7: 1,
@@ -245,24 +224,17 @@ class TokenRate(BaseModel):
 # current credit-to-USD conversion (1 credit ≈ $0.01), with a uniform 1.5x
 # margin over the published provider price (nearest-integer rounded).
 TOKEN_COST: dict[LlmModel, TokenRate] = {
-    # Anthropic Opus legacy ($15/$75/$1.50/$18.75 per 1M).
-    LlmModel.CLAUDE_4_1_OPUS: TokenRate(
-        input=2250, output=11250, cache_read=225, cache_creation=2813
-    ),
-    LlmModel.CLAUDE_4_OPUS: TokenRate(
-        input=2250, output=11250, cache_read=225, cache_creation=2813
-    ),
     # Anthropic Opus current ($5/$25/$0.50/$6.25 per 1M).
     LlmModel.CLAUDE_4_6_OPUS: TokenRate(
+        input=750, output=3750, cache_read=75, cache_creation=938
+    ),
+    LlmModel.CLAUDE_4_7_OPUS: TokenRate(
         input=750, output=3750, cache_read=75, cache_creation=938
     ),
     LlmModel.CLAUDE_4_5_OPUS: TokenRate(
         input=750, output=3750, cache_read=75, cache_creation=938
     ),
     # Anthropic Sonnet ($3/$15/$0.30/$3.75).
-    LlmModel.CLAUDE_4_SONNET: TokenRate(
-        input=450, output=2250, cache_read=45, cache_creation=563
-    ),
     LlmModel.CLAUDE_4_6_SONNET: TokenRate(
         input=450, output=2250, cache_read=45, cache_creation=563
     ),
@@ -273,8 +245,6 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.CLAUDE_4_5_HAIKU: TokenRate(
         input=150, output=750, cache_read=15, cache_creation=188
     ),
-    # Claude 3 Haiku ($0.25/$1.25) — legacy, no cache fields wired.
-    LlmModel.CLAUDE_3_HAIKU: TokenRate(input=38, output=188),
     # OpenAI
     LlmModel.GPT5_2: TokenRate(input=263, output=2100),
     LlmModel.GPT5_1: TokenRate(input=188, output=1500),
@@ -286,18 +256,14 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.GPT4O_MINI: TokenRate(input=23, output=90),
     LlmModel.GPT41: TokenRate(input=300, output=1200),
     LlmModel.GPT41_MINI: TokenRate(input=60, output=240),
-    LlmModel.GPT4_TURBO: TokenRate(input=1500, output=4500),
     LlmModel.O3: TokenRate(input=300, output=1200),
     LlmModel.O3_MINI: TokenRate(input=165, output=660),
-    LlmModel.O1: TokenRate(input=2250, output=9000),
-    LlmModel.O1_MINI: TokenRate(input=165, output=660),
     # Google Gemini (uses <=200k context tier pricing).
     LlmModel.GEMINI_2_5_PRO: TokenRate(input=188, output=1500),
-    LlmModel.GEMINI_2_5_PRO_PREVIEW: TokenRate(input=188, output=1500),
     LlmModel.GEMINI_2_5_FLASH: TokenRate(input=45, output=375),
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: TokenRate(input=15, output=60),
     LlmModel.GEMINI_2_0_FLASH: TokenRate(input=15, output=60),
     LlmModel.GEMINI_2_0_FLASH_LITE: TokenRate(input=11, output=45),
+    LlmModel.GEMINI_2_5_FLASH_LITE: TokenRate(input=15, output=60),
     LlmModel.GEMINI_3_1_PRO_PREVIEW: TokenRate(input=300, output=1800),
     LlmModel.GEMINI_3_FLASH_PREVIEW: TokenRate(input=75, output=450),
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: TokenRate(input=38, output=225),
@@ -326,15 +292,10 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.MISTRAL_LARGE_3: TokenRate(input=300, output=900),
     LlmModel.MISTRAL_MEDIUM_3_1: TokenRate(input=60, output=300),
     LlmModel.MISTRAL_SMALL_3_2: TokenRate(input=15, output=45),
-    LlmModel.MISTRAL_NEMO: TokenRate(input=5, output=5),
     LlmModel.CODESTRAL: TokenRate(input=45, output=135),
     # Cohere
-    LlmModel.COHERE_COMMAND_R_08_2024: TokenRate(input=23, output=90),
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: TokenRate(input=375, output=1500),
     LlmModel.COHERE_COMMAND_A_03_2025: TokenRate(input=375, output=1500),
     # Moonshot Kimi
-    LlmModel.KIMI_K2: TokenRate(input=90, output=375),
-    LlmModel.KIMI_K2_0905: TokenRate(input=90, output=375),
     # K2.5 / K2.6 aren't on Moonshot's direct pricing page today; OpenRouter
     # passes through $0.44/$2.00 for K2.5 and $0.7448/$4.655 for K2.6.
     LlmModel.KIMI_K2_5: TokenRate(input=66, output=300),
@@ -397,124 +358,158 @@ def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
         return None
 
 
+# TOKEN_COST stores credits per 1M tokens at a uniform 1.5x margin over the
+# published provider price (1 credit ≈ $0.01). Convert back to the public USD
+# rate for UI display so the builder shows real provider pricing instead of
+# the internal credit number. 150 = 100 cr/$ × 1.5x margin.
+_USD_PER_1M_DIVISOR = 150
+
+
+def _token_rate_display(model: LlmModel) -> TokenRateDisplay | None:
+    """Return the published per-1M-token USD `TokenRateDisplay` for `model`,
+    or None if the model has no TOKEN_COST entry. cache_* fields are set
+    only when the provider publishes a distinct cached-token rate (most
+    non-Anthropic providers store 0 in TOKEN_COST and surface None here).
+    """
+    rate = TOKEN_COST.get(model)
+    if rate is None:
+        return None
+    return TokenRateDisplay(
+        input_usd_per_1m=rate.input / _USD_PER_1M_DIVISOR,
+        output_usd_per_1m=rate.output / _USD_PER_1M_DIVISOR,
+        cache_read_usd_per_1m=(
+            rate.cache_read / _USD_PER_1M_DIVISOR if rate.cache_read else None
+        ),
+        cache_creation_usd_per_1m=(
+            rate.cache_creation / _USD_PER_1M_DIVISOR if rate.cache_creation else None
+        ),
+    )
+
+
+def _tokens_llm_cost(model: LlmModel, credentials: APIKeyCredentials) -> BlockCost:
+    """Build a TOKENS BlockCost for `model` + `credentials`, attaching the
+    public per-1M-token USD rates when the model has a TOKEN_COST entry.
+    """
+    return BlockCost(
+        cost_type=BlockCostType.TOKENS,
+        cost_filter={
+            "model": model,
+            "credentials": {
+                "id": credentials.id,
+                "provider": credentials.provider,
+                "type": credentials.type,
+            },
+        },
+        cost_amount=MODEL_COST[model],
+        token_rate=_token_rate_display(model),
+    )
+
+
+def _groq_llm_cost(model: LlmModel) -> BlockCost:
+    """Groq variant of `_tokens_llm_cost` — keeps the legacy id-only
+    cost_filter shape so older graphs that stored just the credential id
+    continue to match.
+    """
+    return BlockCost(
+        cost_type=BlockCostType.TOKENS,
+        cost_filter={
+            "model": model,
+            "credentials": {"id": groq_credentials.id},
+        },
+        cost_amount=MODEL_COST[model],
+        token_rate=_token_rate_display(model),
+    )
+
+
+def _open_router_llm_cost(model: LlmModel) -> BlockCost:
+    """OpenRouter variant — bills via COST_USD against x-total-cost, but
+    still exposes the same per-1M-token USD rates so the builder UI shows
+    the "$X in / $Y out per 1M tokens" pair instead of "Pay-as-you-go".
+    """
+    return BlockCost(
+        cost_type=BlockCostType.COST_USD,
+        cost_filter={
+            "model": model,
+            "credentials": {
+                "id": open_router_credentials.id,
+                "provider": open_router_credentials.provider,
+                "type": open_router_credentials.type,
+            },
+        },
+        cost_amount=150,
+        token_rate=_token_rate_display(model),
+    )
+
+
 LLM_COST = (
     # Anthropic Models
     [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": anthropic_credentials.id,
-                    "provider": anthropic_credentials.provider,
-                    "type": anthropic_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, anthropic_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "anthropic"
     ]
     # OpenAI Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, openai_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "openai"
     ]
-    # Groq Models
+    # Groq Models (credentials filter intentionally only uses id; rate-table
+    # lookup keys on model, so omitting provider/type avoids breaking older
+    # graphs that stored just the id).
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {"id": groq_credentials.id},
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _groq_llm_cost(model)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "groq"
     ]
     # Open Router Models: OpenRouter returns x-total-cost on every
     # response. Bill 150 cr/$ (1.5x margin) against the authoritative
     # USD value instead of maintaining per-model TOKEN_COST rates —
-    # provider pricing drift is handled upstream.
+    # provider pricing drift is handled upstream. We still surface
+    # input/output_usd_per_1m for display so the builder UI shows the
+    # same "$X / $Y per 1M" pair as direct-billed providers — final
+    # charge still settles against x-total-cost regardless.
     + [
-        BlockCost(
-            cost_type=BlockCostType.COST_USD,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": open_router_credentials.id,
-                    "provider": open_router_credentials.provider,
-                    "type": open_router_credentials.type,
-                },
-            },
-            cost_amount=150,
-        )
-        for model in MODEL_COST.keys()
+        _open_router_llm_cost(model)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "open_router"
     ]
     # Llama API Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": llama_api_credentials.id,
-                    "provider": llama_api_credentials.provider,
-                    "type": llama_api_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, llama_api_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "llama_api"
     ]
     # v0 by Vercel Models
     + [
-        BlockCost(
-            cost_type=BlockCostType.TOKENS,
-            cost_filter={
-                "model": model,
-                "credentials": {
-                    "id": v0_credentials.id,
-                    "provider": v0_credentials.provider,
-                    "type": v0_credentials.type,
-                },
-            },
-            cost_amount=cost,
-        )
-        for model, cost in MODEL_COST.items()
+        _tokens_llm_cost(model, v0_credentials)
+        for model in MODEL_COST
         if MODEL_METADATA[model].provider == "v0"
     ]
     # AI/ML Api Models
     + [
+        _tokens_llm_cost(model, aiml_api_credentials)
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "aiml_api"
+    ]
+    # Ollama: self-hosted, no provider charge. Explicit zero-cost entry so
+    # the builder UI can render "Free" instead of an empty cost label (which
+    # the user reads as "unknown" / missing data).
+    + [
         BlockCost(
-            cost_type=BlockCostType.TOKENS,
+            cost_type=BlockCostType.RUN,
+            cost_amount=0,
             cost_filter={
                 "model": model,
                 "credentials": {
-                    "id": aiml_api_credentials.id,
-                    "provider": aiml_api_credentials.provider,
-                    "type": aiml_api_credentials.type,
+                    "id": ollama_credentials.id,
+                    "provider": ollama_credentials.provider,
+                    "type": ollama_credentials.type,
                 },
             },
-            cost_amount=cost,
         )
-        for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "aiml_api"
+        for model in MODEL_COST
+        if MODEL_METADATA[model].provider == "ollama"
     ]
 )
 

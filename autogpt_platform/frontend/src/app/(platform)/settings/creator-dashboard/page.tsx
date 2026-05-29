@@ -40,6 +40,7 @@ export default function SettingsCreatorDashboardPage() {
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
+    creatorUsername,
   } = useCreatorDashboardPage();
 
   if (error) {
@@ -88,6 +89,7 @@ export default function SettingsCreatorDashboardPage() {
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
               index={2}
             />
           </div>
@@ -104,6 +106,7 @@ export default function SettingsCreatorDashboardPage() {
               onView={onViewSubmission}
               onEdit={onEditSubmission}
               onDelete={onDeleteSubmission}
+              creatorUsername={creatorUsername}
             />
           </div>
         </>

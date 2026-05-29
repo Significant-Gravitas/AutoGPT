@@ -60,6 +60,7 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..model_normalize import normalize_model_for_transport
 from ..model_router import resolve_model
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
@@ -83,7 +84,11 @@ from ..pending_messages import (
     drain_pending_for_persist,
     push_pending_message,
 )
-from ..permissions import apply_tool_permissions
+from ..permissions import (
+    CopilotPermissions,
+    all_known_tool_names,
+    apply_tool_permissions,
+)
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import (
     get_global_rate_limits,
@@ -123,9 +128,11 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup
+from ..tools import ToolGroup, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
+from ..tools.session_context import build_session_context
+from ..tools.skills import build_skills_context
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -830,6 +837,24 @@ _THINKING_ONLY_REPROMPT = (
 # session-message flush so page reloads show progress on long turns.
 _FLUSH_INTERVAL_SECONDS = 30.0
 _FLUSH_MESSAGE_THRESHOLD = 10
+
+
+def _hidden_short_names_for_permissions(
+    permissions: CopilotPermissions | None,
+) -> frozenset[str]:
+    """Short tool names that should not be registered on the MCP server.
+
+    ``allowed_tools``/``disallowed_tools`` only gate execution — denied
+    calls still come back to the model with the CLI's canned "Permission
+    to use ... has been denied" string, which the model then narrates as a
+    Claude-Code-style approval prompt that doesn't exist in copilot.
+    Hiding the tool from the MCP server removes it from the model's tool
+    list entirely so it never reaches for the blocked name.
+    """
+    if permissions is None or permissions.is_empty():
+        return frozenset()
+    all_tools = all_known_tool_names()
+    return all_tools - permissions.effective_allowed_tools(all_tools)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -1712,48 +1737,13 @@ async def _iter_sdk_messages(
 
 
 def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the **actual** SDK CLI transport.
+    """Normalize per the SDK's own ``config`` reference.
 
-    Three transports (see ``ChatConfig.effective_transport``):
-
-    1. **OpenRouter** — the canonical OpenRouter slug is
-       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4-6"``,
-       ``"moonshotai/kimi-k2-6"``).  Pass the prefixed name through
-       unchanged so OpenRouter can route to the correct provider.  Anthropic
-       names happen to also resolve when stripped, but non-Anthropic vendors
-       (Moonshot, Google, etc.) do not — keeping the prefix is the only form
-       that works for every model in the catalog.
-    2. **Subscription / Direct Anthropic** — strip the OpenRouter
-       ``anthropic/`` prefix and convert dots to hyphens
-       (``"claude-opus-4.6"`` → ``"claude-opus-4-6"``).  The CLI subprocess
-       (subscription mode) and the Anthropic Messages API both reject the
-       prefix and dot-separated versions.  Raises ``ValueError`` when a
-       non-Anthropic vendor slug is paired with these transports — silently
-       stripping ``moonshotai/`` would send ``kimi-k2-6`` to the Anthropic
-       API / CLI and produce an opaque ``model_not_found`` error far from
-       the misconfiguration source.
-
-    Gating on the **actual transport** (not just config shape) matters
-    because subscription mode and OpenRouter config can coexist —
-    ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
-    ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
-    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4-7``
-    to the CLI subprocess, which the CLI rejects.
+    Thin wrapper so ``backend.copilot.sdk.service.config`` (the
+    monkeypatch target used by every SDK-side test) drives the decision
+    instead of ``model_normalize``'s default config.
     """
-    if config.effective_transport == "openrouter":
-        return raw_model
-    model = raw_model
-    if "/" in model:
-        vendor, model = model.split("/", 1)
-        if vendor != "anthropic":
-            raise ValueError(
-                f"{config.effective_transport!r} transport requires an "
-                f"Anthropic model, got vendor={vendor!r} from "
-                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
-                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
-                f"enable OpenRouter."
-            )
-    return model.replace(".", "-")
+    return normalize_model_for_transport(raw_model, config)
 
 
 def _resolve_sdk_model() -> str | None:
@@ -4023,7 +4013,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
+        disabled_tool_groups: list[ToolGroup] = []
+        if not graphiti_enabled:
+            disabled_tool_groups.append("graphiti")
+
+        # Hide both permission-denied tools AND group-disabled tools at
+        # registration. ``allowed_tools`` filtering alone routes group-
+        # disabled calls through the same auto-deny path the per-permission
+        # hiding is meant to eliminate (CLI returns "Permission to use ...
+        # has been denied", which the model narrates as a fake Allow/Deny
+        # prompt).
+        hidden_tools = _hidden_short_names_for_permissions(
+            permissions
+        ) | tool_names_in_groups(disabled_tool_groups)
+        mcp_server = create_copilot_mcp_server(
+            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+        )
 
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
@@ -4049,10 +4054,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
         )
-
-        disabled_tool_groups: list[ToolGroup] = []
-        if not graphiti_enabled:
-            disabled_tool_groups.append("graphiti")
 
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
@@ -4294,6 +4295,28 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             env_ctx_content = ""
             if not use_e2b and sdk_cwd:
                 env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Build the per-session follow-up awareness block so the model
+            # can answer "cancel that" / "what did I schedule" on the very
+            # first turn without round-tripping to ``list_schedules``.
+            # Lands in the per-turn user message (after the last cache
+            # breakpoint) so it does NOT bust the cross-session prefix
+            # cache.  Failure-tolerant — the helper degrades to the bare
+            # session_id line on any scheduler RPC hiccup.
+            session_ctx_content = ""
+            if user_id:
+                session_ctx_content = await build_session_context(
+                    session_id=session_id, user_id=user_id
+                )
+            # Build the per-user skill index so the model sees what's
+            # available without an extra round-trip.  Failures here MUST
+            # NOT block the turn — log and continue with an empty index.
+            skills_ctx_content = ""
+            try:
+                skills_ctx_content = await build_skills_context(user_id)
+            except Exception:
+                logger.exception(
+                    "[skills] failed to build skills_ctx — proceeding without it"
+                )
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -4305,6 +4328,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session.messages,
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
+                session_ctx=session_ctx_content,
+                skills_ctx=skills_ctx_content,
                 user_id=user_id,
             )
             if prefixed_message is not None:
@@ -4541,6 +4566,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.query_message = await _maybe_prepend_builder_context(
                     session, user_id, is_user_message, state.query_message
                 )
+                prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,
                     session_id=session_id,
@@ -4549,6 +4575,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Carry the per-turn re-prompt cap forward so a transient
                 # retry mid-turn does not unlock another re-prompt round.
                 state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
+                # Forward only REAL prior content (text or non-empty-fallback
+                # tool result) so the empty-completion guard on this retry
+                # adapter is suppressed exactly when the user has actually
+                # received content — and not when the prior attempt only
+                # emitted reasoning, which would otherwise hide a genuinely
+                # silent failure on the retry.
+                if prior_adapter.emitted_real_content_to_wire:
+                    state.adapter.prior_attempt_emitted_visible_content = True
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.
                 state.usage.reset()

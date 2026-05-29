@@ -135,6 +135,43 @@ class TestChannelType:
 # ── _is_mentioned ──────────────────────────────────────────────────────
 
 
+class TestShouldIgnoreMessage:
+    def test_ignores_own_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=1000, bot=True)
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_ignores_unmentioned_bot_message(self):
+        # A bot that doesn't @mention us is skipped — otherwise two bots
+        # sharing a thread (our own dev + prod included) loop forever.
+        adapter, client = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = False
+
+        assert adapter._should_ignore_message(msg) is True
+
+    def test_allows_mentioned_bot_message(self):
+        # Another bot can still reach us by explicitly @mentioning us.
+        adapter, client = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=True)
+        msg.guild = MagicMock()
+        client.user.mentioned_in.return_value = True
+
+        assert adapter._should_ignore_message(msg) is False
+
+    def test_allows_human_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [])
+        msg.author = MagicMock(id=2000, bot=False)
+
+        assert adapter._should_ignore_message(msg) is False
+
+
 class TestIsMentioned:
     def test_dm_always_counts_as_mentioned(self):
         adapter, _ = _bare_adapter(bot_id=1000)
@@ -434,3 +471,46 @@ class TestCollectMentionableUsers:
         adapter, _ = _bare_adapter(bot_id=1000)
         msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoPilot")])
         assert adapter._collect_mentionable_users(msg) == ()
+
+
+def _bare_adapter_with_api() -> tuple[DiscordAdapter, MagicMock, MagicMock]:
+    adapter, client = _bare_adapter(bot_id=1000)
+    api = MagicMock()
+    api.refresh_server_name = AsyncMock()
+    adapter._api = api
+    return adapter, client, api
+
+
+def _guild(guild_id: int, name: str | None) -> MagicMock:
+    g = MagicMock()
+    g.id = guild_id
+    g.name = name
+    return g
+
+
+class TestRefreshServerNames:
+    @pytest.mark.asyncio
+    async def test_pushes_every_guild_to_the_backend(self):
+        adapter, client, api = _bare_adapter_with_api()
+        client.guilds = [_guild(1, "Server One"), _guild(2, "Server Two")]
+        await adapter._refresh_known_server_names()
+        assert api.refresh_server_name.await_count == 2
+        api.refresh_server_name.assert_any_await(
+            platform="discord", platform_server_id="1", server_name="Server One"
+        )
+        api.refresh_server_name.assert_any_await(
+            platform="discord", platform_server_id="2", server_name="Server Two"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_guild_with_blank_name(self):
+        adapter, _, api = _bare_adapter_with_api()
+        await adapter._refresh_server_name(_guild(99, ""))
+        api.refresh_server_name.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_swallows_backend_errors(self):
+        adapter, _, api = _bare_adapter_with_api()
+        api.refresh_server_name.side_effect = RuntimeError("rpc down")
+        # Must not raise — refreshing names is never critical-path.
+        await adapter._refresh_server_name(_guild(1, "Server One"))
