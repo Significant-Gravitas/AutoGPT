@@ -856,10 +856,18 @@ async def _baseline_llm_caller(
                             _extract_cache_creation_tokens(ptd)
                         )
                     cost = _extract_usage_cost(chunk.usage)
-                    # Rate-card recovery covers both direct-Anthropic and local
-                    # (Ollama et al.) — neither emits OR's ``usage.cost``
-                    # extension, so anything that isn't OR needs the fallback.
-                    direct_mode = not is_openrouter_transport
+                    # Rate-card recovery covers direct-Anthropic mode —
+                    # Anthropic's OpenAI-compat endpoint doesn't emit OR's
+                    # ``usage.cost`` extension, so the rate card is what
+                    # produces a cost number on that path. Local
+                    # (Ollama/vLLM) transports also lack ``usage.cost`` but
+                    # ``compute_anthropic_cost_usd`` returns None for any
+                    # non-Anthropic slug, so the recovery is a no-op for
+                    # local — skip it explicitly so the intent is clear and
+                    # we don't burn a rate-card lookup per usage chunk.
+                    direct_mode = (
+                        not is_openrouter_transport and config.transport.name != "local"
+                    )
                     if cost is None and direct_mode:
                         # Direct mode: no usage.cost field (OR extension); compute from rate card.
                         ptd = chunk.usage.prompt_tokens_details
@@ -2352,13 +2360,19 @@ async def stream_chat_completion_baseline(
         # Safety net: recover cost from rate card if usage chunk was dropped
         # (truncated SSE). OR mode skips recovery — OR's markup differs from
         # raw Anthropic pricing. Local Ollama/vLLM never emit ``usage.cost``
-        # so the recovery is what turns up *any* cost number for local turns.
-        # Branch on resolved transport name, not the shape-only
-        # ``openrouter_active`` (a local install with default
-        # ``use_openrouter=True`` would satisfy that and skip recovery,
-        # leaving every local turn at $0 — see PR #12993 review).
+        # *and* have no rate card to recover from (``compute_anthropic_cost_usd``
+        # returns None for any non-Anthropic slug), so cost stays None for
+        # the whole turn — fine, since local deployments are self-hosted and
+        # ``persist_and_record_usage`` no-ops the cost-credit charge when
+        # ``cost_usd`` is None. Skip the rate-card call explicitly under
+        # local transport so the intent is clear.
         is_openrouter_transport = config.transport.name == "openrouter"
-        if state.cost_usd is None and not is_openrouter_transport:
+        is_local_transport = config.transport.name == "local"
+        if (
+            state.cost_usd is None
+            and not is_openrouter_transport
+            and not is_local_transport
+        ):
             recovered = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
