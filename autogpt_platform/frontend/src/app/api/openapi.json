@@ -8442,6 +8442,66 @@
         }
       }
     },
+    "/api/search/global": {
+      "get": {
+        "tags": ["search", "search"],
+        "summary": "Global search",
+        "operationId": "getSearchGlobal search",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512,
+              "description": "Free-form search query (semantic + lexical). When empty or omitted, the endpoint returns the most-recently-updated items per bucket instead.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Free-form search query (semantic + lexical). When empty or omitted, the endpoint returns the most-recently-updated items per bucket instead."
+          },
+          {
+            "name": "per_type_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats — fewer when the bucket has no/few matches.",
+              "default": 4,
+              "title": "Per Type Limit"
+            },
+            "description": "Maximum items returned per bucket. The response contains *at most* this many agents, files, and chats — fewer when the bucket has no/few matches."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalSearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/skills": {
       "get": {
         "tags": ["v1", "skills"],
@@ -11634,7 +11694,9 @@
           "BLOCK",
           "INTEGRATION",
           "DOCUMENTATION",
-          "LIBRARY_AGENT"
+          "LIBRARY_AGENT",
+          "WORKSPACE_FILE",
+          "CHAT_SESSION"
         ],
         "title": "ContentType"
       },
@@ -12922,6 +12984,28 @@
         "type": "object",
         "title": "FolderUpdateRequest",
         "description": "Request model for updating a folder."
+      },
+      "GlobalSearchResponse": {
+        "properties": {
+          "agents": {
+            "items": { "$ref": "#/components/schemas/SearchResultItem" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/SearchResultItem" },
+            "type": "array",
+            "title": "Files"
+          },
+          "chats": {
+            "items": { "$ref": "#/components/schemas/SearchResultItem" },
+            "type": "array",
+            "title": "Chats"
+          }
+        },
+        "type": "object",
+        "title": "GlobalSearchResponse",
+        "description": "Top-N hits bucketed by item type.\n\nFor a non-empty query this contains hybrid-search results.\nFor an empty query this contains the most-recently-updated items\nper bucket (cached per-user with a short TTL)."
       },
       "Graph": {
         "properties": {
@@ -16814,6 +16898,46 @@
         "type": "object",
         "required": ["items", "search_id", "total_items", "pagination"],
         "title": "SearchResponse"
+      },
+      "SearchResultItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "library_agent",
+              "store_agent",
+              "workspace_file",
+              "chat_session"
+            ],
+            "title": "Type"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "subtitle": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Subtitle"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "type", "title"],
+        "title": "SearchResultItem",
+        "description": "One row in a /search/global bucket.\n\nKept intentionally generic so the frontend can render all three\nbuckets through a single component. Type-specific details live in\n``metadata`` (e.g. mime_type for files, creator for store agents)."
       },
       "SessionDetailResponse": {
         "properties": {

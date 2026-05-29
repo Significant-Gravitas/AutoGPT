@@ -11,12 +11,12 @@ from pydantic import BaseModel
 
 import backend.data.graph
 import backend.util.json
+from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
 from . import db as store_db
-from . import hybrid_search as store_hybrid_search
 from . import image_gen as store_image_gen
 from . import media as store_media
 from . import model as store_model
@@ -95,7 +95,7 @@ async def unified_search(
     """
 
     # Perform unified hybrid search
-    results, total = await store_hybrid_search.unified_hybrid_search(
+    results, total = await search_engine.unified_hybrid_search(
         query=query,
         content_types=content_types,
         user_id=user_id,

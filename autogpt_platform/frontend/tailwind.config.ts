@@ -159,6 +159,19 @@ const config = {
             opacity: "1",
           },
         },
+        // Emil Kowalski enter pattern: translate from below + fade,
+        // ease-out, under 300ms. Driven by inline ``animation-delay``
+        // for per-item staggering.
+        "search-item-in": {
+          "0%": {
+            opacity: "0",
+            transform: "translateY(4px)",
+          },
+          "100%": {
+            opacity: "1",
+            transform: "translateY(0)",
+          },
+        },
         shimmer: {
           "0%": {
             backgroundPosition: "200% 0",
@@ -191,6 +204,12 @@ const config = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
+        // 180ms / ease-out keeps the entry inside Emil Kowalski's
+        // "faster is better" UI budget. Backwards mode so the item
+        // stays invisible until its staggered delay elapses, instead
+        // of flashing at frame zero.
+        "search-item-in":
+          "search-item-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both",
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
