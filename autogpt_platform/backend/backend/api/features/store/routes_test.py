@@ -691,7 +691,7 @@ def test_get_submissions_forwards_statuses(
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
     mock_db_call.return_value = mocked_value
 
-    response = client.get("/submissions?statuses=PENDING&statuses=APPROVED")
+    response = client.get("/submissions?statuses=PENDING,APPROVED")
     assert response.status_code == 200
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,

@@ -380,21 +380,43 @@ async def get_submissions(
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
-    statuses: list[prisma.enums.SubmissionStatus] | None = Query(default=None),
+    statuses: str | None = Query(default=None),
     sort_key: SubmissionSortKey | None = Query(default=None),
     sort_dir: SubmissionSortDir = Query(default="desc"),
 ) -> store_model.StoreSubmissionsResponse:
     """List the authenticated user's marketplace listing submissions"""
+    parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
         page=page,
         page_size=page_size,
         search_query=search_query,
-        statuses=statuses or None,
+        statuses=parsed_statuses,
         sort_key=sort_key,
         sort_dir=sort_dir,
     )
     return listings
+
+
+def _parse_status_filter(
+    raw: str | None,
+) -> list[prisma.enums.SubmissionStatus] | None:
+    """Parse a comma-separated `statuses` query value into a typed list.
+
+    Orval's fetch client serializes array query params with `value.toString()`,
+    which produces a single comma-joined string (`?statuses=PENDING,APPROVED`)
+    instead of the FastAPI-default repeated form. Accept that shape here and
+    surface invalid enum members as a 422.
+    """
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    try:
+        return [prisma.enums.SubmissionStatus(p) for p in parts]
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(
