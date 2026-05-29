@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "in_key_a": {
+      "advanced": true,
+      "default": "A",
+      "secret": false,
+      "title": "Key A"
+    },
+    "in_key_b": {
+      "advanced": false,
+      "secret": false,
+      "title": "in_key_b"
+    }
+  },
+  "required": [
+    "in_key_b"
+  ],
+  "title": "ExpectedInputSchema",
+  "type": "object"
+}

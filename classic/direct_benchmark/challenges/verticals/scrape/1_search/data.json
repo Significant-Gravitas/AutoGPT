@@ -1,0 +1,37 @@
+{
+    "category": [
+        "general",
+        "scrape_synthesize"
+    ],
+    "cutoff": 120,
+    "dependencies": [
+        "TestWriteFile"
+    ],
+    "eval_id": "0bb23182-b434-402b-a73e-9c226469b959",
+    "ground": {
+        "answer": "This is a Heading\nThis is a paragraph.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "Heading",
+            "paragraph"
+        ],
+        "should_not_contain": [
+            "The",
+            "the"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can search.",
+        "difficulty": "interface",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "Search",
+    "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
+}

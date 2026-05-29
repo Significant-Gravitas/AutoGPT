@@ -1,0 +1,51 @@
+{# Refund Processed Notification Email Template #}
+{#
+  Template variables:
+  data.user_id: the ID of the user
+  data.user_name: the user's name
+  data.user_email: the user's email address
+  data.transaction_id: the transaction ID for the refund request
+  data.refund_request_id: the refund request ID
+  data.reason: the reason for the refund request
+  data.amount: the refund amount in cents (divide by 100 for dollars)
+  data.balance: the user's latest balance in cents (after the refund deduction)
+
+  Subject: Refund for ${{ data.amount / 100 }} to {{ data.user_name }} has been processed
+#}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Refund Processed Notification</title>
+  </head>
+  <body style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 1.65; margin: 0; padding: 20px;">
+    <p style="margin-bottom: 10px;">Hello Administrator,</p>
+
+    <p style="margin-bottom: 10px;">
+      This is to notify you that the refund for <strong>${{ data.amount / 100 }}</strong> to <strong>{{ data.user_name }}</strong> has been processed successfully.
+    </p>
+
+    <h2 style="margin-bottom: 10px;">Refund Details</h2>
+    <ul style="margin-bottom: 10px;">
+      <li><strong>User ID:</strong> {{ data.user_id }}</li>
+      <li><strong>User Name:</strong> {{ data.user_name }}</li>
+      <li><strong>User Email:</strong> {{ data.user_email }}</li>
+      <li><strong>Transaction ID:</strong> {{ data.transaction_id }}</li>
+      <li><strong>Refund Request ID:</strong> {{ data.refund_request_id }}</li>
+      <li><strong>Refund Amount:</strong> ${{ data.amount / 100 }}</li>
+      <li><strong>Reason for Refund:</strong> {{ data.reason }}</li>
+      <li><strong>Latest User Balance:</strong> ${{ data.balance / 100 }}</li>
+    </ul>
+
+    <p style="margin-bottom: 10px;">
+      The user's balance has been updated accordingly after the deduction.
+    </p>
+
+    <p style="margin-bottom: 10px;">
+      Please contact the support team if you have any questions or need further assistance regarding this refund.
+    </p>
+
+    <p style="margin-bottom: 0;">Best regards,<br>Your Notification System</p>
+  </body>
+</html>

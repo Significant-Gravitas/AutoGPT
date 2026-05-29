@@ -1,0 +1,53 @@
+{
+  "action": "created",
+  "starred_at": "2024-12-01T15:30:00Z",
+  "repository": {
+    "id": 614765452,
+    "node_id": "R_kgDOJKSTjA",
+    "name": "AutoGPT",
+    "full_name": "Significant-Gravitas/AutoGPT",
+    "private": false,
+    "owner": {
+      "login": "Significant-Gravitas",
+      "id": 130738209,
+      "node_id": "O_kgDOB8roIQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+      "url": "https://api.github.com/users/Significant-Gravitas",
+      "html_url": "https://github.com/Significant-Gravitas",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/Significant-Gravitas/AutoGPT",
+    "description": "AutoGPT is the vision of accessible AI for everyone, to use and to build on.",
+    "fork": false,
+    "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT",
+    "created_at": "2023-03-16T09:21:07Z",
+    "updated_at": "2024-12-01T15:30:00Z",
+    "pushed_at": "2024-12-01T12:00:00Z",
+    "stargazers_count": 170001,
+    "watchers_count": 170001,
+    "language": "Python",
+    "forks_count": 45000,
+    "visibility": "public",
+    "default_branch": "master"
+  },
+  "organization": {
+    "login": "Significant-Gravitas",
+    "id": 130738209,
+    "node_id": "O_kgDOB8roIQ",
+    "url": "https://api.github.com/orgs/Significant-Gravitas",
+    "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+    "description": ""
+  },
+  "sender": {
+    "login": "awesome-contributor",
+    "id": 98765432,
+    "node_id": "MDQ6VXNlcjk4NzY1NDMy",
+    "avatar_url": "https://avatars.githubusercontent.com/u/98765432?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/awesome-contributor",
+    "html_url": "https://github.com/awesome-contributor",
+    "type": "User",
+    "site_admin": false
+  }
+}

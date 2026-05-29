@@ -1,0 +1,643 @@
+import base64
+import hashlib
+import logging
+import secrets
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
+from pydantic import SecretStr
+
+from backend.data.db import prisma
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    OAuth2Credentials,
+    OAuthState,
+    UserIntegrations,
+    UserPasswordCredentials,
+)
+from backend.data.redis_client import get_redis_async
+from backend.util.cache import thread_cached
+from backend.util.settings import Settings
+
+settings = Settings()
+logger = logging.getLogger(__name__)
+
+
+def provider_matches(stored: str, expected: str) -> bool:
+    """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
+
+    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
+    instead of ``"mcp"``.  OAuth states persisted with the buggy format need
+    to match when ``expected`` is the canonical value (e.g. ``"mcp"``).
+    """
+    if stored == expected:
+        return True
+    if stored.startswith("ProviderName."):
+        member = stored.removeprefix("ProviderName.")
+        from backend.integrations.providers import ProviderName
+
+        try:
+            return ProviderName[member].value == expected
+        except KeyError:
+            pass
+    return False
+
+
+# This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
+ollama_credentials = APIKeyCredentials(
+    id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
+    provider="ollama",
+    api_key=SecretStr("FAKE_API_KEY"),
+    title="Use Credits for Ollama",
+    expires_at=None,
+)
+
+revid_credentials = APIKeyCredentials(
+    id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
+    provider="revid",
+    api_key=SecretStr(settings.secrets.revid_api_key),
+    title="Use Credits for Revid",
+    expires_at=None,
+)
+ideogram_credentials = APIKeyCredentials(
+    id="760f84fc-b270-42de-91f6-08efe1b512d0",
+    provider="ideogram",
+    api_key=SecretStr(settings.secrets.ideogram_api_key),
+    title="Use Credits for Ideogram",
+    expires_at=None,
+)
+replicate_credentials = APIKeyCredentials(
+    id="6b9fc200-4726-4973-86c9-cd526f5ce5db",
+    provider="replicate",
+    api_key=SecretStr(settings.secrets.replicate_api_key),
+    title="Use Credits for Replicate",
+    expires_at=None,
+)
+openai_credentials = APIKeyCredentials(
+    id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
+    provider="openai",
+    api_key=SecretStr(settings.secrets.openai_api_key),
+    title="Use Credits for OpenAI",
+    expires_at=None,
+)
+aiml_api_credentials = APIKeyCredentials(
+    id="aad82a89-9794-4ebb-977f-d736aa5260a3",
+    provider="aiml_api",
+    api_key=SecretStr(settings.secrets.aiml_api_key),
+    title="Use Credits for AI/ML API",
+    expires_at=None,
+)
+anthropic_credentials = APIKeyCredentials(
+    id="24e5d942-d9e3-4798-8151-90143ee55629",
+    provider="anthropic",
+    api_key=SecretStr(settings.secrets.anthropic_api_key),
+    title="Use Credits for Anthropic",
+    expires_at=None,
+)
+groq_credentials = APIKeyCredentials(
+    id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
+    provider="groq",
+    api_key=SecretStr(settings.secrets.groq_api_key),
+    title="Use Credits for Groq",
+    expires_at=None,
+)
+did_credentials = APIKeyCredentials(
+    id="7f7b0654-c36b-4565-8fa7-9a52575dfae2",
+    provider="d_id",
+    api_key=SecretStr(settings.secrets.did_api_key),
+    title="Use Credits for D-ID",
+    expires_at=None,
+)
+jina_credentials = APIKeyCredentials(
+    id="7f26de70-ba0d-494e-ba76-238e65e7b45f",
+    provider="jina",
+    api_key=SecretStr(settings.secrets.jina_api_key),
+    title="Use Credits for Jina",
+    expires_at=None,
+)
+unreal_credentials = APIKeyCredentials(
+    id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
+    provider="unreal_speech",
+    api_key=SecretStr(settings.secrets.unreal_speech_api_key),
+    title="Use Credits for Unreal Speech",
+    expires_at=None,
+)
+open_router_credentials = APIKeyCredentials(
+    id="b5a0e27d-0c98-4df3-a4b9-10193e1f3c40",
+    provider="open_router",
+    api_key=SecretStr(settings.secrets.open_router_api_key),
+    title="Use Credits for Open Router",
+    expires_at=None,
+)
+fal_credentials = APIKeyCredentials(
+    id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
+    provider="fal",
+    api_key=SecretStr(settings.secrets.fal_api_key),
+    title="Use Credits for FAL",
+    expires_at=None,
+)
+exa_credentials = APIKeyCredentials(
+    id="96153e04-9c6c-4486-895f-5bb683b1ecec",
+    provider="exa",
+    api_key=SecretStr(settings.secrets.exa_api_key),
+    title="Use Credits for Exa search",
+    expires_at=None,
+)
+e2b_credentials = APIKeyCredentials(
+    id="78d19fd7-4d59-4a16-8277-3ce310acf2b7",
+    provider="e2b",
+    api_key=SecretStr(settings.secrets.e2b_api_key),
+    title="Use Credits for E2B",
+    expires_at=None,
+)
+nvidia_credentials = APIKeyCredentials(
+    id="96b83908-2789-4dec-9968-18f0ece4ceb3",
+    provider="nvidia",
+    api_key=SecretStr(settings.secrets.nvidia_api_key),
+    title="Use Credits for Nvidia",
+    expires_at=None,
+)
+screenshotone_credentials = APIKeyCredentials(
+    id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
+    provider="screenshotone",
+    api_key=SecretStr(settings.secrets.screenshotone_api_key),
+    title="Use Credits for ScreenshotOne",
+    expires_at=None,
+)
+mem0_credentials = APIKeyCredentials(
+    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    provider="mem0",
+    api_key=SecretStr(settings.secrets.mem0_api_key),
+    title="Use Credits for Mem0",
+    expires_at=None,
+)
+
+apollo_credentials = APIKeyCredentials(
+    id="544c62b5-1d0f-4156-8fb4-9525f11656eb",
+    provider="apollo",
+    api_key=SecretStr(settings.secrets.apollo_api_key),
+    title="Use Credits for Apollo",
+    expires_at=None,
+)
+
+smartlead_credentials = APIKeyCredentials(
+    id="3bcdbda3-84a3-46af-8fdb-bfd2472298b8",
+    provider="smartlead",
+    api_key=SecretStr(settings.secrets.smartlead_api_key),
+    title="Use Credits for SmartLead",
+    expires_at=None,
+)
+
+google_maps_credentials = APIKeyCredentials(
+    id="9aa1bde0-4947-4a70-a20c-84daa3850d52",
+    provider="google_maps",
+    api_key=SecretStr(settings.secrets.google_maps_api_key),
+    title="Use Credits for Google Maps",
+    expires_at=None,
+)
+
+zerobounce_credentials = APIKeyCredentials(
+    id="63a6e279-2dc2-448e-bf57-85776f7176dc",
+    provider="zerobounce",
+    api_key=SecretStr(settings.secrets.zerobounce_api_key),
+    title="Use Credits for ZeroBounce",
+    expires_at=None,
+)
+
+enrichlayer_credentials = APIKeyCredentials(
+    id="d9fce73a-6c1d-4e8b-ba2e-12a456789def",
+    provider="enrichlayer",
+    api_key=SecretStr(settings.secrets.enrichlayer_api_key),
+    title="Use Credits for Enrichlayer",
+    expires_at=None,
+)
+
+
+llama_api_credentials = APIKeyCredentials(
+    id="d44045af-1c33-4833-9e19-752313214de2",
+    provider="llama_api",
+    api_key=SecretStr(settings.secrets.llama_api_key),
+    title="Use Credits for Llama API",
+    expires_at=None,
+)
+
+v0_credentials = APIKeyCredentials(
+    id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
+    provider="v0",
+    api_key=SecretStr(settings.secrets.v0_api_key),
+    title="Use Credits for v0 by Vercel",
+    expires_at=None,
+)
+
+webshare_proxy_credentials = UserPasswordCredentials(
+    id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
+    provider="webshare_proxy",
+    username=SecretStr(settings.secrets.webshare_proxy_username),
+    password=SecretStr(settings.secrets.webshare_proxy_password),
+    title="Use Credits for Webshare Proxy",
+)
+
+openweathermap_credentials = APIKeyCredentials(
+    id="8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    provider="openweathermap",
+    api_key=SecretStr(settings.secrets.openweathermap_api_key),
+    title="Use Credits for OpenWeatherMap",
+    expires_at=None,
+)
+
+elevenlabs_credentials = APIKeyCredentials(
+    id="f4a8b6c2-3d1e-4f5a-9b8c-7d6e5f4a3b2c",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
+DEFAULT_CREDENTIALS = [
+    ollama_credentials,
+    revid_credentials,
+    ideogram_credentials,
+    replicate_credentials,
+    openai_credentials,
+    aiml_api_credentials,
+    anthropic_credentials,
+    groq_credentials,
+    did_credentials,
+    jina_credentials,
+    unreal_credentials,
+    open_router_credentials,
+    enrichlayer_credentials,
+    fal_credentials,
+    exa_credentials,
+    e2b_credentials,
+    mem0_credentials,
+    nvidia_credentials,
+    screenshotone_credentials,
+    apollo_credentials,
+    smartlead_credentials,
+    zerobounce_credentials,
+    google_maps_credentials,
+    llama_api_credentials,
+    v0_credentials,
+    webshare_proxy_credentials,
+    openweathermap_credentials,
+    elevenlabs_credentials,
+]
+
+
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+
+# Set of providers that have system credentials available
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+
+
+def is_system_credential(credential_id: str) -> bool:
+    """Check if a credential ID belongs to a system-managed credential."""
+    return credential_id in SYSTEM_CREDENTIAL_IDS
+
+
+def is_system_provider(provider: str) -> bool:
+    """Check if a provider has system-managed credentials available."""
+    return provider in SYSTEM_PROVIDERS
+
+
+class IntegrationCredentialsStore:
+    @thread_cached
+    async def locks(self) -> AsyncRedisKeyedMutex:
+        # Per-thread: copilot executor runs worker threads with separate event
+        # loops; AsyncRedisKeyedMutex's internal asyncio.Lock is bound to the
+        # loop it was created on.
+        return AsyncRedisKeyedMutex(await get_redis_async())
+
+    @property
+    def db_manager(self):
+        if prisma.is_connected():
+            from backend.data import user
+
+            return user
+        else:
+            from backend.util.clients import get_database_manager_async_client
+
+            return get_database_manager_async_client()
+
+    # =============== USER-MANAGED CREDENTIALS =============== #
+
+    async def _get_persisted_user_creds_unlocked(
+        self, user_id: str
+    ) -> list[Credentials]:
+        """Return only the persisted (user-stored) credentials — no side effects.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        return list((await self._get_user_integrations(user_id)).credentials)
+
+    async def add_creds(self, user_id: str, credentials: Credentials) -> None:
+        async with await self.locked_user_integrations(user_id):
+            # Check system/managed IDs without triggering provisioning
+            if credentials.id in SYSTEM_CREDENTIAL_IDS:
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            if any(c.id == credentials.id for c in persisted):
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            await self._set_user_integration_creds(user_id, [*persisted, credentials])
+
+    async def get_all_creds(self, user_id: str) -> list[Credentials]:
+        """Public entry point — acquires lock, then delegates."""
+        async with await self.locked_user_integrations(user_id):
+            return await self._get_all_creds_unlocked(user_id)
+
+    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
+        """Return all credentials for *user_id*.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        user_integrations = await self._get_user_integrations(user_id)
+        all_credentials = list(user_integrations.credentials)
+
+        # These will always be added
+        all_credentials.append(ollama_credentials)
+
+        # These will only be added if the API key is set
+        if settings.secrets.revid_api_key:
+            all_credentials.append(revid_credentials)
+        if settings.secrets.ideogram_api_key:
+            all_credentials.append(ideogram_credentials)
+        if settings.secrets.groq_api_key:
+            all_credentials.append(groq_credentials)
+        if settings.secrets.replicate_api_key:
+            all_credentials.append(replicate_credentials)
+        if settings.secrets.openai_api_key:
+            all_credentials.append(openai_credentials)
+        if settings.secrets.aiml_api_key:
+            all_credentials.append(aiml_api_credentials)
+        if settings.secrets.anthropic_api_key:
+            all_credentials.append(anthropic_credentials)
+        if settings.secrets.did_api_key:
+            all_credentials.append(did_credentials)
+        if settings.secrets.jina_api_key:
+            all_credentials.append(jina_credentials)
+        if settings.secrets.unreal_speech_api_key:
+            all_credentials.append(unreal_credentials)
+        if settings.secrets.open_router_api_key:
+            all_credentials.append(open_router_credentials)
+        if settings.secrets.enrichlayer_api_key:
+            all_credentials.append(enrichlayer_credentials)
+        if settings.secrets.fal_api_key:
+            all_credentials.append(fal_credentials)
+        if settings.secrets.exa_api_key:
+            all_credentials.append(exa_credentials)
+        if settings.secrets.e2b_api_key:
+            all_credentials.append(e2b_credentials)
+        if settings.secrets.nvidia_api_key:
+            all_credentials.append(nvidia_credentials)
+        if settings.secrets.screenshotone_api_key:
+            all_credentials.append(screenshotone_credentials)
+        if settings.secrets.mem0_api_key:
+            all_credentials.append(mem0_credentials)
+        if settings.secrets.apollo_api_key:
+            all_credentials.append(apollo_credentials)
+        if settings.secrets.smartlead_api_key:
+            all_credentials.append(smartlead_credentials)
+        if settings.secrets.zerobounce_api_key:
+            all_credentials.append(zerobounce_credentials)
+        if settings.secrets.google_maps_api_key:
+            all_credentials.append(google_maps_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
+        if settings.secrets.v0_api_key:
+            all_credentials.append(v0_credentials)
+        if (
+            settings.secrets.webshare_proxy_username
+            and settings.secrets.webshare_proxy_password
+        ):
+            all_credentials.append(webshare_proxy_credentials)
+        if settings.secrets.openweathermap_api_key:
+            all_credentials.append(openweathermap_credentials)
+        if settings.secrets.elevenlabs_api_key:
+            all_credentials.append(elevenlabs_credentials)
+        return all_credentials
+
+    async def get_creds_by_id(
+        self, user_id: str, credentials_id: str
+    ) -> Credentials | None:
+        all_credentials = await self.get_all_creds(user_id)
+        return next((c for c in all_credentials if c.id == credentials_id), None)
+
+    async def get_creds_by_provider(
+        self, user_id: str, provider: str
+    ) -> list[Credentials]:
+        credentials = await self.get_all_creds(user_id)
+        return [c for c in credentials if provider_matches(c.provider, provider)]
+
+    async def get_authorized_providers(self, user_id: str) -> list[str]:
+        credentials = await self.get_all_creds(user_id)
+        return list(set(c.provider for c in credentials))
+
+    async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        if updated.id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(
+                f"System credential #{updated.id} cannot be updated directly"
+            )
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            current = next((c for c in persisted if c.id == updated.id), None)
+            if not current:
+                raise ValueError(
+                    f"Credentials with ID {updated.id} "
+                    f"for user with ID {user_id} not found"
+                )
+            if current.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{updated.id} cannot be updated"
+                )
+            if type(current) is not type(updated):
+                raise TypeError(
+                    f"Can not update credentials with ID {updated.id} "
+                    f"from type {type(current)} "
+                    f"to type {type(updated)}"
+                )
+
+            # Ensure no scopes are removed when updating credentials
+            if (
+                isinstance(updated, OAuth2Credentials)
+                and isinstance(current, OAuth2Credentials)
+                and not set(updated.scopes).issuperset(current.scopes)
+            ):
+                raise ValueError(
+                    f"Can not update credentials with ID {updated.id} "
+                    f"and scopes {current.scopes} "
+                    f"to more restrictive set of scopes {updated.scopes}"
+                )
+
+            # Update only persisted credentials — no side-effectful provisioning
+            updated_credentials_list = [
+                updated if c.id == updated.id else c for c in persisted
+            ]
+            await self._set_user_integration_creds(user_id, updated_credentials_list)
+
+    async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(f"System credential #{credentials_id} cannot be deleted")
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            target = next((c for c in persisted if c.id == credentials_id), None)
+            if target and target.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{credentials_id} cannot be deleted"
+                )
+            filtered_credentials = [c for c in persisted if c.id != credentials_id]
+            await self._set_user_integration_creds(user_id, filtered_credentials)
+
+    # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def has_managed_credential(self, user_id: str, provider: str) -> bool:
+        """Check if a managed credential exists for *provider*."""
+        user_integrations = await self._get_user_integrations(user_id)
+        return any(
+            c.provider == provider and c.is_managed
+            for c in user_integrations.credentials
+        )
+
+    async def add_managed_credential(
+        self, user_id: str, credential: Credentials
+    ) -> None:
+        """Upsert a managed credential.
+
+        Removes any existing managed credential for the same provider,
+        then appends the new one. The credential MUST have is_managed=True.
+        """
+        if not credential.is_managed:
+            raise ValueError("credential.is_managed must be True")
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.credentials = [
+                c
+                for c in user_integrations.credentials
+                if not (c.provider == credential.provider and c.is_managed)
+            ]
+            user_integrations.credentials.append(credential)
+
+    # ===================== OAUTH STATES ===================== #
+
+    async def store_state_token(
+        self,
+        user_id: str,
+        provider: str,
+        scopes: list[str],
+        use_pkce: bool = False,
+        # New parameters for external API OAuth flows
+        callback_url: Optional[str] = None,
+        state_metadata: Optional[dict] = None,
+        initiated_by_api_key_id: Optional[str] = None,
+        credential_id: Optional[str] = None,
+    ) -> tuple[str, str]:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        (code_challenge, code_verifier) = self._generate_code_challenge()
+
+        state = OAuthState(
+            token=token,
+            provider=provider,
+            code_verifier=code_verifier,
+            expires_at=int(expires_at.timestamp()),
+            scopes=scopes,
+            credential_id=credential_id,
+            # External API OAuth flow fields
+            callback_url=callback_url,
+            state_metadata=state_metadata or {},
+            initiated_by_api_key_id=initiated_by_api_key_id,
+        )
+
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.oauth_states.append(state)
+
+        return token, code_challenge
+
+    def _generate_code_challenge(self) -> tuple[str, str]:
+        """
+        Generate code challenge using SHA256 from the code verifier.
+        Currently only SHA256 is supported.(In future if we want to support more methods we can add them here)
+        """
+        code_verifier = secrets.token_urlsafe(96)
+        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8")
+        return code_challenge.replace("=", ""), code_verifier
+
+    async def verify_state_token(
+        self, user_id: str, token: str, provider: str
+    ) -> Optional[OAuthState]:
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            oauth_states = user_integrations.oauth_states
+
+            now = datetime.now(timezone.utc)
+            valid_state = next(
+                (
+                    state
+                    for state in oauth_states
+                    if secrets.compare_digest(state.token, token)
+                    and provider_matches(state.provider, provider)
+                    and state.expires_at > now.timestamp()
+                ),
+                None,
+            )
+
+            if valid_state:
+                # Remove the used state
+                oauth_states.remove(valid_state)
+                user_integrations.oauth_states = oauth_states
+                await self.db_manager.update_user_integrations(
+                    user_id, user_integrations
+                )
+                return valid_state
+
+        return None
+
+    # =================== GET/SET HELPERS =================== #
+
+    @asynccontextmanager
+    async def edit_user_integrations(self, user_id: str):
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            yield user_integrations  # yield to allow edits
+            await self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
+
+    async def _set_user_integration_creds(
+        self, user_id: str, credentials: list[Credentials]
+    ) -> None:
+        integrations = await self._get_user_integrations(user_id)
+        # Remove default credentials from the list
+        credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
+        integrations.credentials = credentials
+        await self.db_manager.update_user_integrations(user_id, integrations)
+
+    async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
+        return await self.db_manager.get_user_integrations(user_id=user_id)
+
+    async def get_user_integrations(self, user_id: str) -> UserIntegrations:
+        """Public read-only accessor for the caller's ``UserIntegrations`` row.
+
+        Use for read-only access — the write back mechanism lives in
+        :meth:`edit_user_integrations`, which always persists on exit.
+        Consumers (e.g. managed-credential providers reading legacy side
+        channels) should reach for this method instead of the private
+        ``_get_user_integrations`` or the edit-as-read trick, which would
+        otherwise trigger a spurious DB write + Redis lock round-trip.
+        """
+        return await self._get_user_integrations(user_id)
+
+    async def locked_user_integrations(self, user_id: str):
+        key = (f"user:{user_id}", "integrations")
+        locks = await self.locks()
+        return locks.locked(key)

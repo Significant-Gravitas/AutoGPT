@@ -1,0 +1,31 @@
+{
+    "category": [
+        "data"
+    ],
+    "cutoff": 90,
+    "dependencies": [
+        "TestAnswerQuestionSmallCsv"
+    ],
+    "eval_id": "bb6e0a4b-7faf-4aa6-a524-548cddbc2732",
+    "ground": {
+        "answer": "The correct amount spent on utilities.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "1861"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can answer a question from a csv",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "AnswerQuestionCsv",
+    "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+}

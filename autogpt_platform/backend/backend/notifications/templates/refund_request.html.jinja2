@@ -1,0 +1,72 @@
+{# Refund Request Email Template #}
+{#
+  Template variables:
+  data.user_id: the ID of the user
+  data.user_name: the user's name
+  data.user_email: the user's email address
+  data.transaction_id: the transaction ID for the refund request
+  data.refund_request_id: the refund request ID
+  data.reason: the reason for the refund request
+  data.amount: the refund amount in cents (divide by 100 for dollars)
+  data.balance: the user's balance in cents (divide by 100 for dollars)
+
+  Subject: [ACTION REQUIRED] You got a ${{ data.amount / 100 }} refund request from {{ data.user_name }}
+#}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Refund Request Approval Needed</title>
+  </head>
+  <body style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 1.65; margin: 0; padding: 20px;">
+    <p style="margin-bottom: 10px;">Hello Administrator,</p>
+    <p style="margin-bottom: 10px;">
+      A refund request has been submitted by a user and requires your approval.
+    </p>
+
+    <h2 style="margin-bottom: 10px;">Refund Request Details</h2>
+    <ul style="margin-bottom: 10px;">
+      <li><strong>User ID:</strong> {{ data.user_id }}</li>
+      <li><strong>User Name:</strong> {{ data.user_name }}</li>
+      <li><strong>User Email:</strong> {{ data.user_email }}</li>
+      <li><strong>Transaction ID:</strong> {{ data.transaction_id }}</li>
+      <li><strong>Refund Request ID:</strong> {{ data.refund_request_id }}</li>
+      <li><strong>Refund Amount:</strong> ${{ data.amount / 100 }}</li>
+      <li><strong>User Balance:</strong> ${{ data.balance / 100 }}</li>
+      <li><strong>Reason for Refund:</strong> {{ data.reason }}</li>
+    </ul>
+
+    <p style="margin-bottom: 10px;">
+      To approve this refund, please click on the following Stripe link:
+      https://dashboard.stripe.com/test/payments/{{data.transaction_id}}
+      <br/>
+      And then click on the "Refund" button.
+    </p>
+
+    <p style="margin-bottom: 10px;">
+      To reject this refund, please follow these steps:
+    </p>
+    <ol style="margin-bottom: 10px;">
+      <li>
+        Visit the Supabase Dashboard:
+        https://supabase.com/dashboard/project/bgwpwdsxblryihinutbx/editor
+      </li>
+      <li>
+        Navigate to the <strong>RefundRequest</strong> table.
+      </li>
+      <li>
+        Filter the <code>transactionKey</code> column with the Transaction ID: <strong>{{ data.transaction_id }}</strong>.
+      </li>
+      <li>
+        Update the <code>status</code> field to <strong>REJECTED</strong> and enter the rejection reason in the <code>result</code> column.
+      </li>
+    </ol>
+
+    <p style="margin-bottom: 10px;">
+      Please take the necessary action at your earliest convenience.
+    </p>
+    <p style="margin-bottom: 10px;">Thank you for your prompt attention.</p>
+    <p style="margin-bottom: 0;">Best regards,<br>Your Notification System</p>
+  </body>
+</html>

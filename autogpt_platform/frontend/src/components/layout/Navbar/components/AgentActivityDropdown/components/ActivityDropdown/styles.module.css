@@ -1,0 +1,72 @@
+.scrollContainer {
+  min-height: 10rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  border-radius: 12px;
+}
+
+/* Target the scrollable div created by react-window */
+.scrollContainer div[style*="overflow"] {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209, 213, 219) white;
+}
+
+/* Webkit scrollbar styles */
+.scrollContainer div[style*="overflow"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollContainer div[style*="overflow"]::-webkit-scrollbar-track {
+  background: white;
+  border-radius: 4px;
+}
+
+.scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb {
+  background: rgb(209, 213, 219); /* gray-300 */
+  border-radius: 4px;
+}
+
+.scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb:hover {
+  background: rgb(156, 163, 175); /* gray-400 */
+}
+
+/* Search Animation Styles */
+.searchContainer {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  will-change: opacity;
+}
+
+.searchEnter {
+  animation: searchFadeIn 0.2s ease-in-out forwards;
+}
+
+.searchExit {
+  animation: searchFadeOut 0.2s ease-in-out forwards;
+}
+
+.headerContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+@keyframes searchFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes searchFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

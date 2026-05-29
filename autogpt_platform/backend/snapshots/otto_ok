@@ -1,0 +1,14 @@
+{
+  "answer": "This is Otto's response to your query.",
+  "documents": [
+    {
+      "relevance_score": 0.95,
+      "url": "https://example.com/doc1"
+    },
+    {
+      "relevance_score": 0.87,
+      "url": "https://example.com/doc2"
+    }
+  ],
+  "success": true
+}

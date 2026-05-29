@@ -1,0 +1,100 @@
+name: Classic - Forge CI
+
+on:
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - '.github/workflows/classic-forge-ci.yml'
+      - 'classic/forge/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - '.github/workflows/classic-forge-ci.yml'
+      - 'classic/forge/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
+
+concurrency:
+  group: ${{ format('forge-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: classic
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Start MinIO service
+        working-directory: '.'
+        run: |
+          docker pull minio/minio:edge-cicd
+          docker run -d -p 9000:9000 minio/minio:edge-cicd
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
+
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Install Playwright browsers
+        run: poetry run playwright install chromium
+
+      - name: Run pytest with coverage
+        run: |
+          poetry run pytest -vv \
+            --cov=forge --cov-branch --cov-report term-missing --cov-report xml \
+            --durations=10 \
+            --junitxml=junit.xml -o junit_family=legacy \
+            forge/forge forge/tests
+        env:
+          CI: true
+          PLAIN_OUTPUT: True
+          # API keys - tests that need these will skip if not available
+          # Secrets are not available to fork PRs (GitHub security feature)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          S3_ENDPOINT_URL: http://127.0.0.1:9000
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}  # Run even if tests fail
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: forge
+
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: classic/logs/

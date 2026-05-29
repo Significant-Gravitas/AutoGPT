@@ -1,0 +1,266 @@
+{
+  "id": "696b4b9c-f28f-4dda-a44c-e748ac22438f",
+  "version": 17,
+  "is_active": false,
+  "is_template": true,
+  "name": "Discord Search Bot",
+  "description": "This is a Discord search bot, send it the command \"!search <question>\" and it will do a web search and answer your question!",
+  "nodes": [
+    {
+      "id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "block_id": "df06086a-d5ac-4abb-9996-2ad0acb2eff7",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -961.2660758713816,
+          "y": 333.47185665649613
+        }
+      }
+    },
+    {
+      "id": "b09e201a-cd71-42d4-a197-22e7eebc54c9",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {
+        "input2": ", Here is the latest web info to answer the question : \n"
+      },
+      "metadata": {
+        "position": {
+          "x": 881.3259434267115,
+          "y": -564.3287840347994
+        }
+      }
+    },
+    {
+      "id": "3169d1a8-b541-43f7-97ce-ddc6aecb2080",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "pattern": "(?<=!search ).*"
+      },
+      "metadata": {
+        "position": {
+          "x": -284.1111358361005,
+          "y": -43.71794261767991
+        }
+      }
+    },
+    {
+      "id": "5658c4f7-8e67-4d30-93f2-157bdbd3ef87",
+      "block_id": "87840993-2053-44b7-8da4-187ad4ee518c",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 319.9343851243159,
+          "y": -48.49947115893917
+        }
+      }
+    },
+    {
+      "id": "b29e3831-3fb7-41bd-88d8-ce3a5dde3d69",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "sys_prompt": "You are a question answerer and info summariser, answer the questions with the info you are provided, be sure to @ the user who asked the question in your reply like @username"
+      },
+      "metadata": {
+        "position": {
+          "x": 2085.06017081387,
+          "y": -387.5334342999411
+        }
+      }
+    },
+    {
+      "id": "164bc3ea-e812-4391-a62d-bdddcf86f3cd",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1469.6744442484253,
+          "y": -435.0392111332514
+        }
+      }
+    },
+    {
+      "id": "10759047-6387-4ff1-9117-bbef47d24ee8",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 326.8949613725521,
+          "y": -579.6877803706152
+        }
+      }
+    },
+    {
+      "id": "af7c5160-7bf0-4ad0-9806-04222009091f",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {
+        "input2": " Asked the question: "
+      },
+      "metadata": {
+        "position": {
+          "x": -265.6965655001714,
+          "y": -628.1379507780849
+        }
+      }
+    },
+    {
+      "id": "4d74513d-42f7-4fd0-808a-0f4844513966",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "input": "DISCORD BOT API KEY HERE"
+      },
+      "metadata": {
+        "position": {
+          "x": -1532.6418163253616,
+          "y": 587.6533051108552
+        }
+      }
+    },
+    {
+      "id": "f3d62f22-d193-4f04-85d2-164200fca4c0",
+      "block_id": "d0822ab5-9f8a-44a3-8971-531dd0178b6b",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2814.192971071703,
+          "y": 310.74654561036294
+        }
+      }
+    },
+    {
+      "id": "3b2bb6a5-9c42-4189-a9a0-0e499ccb766a",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "DISCORD BOT API KEY HERE"
+      },
+      "metadata": {
+        "position": {
+          "x": -1528.6418163253616,
+          "y": 119.65330511085517
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "346a8259-1093-4374-8271-904742aa6d89",
+      "source_id": "b29e3831-3fb7-41bd-88d8-ce3a5dde3d69",
+      "sink_id": "f3d62f22-d193-4f04-85d2-164200fca4c0",
+      "source_name": "response",
+      "sink_name": "message_content",
+      "is_static": false
+    },
+    {
+      "id": "53a8ecc6-60b6-4f4a-90c4-cb11dd1874e0",
+      "source_id": "5658c4f7-8e67-4d30-93f2-157bdbd3ef87",
+      "sink_id": "164bc3ea-e812-4391-a62d-bdddcf86f3cd",
+      "source_name": "results",
+      "sink_name": "input2",
+      "is_static": false
+    },
+    {
+      "id": "2b3fd279-5816-48da-b2ab-484497fe67d5",
+      "source_id": "f3d62f22-d193-4f04-85d2-164200fca4c0",
+      "sink_id": "3b2bb6a5-9c42-4189-a9a0-0e499ccb766a",
+      "source_name": "status",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "bb036c88-4031-4c6c-a70b-a82f5e50a013",
+      "source_id": "4d74513d-42f7-4fd0-808a-0f4844513966",
+      "sink_id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "source_name": "output",
+      "sink_name": "discord_bot_token",
+      "is_static": false
+    },
+    {
+      "id": "e67befdc-59b5-47bf-9663-8baeeef026f7",
+      "source_id": "3169d1a8-b541-43f7-97ce-ddc6aecb2080",
+      "sink_id": "10759047-6387-4ff1-9117-bbef47d24ee8",
+      "source_name": "positive",
+      "sink_name": "input2",
+      "is_static": false
+    },
+    {
+      "id": "9c0fa608-ceea-44cd-98cf-8a2d6ed25b24",
+      "source_id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "sink_id": "af7c5160-7bf0-4ad0-9806-04222009091f",
+      "source_name": "username",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "ad5e1bd6-69bd-4846-87dc-e08d8d2e0f2b",
+      "source_id": "af7c5160-7bf0-4ad0-9806-04222009091f",
+      "sink_id": "10759047-6387-4ff1-9117-bbef47d24ee8",
+      "source_name": "output",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "96f4b2fd-82d8-4754-9f41-f65e8e1f565a",
+      "source_id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "sink_id": "3169d1a8-b541-43f7-97ce-ddc6aecb2080",
+      "source_name": "message_content",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "ec6666bc-4d54-4960-b3b1-13a0b4a872a7",
+      "source_id": "3b2bb6a5-9c42-4189-a9a0-0e499ccb766a",
+      "sink_id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "source_name": "output",
+      "sink_name": "discord_bot_token",
+      "is_static": false
+    },
+    {
+      "id": "ccd08d1f-7ccc-42fa-882c-91f6991ad5e8",
+      "source_id": "b09e201a-cd71-42d4-a197-22e7eebc54c9",
+      "sink_id": "164bc3ea-e812-4391-a62d-bdddcf86f3cd",
+      "source_name": "output",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "3ed20f9c-3f79-41e4-8fab-0309e92ac629",
+      "source_id": "60ba4aac-1751-4be7-8745-1bd32191d4a2",
+      "sink_id": "f3d62f22-d193-4f04-85d2-164200fca4c0",
+      "source_name": "channel_name",
+      "sink_name": "channel_name",
+      "is_static": false
+    },
+    {
+      "id": "89a129e5-11d2-4fac-9a15-7de182a2b806",
+      "source_id": "164bc3ea-e812-4391-a62d-bdddcf86f3cd",
+      "sink_id": "b29e3831-3fb7-41bd-88d8-ce3a5dde3d69",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "7978ef39-d862-441d-936f-8da60fefcab6",
+      "source_id": "10759047-6387-4ff1-9117-bbef47d24ee8",
+      "sink_id": "b09e201a-cd71-42d4-a197-22e7eebc54c9",
+      "source_name": "output",
+      "sink_name": "input1",
+      "is_static": false
+    },
+    {
+      "id": "32e3bace-5df7-4683-97f2-7d9864878aee",
+      "source_id": "3169d1a8-b541-43f7-97ce-ddc6aecb2080",
+      "sink_id": "5658c4f7-8e67-4d30-93f2-157bdbd3ef87",
+      "source_name": "positive",
+      "sink_name": "query",
+      "is_static": false
+    },
+    {
+      "id": "0ab7dce1-84b6-4f96-9eb2-1b458fe205a5",
+      "source_id": "3169d1a8-b541-43f7-97ce-ddc6aecb2080",
+      "sink_id": "3b2bb6a5-9c42-4189-a9a0-0e499ccb766a",
+      "source_name": "negative",
+      "sink_name": "input",
+      "is_static": false
+    }
+  ]
+}

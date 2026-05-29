@@ -1,0 +1,18 @@
+{
+  "username": "creator1",
+  "name": "Test User",
+  "description": "Test creator description",
+  "avatar_url": "avatar.jpg",
+  "links": [
+    "link1.com",
+    "link2.com"
+  ],
+  "is_featured": true,
+  "num_agents": 5,
+  "agent_runs": 1000,
+  "agent_rating": 4.8,
+  "top_categories": [
+    "category1",
+    "category2"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Test graph",
+  "link_structure": [
+    {
+      "sink_name": "name",
+      "source_name": "output"
+    }
+  ],
+  "links_count": 1,
+  "name": "TestGraph",
+  "node_blocks": [
+    "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+    "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+    "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
+  ],
+  "nodes_count": 3
+}

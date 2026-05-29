@@ -1,0 +1,6 @@
+*.ignore.*
+*.ign.*
+.application.logs
+
+# Claude Code local settings only — the rest of .claude/ is shared (skills etc.)
+.claude/settings.local.json

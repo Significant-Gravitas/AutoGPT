@@ -1,0 +1,32 @@
+"use client";
+
+import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
+import { Separator } from "@/components/__legacy__/ui/separator";
+import { User } from "@supabase/supabase-js";
+import { EmailForm } from "./components/EmailForm/EmailForm";
+import { NotificationForm } from "./components/NotificationForm/NotificationForm";
+import { TimezoneForm } from "./components/TimezoneForm/TimezoneForm";
+
+type SettingsFormProps = {
+  preferences: NotificationPreference;
+  user: User;
+  timezone?: string;
+};
+
+export function SettingsForm({
+  preferences,
+  user,
+  timezone,
+}: SettingsFormProps) {
+  if (!user || !preferences) return null;
+
+  return (
+    <div className="flex flex-col gap-8">
+      <EmailForm user={user} />
+      <Separator />
+      <TimezoneForm user={user} currentTimezone={timezone} />
+      <Separator />
+      <NotificationForm preferences={preferences} user={user} />
+    </div>
+  );
+}
