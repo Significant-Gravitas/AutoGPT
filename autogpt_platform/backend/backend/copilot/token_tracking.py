@@ -123,6 +123,7 @@ async def persist_and_record_usage(
     extra_metadata: dict | None = None,
     graph_exec_id_override: str | None = None,
     skip_daily: bool = False,
+    execution_path: str = "sync",
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -253,6 +254,13 @@ async def persist_and_record_usage(
             "cache_read_tokens": cache_read_tokens,
             "cache_creation_tokens": cache_creation_tokens,
             "source": "copilot",
+            # Default to ``sync`` so every row gets a non-null tag —
+            # the admin cost-logs Path column previously rendered
+            # "—" for chat rows because nobody set this. Dream and any
+            # future batch/flex caller overrides via ``execution_path``
+            # arg (which lands in the base) or ``extra_metadata`` (which
+            # overrides the base — dream uses this path historically).
+            "execution_path": execution_path,
         }
         if extra_metadata:
             # Caller-supplied keys override base keys (dream pass uses this

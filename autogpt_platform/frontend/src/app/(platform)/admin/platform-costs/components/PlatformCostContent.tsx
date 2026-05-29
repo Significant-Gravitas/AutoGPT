@@ -272,10 +272,11 @@ export function PlatformCostContent({ searchParams }: Props) {
             onChange={(e) => setExecutionPathInput(e.target.value)}
           >
             <option value="">All</option>
+            <option value="sync">sync</option>
             <option value="anthropic_batch">anthropic_batch</option>
             <option value="openai_batch">openai_batch</option>
             <option value="flex">flex</option>
-            <option value="sync_baseline">sync_baseline</option>
+            <option value="sync_baseline">sync_baseline (dream)</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">

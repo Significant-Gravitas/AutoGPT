@@ -11,13 +11,15 @@ function ExecutionPathBadge({
     sync_baseline: "bg-muted text-muted-foreground",
     sync: "bg-muted text-muted-foreground",
   };
-  // Shorten the long ``anthropic_batch`` / ``openai_batch`` labels to
-  // just "batch" so the column doesn't dominate the table. The full
-  // path is in the title attribute for hover.
+  // Shorten the long ``anthropic_batch`` / ``openai_batch`` /
+  // ``sync_baseline`` labels so the column doesn't dominate the
+  // table. The full path is in the title attribute for hover.
   const display =
     executionPath === "anthropic_batch" || executionPath === "openai_batch"
       ? "batch"
-      : executionPath;
+      : executionPath === "sync_baseline"
+        ? "sync"
+        : executionPath;
   return (
     <span
       title={executionPath}
