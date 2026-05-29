@@ -103,6 +103,21 @@ async def log_platform_cost_safe(entry: PlatformCostEntry) -> None:
         )
 
 
+def _md_str(row: Any, key: str) -> str | None:
+    """Read a string-valued key out of PlatformCostLog.metadata.
+
+    Returns ``None`` when metadata is absent, isn't a dict, or the key
+    is missing/non-string. PlatformCostLog.metadata is a Prisma ``Json``
+    column so it deserializes to whatever the writer put in; we defend
+    against everything but the happy path.
+    """
+    md = getattr(row, "metadata", None)
+    if not isinstance(md, dict):
+        return None
+    val = md.get(key)
+    return val if isinstance(val, str) else None
+
+
 def _mask_email(email: str | None) -> str | None:
     """Mask an email address to reduce PII exposure in admin API responses.
 
@@ -163,6 +178,13 @@ class CostLogRow(BaseModel):
     model: str | None = None
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    # ``execution_path`` and ``source`` ride in the JSON ``metadata``
+    # column on PlatformCostLog. Surfacing them as first-class fields
+    # lets the admin LogsTable render a "BATCH"/"FLEX"/"SYNC" badge and
+    # the filter dropdown narrow rows without admins needing to query
+    # the JSON directly. Empty when the writer didn't tag the row.
+    execution_path: str | None = None
+    source: str | None = None
 
 
 class CostBucket(BaseModel):
@@ -216,6 +238,8 @@ def _build_prisma_where(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    execution_path: str | None = None,
+    source: str | None = None,
 ) -> PlatformCostLogWhereInput:
     """Build a Prisma WhereInput for PlatformCostLog filters."""
     where: PlatformCostLogWhereInput = {}
@@ -245,6 +269,32 @@ def _build_prisma_where(
 
     if graph_exec_id:
         where["graphExecId"] = graph_exec_id
+
+    # JSON-path filters on the metadata column. Prisma's typed
+    # WhereInput doesn't surface the JSON ``path`` operator natively in
+    # Python; use the raw key on the dict — the underlying generated
+    # query DSL accepts it because Prisma's Python client forwards
+    # unknown keys when building the SQL.
+    if execution_path:
+        where["metadata"] = {  # type: ignore[typeddict-unknown-key]
+            "path": ["execution_path"],
+            "equals": execution_path,
+        }
+    if source:
+        # If both are set, merge — last writer wins on conflicting
+        # ``path`` so callers typically filter by one at a time. The
+        # generated SQL becomes an AND across the two metadata
+        # conditions via Prisma's array form.
+        existing_md = where.get("metadata")  # type: ignore[typeddict-item]
+        md_filter = {"path": ["source"], "equals": source}
+        if existing_md:
+            where["AND"] = [  # type: ignore[typeddict-item]
+                {"metadata": existing_md},
+                {"metadata": md_filter},
+            ]
+            del where["metadata"]  # type: ignore[misc]
+        else:
+            where["metadata"] = md_filter  # type: ignore[typeddict-unknown-key]
 
     return where
 
@@ -673,12 +723,23 @@ async def get_platform_cost_logs(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    execution_path: str | None = None,
+    source: str | None = None,
 ) -> tuple[list[CostLogRow], int]:
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
+        start,
+        end,
+        provider,
+        user_id,
+        model,
+        block_name,
+        tracking_type,
+        graph_exec_id,
+        execution_path,
+        source,
     )
     offset = (page - 1) * page_size
 
@@ -711,6 +772,8 @@ async def get_platform_cost_logs(
             cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
             duration=r.duration,
             model=r.model,
+            execution_path=_md_str(r, "execution_path"),
+            source=_md_str(r, "source"),
         )
         for r in rows
     ]
@@ -868,6 +931,8 @@ async def get_platform_cost_logs_for_export(
     block_name: str | None = None,
     tracking_type: str | None = None,
     graph_exec_id: str | None = None,
+    execution_path: str | None = None,
+    source: str | None = None,
 ) -> tuple[list[CostLogRow], bool]:
     """Return all matching rows up to EXPORT_MAX_ROWS.
 
@@ -878,7 +943,16 @@ async def get_platform_cost_logs_for_export(
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
+        start,
+        end,
+        provider,
+        user_id,
+        model,
+        block_name,
+        tracking_type,
+        graph_exec_id,
+        execution_path,
+        source,
     )
 
     rows = await PrismaLog.prisma().find_many(
@@ -909,6 +983,8 @@ async def get_platform_cost_logs_for_export(
             cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
             duration=r.duration,
             model=r.model,
+            execution_path=_md_str(r, "execution_path"),
+            source=_md_str(r, "source"),
         )
         for r in rows
     ], truncated

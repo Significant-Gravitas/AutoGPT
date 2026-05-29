@@ -1723,6 +1723,28 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Graph Exec Id"
             }
+          },
+          {
+            "name": "execution_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter on metadata.execution_path (e.g. 'anthropic_batch', 'sync_baseline', 'flex'). Lets admins narrow rows to a single dispatch mode for cost-savings audits.",
+              "title": "Execution Path"
+            },
+            "description": "Filter on metadata.execution_path (e.g. 'anthropic_batch', 'sync_baseline', 'flex'). Lets admins narrow rows to a single dispatch mode for cost-savings audits."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter on metadata.source (e.g. 'dream_pass', 'copilot'). Distinguishes background/system spend from interactive.",
+              "title": "Source"
+            },
+            "description": "Filter on metadata.source (e.g. 'dream_pass', 'copilot'). Distinguishes background/system spend from interactive."
           }
         ],
         "responses": {
@@ -1833,6 +1855,24 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Graph Exec Id"
+            }
+          },
+          {
+            "name": "execution_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Execution Path"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Source"
             }
           }
         ],
@@ -11824,6 +11864,14 @@
           "cache_creation_tokens": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Cache Creation Tokens"
+          },
+          "execution_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Path"
+          },
+          "source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source"
           }
         },
         "type": "object",
