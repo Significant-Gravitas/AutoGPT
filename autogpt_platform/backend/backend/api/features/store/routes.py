@@ -380,7 +380,7 @@ async def get_submissions(
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
-    statuses: str | None = Query(default=None),
+    statuses: list[prisma.enums.SubmissionStatus] | None = Query(default=None),
     sort_key: SubmissionSortKey | None = Query(default=None),
     sort_dir: SubmissionSortDir = Query(default="desc"),
 ) -> store_model.StoreSubmissionsResponse:
@@ -390,32 +390,11 @@ async def get_submissions(
         page=page,
         page_size=page_size,
         search_query=search_query,
-        statuses=_parse_submission_statuses(statuses),
+        statuses=statuses or None,
         sort_key=sort_key,
         sort_dir=sort_dir,
     )
     return listings
-
-
-def _parse_submission_statuses(
-    statuses: str | None,
-) -> list[prisma.enums.SubmissionStatus] | None:
-    if not statuses:
-        return None
-
-    parsed_statuses: list[prisma.enums.SubmissionStatus] = []
-    for status in statuses.split(","):
-        status = status.strip()
-        if not status:
-            continue
-        try:
-            parsed_statuses.append(prisma.enums.SubmissionStatus(status))
-        except ValueError:
-            raise fastapi.HTTPException(
-                status_code=422,
-                detail=f"Invalid submission status: {status}",
-            )
-    return parsed_statuses or None
 
 
 @router.post(

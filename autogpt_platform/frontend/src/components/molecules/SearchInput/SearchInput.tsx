@@ -52,7 +52,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
         <MagnifyingGlassIcon
           size={size === "small" ? 16 : 20}
           className={cn(
-            "pointer-events-none absolute top-1/2 -translate-y-1/2 text-zinc-400",
+            "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
             iconOffset[size].left,
           )}
         />
@@ -66,7 +66,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           disabled={disabled}
           maxLength={maxLength}
           className={cn(
-            "w-full rounded-xl border border-zinc-200 bg-white text-textBlack placeholder:text-zinc-400 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-60",
+            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
@@ -76,7 +76,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             role="status"
             aria-label="Searching"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-zinc-500",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
               iconOffset[size].right,
             )}
           >
@@ -92,7 +92,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             onClick={() => onChange("")}
             aria-label="Clear search"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               iconOffset[size].right,
             )}
           >
