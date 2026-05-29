@@ -312,10 +312,17 @@ async def _ids_matching_metadata_filter(
             params.append(v)
         clauses.append(clause_tpl.format(*placeholders))
 
+    # Prisma's raw_query serializes ``datetime`` arguments as ISO
+    # strings. PlatformCostLog.createdAt is ``timestamp without time
+    # zone`` (Prisma's default DateTime mapping), so without an
+    # explicit ``::timestamp`` cast on the placeholder, Postgres
+    # rejects the comparison with ``operator does not exist:
+    # timestamp without time zone >= text``. The cast does the same
+    # work the typed Prisma helper does silently.
     if start is not None:
-        _add('"createdAt" >= {0}', start)
+        _add('"createdAt" >= {0}::timestamp', start)
     if end is not None:
-        _add('"createdAt" <= {0}', end)
+        _add('"createdAt" <= {0}::timestamp', end)
     if provider:
         _add("provider = {0}", provider.lower())
     if user_id:
