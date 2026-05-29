@@ -75,6 +75,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
+    case Flag.CHAT_SHARING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
   }
 }
 
