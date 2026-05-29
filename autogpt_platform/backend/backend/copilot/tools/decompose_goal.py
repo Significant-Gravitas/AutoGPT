@@ -6,7 +6,6 @@ from typing import Any
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .helpers import require_library_check
 from .models import (
     DecompositionStepModel,
     ErrorResponse,
@@ -90,10 +89,6 @@ class DecomposeGoalTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
-
-        library_gate = require_library_check(session, "decompose_goal")
-        if library_gate is not None:
-            return library_gate
 
         if not goal:
             return ErrorResponse(

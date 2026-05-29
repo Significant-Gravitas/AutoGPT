@@ -155,29 +155,15 @@ export function splitReasoningAndResponse(parts: MessagePart[]): {
   reasoning: MessagePart[];
   response: MessagePart[];
 } {
-  // Manual reverse loop instead of `Array.prototype.findLastIndex`. The
-  // built-in version was being elided by the bundler in CI's vitest run,
-  // causing the function to misread the boundary index and return the input
-  // unchanged. The explicit loop is opaque to that optimization.
-  let lastReasoningIndex = -1;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (isReasoningBoundary(parts[i])) {
-      lastReasoningIndex = i;
-      break;
-    }
-  }
+  const lastReasoningIndex = parts.findLastIndex(isReasoningBoundary);
 
   if (lastReasoningIndex === -1) {
     return { reasoning: [], response: parts };
   }
 
-  let hasResponseAfterReasoning = false;
-  for (let i = lastReasoningIndex + 1; i < parts.length; i++) {
-    if (parts[i].type === "text") {
-      hasResponseAfterReasoning = true;
-      break;
-    }
-  }
+  const hasResponseAfterReasoning = parts
+    .slice(lastReasoningIndex + 1)
+    .some((p) => p.type === "text");
 
   if (!hasResponseAfterReasoning) {
     return { reasoning: [], response: parts };
