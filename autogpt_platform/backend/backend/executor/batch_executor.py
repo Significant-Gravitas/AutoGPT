@@ -287,10 +287,7 @@ class BatchExecutor(AppService):
 
     @classmethod
     def get_port(cls) -> int:
-        # Reuse a fixed offset from the scheduler. The actual value
-        # doesn't matter much — the service has no inbound RPCs today,
-        # the port is just for health checks.
-        return config.execution_scheduler_port + 100
+        return config.batch_executor_port
 
     async def health_check(self) -> str:
         if self._loop_thread is None or not self._loop_thread.is_alive():
@@ -313,9 +310,13 @@ class BatchExecutor(AppService):
         )
         self._loop_thread.start()
         logger.info("BatchExecutor poll loop started")
-        # Block forever — AppService stops the process when the manager
-        # signals shutdown; the thread is daemon so it dies with us.
-        self._shutdown_event.wait()
+        # Hand off to the base class which pumps the shared event loop
+        # so uvicorn's serve() coroutine (submitted from the FastAPI
+        # init thread) can actually bind the RPC port + handle health
+        # checks. Without this the AppService process appears alive
+        # but its port never binds — see Scheduler.run_service tail for
+        # the canonical pattern.
+        super().run_service()
 
     def cleanup(self):
         if hasattr(self, "_shutdown_event"):
