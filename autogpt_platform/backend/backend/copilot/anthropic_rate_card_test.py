@@ -13,23 +13,6 @@ class TestComputeAnthropicCostUsd:
         )
         assert cost == 18.0
 
-    def test_batch_discount_halves_total(self):
-        """Anthropic's Messages Batches API bills at 50% of base — this
-        is the gate that makes dream-pass cheaper than the sync path."""
-        sync = compute_anthropic_cost_usd(
-            model="claude-sonnet-4-6",
-            prompt_tokens=1_000_000,
-            completion_tokens=1_000_000,
-        )
-        batch = compute_anthropic_cost_usd(
-            model="claude-sonnet-4-6",
-            prompt_tokens=1_000_000,
-            completion_tokens=1_000_000,
-            batch_discount=True,
-        )
-        assert sync == 18.0
-        assert batch == 9.0
-
     def test_opus_basic(self):
         # claude-opus-4-1 stays at the legacy Opus pricing in LiteLLM:
         # 1M prompt × $15 + 1M completion × $75 = $90.  (Newer Opus

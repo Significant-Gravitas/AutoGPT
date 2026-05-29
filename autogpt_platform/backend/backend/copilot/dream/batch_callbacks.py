@@ -37,8 +37,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
-from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
-
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     delete_input_bundle,
@@ -46,6 +44,7 @@ from .batch_submit import (
     submit_phase,
 )
 from .billing import record_phase_cost
+from .model_pricing import compute_cost_usd
 from .schemas import DreamOperations, PhaseUsage
 
 if TYPE_CHECKING:
@@ -230,6 +229,7 @@ async def handle_dream_batch_result(
         user_id=user_id,
         pass_id=pass_id,
         job_id=job_id,
+        model=model,
     )
 
 
@@ -335,7 +335,9 @@ def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def _finalize_complete(*, user_id: str, pass_id: str, job_id: str) -> None:
+async def _finalize_complete(
+    *, user_id: str, pass_id: str, job_id: str, model: str
+) -> None:
     """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
         from .apply import apply_operations
@@ -387,8 +389,13 @@ async def _finalize_complete(*, user_id: str, pass_id: str, job_id: str) -> None
         return
 
     # Per-phase cost log — applied AFTER apply succeeds so a failed
-    # apply doesn't double-bill the user.
-    await _log_all_phase_costs(user_id=user_id, pass_id=pass_id, state=state)
+    # apply doesn't double-bill the user. The Redis dedup gate inside
+    # ``_log_all_phase_costs`` also guards against a crash between
+    # charging and removing the pending batch entry: if the
+    # BatchExecutor re-dispatches the same batch we won't re-charge.
+    await _log_all_phase_costs(
+        user_id=user_id, pass_id=pass_id, state=state, model=model
+    )
 
     if job_id:
         try:
@@ -428,28 +435,93 @@ async def _fail_pass(*, user_id: str, pass_id: str, job_id: str, error: str) -> 
 # ---------------------------------------------------------------------------
 
 
+_COSTS_LOGGED_PREFIX = "dream:batch:costs_logged"
+# 7 days — long enough that no realistic BatchExecutor re-dispatch
+# (poll backoff caps at 5 min, max lifetime 24h) can slip through and
+# bill twice. Matches the spirit of the Stripe-reconcile gate's TTL.
+_COSTS_LOGGED_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+async def _claim_costs_logged_gate(pass_id: str) -> bool:
+    """Atomically claim the per-pass cost-charge gate. Returns True
+    when this caller won the race (first time costs_logged is set);
+    False when a prior caller already charged this pass.
+
+    Modelled on ``rate_limit._maybe_reconcile_stripe_tier`` — Redis
+    SETNX with a long TTL is the established convention for "do this
+    side-effect at most once per identifier" in this codebase. The
+    dedup lives at the dream-batch boundary, not inside
+    ``record_cost_usage`` itself (chat legitimately charges every turn).
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        return bool(
+            await redis.set(
+                f"{_COSTS_LOGGED_PREFIX}:{pass_id}",
+                "1",
+                nx=True,
+                ex=_COSTS_LOGGED_TTL_SECONDS,
+            )
+        )
+    except Exception:
+        # Fail closed: if we can't claim the gate, do not charge.
+        # Better to under-bill on a Redis brown-out than risk
+        # double-billing under retry pressure.
+        logger.exception(
+            "Failed to claim costs_logged gate for pass=%s — skipping charge",
+            pass_id,
+        )
+        return False
+
+
 async def _log_all_phase_costs(
-    *, user_id: str, pass_id: str, state: dict[str, dict[str, Any]]
+    *,
+    user_id: str,
+    pass_id: str,
+    state: dict[str, dict[str, Any]],
+    model: str,
 ) -> None:
     """One PlatformCostLog row per phase, tagged ``anthropic_batch``.
 
-    No-ops on failure — apply already wrote the user-facing memory
-    operations; a cost-log blip shouldn't take that down.
+    Idempotent via a Redis SETNX gate keyed on ``pass_id``: if the
+    BatchExecutor crashes between charging and removing the pending
+    batch entry and the next poll re-dispatches the same batch, the
+    gate prevents the second charge. The gate is set BEFORE the loop
+    so a partial failure mid-loop still leaves the user charged for
+    whatever phases landed (matches the documented "partial pass
+    charges for completed phases" semantic in ``dream/billing.py``).
+
+    Cost is computed via ``dream/model_pricing.compute_cost_usd`` —
+    the dream rate card — so the batch path uses the same native-
+    Anthropic token convention (additive cache buckets, not subtracted)
+    as the sync path. The ``execution_path="anthropic_batch"`` arg
+    applies the 50% batch discount there.
+
+    No-ops on per-phase failure — apply already wrote the user-facing
+    memory operations; a cost-log blip shouldn't take that down.
     """
+    if not await _claim_costs_logged_gate(pass_id):
+        logger.info(
+            "Skipping batch cost log for pass=%s — already charged",
+            pass_id,
+        )
+        return
+
     for phase, row in state.items():
         try:
             input_tokens = int(row.get("input_tokens") or 0)
             output_tokens = int(row.get("output_tokens") or 0)
             cache_read_tokens = int(row.get("cache_read_tokens") or 0)
             cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
-            model = "claude-sonnet-4-6"
-            cost_usd = compute_anthropic_cost_usd(
+            cost_usd = compute_cost_usd(
                 model=model,
-                prompt_tokens=input_tokens,
-                completion_tokens=output_tokens,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_creation_tokens=cache_creation_tokens,
-                batch_discount=True,
+                execution_path="anthropic_batch",
             )
             usage = PhaseUsage(
                 phase=phase,  # type: ignore[arg-type]

@@ -34,7 +34,12 @@ def fake_redis():
     async def fake_get(key):
         return string_store.get(key)
 
-    async def fake_set(key, value, ex=None):
+    async def fake_set(key, value, ex=None, nx=False):
+        # Mirror redis.set semantics: when ``nx=True`` and the key
+        # already exists, set returns None and leaves the existing
+        # value alone. This is what makes the dedup gate idempotent.
+        if nx and key in string_store:
+            return None
         string_store[key] = value
         return True
 
@@ -244,6 +249,56 @@ class TestPhaseChaining:
         assert record_cost.await_count == 3
         for call in record_cost.await_args_list:
             assert call.kwargs["execution_path"] == "anthropic_batch"
+
+    @pytest.mark.asyncio
+    async def test_redispatch_after_charge_does_not_double_bill(self, fake_redis):
+        """If the BatchExecutor crashes between charging and
+        ``remove_pending``, the next walk re-dispatches the same batch.
+        The Redis dedup gate must prevent the second charge while
+        still letting apply re-run idempotently."""
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="recombine",
+            row=_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT),
+        )
+
+        apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
+        record_cost = AsyncMock()
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+            # Simulated re-dispatch: BatchExecutor crashed between
+            # charge + remove_pending, walks the queue again, calls us
+            # a second time with the same batch result.
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        # 3 phases charged on the first call, ZERO on the re-dispatch.
+        assert record_cost.await_count == 3
 
 
 class TestErrorPaths:
