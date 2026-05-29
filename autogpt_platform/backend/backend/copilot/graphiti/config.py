@@ -84,6 +84,16 @@ class GraphitiConfig(BaseSettings):
         description="Skip community rebuild when fewer than this many new episodes since last rebuild.",
     )
 
+    # Nightly community rebuild is non-interactive scheduled work — ~50%
+    # cheaper on OpenAI's ``service_tier="flex"`` (worst-case ~15min
+    # queue, typically just a few seconds slower). Interactive ingest
+    # stays on sync tier because the user expects deduped facts ready
+    # for their next turn.
+    community_rebuild_use_flex_tier: bool = Field(
+        default=True,
+        description="Run nightly community rebuilds on OpenAI's flex service tier (~50% discount).",
+    )
+
     # Concurrency
     semaphore_limit: int = Field(
         default=5,

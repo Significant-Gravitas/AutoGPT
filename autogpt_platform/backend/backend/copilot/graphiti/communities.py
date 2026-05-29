@@ -34,7 +34,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
-from .client import derive_group_id, get_graphiti_client
+from .client import (
+    close_graphiti_client,
+    derive_group_id,
+    get_graphiti_client,
+    make_flex_graphiti_client,
+)
 from .config import graphiti_config
 
 logger = logging.getLogger(__name__)
@@ -244,6 +249,7 @@ async def rebuild_communities_for_user(
         "skip_reason": None,
         "activity": None,
         "forced": force,
+        "execution_path": None,
     }
 
     try:
@@ -253,8 +259,21 @@ async def rebuild_communities_for_user(
         logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])
         return result
 
+    # When the flex flag is on we build a one-shot Graphiti client whose
+    # LLM calls run on OpenAI's flex tier (~50% discount, best-effort
+    # latency). The cached interactive client stays on sync tier so
+    # live ingest dedup remains responsive. The flex client owns its
+    # own FalkorDB driver — close it in finally to avoid leaks.
+    use_flex = graphiti_config.community_rebuild_use_flex_tier
+    flex_client = None
     try:
-        client = await get_graphiti_client(group_id)
+        if use_flex:
+            flex_client = await make_flex_graphiti_client(group_id)
+            client = flex_client
+            result["execution_path"] = "flex"
+        else:
+            client = await get_graphiti_client(group_id)
+            result["execution_path"] = "sync"
 
         driver = getattr(client, "graph_driver", None) or getattr(
             client, "driver", None
@@ -309,6 +328,8 @@ async def rebuild_communities_for_user(
         )
 
     finally:
+        if flex_client is not None:
+            await close_graphiti_client(flex_client)
         ended_at = datetime.now(timezone.utc)
         result["elapsed_seconds"] = (ended_at - started_at).total_seconds()
 
