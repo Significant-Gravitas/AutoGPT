@@ -12,6 +12,7 @@ import pytest
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
+    claim_batch_dispatch_atomic,
     hash_compare_and_set,
     incr_with_ttl,
     incr_with_ttl_sync,
@@ -27,6 +28,7 @@ class _Fake:
         self.counters: dict[str, int] = {}
         self.lists: dict[str, list[str]] = {}
         self.hashes: dict[str, dict[str, str]] = {}
+        self.sets: dict[str, set[str]] = {}
         self.ttls: dict[str, int] = {}
         self.expire_calls: list[tuple[str, int, bool]] = []
 
@@ -57,7 +59,24 @@ class _Fake:
         return len(self.lists.get(key, []))
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        # Discriminate by script content — the helpers all use distinct
+        # Lua so we can route on a unique substring per script.
+        if "SISMEMBER" in script:
+            # ``claim_batch_dispatch_atomic`` shape:
+            #   KEYS[1]=pending hash, KEYS[2]=dispatched set,
+            #   ARGV[1]=batch_id, ARGV[2]=ttl_seconds
+            pending_key, dispatched_key = args[0], args[1]
+            batch_id, ttl_seconds = args[2], args[3]
+            members = self.sets.setdefault(dispatched_key, set())
+            if batch_id in members:
+                return 0
+            members.add(batch_id)
+            await self.expire(dispatched_key, int(ttl_seconds))
+            self.hashes.setdefault(pending_key, {}).pop(batch_id, None)
+            return 1
+
         if numkeys == 2:
+            # ``capped_rpush_if_hash_field`` shape.
             hash_key, list_key = args[0], args[1]
             field, expected, value, max_len, ttl_seconds = args[2:7]
             h = self.hashes.setdefault(hash_key, {})
@@ -68,6 +87,7 @@ class _Fake:
             await self.expire(list_key, int(ttl_seconds))
             return await self.llen(list_key)
 
+        # ``hash_compare_and_set`` shape (numkeys == 1).
         key, field, expected, new = args[0], args[1], args[2], args[3]
         h = self.hashes.setdefault(key, {})
         if h.get(field) == expected:
@@ -276,3 +296,95 @@ async def test_hash_cas_no_swap_when_expected_differs() -> None:
     )
     assert swapped is False
     assert r.hashes["meta"]["status"] == "completed"
+
+
+# ── claim_batch_dispatch_atomic ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_claim_batch_dispatch_first_call_wins() -> None:
+    """First call against an empty dispatched set must win, must add the
+    tombstone, and must HDEL the pending entry."""
+    r = _Fake()
+    r.hashes["{llm:batch}:pending"] = {
+        "msgbatch_x": "entry-body",
+        "msgbatch_other": "untouched",
+    }
+
+    claimed = await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key="{llm:batch}:dispatched",
+        batch_id="msgbatch_x",
+        ttl_seconds=7 * 24 * 60 * 60,
+    )
+
+    assert claimed is True
+    assert "msgbatch_x" in r.sets["{llm:batch}:dispatched"]
+    # Pending entry removed for the claimed batch, others untouched.
+    assert "msgbatch_x" not in r.hashes["{llm:batch}:pending"]
+    assert r.hashes["{llm:batch}:pending"]["msgbatch_other"] == "untouched"
+    assert r.ttls["{llm:batch}:dispatched"] == 7 * 24 * 60 * 60
+
+
+@pytest.mark.asyncio
+async def test_claim_batch_dispatch_second_call_loses() -> None:
+    """A second walker arriving for the same batch_id must be refused
+    even if the pending entry has somehow been re-added — the tombstone
+    is the authoritative source of truth."""
+    r = _Fake()
+    r.hashes["{llm:batch}:pending"] = {"msgbatch_x": "entry-body"}
+
+    first = await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key="{llm:batch}:dispatched",
+        batch_id="msgbatch_x",
+        ttl_seconds=60,
+    )
+    # Simulate the pending entry being re-added by a buggy caller —
+    # the tombstone must still refuse the claim.
+    r.hashes["{llm:batch}:pending"]["msgbatch_x"] = "re-added"
+
+    second = await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key="{llm:batch}:dispatched",
+        batch_id="msgbatch_x",
+        ttl_seconds=60,
+    )
+
+    assert first is True
+    assert second is False
+    # The re-added pending entry is NOT removed because the claim was
+    # refused; the buggy caller's state survives untouched so an
+    # operator can detect + investigate.
+    assert r.hashes["{llm:batch}:pending"]["msgbatch_x"] == "re-added"
+
+
+@pytest.mark.asyncio
+async def test_claim_batch_dispatch_distinct_batch_ids_dont_collide() -> None:
+    """Tombstones are per-batch_id — claiming batch A must not block
+    a later claim for batch B."""
+    r = _Fake()
+    r.hashes["{llm:batch}:pending"] = {"a": "body-a", "b": "body-b"}
+
+    a = await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key="{llm:batch}:dispatched",
+        batch_id="a",
+        ttl_seconds=60,
+    )
+    b = await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key="{llm:batch}:dispatched",
+        batch_id="b",
+        ttl_seconds=60,
+    )
+
+    assert a is True
+    assert b is True
+    assert r.sets["{llm:batch}:dispatched"] == {"a", "b"}
+    assert r.hashes["{llm:batch}:pending"] == {}

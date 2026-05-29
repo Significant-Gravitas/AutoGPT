@@ -50,7 +50,17 @@ config = Config()
 
 # Redis key for the pending-batches hash. Each field is one
 # ``provider_batch_id``; each value is a JSON-serialized ``PendingEntry``.
-PENDING_KEY = "llm:batch:pending"
+# Both keys share the ``{llm:batch}`` hash tag so they land on the same
+# Redis Cluster slot — required by ``claim_batch_dispatch_atomic``'s
+# multi-key Lua script. Don't add or rename either without also updating
+# the tag on the other.
+PENDING_KEY = "{llm:batch}:pending"
+# Tombstones for batches we've already started dispatching. 7-day TTL is
+# the dedup window: longer than any realistic Anthropic in-flight
+# lifetime (24h SLA, our MAX_BATCH_LIFETIME_SECONDS cap is also 24h),
+# short enough not to grow unbounded.
+DISPATCHED_KEY = "{llm:batch}:dispatched"
+DISPATCHED_TTL_SECONDS = 7 * 24 * 60 * 60
 
 # 24h hard ceiling — Anthropic's promised SLA. Beyond this we mark the
 # entry failed even if the provider still says ``processing``.
@@ -134,11 +144,42 @@ async def update_pending(entry: PendingEntry) -> None:
 
 
 async def remove_pending(provider_batch_id: str) -> None:
-    """Drop a finished or expired entry from the queue."""
+    """Drop a finished or expired entry from the queue.
+
+    Reserved for terminal paths that bypass dispatch (e.g. lifetime
+    timeout). Normal end / failed dispatches go through
+    ``_claim_dispatch`` which atomically tombstones + HDELs in one
+    Lua script — see the walk loop in :func:`walk_once` for the
+    rationale.
+    """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
     await redis.hdel(PENDING_KEY, provider_batch_id)  # type: ignore[misc]
+
+
+async def _claim_dispatch(provider_batch_id: str) -> bool:
+    """Atomically claim the right to dispatch results for this batch.
+
+    Returns True when the caller won the claim (must dispatch); False
+    when another walker already claimed it (must skip silently — the
+    other walker is responsible for the callback). The Lua script
+    inside :func:`claim_batch_dispatch_atomic` SADDs the tombstone +
+    HDELs the pending entry in one indivisible step, closing the
+    race we'd otherwise have between ``_dispatch`` and a separate
+    ``remove_pending``.
+    """
+    from backend.data.redis_client import get_redis_async
+    from backend.data.redis_helpers import claim_batch_dispatch_atomic
+
+    redis = await get_redis_async()
+    return await claim_batch_dispatch_atomic(
+        redis,
+        pending_key=PENDING_KEY,
+        dispatched_key=DISPATCHED_KEY,
+        batch_id=provider_batch_id,
+        ttl_seconds=DISPATCHED_TTL_SECONDS,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,11 +298,23 @@ async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> Non
                 entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
                 await update_pending(entry)
                 continue
+            # Atomic claim: only one walker dispatches each batch.
+            # Without this, a slow remove_pending or a crash between
+            # _dispatch and remove_pending re-fires the whole callback
+            # chain (re-submits phases, re-runs apply, etc). The Lua
+            # script tombstones the batch_id and HDELs the pending
+            # entry in one indivisible step.
+            if not await _claim_dispatch(entry.provider_batch_id):
+                logger.info(
+                    "Batch %s already dispatched — skipping",
+                    entry.provider_batch_id,
+                )
+                continue
             await _dispatch(entry, rows)
-            await remove_pending(entry.provider_batch_id)
         elif status == "failed":
+            if not await _claim_dispatch(entry.provider_batch_id):
+                continue
             await _dispatch_error(entry, error="provider reported failed")
-            await remove_pending(entry.provider_batch_id)
         else:
             entry.poll_delay_seconds = _bump_delay(entry.poll_delay_seconds)
             entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)

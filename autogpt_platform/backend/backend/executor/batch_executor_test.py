@@ -28,8 +28,15 @@ from backend.util.llm.providers import BatchResultRow
 
 @pytest.fixture
 def fake_redis():
-    """In-memory hash-backed redis stub."""
+    """In-memory hash-backed redis stub.
+
+    Also fakes the Lua ``eval`` path so the BatchExecutor's atomic
+    ``claim_batch_dispatch_atomic`` works under test — the real script
+    runs SISMEMBER + SADD + HDEL on the dispatched set + pending hash
+    in one indivisible step; the fake replays the same effects.
+    """
     store: dict[str, dict[str, str]] = {}
+    sets: dict[str, set[str]] = {}
 
     async def fake_hset(key, field, value):
         store.setdefault(key, {})[field] = value
@@ -50,12 +57,28 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
+    async def fake_eval(script, numkeys, *args):
+        # Only the claim_batch_dispatch_atomic shape is used by the
+        # BatchExecutor today. Branch on content so we don't pretend
+        # to know how to evaluate arbitrary Lua.
+        if "SISMEMBER" in script:
+            pending_key, dispatched_key = args[0], args[1]
+            batch_id = args[2]
+            members = sets.setdefault(dispatched_key, set())
+            if batch_id in members:
+                return 0
+            members.add(batch_id)
+            store.setdefault(pending_key, {}).pop(batch_id, None)
+            return 1
+        raise NotImplementedError(f"fake_redis.eval: unknown script: {script!r}")
+
     stub = AsyncMock()
     stub.hset.side_effect = fake_hset
     stub.hgetall.side_effect = fake_hgetall
     stub.hdel.side_effect = fake_hdel
     stub.delete.side_effect = fake_delete
     stub.expire.side_effect = fake_expire
+    stub.eval.side_effect = fake_eval
 
     async def fake_get_redis_async():
         return stub
@@ -169,6 +192,47 @@ class TestWalkOnceDispatch:
         assert seen_rows[0][0].custom_id == "passid-1:consolidate"
         # Entry must be removed after successful dispatch.
         assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    async def test_redispatch_after_claim_is_silently_skipped(self, fake_redis):
+        """Second walk that races on the same provider_batch_id must
+        not re-invoke the namespace handler — the atomic claim is the
+        only thing standing between "BatchExecutor saw the same ended
+        batch twice" and "user's billing/apply/phase-chain side effects
+        re-fire". Regression for the double-sanitize incident in prod.
+        """
+        seen_rows: list[list[BatchResultRow]] = []
+
+        async def fake_handler(entry, rows):
+            seen_rows.append(list(rows))
+
+        register_handler("dream_pass", fake_handler)
+        await enqueue_pending(_entry())
+
+        fake_row = BatchResultRow(
+            custom_id="passid-1:consolidate",
+            content='{"facts": []}',
+            input_tokens=1,
+            output_tokens=1,
+        )
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            new=AsyncMock(return_value="ended"),
+        ), patch(
+            "backend.executor.batch_executor.download_batch_results",
+            new=AsyncMock(return_value=[fake_row]),
+        ):
+            # First walk: claim wins, handler fires.
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+            # Simulate a second walk that races (or a crash-recovery
+            # replay) — the same entry is re-added to pending, but the
+            # claim must refuse so the handler doesn't fire again.
+            await enqueue_pending(_entry())
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        assert (
+            len(seen_rows) == 1
+        ), "handler should fire exactly once even on re-dispatch"
 
     @pytest.mark.asyncio
     async def test_processing_batch_bumps_delay_and_keeps_entry(self, fake_redis):

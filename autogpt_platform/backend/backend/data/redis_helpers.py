@@ -68,6 +68,44 @@ redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
 return redis.call('LLEN', KEYS[2])
 """
 
+# Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
+# to transition a finished provider batch from ``pending → dispatched``
+# in one indivisible step. Without this, the dispatch path is racy:
+#
+#   await _dispatch(entry, rows)       # side effects fire here
+#   await remove_pending(batch_id)     # ← any crash / slow write here
+#                                      #    leaves the batch in pending,
+#                                      #    next walk re-dispatches.
+#
+# The atomic claim sets a tombstone in the dispatched set BEFORE the
+# walker calls _dispatch, so a re-entry will be refused even when the
+# pending hash hasn't been HDEL'd yet. The TTL on the dispatched set
+# bounds memory growth and matches Anthropic's 29-day batch result
+# retention window so a stale tombstone can't accidentally let a
+# 30-day-old batch re-dispatch.
+#
+# Both keys MUST share a Redis Cluster hash tag (e.g. both prefixed
+# with ``{llm:batch}:``) so they land on the same slot — required for
+# multi-key Lua under cluster mode.
+#
+# Returns 1 when this caller won the claim (proceed with dispatch),
+# 0 when another walker already dispatched (skip silently).
+#
+#   KEYS[1]  pending hash key
+#   KEYS[2]  dispatched set key
+#   ARGV[1]  batch_id (field on hash, member of set)
+#   ARGV[2]  TTL seconds applied to the dispatched set
+_CLAIM_BATCH_DISPATCH_LUA = """
+if redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1 then
+    return 0
+end
+redis.call('SADD', KEYS[2], ARGV[1])
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[2]))
+redis.call('HDEL', KEYS[1], ARGV[1])
+return 1
+"""
+
+
 # Atomically: sweep stale slots, refresh an existing slot's claim or add
 # a new slot iff the pool is under capacity, then set the pool key's TTL.
 # Returns 1 when a NEW slot was admitted, 2 when an EXISTING slot's claim
@@ -224,6 +262,52 @@ async def capped_rpush_if_hash_field(
     )
     length = int(result)
     return None if length < 0 else length
+
+
+async def claim_batch_dispatch_atomic(
+    redis: AsyncRedisClient,
+    *,
+    pending_key: str,
+    dispatched_key: str,
+    batch_id: str,
+    ttl_seconds: int,
+) -> bool:
+    """Atomically claim the right to dispatch results for ``batch_id``.
+
+    Used by the BatchExecutor walk loop. The race we're closing:
+
+        await _dispatch(entry, rows)        # side effects fire here
+        await remove_pending(batch_id)      # gap → re-dispatch on
+                                            #     crash / contention
+
+    The Lua script tests ``SISMEMBER(dispatched_key, batch_id)`` and,
+    only when absent, ``SADDs`` the tombstone + ``HDELs`` the pending
+    entry, all in one indivisible step. Returns ``True`` when this
+    caller won the claim (proceed with dispatch), ``False`` when
+    another walker already dispatched (skip silently).
+
+    ``pending_key`` and ``dispatched_key`` MUST share a Redis Cluster
+    hash tag (e.g. both prefixed with ``"{llm:batch}:"``) so they land
+    on the same slot — required for multi-key Lua under cluster mode.
+
+    ``ttl_seconds`` should comfortably exceed the longest possible
+    in-flight batch lifetime so stale tombstones cannot let a very
+    late re-poll cause a re-dispatch. 7 days is fine today (Anthropic
+    batch SLA is 24h, max batch lifetime cap is 24h); raise it if the
+    provider window widens.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _CLAIM_BATCH_DISPATCH_LUA,
+            2,
+            pending_key,
+            dispatched_key,
+            batch_id,
+            str(ttl_seconds),
+        ),
+    )
+    return bool(int(result))
 
 
 class SlotAdmission(IntEnum):
