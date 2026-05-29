@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
@@ -11,6 +12,8 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
+  useCaptureMarketingPrompt();
+
   const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
