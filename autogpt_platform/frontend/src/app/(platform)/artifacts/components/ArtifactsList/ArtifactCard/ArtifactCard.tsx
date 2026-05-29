@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  getListWorkspaceFilesQueryKey,
-  useDeleteWorkspaceFile,
-} from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { useDeleteWorkspaceFile } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { ARTIFACTS_LIST_QUERY_KEY } from "../../../useArtifactsPage";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -113,7 +111,7 @@ function CardMenu({
       mutation: {
         onSuccess: () => {
           queryClient.invalidateQueries({
-            queryKey: getListWorkspaceFilesQueryKey(),
+            queryKey: ARTIFACTS_LIST_QUERY_KEY,
           });
           toast({ title: "File deleted" });
         },

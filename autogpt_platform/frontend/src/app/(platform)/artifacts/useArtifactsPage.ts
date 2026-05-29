@@ -8,6 +8,8 @@ export type OriginFilter = "all" | "builder" | "autopilot";
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
 
+export const ARTIFACTS_LIST_QUERY_KEY = ["artifacts", "list"] as const;
+
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
 export function useArtifactsPage() {
@@ -24,8 +26,7 @@ export function useArtifactsPage() {
 
   const query = useInfiniteQuery({
     queryKey: [
-      "artifacts",
-      "list",
+      ...ARTIFACTS_LIST_QUERY_KEY,
       { q: q ?? null, origin: origin ?? null },
     ] as const,
     queryFn: ({ pageParam }) =>
