@@ -6,6 +6,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from openai.types.chat import ChatCompletionUserMessageParam
+
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -410,25 +412,34 @@ async def extract_business_understanding(
     # long form submissions (see ollama/ollama#2714). Non-Ollama
     # OpenAI-compat backends ignore unknown ``options`` keys, so the
     # forward is safe across the local stack.
-    create_kwargs: dict = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
-            }
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.0,
-    }
-    if chat_cfg.transport.name == "local":
-        create_kwargs["extra_body"] = {"options": {"num_ctx": chat_cfg.local_num_ctx}}
-
+    messages: list[ChatCompletionUserMessageParam] = [
+        {
+            "role": "user",
+            "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
+        }
+    ]
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(**create_kwargs),
-            timeout=timeout_s,
-        )
+        if chat_cfg.transport.name == "local":
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                    extra_body={"options": {"num_ctx": chat_cfg.local_num_ctx}},
+                ),
+                timeout=timeout_s,
+            )
+        else:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                ),
+                timeout=timeout_s,
+            )
     except asyncio.TimeoutError:
         logger.warning("Tally: LLM extraction timed out")
         raise
