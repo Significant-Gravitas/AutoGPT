@@ -153,6 +153,7 @@ def compute_anthropic_cost_usd(
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
     cache_ttl: str = "1h",
+    batch_discount: bool = False,
 ) -> float | None:
     """Return the USD cost for an Anthropic-direct chat completion.
 
@@ -235,9 +236,15 @@ def compute_anthropic_cost_usd(
             else input_per_tok * _DEFAULT_CACHE_WRITE_1H_MULTIPLIER
         )
 
-    return (
+    total = (
         fresh_input_tokens * input_per_tok
         + completion_tokens * output_per_tok
         + cache_read_tokens * cache_read_per_tok
         + cache_creation_tokens * cache_write_per_tok
     )
+    if batch_discount:
+        # Anthropic's Messages Batches API bills at 50% of base for both
+        # input and output. Apply uniformly across the breakdown — the
+        # discount is on the bill, not just one slice.
+        total *= 0.5
+    return total

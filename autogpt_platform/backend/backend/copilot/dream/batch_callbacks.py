@@ -37,6 +37,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
+from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
+
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     delete_input_bundle,
@@ -436,14 +438,27 @@ async def _log_all_phase_costs(
     """
     for phase, row in state.items():
         try:
+            input_tokens = int(row.get("input_tokens") or 0)
+            output_tokens = int(row.get("output_tokens") or 0)
+            cache_read_tokens = int(row.get("cache_read_tokens") or 0)
+            cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
+            model = "claude-sonnet-4-6"
+            cost_usd = compute_anthropic_cost_usd(
+                model=model,
+                prompt_tokens=input_tokens,
+                completion_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                batch_discount=True,
+            )
             usage = PhaseUsage(
                 phase=phase,  # type: ignore[arg-type]
-                model="claude-sonnet-4-6",
-                input_tokens=int(row.get("input_tokens") or 0),
-                output_tokens=int(row.get("output_tokens") or 0),
-                cache_read_tokens=int(row.get("cache_read_tokens") or 0),
-                cache_creation_tokens=int(row.get("cache_creation_tokens") or 0),
-                cost_usd=None,  # let model_pricing apply the batch discount
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                cost_usd=cost_usd,
             )
             await record_phase_cost(
                 user_id=user_id,
