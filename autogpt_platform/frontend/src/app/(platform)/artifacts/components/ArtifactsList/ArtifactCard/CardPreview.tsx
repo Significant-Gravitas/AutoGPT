@@ -2,7 +2,7 @@
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   deriveBadgeLabel,
   FileIllustration,
@@ -38,20 +38,21 @@ function PreviewBody({
   kind: PreviewKind;
 }) {
   const [hasError, setHasError] = useState(false);
+  const handleError = useCallback(() => setHasError(true), []);
 
   if (hasError || kind === "none") {
     return <Fallback file={file} />;
   }
 
   if (kind === "image") {
-    return <ImagePreview file={file} onError={() => setHasError(true)} />;
+    return <ImagePreview file={file} onError={handleError} />;
   }
 
   if (kind === "video") {
-    return <VideoPreview file={file} onError={() => setHasError(true)} />;
+    return <VideoPreview file={file} onError={handleError} />;
   }
 
-  return <TextSnippetPreview file={file} onError={() => setHasError(true)} />;
+  return <TextSnippetPreview file={file} onError={handleError} />;
 }
 
 function ImagePreview({

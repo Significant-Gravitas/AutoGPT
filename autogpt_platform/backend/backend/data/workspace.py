@@ -290,10 +290,7 @@ async def list_workspace_files(
     if path_not_starts_with:
         if not path_not_starts_with.startswith("/"):
             path_not_starts_with = f"/{path_not_starts_with}"
-        # Prisma's NOT accepts a partial where clause; combining with
-        # ``path_prefix`` would be ambiguous, so callers should pass
-        # one or the other — not both.
-        where_clause["NOT"] = {"path": {"startswith": path_not_starts_with}}
+        where_clause["NOT"] = [{"path": {"startswith": path_not_starts_with}}]
 
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
