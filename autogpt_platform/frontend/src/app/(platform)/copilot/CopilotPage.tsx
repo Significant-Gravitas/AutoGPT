@@ -3,7 +3,6 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
@@ -28,7 +27,6 @@ const ArtifactPanel = dynamic(
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -64,9 +62,9 @@ export function CopilotPage() {
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
         </FileDropZone>
-        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
+        {!isMobile && <ArtifactPanel />}
       </div>
-      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
+      {isMobile && <ArtifactPanel mobile />}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>

@@ -21,11 +21,6 @@ vi.mock("@/components/molecules/ErrorCard/ErrorCard", () => ({
   ErrorCard: () => null,
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS: "artifacts" },
-  useGetFlag: () => false,
-}));
-
 vi.mock("@phosphor-icons/react", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, ExclamationMarkIcon: () => null };

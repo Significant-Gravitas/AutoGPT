@@ -85,7 +85,6 @@ interface Props {
 interface RenderSegmentOptions {
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
 }
 
@@ -94,7 +93,7 @@ function renderSegments(
   messageID: string,
   options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
-  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
+  const { onRetry, fileUrlBuilder, readOnly } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
@@ -107,7 +106,6 @@ function renderSegments(
         partIndex={seg.index}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
         readOnly={readOnly}
       />
     );
@@ -567,7 +565,6 @@ export function ChatMessagesContainer({
                   <StepsCollapse>
                     {renderSegments(reasoningSegments, message.id, {
                       fileUrlBuilder,
-                      forceArtifacts: readOnly,
                       readOnly,
                     })}
                   </StepsCollapse>
@@ -576,7 +573,6 @@ export function ChatMessagesContainer({
                   ? renderSegments(responseSegments, message.id, {
                       onRetry: isLastAssistant ? onRetry : undefined,
                       fileUrlBuilder,
-                      forceArtifacts: readOnly,
                       readOnly,
                     })
                   : renderableParts.map((part, i) => (
@@ -587,7 +583,6 @@ export function ChatMessagesContainer({
                         partIndex={i}
                         onRetry={isLastAssistant ? onRetry : undefined}
                         fileUrlBuilder={fileUrlBuilder}
-                        forceArtifacts={readOnly}
                         readOnly={readOnly}
                       />
                     ))}
@@ -644,7 +639,6 @@ export function ChatMessagesContainer({
                 <MessageAttachments
                   files={fileParts}
                   isUser={message.role === "user"}
-                  forceArtifacts={readOnly}
                   filePattern={filePattern}
                   readOnly={readOnly}
                 />

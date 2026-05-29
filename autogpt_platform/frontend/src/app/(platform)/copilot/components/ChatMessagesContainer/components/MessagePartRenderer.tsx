@@ -1,6 +1,5 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
@@ -72,22 +71,18 @@ const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 function TextWithArtifactCards({
   text,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
 }: {
   text: string;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
 }) {
-  const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
   const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
   const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
   return (
     <>
-      {isArtifactsEnabled && artifacts.length > 0 && (
+      {artifacts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           {artifacts.map((artifact) => (
             <ArtifactCard
@@ -115,9 +110,6 @@ interface Props {
    *  the public share viewer passes a token-aware builder so anonymous
    *  readers can download via the public allowlist-gated route. */
   fileUrlBuilder?: (fileId: string) => string;
-  /** Force inline artifact-card rendering for workspace:// URIs in
-   *  prose, regardless of the ``ARTIFACTS`` LD flag. */
-  forceArtifacts?: boolean;
   /** Read-only mode — forwarded so embedded ``ArtifactCard``s
    *  download on click instead of opening a panel. */
   readOnly?: boolean;
@@ -129,7 +121,6 @@ export function MessagePartRenderer({
   partIndex,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
@@ -192,7 +183,6 @@ export function MessagePartRenderer({
           key={key}
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
-          forceArtifacts={forceArtifacts}
           readOnly={readOnly}
         />
       );

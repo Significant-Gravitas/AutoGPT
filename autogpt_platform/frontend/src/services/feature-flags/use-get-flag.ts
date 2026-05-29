@@ -8,7 +8,6 @@ export enum Flag {
   BETA_BLOCKS = "beta-blocks",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
-  ARTIFACTS = "artifacts",
   CHAT_MODE_OPTION = "chat-mode-option",
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
@@ -23,7 +22,6 @@ const defaultFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
@@ -59,8 +57,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
-    case Flag.ARTIFACTS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.BUILDER_CHAT_PANEL:
@@ -71,6 +67,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
+    case Flag.CHAT_SHARING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
   }
 }
 
