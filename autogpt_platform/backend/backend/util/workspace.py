@@ -350,6 +350,7 @@ class WorkspaceManager:
         offset: int = 0,
         include_all_sessions: bool = False,
         name_contains: Optional[str] = None,
+        path_not_starts_with: Optional[str] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -363,6 +364,10 @@ class WorkspaceManager:
             offset: Number of files to skip
             include_all_sessions: If True, list files from all sessions.
                                   If False (default), only list current session's files.
+            name_contains: Case-insensitive substring filter on the file name.
+            path_not_starts_with: Path prefix to exclude from results.
+                Used by the Artifacts page to surface only Builder-origin
+                files (i.e. those not under ``/sessions/``).
 
         Returns:
             List of WorkspaceFile instances
@@ -373,6 +378,7 @@ class WorkspaceManager:
         return await db.list_workspace_files(
             workspace_id=self.workspace_id,
             path_prefix=effective_path,
+            path_not_starts_with=path_not_starts_with,
             limit=limit,
             offset=offset,
             name_contains=name_contains,
