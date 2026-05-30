@@ -12,6 +12,7 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: { ARTIFACTS_PAGE: "artifacts-page" },
   useGetFlag: () => true,
+  useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
 
 vi.mock("framer-motion", async (importActual) => {
