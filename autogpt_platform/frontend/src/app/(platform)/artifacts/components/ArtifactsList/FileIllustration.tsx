@@ -221,7 +221,15 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   },
 };
 
-export const FILE_TYPE_KEYS: FileTypeKey[] = ["pdf", "xls", "json", "img"];
+export const FILE_TYPE_KEYS: FileTypeKey[] = [
+  "pdf",
+  "xls",
+  "json",
+  "img",
+  "html",
+  "video",
+  "generic",
+];
 
 export function pickFileTypeKey(mimeType: string | undefined): FileTypeKey {
   const mt = (mimeType ?? "").toLowerCase();

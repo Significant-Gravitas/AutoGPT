@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  keepPreviousData,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
 
 export type OriginFilter = "all" | "builder" | "autopilot";
 
@@ -42,6 +46,7 @@ export function useArtifactsPage() {
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
+    placeholderData: keepPreviousData,
   });
 
   return {
@@ -51,6 +56,7 @@ export function useArtifactsPage() {
     error: query.error,
     searchTerm,
     setSearchTerm,
+    debouncedSearch,
     originFilter,
     setOriginFilter,
     hasMore: !!query.hasNextPage,

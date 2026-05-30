@@ -140,7 +140,8 @@ function CardMenu({
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      // Defer revocation so browsers (Firefox/Edge) have time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (error) {
       toast({
         title: "Failed to download file",

@@ -39,6 +39,7 @@ export default function ArtifactsPage() {
     error,
     searchTerm,
     setSearchTerm,
+    debouncedSearch,
     originFilter,
     setOriginFilter,
     hasMore,
@@ -119,7 +120,7 @@ export default function ArtifactsPage() {
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
-          listKey={`${originFilter}|${searchTerm.trim()}`}
+          listKey={`${originFilter}|${debouncedSearch}`}
         />
       </motion.div>
     </main>
