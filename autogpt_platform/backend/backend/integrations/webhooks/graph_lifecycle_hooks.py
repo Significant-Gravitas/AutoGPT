@@ -19,12 +19,26 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
+class GraphActivationError(Exception):
+    """Raised when a graph cannot be activated (e.g. a required credential is
+    missing, revoked, or its OAuth token can no longer be refreshed).
+
+    Callers in the API layer should map this to HTTP 400 so the user sees a
+    clear, actionable message instead of an opaque 500.
+    """
+
+
 async def on_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     """
     Hook to be called when a graph is activated/created.
 
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_activate` on all nodes in this graph.
+
+    Raises:
+        GraphActivationError: when a required node credential is missing or
+            unusable. Run this BEFORE persisting the graph so a failure can't
+            leave the DB with a half-saved/unactivated graph.
     """
     graph = await _on_graph_activate(graph, user_id)
     graph.sub_graphs = await asyncio.gather(
@@ -47,29 +61,58 @@ async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
 
         for creds_field_name in block_input_schema.get_credentials_fields().keys():
-            # Prevent saving graph with non-existent credentials
-            if (
-                creds_meta := new_node.input_default.get(creds_field_name)
-            ) and not await get_credentials(creds_meta["id"]):
-                # If the credential field is optional (has a default in the
-                # schema, or node metadata marks it optional), clear the stale
-                # reference instead of blocking the save.
-                creds_field_optional = (
-                    new_node.credentials_optional
-                    or creds_field_name not in block_input_schema.get_required_fields()
+            creds_meta = new_node.input_default.get(creds_field_name)
+            if not creds_meta:
+                continue
+
+            # Treat a credential as unusable both when it is missing from the
+            # DB (get_credentials returns None) and when loading it raised —
+            # e.g. an OAuth refresh that fails with `invalid_grant` because
+            # the refresh token has been revoked. Surfacing that as a 500 is
+            # unhelpful; we want a clear "please reconnect" message.
+            refresh_error: str | None = None
+            try:
+                resolved = await get_credentials(creds_meta["id"])
+            except Exception as e:
+                logger.warning(
+                    f"Node #{new_node.id}: failed to load credentials "
+                    f"#{creds_meta['id']} for '{creds_field_name}': {e!r}"
                 )
-                if creds_field_optional:
-                    new_node.input_default[creds_field_name] = {}
-                    logger.warning(
-                        f"Node #{new_node.id}: cleared stale optional "
-                        f"credentials #{creds_meta['id']} for "
-                        f"'{creds_field_name}'"
-                    )
-                    continue
-                raise ValueError(
-                    f"Node #{new_node.id} input '{creds_field_name}' updated with "
-                    f"non-existent credentials #{creds_meta['id']}"
+                resolved = None
+                refresh_error = str(e) or e.__class__.__name__
+
+            if resolved:
+                continue
+
+            # If the credential field is optional (has a default in the
+            # schema, or node metadata marks it optional), clear the stale
+            # reference instead of blocking the save.
+            creds_field_optional = (
+                new_node.credentials_optional
+                or creds_field_name not in block_input_schema.get_required_fields()
+            )
+            if creds_field_optional:
+                new_node.input_default[creds_field_name] = {}
+                logger.warning(
+                    f"Node #{new_node.id}: cleared stale optional "
+                    f"credentials #{creds_meta['id']} for "
+                    f"'{creds_field_name}'"
                 )
+                continue
+
+            if refresh_error:
+                raise GraphActivationError(
+                    f"Credential #{creds_meta['id']} for '{creds_field_name}' "
+                    f"on node #{new_node.id} could not be loaded "
+                    f"({refresh_error}). It may have been revoked or its "
+                    "access expired — please reconnect this integration and "
+                    "try again."
+                )
+            raise GraphActivationError(
+                f"Credential #{creds_meta['id']} for '{creds_field_name}' on "
+                f"node #{new_node.id} no longer exists. Please pick a "
+                "different credential and try again."
+            )
 
     return graph
 
