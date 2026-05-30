@@ -9,10 +9,35 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
+const { setFlagStatusMock } = vi.hoisted(() => {
+  return {
+    setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
+  };
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: { ARTIFACTS_PAGE: "artifacts-page" },
   useGetFlag: () => true,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
+  useFlagStatus: () => setFlagStatusMock(),
+}));
+
+const notFoundMock = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/artifacts",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+  notFound: () => {
+    notFoundMock();
+    throw new Error("NEXT_NOT_FOUND");
+  },
 }));
 
 vi.mock("framer-motion", async (importActual) => {
@@ -155,6 +180,31 @@ describe("ArtifactsPage - search filter", () => {
 
     // Wait for the filtered list to appear (debounced ~250ms).
     expect(await screen.findByText("beta.txt")).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - feature flag gating", () => {
+  test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
+    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: false });
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByTestId("artifacts-flag-loading")).toBeDefined();
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  test("calls notFound() when the flag is resolved and disabled", () => {
+    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
+    notFoundMock.mockClear();
+
+    try {
+      render(<ArtifactsPage />);
+    } catch {
+      // React surfaces the thrown notFound() error; the assertion below is
+      // what we actually care about.
+    }
+
+    expect(notFoundMock).toHaveBeenCalled();
   });
 });
 

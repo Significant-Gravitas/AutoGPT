@@ -7,7 +7,7 @@ import {
   SparkleIcon,
   type Icon,
 } from "@phosphor-icons/react";
-import { LayoutGroup, motion, type Transition } from "motion/react";
+import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
 
 interface Props {
