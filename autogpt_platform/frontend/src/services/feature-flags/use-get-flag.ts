@@ -3,6 +3,7 @@
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { useEffect, useState } from "react";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
@@ -121,4 +122,44 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   }
 
   return flagValue ?? defaultFlags[flag];
+}
+
+const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
+
+/**
+ * Same as ``useGetFlag`` but also surfaces whether LaunchDarkly has
+ * actually answered for this flag. Callers that gate a whole route on a
+ * flag should branch on ``ready`` first — short-circuiting to
+ * ``notFound()`` before LD responds 404s users that actually have the
+ * flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS`` so
+ * a flag key that LD never registers doesn't spin forever.
+ */
+export function useFlagStatus<T extends Flag>(
+  flag: T,
+): { enabled: FlagValues[T]; ready: boolean } {
+  const currentFlags = useFlags<FlagValues>();
+  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+  const override = envFlagOverride(flag);
+
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setTimedOut(true),
+      FLAG_RESOLUTION_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (override !== undefined) {
+    return { enabled: override, ready: true };
+  }
+  if (!areFlagsEnabled || isPwMockEnabled) {
+    return { enabled: defaultFlags[flag], ready: true };
+  }
+
+  const ldResponded = flag in currentFlags;
+  return {
+    enabled: (currentFlags[flag] ?? defaultFlags[flag]) as FlagValues[T],
+    ready: ldResponded || timedOut,
+  };
 }

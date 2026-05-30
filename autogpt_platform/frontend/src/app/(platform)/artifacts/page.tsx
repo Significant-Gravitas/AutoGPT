@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { notFound } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Transition, Variants } from "framer-motion";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
@@ -30,7 +31,9 @@ const REDUCED_SECTION_VARIANTS: Variants = {
 };
 
 export default function ArtifactsPage() {
-  const isEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
+    Flag.ARTIFACTS_PAGE,
+  );
   const reduceMotion = useReducedMotion();
   const {
     files,
@@ -51,6 +54,9 @@ export default function ArtifactsPage() {
     document.title = "Artifacts – AutoGPT Platform";
   }, []);
 
+  if (!flagReady) {
+    return <ArtifactsPageSkeleton />;
+  }
   if (!isEnabled) {
     notFound();
   }
@@ -68,9 +74,8 @@ export default function ArtifactsPage() {
           transition={{ delay: 0 }}
         >
           <Text variant="h3">Artifacts</Text>
-          <Text variant="body" className="text-zinc-600">
-            Every file your agents generate or use in the Builder lives here{" "}
-            <br />
+          <Text variant="body" className="max-w-prose text-zinc-600">
+            Every file your agents generate or use in the Builder lives here —
             ready to reuse, download, or share.
           </Text>
         </motion.div>
@@ -123,6 +128,23 @@ export default function ArtifactsPage() {
           listKey={`${originFilter}|${debouncedSearch}`}
         />
       </motion.div>
+    </main>
+  );
+}
+
+function ArtifactsPageSkeleton() {
+  return (
+    <main
+      className="container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12"
+      data-testid="artifacts-flag-loading"
+    >
+      <Skeleton className="h-8 w-48 rounded-md" />
+      <Skeleton className="h-4 w-80 rounded-md" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-64 w-full rounded-2xl" />
+        ))}
+      </div>
     </main>
   );
 }

@@ -21,6 +21,19 @@ import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 
+const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
+  "/marketplace": IconType.Marketplace,
+  "/build": IconType.Builder,
+  "/copilot": IconType.Chat,
+  "/library": IconType.Library,
+  "/artifacts": IconType.UploadCloud,
+  "/monitor": IconType.Library,
+};
+
+function pickMobileNavIcon(href: string): IconType {
+  return MOBILE_NAV_ICONS[href] ?? IconType.LayoutDashboard;
+}
+
 export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
   const breakpoint = useBreakpoint();
@@ -127,32 +140,11 @@ export function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: actualLoggedInLinks
-                    .map((link) => {
-                      return {
-                        icon:
-                          link.href === "/marketplace"
-                            ? IconType.Marketplace
-                            : link.href === "/build"
-                              ? IconType.Builder
-                              : link.href === "/copilot"
-                                ? IconType.Chat
-                                : link.href === "/library"
-                                  ? IconType.Library
-                                  : link.href === "/artifacts"
-                                    ? IconType.UploadCloud
-                                    : link.href === "/monitor"
-                                      ? IconType.Library
-                                      : IconType.LayoutDashboard,
-                        text: link.name,
-                        href: link.href,
-                      };
-                    })
-                    .filter((item) => item !== null) as Array<{
-                    icon: IconType;
-                    text: string;
-                    href: string;
-                  }>,
+                  items: actualLoggedInLinks.map((link) => ({
+                    icon: pickMobileNavIcon(link.href),
+                    text: link.name,
+                    href: link.href,
+                  })),
                 },
                 ...dynamicMenuItems,
               ]}
