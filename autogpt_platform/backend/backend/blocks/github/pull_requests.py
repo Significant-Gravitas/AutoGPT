@@ -1,5 +1,4 @@
 import re
-from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from typing_extensions import TypedDict
@@ -36,10 +35,47 @@ class GithubListPullRequestsBlock(Block):
             description="Filter pull requests by state",
             default="open",
         )
+        base: str = SchemaField(
+            description=(
+                "Filter pull requests by base branch name. "
+                "Leave empty to return PRs targeting any branch."
+            ),
+            default="",
+            advanced=True,
+        )
+        sort: Literal["created", "updated", "popularity", "long-running"] = SchemaField(
+            description=(
+                "Sort pull requests by: created date, last updated date, "
+                "comment count (popularity), or age (long-running)."
+            ),
+            default="created",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction: descending (newest first) or ascending (oldest first).",
+            default="desc",
+            advanced=True,
+        )
+        per_page: int = SchemaField(
+            description=(
+                "Number of pull requests to return per page (max 100). "
+                "Set to 0 to auto-paginate and return ALL pull requests."
+            ),
+            default=30,
+            advanced=True,
+        )
         since: str = SchemaField(
             description=(
                 "Only return pull requests created/updated at or after this time. "
                 "ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ. Leave empty for no filter."
+            ),
+            default="",
+            advanced=True,
+        )
+        head: str = SchemaField(
+            description=(
+                "Filter by head branch. Use 'user:branch-name' format for forks "
+                "(e.g. 'octocat:feature-branch'). Leave empty for no filter."
             ),
             default="",
             advanced=True,
@@ -74,15 +110,25 @@ class GithubListPullRequestsBlock(Block):
     def __init__(self):
         super().__init__(
             id="ffef3c4c-6cd0-48dd-817d-459f975219f4",
-            description="This block lists pull requests for a specified GitHub repository with enriched metadata including timestamps, branches, labels, and draft status.",
+            description=(
+                "This block lists pull requests for a specified GitHub repository "
+                "with enriched metadata including timestamps, branches, labels, and draft status. "
+                "Supports filtering by state, base branch, head branch, and date; "
+                "sorting by created, updated, popularity, or age; and optional auto-pagination."
+            ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListPullRequestsBlock.Input,
             output_schema=GithubListPullRequestsBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "state": "open",
-                "since": "",
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "state": "open",
+                "base": "",
+                "sort": "created",
+                "direction": "desc",
+                "per_page": 30,
+                "since": "",
+                "head": "",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -94,11 +140,11 @@ class GithubListPullRequestsBlock(Block):
                             "url": "https://github.com/owner/repo/pull/1",
                             "number": 1,
                             "state": "open",
-                            "author": "octocat",
+                            "author": "username",
                             "created_at": "2024-01-01T00:00:00Z",
                             "updated_at": "2024-01-02T00:00:00Z",
                             "merged_at": None,
-                            "base_branch": "main",
+                            "base_branch": "master",
                             "head_branch": "feature-branch",
                             "labels": [],
                             "draft": False,
@@ -112,11 +158,11 @@ class GithubListPullRequestsBlock(Block):
                         "url": "https://github.com/owner/repo/pull/1",
                         "number": 1,
                         "state": "open",
-                        "author": "octocat",
+                        "author": "username",
                         "created_at": "2024-01-01T00:00:00Z",
                         "updated_at": "2024-01-02T00:00:00Z",
                         "merged_at": None,
-                        "base_branch": "main",
+                        "base_branch": "master",
                         "head_branch": "feature-branch",
                         "labels": [],
                         "draft": False,
@@ -130,11 +176,11 @@ class GithubListPullRequestsBlock(Block):
                         "url": "https://github.com/owner/repo/pull/1",
                         "number": 1,
                         "state": "open",
-                        "author": "octocat",
+                        "author": "username",
                         "created_at": "2024-01-01T00:00:00Z",
                         "updated_at": "2024-01-02T00:00:00Z",
                         "merged_at": None,
-                        "base_branch": "main",
+                        "base_branch": "master",
                         "head_branch": "feature-branch",
                         "labels": [],
                         "draft": False,
@@ -148,41 +194,80 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         repo_url: str,
         state: str = "open",
+        base: str = "",
+        sort: str = "created",
+        direction: str = "desc",
+        per_page: int = 30,
         since: str = "",
+        head: str = "",
     ) -> list["GithubListPullRequestsBlock.Output.PRItem"]:
         api = get_api(credentials)
-        pulls_url = repo_url + f"/pulls?state={state}&per_page=100"
-        response = await api.get(pulls_url)
-        data = response.json()
+        pulls_url = repo_url + "/pulls"
 
-        since_dt: Optional[datetime] = None
-        if since:
-            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        # Build query params
+        params: dict[str, str] = {
+            "state": state,
+            "sort": sort,
+            "direction": direction,
+        }
+        if base:
+            params["base"] = base
+        if head:
+            params["head"] = head
 
         pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = []
-        for pr in data:
-            created_at = pr.get("created_at", "")
-            if since_dt and created_at:
-                pr_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                if pr_dt < since_dt:
-                    continue
-            pull_requests.append(
-                {
-                    "title": pr["title"],
-                    "url": pr["html_url"],
-                    "number": pr["number"],
-                    "state": pr["state"],
-                    "author": pr.get("user", {}).get("login", "unknown"),
-                    "created_at": created_at,
-                    "updated_at": pr.get("updated_at", ""),
-                    "merged_at": pr.get("merged_at"),
-                    "base_branch": pr.get("base", {}).get("ref", ""),
-                    "head_branch": pr.get("head", {}).get("ref", ""),
-                    "labels": [lb["name"] for lb in pr.get("labels", [])],
-                    "draft": pr.get("draft", False),
-                }
-            )
+
+        if per_page == 0:
+            # Auto-paginate: fetch all pages
+            page = 1
+            while True:
+                params["per_page"] = "100"
+                params["page"] = str(page)
+                response = await api.get(pulls_url, params=params)
+                data = response.json()
+                if not data:
+                    break
+                for pr in data:
+                    item = GithubListPullRequestsBlock._parse_pr(pr, since)
+                    if item:
+                        pull_requests.append(item)
+                if len(data) < 100:
+                    break
+                page += 1
+        else:
+            params["per_page"] = str(min(per_page, 100))
+            response = await api.get(pulls_url, params=params)
+            data = response.json()
+            for pr in data:
+                item = GithubListPullRequestsBlock._parse_pr(pr, since)
+                if item:
+                    pull_requests.append(item)
+
         return pull_requests
+
+    @staticmethod
+    def _parse_pr(
+        pr: dict,
+        since: str = "",
+    ) -> Optional["GithubListPullRequestsBlock.Output.PRItem"]:
+        """Parse a raw GitHub API PR object into a PRItem, applying the `since` filter."""
+        created_at = pr.get("created_at", "")
+        if since and created_at and created_at < since:
+            return None
+        return {
+            "title": pr.get("title", ""),
+            "url": pr.get("html_url", ""),
+            "number": pr.get("number", 0),
+            "state": pr.get("state", ""),
+            "author": pr.get("user", {}).get("login", ""),
+            "created_at": created_at,
+            "updated_at": pr.get("updated_at", ""),
+            "merged_at": pr.get("merged_at"),
+            "base_branch": pr.get("base", {}).get("ref", ""),
+            "head_branch": pr.get("head", {}).get("ref", ""),
+            "labels": [label["name"] for label in pr.get("labels", [])],
+            "draft": pr.get("draft", False),
+        }
 
     async def run(
         self,
@@ -191,16 +276,23 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        pull_requests = await self.list_prs(
-            credentials,
-            input_data.repo_url,
-            state=input_data.state,
-            since=input_data.since,
-        )
-        yield "pull_requests", pull_requests
-        for pr in pull_requests:
-            yield "pull_request", pr
-
+        try:
+            pull_requests = await self.list_prs(
+                credentials,
+                input_data.repo_url,
+                state=input_data.state,
+                base=input_data.base,
+                sort=input_data.sort,
+                direction=input_data.direction,
+                per_page=input_data.per_page,
+                since=input_data.since,
+                head=input_data.head,
+            )
+            yield "pull_requests", pull_requests
+            for pr in pull_requests:
+                yield "pull_request", pr
+        except Exception as e:
+            yield "error", str(e)
 
 class GithubMakePullRequestBlock(Block):
     class Input(BlockSchemaInput):
@@ -753,3 +845,4 @@ def prepare_pr_api_url(pr_url: str, path: str) -> str:
 
     scheme, base_url, pr_number = match.groups()
     return f"{scheme or 'https'}://{base_url}/pulls/{pr_number}/{path}"
+
