@@ -29,6 +29,7 @@ Performance:
 """
 
 from typing import Literal, Optional
+
 from pydantic import SecretStr
 
 from backend.blocks._base import (
@@ -273,9 +274,7 @@ class BunnyshellDeployEnvironmentBlock(Block):
         operation_id: str = SchemaField(
             description="Deploy operation ID for tracking progress."
         )
-        error: str = SchemaField(
-            description="Error message if deploy failed."
-        )
+        error: str = SchemaField(description="Error message if deploy failed.")
 
     def __init__(self):
         super().__init__(
@@ -298,9 +297,7 @@ class BunnyshellDeployEnvironmentBlock(Block):
                 ("success", True),
                 ("operation_id", "op_mock456"),
             ],
-            test_mock={
-                "deploy_environment": lambda *a, **kw: {"id": "op_mock456"}
-            },
+            test_mock={"deploy_environment": lambda *a, **kw: {"id": "op_mock456"}},
         )
 
     @staticmethod
@@ -375,9 +372,7 @@ class BunnyshellGetStatusBlock(Block):
                 "Use these URLs to test your services via HTTP."
             )
         )
-        error: str = SchemaField(
-            description="Error message if status check failed."
-        )
+        error: str = SchemaField(description="Error message if status check failed.")
 
     def __init__(self):
         super().__init__(
@@ -487,9 +482,7 @@ class BunnyshellStopEnvironmentBlock(Block):
             description="True if the stop was triggered successfully."
         )
         message: str = SchemaField(description="Status message.")
-        error: str = SchemaField(
-            description="Error message if stop failed."
-        )
+        error: str = SchemaField(description="Error message if stop failed.")
 
     def __init__(self):
         super().__init__(
@@ -512,9 +505,7 @@ class BunnyshellStopEnvironmentBlock(Block):
                 ("success", True),
                 ("message", "Environment env_mock123 stopped. Billing paused."),
             ],
-            test_mock={
-                "stop_environment": lambda *a, **kw: {}
-            },
+            test_mock={"stop_environment": lambda *a, **kw: {}},
         )
 
     @staticmethod
@@ -538,8 +529,9 @@ class BunnyshellStopEnvironmentBlock(Block):
                 environment_id=input_data.environment_id,
             )
             yield "success", True
-            yield "message", (
-                f"Environment {input_data.environment_id} stopped. Billing paused."
+            yield (
+                "message",
+                (f"Environment {input_data.environment_id} stopped. Billing paused."),
             )
         except Exception as e:
             yield "error", str(e)
@@ -578,9 +570,7 @@ class BunnyshellDeleteEnvironmentBlock(Block):
             description="True if the environment was deleted successfully."
         )
         message: str = SchemaField(description="Status message.")
-        error: str = SchemaField(
-            description="Error message if deletion failed."
-        )
+        error: str = SchemaField(description="Error message if deletion failed.")
 
     def __init__(self):
         super().__init__(
@@ -603,9 +593,7 @@ class BunnyshellDeleteEnvironmentBlock(Block):
                 ("success", True),
                 ("message", "Environment env_mock123 deleted. Billing stopped."),
             ],
-            test_mock={
-                "delete_environment": lambda *a, **kw: {}
-            },
+            test_mock={"delete_environment": lambda *a, **kw: {}},
         )
 
     @staticmethod
@@ -629,8 +617,9 @@ class BunnyshellDeleteEnvironmentBlock(Block):
                 environment_id=input_data.environment_id,
             )
             yield "success", True
-            yield "message", (
-                f"Environment {input_data.environment_id} deleted. Billing stopped."
+            yield (
+                "message",
+                (f"Environment {input_data.environment_id} deleted. Billing stopped."),
             )
         except Exception as e:
             yield "error", str(e)
