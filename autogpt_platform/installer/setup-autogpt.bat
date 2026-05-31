@@ -28,6 +28,13 @@ set OLLAMA_MODEL=llama3.1:8b-instruct-q4_K_M
 set OLLAMA_HOST_URL=
 
 REM --- Parse args ---
+REM NOTE: cmd.exe treats "=" as an argument delimiter (like space / comma /
+REM semicolon), so "/ollama-model=foo" arrives as TWO tokens:
+REM %1="/ollama-model", %2="foo". We therefore accept BOTH the "=" form
+REM (present when the arg is quoted or otherwise not split) AND the bare
+REM flag + next-token form, shifting an extra time for the latter so the
+REM value isn't reparsed as a flag. (The .sh has no such issue — bash keeps
+REM "--ollama-model=foo" as a single word.)
 :parse_args
 if "%~1"=="" goto args_done
 set ARG=%~1
@@ -36,9 +43,17 @@ if /I "%ARG%"=="/with-ollama" (
 ) else if /I "%ARG:~0,14%"=="/ollama-model=" (
     set OLLAMA_MODEL=%ARG:~14%
     set WITH_OLLAMA=1
+) else if /I "%ARG%"=="/ollama-model" (
+    set "OLLAMA_MODEL=%~2"
+    set WITH_OLLAMA=1
+    shift
 ) else if /I "%ARG:~0,13%"=="/ollama-host=" (
     set OLLAMA_HOST_URL=%ARG:~13%
     set WITH_OLLAMA=1
+) else if /I "%ARG%"=="/ollama-host" (
+    set "OLLAMA_HOST_URL=%~2"
+    set WITH_OLLAMA=1
+    shift
 ) else if /I "%ARG%"=="/h" (
     goto print_help
 ) else if /I "%ARG%"=="/help" (
@@ -348,25 +363,27 @@ REM Strip any previous block we wrote so re-runs don't accumulate.
 REM ``-replace`` with ``(?s)`` makes the regex span newlines; the
 REM markers contain regex metacharacters ^(``.``, ``(``, ``)``^), so we
 REM ``[Regex]::Escape`` them before splicing into the pattern.
-powershell -NoProfile -Command "$start = [Regex]::Escape($env:START_MARKER); $end = [Regex]::Escape($env:END_MARKER); $content = Get-Content -Raw .env; $content = $content -replace ('(?s)' + $start + '.*?' + $end + '\r?\n?'), ''; Set-Content -NoNewline .env $content"
+powershell -NoProfile -Command "$start = [Regex]::Escape($env:START_MARKER); $end = [Regex]::Escape($env:END_MARKER); $p = (Resolve-Path .env).Path; $content = Get-Content -Raw $p; if ($null -eq $content) { $content = '' }; $content = $content -replace ('(?s)' + $start + '.*?' + $end + '\r?\n?'), ''; [IO.File]::WriteAllText($p, $content)"
 
-REM Append a fresh block. Using >> in a parenthesised group keeps the
-REM block atomic per setup run. Ollama-side env knobs OLLAMA_HOST and
-REM OLLAMA_CONTEXT_LENGTH are set on the host via setx above, NOT in
-REM backend\.env ^(.env is read by containers, where those vars belong
-REM to the Ollama process itself, not the backend^).
-(
-    echo.
-    echo %START_MARKER%
-    echo # See docs/platform/copilot-local-llm.md for the full reference.
-    echo CHAT_USE_LOCAL=true
-    echo CHAT_BASE_URL=%HOST_URL%/v1
-    echo CHAT_API_KEY=ollama
-    echo CHAT_FAST_STANDARD_MODEL=%OLLAMA_MODEL%
-    echo CHAT_FAST_ADVANCED_MODEL=%OLLAMA_MODEL%
-    echo OLLAMA_HOST=%HOST_URL%
-    echo %END_MARKER%
-) >> .env
+REM Append a fresh block via per-line >> redirects — NOT a parenthesised
+REM ( ... ) >> .env group. START_MARKER ends in ")" (...with-ollama) ===),
+REM and an unescaped ")" inside a () block closes the group early, so the
+REM marker and every line after it get echoed to the console instead of
+REM written to .env (CHAT_USE_LOCAL never lands -> AutoPilot 401s). No
+REM space before ">>" so model slugs don't gain a trailing space.
+REM Ollama-side env knobs OLLAMA_HOST and OLLAMA_CONTEXT_LENGTH are set on
+REM the host via setx above, NOT in backend\.env ^(.env is read by
+REM containers, where those vars belong to the Ollama process itself^).
+echo.>>.env
+echo %START_MARKER%>>.env
+echo # See docs/platform/copilot-local-llm.md for the full reference.>>.env
+echo CHAT_USE_LOCAL=true>>.env
+echo CHAT_BASE_URL=%HOST_URL%/v1>>.env
+echo CHAT_API_KEY=ollama>>.env
+echo CHAT_FAST_STANDARD_MODEL=%OLLAMA_MODEL%>>.env
+echo CHAT_FAST_ADVANCED_MODEL=%OLLAMA_MODEL%>>.env
+echo OLLAMA_HOST=%HOST_URL%>>.env
+echo %END_MARKER%>>.env
 
 echo   wrote backend\.env ^(CHAT_USE_LOCAL=true, Ollama at %HOST_URL%^)
 cd /d "%REPO_DIR%"
