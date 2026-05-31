@@ -24,7 +24,8 @@ Performance:
   - Screenshots stored as workspace file refs, not held in memory
 """
 
-from typing import Literal, Optional
+from typing import Literal
+
 from pydantic import SecretStr
 
 from backend.blocks._base import (
@@ -85,9 +86,7 @@ class E2BDesktopCreateBlock(Block):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
         ] = CredentialsField(
-            description=(
-                "E2B API key. Get yours at https://e2b.dev/docs"
-            ),
+            description=("E2B API key. Get yours at https://e2b.dev/docs"),
         )
         template_id: str = SchemaField(
             description=(
@@ -312,9 +311,7 @@ class E2BDesktopCommandBlock(Block):
                 ("stderr", ""),
                 ("exit_code", 0),
             ],
-            test_mock={
-                "run_command": lambda *a, **kw: ("hello\n", "", 0)
-            },
+            test_mock={"run_command": lambda *a, **kw: ("hello\n", "", 0)},
         )
 
     @staticmethod
@@ -413,9 +410,7 @@ class E2BDesktopWriteFileBlock(Block):
         file_path: str = SchemaField(
             description="Confirmed path of the written file inside the sandbox."
         )
-        error: str = SchemaField(
-            description="Error message if the write failed."
-        )
+        error: str = SchemaField(description="Error message if the write failed.")
 
     def __init__(self):
         super().__init__(
@@ -440,9 +435,7 @@ class E2BDesktopWriteFileBlock(Block):
                 ("success", True),
                 ("file_path", "/home/user/app/src/Button.tsx"),
             ],
-            test_mock={
-                "write_file": lambda *a, **kw: True
-            },
+            test_mock={"write_file": lambda *a, **kw: True},
         )
 
     @staticmethod
@@ -517,9 +510,7 @@ class E2BDesktopScreenshotBlock(Block):
                 "Use this URL to embed the image in PR comments or agent outputs."
             )
         )
-        error: str = SchemaField(
-            description="Error message if the screenshot failed."
-        )
+        error: str = SchemaField(description="Error message if the screenshot failed.")
 
     def __init__(self):
         super().__init__(
@@ -540,9 +531,7 @@ class E2BDesktopScreenshotBlock(Block):
             test_output=[
                 ("image_url", "workspace://mock-screenshot-id#image/png"),
             ],
-            test_mock={
-                "take_screenshot": lambda *a, **kw: b"\x89PNG\r\n"
-            },
+            test_mock={"take_screenshot": lambda *a, **kw: b"\x89PNG\r\n"},
         )
 
     @staticmethod
@@ -567,7 +556,6 @@ class E2BDesktopScreenshotBlock(Block):
                 sandbox_id=input_data.sandbox_id,
             )
             # Store screenshot as workspace file (not in memory)
-            from backend.data.block import BlockData  # type: ignore
 
             b64 = base64.b64encode(image_bytes).decode()
             data_uri = f"data:image/png;base64,{b64}"
@@ -607,12 +595,8 @@ class E2BDesktopKillBlock(Block):
         success: bool = SchemaField(
             description="True if the sandbox was destroyed successfully."
         )
-        message: str = SchemaField(
-            description="Status message."
-        )
-        error: str = SchemaField(
-            description="Error message if the kill failed."
-        )
+        message: str = SchemaField(description="Status message.")
+        error: str = SchemaField(description="Error message if the kill failed.")
 
     def __init__(self):
         super().__init__(
@@ -634,9 +618,7 @@ class E2BDesktopKillBlock(Block):
                 ("success", True),
                 ("message", "Sandbox mock-sandbox-id destroyed successfully."),
             ],
-            test_mock={
-                "kill_sandbox": lambda *a, **kw: None
-            },
+            test_mock={"kill_sandbox": lambda *a, **kw: None},
         )
 
     @staticmethod
