@@ -42,8 +42,6 @@ Before proceeding with the installation, ensure your system meets the following 
   - Docker Engine (20.10.0 or newer)
   - Docker Compose (2.0.0 or newer)
   - Git (2.30 or newer)
-  - Node.js (16.x or newer)
-  - npm (8.x or newer)
   - VSCode (1.60 or newer) or any modern code editor
 
 #### Network Requirements
@@ -54,10 +52,10 @@ Before proceeding with the installation, ensure your system meets the following 
 ### Updated Setup Instructions:
 We've moved to a fully maintained and regularly updated documentation site.
 
-👉 [Follow the official self-hosting guide here](https://agpt.co/docs/platform/getting-started/getting-started)
+👉 [Follow the official self-hosting guide here](https://agpt.co/docs/platform/self-hosting/getting-started)
 
 
-This tutorial assumes you have Docker, VSCode, git and npm installed.
+This tutorial assumes you have Docker, VSCode, and git installed.
 
 ---
 
