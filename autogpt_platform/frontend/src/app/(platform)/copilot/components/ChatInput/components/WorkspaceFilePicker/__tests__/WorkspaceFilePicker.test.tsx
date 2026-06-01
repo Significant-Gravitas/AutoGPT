@@ -66,4 +66,43 @@ describe("WorkspaceFilePicker", () => {
       true,
     );
   });
+
+  it("shows an empty state when the workspace has no files", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [], has_more: false },
+    });
+
+    render(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/no files in your workspace yet/i),
+    ).toBeTruthy();
+  });
+
+  it("offers a Load more action when there are more pages", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: true },
+    });
+
+    render(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("alpha.txt");
+    expect(
+      await screen.findByRole("button", { name: /load more/i }),
+    ).toBeTruthy();
+  });
 });
