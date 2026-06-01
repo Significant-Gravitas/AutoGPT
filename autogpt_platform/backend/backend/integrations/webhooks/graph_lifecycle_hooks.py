@@ -62,96 +62,129 @@ async def _before_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph
 
 async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     get_credentials = credentials_manager.cached_getter(user_id)
+
+    # Collect every (node, field) credential reference up front so we can
+    # resolve them in one parallel batch — important when a graph has
+    # several distinct OAuth credentials that each need a refresh round-trip.
+    refs: list[tuple["NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
-
         for creds_field_name in block_input_schema.get_credentials_fields().keys():
             creds_meta = new_node.input_default.get(creds_field_name)
             if not creds_meta:
                 continue
+            refs.append((new_node, creds_field_name, creds_meta, block_input_schema))
 
-            # Treat a credential as unusable both when it is missing from the
-            # DB (get_credentials returns None) and when loading it raised —
-            # e.g. an OAuth refresh that fails with `invalid_grant` because
-            # the refresh token has been revoked. Surfacing that as a 500 is
-            # unhelpful; we want a clear "please reconnect" message.
-            refresh_error: str | None = None
-            try:
-                resolved = await get_credentials(creds_meta["id"])
-            except Exception as e:
-                # Distinguish known credential-side failures (OAuth refresh
-                # rejected, 401/403 from the provider) from infra failures
-                # (DB pool exhaustion, Redis timeout, TypeError, …) so the
-                # latter show up at error level with a stack trace instead
-                # of being silently misreported as "please reconnect".
-                error_str = repr(e).lower()
-                is_known_credential_error = any(
-                    sig in error_str
-                    for sig in (
-                        "invalid_grant",
-                        "invalid_token",
-                        "unauthorized",
-                        "forbidden",
-                        " 401",
-                        " 403",
-                    )
-                )
-                log_message = (
-                    f"Node #{new_node.id}: failed to load credentials "
-                    f"#{creds_meta['id']} for '{creds_field_name}': {e!r}"
-                )
-                if is_known_credential_error:
-                    logger.warning(log_message)
-                else:
-                    logger.error(log_message, exc_info=True)
-                resolved = None
-                refresh_error = str(e) or e.__class__.__name__
+    unique_ids = list({m["id"] for _, _, m, _ in refs})
+    results = await asyncio.gather(
+        *(get_credentials(cid) for cid in unique_ids),
+        return_exceptions=True,
+    )
+    cred_by_id: dict[str, "Credentials | None | BaseException"] = dict(
+        zip(unique_ids, results)
+    )
 
-            if resolved:
-                continue
-
-            # If the credential field is optional (has a default in the
-            # schema, or node metadata marks it optional), clear the stale
-            # reference instead of blocking the save.
-            creds_field_optional = (
-                new_node.credentials_optional
-                or creds_field_name not in block_input_schema.get_required_fields()
-            )
-            if creds_field_optional:
-                new_node.input_default[creds_field_name] = {}
-                logger.warning(
-                    f"Node #{new_node.id}: cleared stale optional "
-                    f"credentials #{creds_meta['id']} for "
-                    f"'{creds_field_name}'"
-                )
-                continue
-
-            # User-facing reference: prefer the credential's user-set title
-            # and the block name over internal UUIDs, since users can't act
-            # on them. UUIDs still appear in the warning/error log above for
-            # support lookups.
-            credential_label = (
-                f'"{creds_meta["title"]}" {creds_meta["provider"]}'
-                if creds_meta.get("title")
-                else creds_meta.get("provider", "unknown")
-            )
-            credential_ref = (
-                f"The {credential_label} credential used by the "
-                f"{new_node.block.name} node"
-            )
-
-            if refresh_error:
-                raise GraphActivationError(
-                    f"{credential_ref} could not be loaded ({refresh_error}). "
-                    "It may have been revoked or its access expired — please "
-                    "reconnect this integration and try again."
-                )
-            raise GraphActivationError(
-                f"{credential_ref} no longer exists. Please pick a different "
-                "credential and try again."
-            )
+    for new_node, creds_field_name, creds_meta, block_input_schema in refs:
+        _apply_credential_result(
+            new_node,
+            creds_field_name,
+            creds_meta,
+            block_input_schema,
+            cred_by_id[creds_meta["id"]],
+        )
 
     return graph
+
+
+def _apply_credential_result(
+    new_node: "NodeModel",
+    creds_field_name: str,
+    creds_meta: dict,
+    block_input_schema: BlockSchema,
+    result: "Credentials | None | BaseException",
+) -> None:
+    """Apply the resolution outcome for one credential reference: leave
+    usable ones alone, clear stale optional ones in-memory, or raise
+    `GraphActivationError` for required + unusable ones.
+
+    Treats both `None` (credential missing from DB) and an exception
+    (OAuth refresh raised, infra error) as "unusable" — failures are
+    logged here so the caller doesn't have to.
+    """
+    refresh_error: str | None = None
+    if isinstance(result, BaseException):
+        # Distinguish known credential-side failures (OAuth refresh rejected,
+        # 401/403 from the provider) from infra failures (DB pool exhaustion,
+        # Redis timeout, TypeError, …) so the latter show up at error level
+        # with a stack trace instead of being silently misreported as
+        # "please reconnect".
+        error_str = repr(result).lower()
+        is_known_credential_error = any(
+            sig in error_str
+            for sig in (
+                "invalid_grant",
+                "invalid_token",
+                "unauthorized",
+                "forbidden",
+                " 401",
+                " 403",
+            )
+        )
+        log_message = (
+            f"Node #{new_node.id}: failed to load credentials "
+            f"#{creds_meta['id']} for '{creds_field_name}': {result!r}"
+        )
+        if is_known_credential_error:
+            logger.warning(log_message)
+        else:
+            logger.error(log_message, exc_info=result)
+        refresh_error = str(result) or result.__class__.__name__
+        resolved = None
+    else:
+        resolved = result
+
+    if resolved:
+        return
+
+    # If the credential field is optional (has a default in the schema, or
+    # node metadata marks it optional), clear the stale reference instead
+    # of blocking the save.
+    creds_field_optional = (
+        new_node.credentials_optional
+        or creds_field_name not in block_input_schema.get_required_fields()
+    )
+    if creds_field_optional:
+        new_node.input_default[creds_field_name] = {}
+        logger.warning(
+            f"Node #{new_node.id}: cleared stale optional "
+            f"credentials #{creds_meta['id']} for "
+            f"'{creds_field_name}'"
+        )
+        return
+
+    # User-facing reference: prefer the credential's user-set title and the
+    # block name over internal UUIDs, since users can't act on them. UUIDs
+    # still appear in the warning/error log above for support lookups.
+    credential_label = (
+        f'"{creds_meta["title"]}" {creds_meta["provider"]}'
+        if creds_meta.get("title")
+        else creds_meta.get("provider", "unknown")
+    )
+    credential_ref = (
+        f"The {credential_label} credential used by the "
+        f"{new_node.block.name} node"
+    )
+
+    if refresh_error:
+        raise GraphActivationError(
+            f"{credential_ref} could not be loaded ({refresh_error}). "
+            "It may have been revoked or its access expired — please "
+            "reconnect this integration and try again."
+        )
+    raise GraphActivationError(
+        f"{credential_ref} no longer exists. Please pick a different "
+        "credential and try again."
+    )
 
 
 async def on_graph_deactivate(graph: "GraphModel", user_id: str):
