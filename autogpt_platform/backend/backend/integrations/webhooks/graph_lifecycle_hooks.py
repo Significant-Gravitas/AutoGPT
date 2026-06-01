@@ -126,18 +126,29 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
                 )
                 continue
 
+            # User-facing reference: prefer the credential's user-set title
+            # and the block name over internal UUIDs, since users can't act
+            # on them. UUIDs still appear in the warning/error log above for
+            # support lookups.
+            credential_label = (
+                f'"{creds_meta["title"]}" {creds_meta["provider"]}'
+                if creds_meta.get("title")
+                else creds_meta.get("provider", "unknown")
+            )
+            credential_ref = (
+                f"The {credential_label} credential used by the "
+                f"{new_node.block.name} node"
+            )
+
             if refresh_error:
                 raise GraphActivationError(
-                    f"Credential #{creds_meta['id']} for '{creds_field_name}' "
-                    f"on node #{new_node.id} could not be loaded "
-                    f"({refresh_error}). It may have been revoked or its "
-                    "access expired — please reconnect this integration and "
-                    "try again."
+                    f"{credential_ref} could not be loaded ({refresh_error}). "
+                    "It may have been revoked or its access expired — please "
+                    "reconnect this integration and try again."
                 )
             raise GraphActivationError(
-                f"Credential #{creds_meta['id']} for '{creds_field_name}' on "
-                f"node #{new_node.id} no longer exists. Please pick a "
-                "different credential and try again."
+                f"{credential_ref} no longer exists. Please pick a different "
+                "credential and try again."
             )
 
     return graph

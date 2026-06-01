@@ -12,6 +12,9 @@ def _make_node(
     *,
     creds_field: str = "credentials",
     creds_id: str = "cred-1",
+    creds_title: str | None = "My GitHub key",
+    creds_provider: str = "github",
+    block_name: str = "GithubCommentBlock",
     required: bool = True,
     optional_marker: bool = False,
 ):
@@ -24,8 +27,12 @@ def _make_node(
     node = MagicMock()
     node.id = "node-1"
     node.credentials_optional = optional_marker
-    node.input_default = {creds_field: {"id": creds_id}}
+    cred = {"id": creds_id, "provider": creds_provider}
+    if creds_title is not None:
+        cred["title"] = creds_title
+    node.input_default = {creds_field: cred}
     node.block.input_schema = block_input_schema
+    node.block.name = block_name
     return node
 
 
@@ -48,7 +55,13 @@ async def test_before_graph_activate_oauth_refresh_failure_raises_clear_error():
             await _before_graph_activate(graph, "user-1")
 
     msg = str(excinfo.value)
-    assert "cred-1" in msg
+    # User-facing reference must use the credential title + provider + block
+    # name (the things a user can act on), not internal UUIDs.
+    assert "My GitHub key" in msg
+    assert "github" in msg.lower()
+    assert "GithubCommentBlock" in msg
+    assert "cred-1" not in msg
+    assert "node-1" not in msg
     assert "reconnect" in msg.lower()
     assert "invalid_grant" in msg
 
@@ -87,7 +100,10 @@ async def test_before_graph_activate_missing_required_credential_raises_clear_er
             await _before_graph_activate(graph, "user-1")
 
     msg = str(excinfo.value)
-    assert "cred-1" in msg
+    assert "My GitHub key" in msg
+    assert "github" in msg.lower()
+    assert "GithubCommentBlock" in msg
+    assert "cred-1" not in msg
     assert "no longer exists" in msg.lower()
 
 
@@ -103,4 +119,4 @@ async def test_before_graph_activate_succeeds_when_credentials_resolve():
         mgr.cached_getter.return_value = AsyncMock(return_value=MagicMock())
         await _before_graph_activate(graph, "user-1")
 
-    assert node.input_default["credentials"] == {"id": "cred-1"}
+    assert node.input_default["credentials"]["id"] == "cred-1"
