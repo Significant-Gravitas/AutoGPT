@@ -4,6 +4,11 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotStreamStore } from "./copilotStreamStore";
+import {
+  buildWorkspaceFilePart,
+  workspaceFileDownloadUrl,
+  type WorkspaceAttachment,
+} from "./helpers/workspaceAttachments";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -87,7 +92,7 @@ export function useSendMessage({
       type: "file" as const,
       mediaType: f.mime_type,
       filename: f.name,
-      url: `/api/proxy/api/workspace/files/${f.file_id}/download`,
+      url: workspaceFileDownloadUrl(f.file_id),
     }));
   }
 
@@ -105,12 +110,11 @@ export function useSendMessage({
     // message", so passing it would put the SDK into edit-mode with no
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
-    if (prebuiltParts.length > 0) {
-      sendMessage({ text, files: prebuiltParts });
-      return;
-    }
     if (files.length === 0) {
-      sendMessage({ text });
+      sendMessage({
+        text,
+        files: prebuiltParts.length > 0 ? prebuiltParts : undefined,
+      });
       return;
     }
     setIsUploadingFiles(true);
@@ -124,10 +128,12 @@ export function useSendMessage({
         });
         throw new Error("All file uploads failed");
       }
-      const fileParts = buildFileParts(uploaded);
+      // Merge already-stored workspace parts with the freshly uploaded ones so
+      // a single message can mix both kinds of attachment.
+      const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
       sendMessage({
         text,
-        files: fileParts.length > 0 ? fileParts : undefined,
+        files: allParts.length > 0 ? allParts : undefined,
       });
     } finally {
       setIsUploadingFiles(false);
@@ -150,9 +156,15 @@ export function useSendMessage({
     void dispatchRef.current(sessionId, send.text, send.files, parts);
   }, [sessionId]);
 
-  async function onSend(message: string, files?: File[]) {
+  async function onSend(
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) {
     const trimmed = message.trim();
-    if (!trimmed && (!files || files.length === 0)) return;
+    const hasWorkspaceFiles = !!workspaceFiles && workspaceFiles.length > 0;
+    if (!trimmed && (!files || files.length === 0) && !hasWorkspaceFiles)
+      return;
 
     if (files && files.length > 0) {
       if (files.length > MAX_FILES) {
@@ -176,21 +188,28 @@ export function useSendMessage({
 
     isUserStoppingRef.current = false;
 
+    const workspaceParts = (workspaceFiles ?? []).map(buildWorkspaceFilePart);
+
     if (sessionId) {
       const { pendingFileParts, setPendingFileParts } =
         useCopilotStreamStore.getState();
       setPendingFileParts([]);
-      await dispatchToSession(
-        sessionId,
-        trimmed,
-        files ?? [],
-        pendingFileParts,
-      );
+      await dispatchToSession(sessionId, trimmed, files ?? [], [
+        ...pendingFileParts,
+        ...workspaceParts,
+      ]);
       return;
     }
 
     if (isCreatingSessionRef.current) return;
     isCreatingSessionRef.current = true;
+    // Workspace parts must reach the post-creation flush, which reads them
+    // from the store via `takePendingFirstSend`. Append so a pre-set part
+    // (e.g. workflow-import) isn't clobbered.
+    if (workspaceParts.length > 0) {
+      const store = useCopilotStreamStore.getState();
+      store.setPendingFileParts([...store.pendingFileParts, ...workspaceParts]);
+    }
     useCopilotStreamStore
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [] });

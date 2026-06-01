@@ -17,6 +17,7 @@ export enum Flag {
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
+  CHAT_WORKSPACE_FILES = "chat-workspace-files",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -26,13 +27,14 @@ const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.ARTIFACTS]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
+  [Flag.ARTIFACTS_PAGE]: true,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
+  [Flag.CHAT_WORKSPACE_FILES]: true,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -78,6 +80,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
     case Flag.CHAT_SHARING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
+    case Flag.CHAT_WORKSPACE_FILES:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
   }
 }
 
