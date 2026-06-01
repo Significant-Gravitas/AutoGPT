@@ -126,6 +126,12 @@ export function useSendMessage({
           description: "Could not upload any files. Please try again.",
           variant: "destructive",
         });
+        // The workspace references didn't fail to upload (they need no upload),
+        // so don't discard them just because the local uploads failed.
+        if (prebuiltParts.length > 0) {
+          sendMessage({ text, files: prebuiltParts });
+          return;
+        }
         throw new Error("All file uploads failed");
       }
       // Merge already-stored workspace parts with the freshly uploaded ones so

@@ -7,14 +7,14 @@ import {
   CircleNotch as CircleNotchIcon,
   WarningCircle as WarningCircleIcon,
 } from "@phosphor-icons/react";
-import type { RefObject } from "react";
+import type { MutableRefObject } from "react";
 
 interface Props {
   files: WorkspaceFileItem[];
   isLoading: boolean;
   isError: boolean;
   highlightedIndex: number;
-  highlightedRef: RefObject<HTMLButtonElement | null>;
+  highlightedRef: MutableRefObject<HTMLButtonElement | null>;
   onSelect: (item: WorkspaceFileItem) => void;
   onHighlight: (index: number) => void;
 }

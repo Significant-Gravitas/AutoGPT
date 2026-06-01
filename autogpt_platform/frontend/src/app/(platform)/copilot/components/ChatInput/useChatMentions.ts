@@ -1,9 +1,10 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { useDebouncedValue } from "@/app/(platform)/settings/integrations/components/hooks/useDebouncedValue";
 import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKeyboardNav";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { KeyboardEvent } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
@@ -126,13 +127,4 @@ export function useChatMentions({
     accept,
     onKeyDown,
   };
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const handle = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(handle);
-  }, [value, delayMs]);
-  return debounced;
 }

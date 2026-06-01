@@ -61,6 +61,9 @@ describe("WorkspaceFilePicker", () => {
     );
 
     await screen.findByText("alpha.txt");
-    expect(screen.getByRole("button", { name: /^add$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^add$/i })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 });

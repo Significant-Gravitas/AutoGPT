@@ -22,7 +22,7 @@ export type Attachment =
   | ({ kind: "workspace" } & WorkspaceAttachment);
 
 export function workspaceFileDownloadUrl(fileId: string): string {
-  return `/api/proxy/api/workspace/files/${fileId}/download`;
+  return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
 
 export function workspaceItemToAttachment(item: WorkspaceFileItem): Attachment {

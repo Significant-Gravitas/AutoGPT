@@ -65,7 +65,12 @@ describe("useChatMentions", () => {
     expect(result.current.isOpen).toBe(true);
 
     await waitFor(() => expect(result.current.files).toHaveLength(1));
-    expect(mockListWorkspaceFiles).toHaveBeenCalledWith({ limit: 8, q: "al" });
+    await waitFor(() =>
+      expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
+        limit: 8,
+        q: "al",
+      }),
+    );
   });
 
   it("stays closed when there is no @token before the caret", () => {

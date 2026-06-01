@@ -11,9 +11,7 @@ describe("AttachmentMenu", () => {
     render(
       <AttachmentMenu onFilesSelected={vi.fn()} showWorkspaceOption={false} />,
     );
-    expect(
-      screen.getByRole("button", { name: /attach file/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /attach file/i })).toBeTruthy();
     // No dropdown menu items are exposed in the plain variant.
     expect(screen.queryByText(/use file from workspace/i)).toBeNull();
   });
@@ -28,10 +26,10 @@ describe("AttachmentMenu", () => {
     );
     expect(
       await screen.findByRole("menuitem", { name: /upload from computer/i }),
-    ).toBeInTheDocument();
+    ).toBeTruthy();
     expect(
       screen.getByRole("menuitem", { name: /use file from workspace/i }),
-    ).toBeInTheDocument();
+    ).toBeTruthy();
   });
 
   it("invokes onUseWorkspaceFile when the workspace item is chosen", async () => {

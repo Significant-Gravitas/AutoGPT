@@ -1,11 +1,12 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { useDebouncedValue } from "@/app/(platform)/settings/integrations/components/hooks/useDebouncedValue";
 import {
   type InfiniteData,
   keepPreviousData,
   useInfiniteQuery,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const PAGE_SIZE = 50;
@@ -91,13 +92,4 @@ function countLoadedFiles(pages: ListPage[]): number {
       acc + (page.status === 200 ? (page.data.files?.length ?? 0) : 0),
     0,
   );
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const handle = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(handle);
-  }, [value, delayMs]);
-  return debounced;
 }
