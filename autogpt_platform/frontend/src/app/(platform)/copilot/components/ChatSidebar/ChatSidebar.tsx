@@ -31,8 +31,10 @@ import {
   PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
+  ShareNetworkIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
+import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
@@ -44,7 +46,9 @@ import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
-import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
+import type { SearchResultItem } from "@/app/api/__generated__/models/searchResultItem";
+import { GlobalSearchModal } from "@/app/(platform)/components/GlobalSearchModal/GlobalSearchModal";
+import { useRouter } from "next/navigation";
 import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
@@ -54,9 +58,14 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession, setSearchOpen } =
-    useCopilotUIStore();
+  const {
+    completedSessionIDs,
+    clearCompletedSession,
+    isSearchOpen,
+    setSearchOpen,
+  } = useCopilotUIStore();
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
+  const router = useRouter();
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
   );
@@ -84,8 +93,10 @@ export function ChatSidebar() {
   const [exportingSessionIds, setExportingSessionIds] = useState<Set<string>>(
     new Set(),
   );
+  const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
+  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
@@ -151,6 +162,41 @@ export function ChatSidebar() {
   function handleSelectSession(id: string) {
     setSessionId(id);
     setSearchOpen(false);
+  }
+
+  function handleSelectSearchItem(item: SearchResultItem) {
+    if (item.type === "chat_session") {
+      setSessionId(item.id);
+      return;
+    }
+    if (item.type === "library_agent") {
+      router.push(`/library/agents/${item.id}`);
+      return;
+    }
+    if (item.type === "store_agent") {
+      // Store-agent rows carry creator + slug in ``metadata`` so we can
+      // build the marketplace URL without an extra fetch.
+      const metadata = (item.metadata ?? {}) as {
+        creator?: string;
+        slug?: string;
+      };
+      if (metadata.creator && metadata.slug) {
+        router.push(
+          `/marketplace/agent/${encodeURIComponent(metadata.creator)}/${encodeURIComponent(metadata.slug)}`,
+        );
+      }
+      return;
+    }
+    if (item.type === "workspace_file") {
+      // No dedicated viewer route — open the file's download URL in a
+      // new tab so the user gets the content immediately.
+      window.open(
+        `/api/proxy/api/workspace/files/${item.id}/download`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      return;
+    }
   }
 
   function handleRenameClick(
@@ -464,6 +510,17 @@ export function ChatSidebar() {
                               ? "Exporting…"
                               : "Export chat"}
                           </DropdownMenuItem>
+                          {chatSharingEnabled && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSharingSessionId(session.id);
+                              }}
+                            >
+                              <ShareNetworkIcon className="mr-2 h-4 w-4" />
+                              Share chat
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={(e) =>
                               handleDeleteClick(e, session.id, session.title)
@@ -503,11 +560,22 @@ export function ChatSidebar() {
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />
+
+      {sharingSessionId && (
+        <ShareChatDialog
+          sessionId={sharingSessionId}
+          open={true}
+          onOpenChange={(next) => {
+            if (!next) setSharingSessionId(null);
+          }}
+        />
+      )}
+
       {isChatSearchEnabled ? (
-        <ChatSearchModal
-          sessions={sessions}
-          currentSessionId={sessionId}
-          onSelectSession={handleSelectSession}
+        <GlobalSearchModal
+          isOpen={isSearchOpen}
+          onClose={() => setSearchOpen(false)}
+          onSelectItem={handleSelectSearchItem}
         />
       ) : null}
     </>

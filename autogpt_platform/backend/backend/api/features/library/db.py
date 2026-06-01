@@ -38,6 +38,7 @@ from backend.util.models import Pagination
 from backend.util.settings import Config
 
 from . import model as library_model
+from .embeddings import schedule_library_agent_embedding
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -73,7 +74,7 @@ async def _fetch_schedule_info(
     """
     try:
         scheduler_client = get_scheduler_client()
-        schedules = await scheduler_client.get_execution_schedules(
+        schedules = await scheduler_client.get_graph_execution_schedules(
             graph_id=graph_id,
             user_id=user_id,
         )
@@ -597,9 +598,12 @@ async def create_library_agent(
             )
         )
 
-    # Generate images for the main graph and sub-graphs
+    # Generate images for the main graph and sub-graphs, and refresh the
+    # library-agent embedding so the create-time similarity gate can find
+    # this agent next time the user describes a goal.
     for agent, graph in zip(library_agents, graph_entries):
         asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
+        schedule_library_agent_embedding(agent.id, user_id, graph)
 
     schedule_info = await _fetch_schedule_info(user_id)
     return [
@@ -747,6 +751,15 @@ async def update_graph_in_library(
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if created_graph.webhook_input_node:
+            await migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=created_graph.id,
+                new_version=created_graph.version,
+            )
+
     return created_graph, library_agent
 
 
@@ -769,6 +782,9 @@ async def update_library_agent_version_and_settings(
             user_id=user_id,
             settings=updated_settings,
         )
+    # Re-embed so name/description/instructions changes are reflected in
+    # similarity search results before the next create-time gate runs.
+    schedule_library_agent_embedding(library.id, user_id, agent_graph)
     return library
 
 
@@ -914,7 +930,7 @@ async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
         user_id: The ID of the user
     """
     scheduler_client = get_scheduler_client()
-    schedules = await scheduler_client.get_execution_schedules(
+    schedules = await scheduler_client.get_graph_execution_schedules(
         graph_id=graph_id, user_id=user_id
     )
 
@@ -1947,6 +1963,54 @@ async def set_preset_webhook(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+async def migrate_webhook_presets_to_new_version(
+    user_id: str,
+    graph_id: str,
+    new_version: int,
+) -> int:
+    """
+    Migrates webhook-attached presets for a graph to a newly activated version.
+
+    When a new agent version is activated (i.e. becomes the live version),
+    presets with webhooks that were pinned to an older version are updated
+    to point to the new active version, so that existing webhook URLs
+    continue to trigger the latest agent version.
+
+    Presets pinned to a newer version than ``new_version`` (e.g. manually
+    pinned to a future/specific version) are intentionally left untouched.
+
+    Only migrates presets that:
+    - Belong to the user
+    - Are attached to a webhook (webhookId is not null)
+    - Are not deleted
+    - Are for the given graph and pinned to a strictly older version
+
+    Args:
+        user_id: The owner of the presets.
+        graph_id: The graph ID whose presets should be migrated.
+        new_version: The newly activated graph version to migrate presets to.
+
+    Returns:
+        The number of presets migrated.
+    """
+    count = await prisma.models.AgentPreset.prisma().update_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": {"lt": new_version},
+            "webhookId": {"not": None},
+            "isDeleted": False,
+        },
+        data={"agentGraphVersion": new_version},
+    )
+    if count > 0:
+        logger.info(
+            f"Migrated {count} webhook preset(s) for graph #{graph_id} "
+            f"to version {new_version} (user #{user_id})"
+        )
+    return count
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

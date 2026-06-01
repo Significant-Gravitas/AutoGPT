@@ -1198,8 +1198,7 @@ async def get_my_agents(
 ) -> store_model.MyUnpublishedAgentsResponse:
     """Get the agents for the authenticated user"""
     logger.debug(
-        f"Getting my agents for user {user_id}, page={page}, "
-        f"sort_by={sort_by.value}"
+        f"Getting my agents for user {user_id}, page={page}, sort_by={sort_by.value}"
     )
 
     try:
