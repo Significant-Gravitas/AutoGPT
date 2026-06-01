@@ -13,7 +13,6 @@ const DEFAULT_VIEWPORT_WIDTH = 1280;
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const minimizeArtifactPanel = useCopilotUIStore(
     (s) => s.minimizeArtifactPanel,
   );
@@ -43,24 +42,9 @@ export function useArtifactPanel() {
     setIsSourceView(false);
   }, [activeArtifact?.id]);
 
-  // Keyboard: Escape to close
-  useEffect(() => {
-    if (!artifactPanel.isOpen) return;
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (document.querySelector('[role="dialog"], [data-state="open"]'))
-          return;
-        // Clear the preview content only — the drawer is gated on
-        // `activeArtifact`, so this hides it without touching the legacy
-        // `isOpen` persistence (which is shared with ContextPanel).
-        clearArtifactPreview();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [artifactPanel.isOpen, clearArtifactPreview]);
+  // Escape-to-close is owned by the vaul Drawer.Root in ArtifactPanel — its
+  // onOpenChange already routes to clearArtifactPreview. A manual document
+  // listener here would self-block on the drawer's own [role="dialog"].
 
   // Track viewport width reactively for maximize mode.
   const [viewportWidth, setViewportWidth] = useState(
