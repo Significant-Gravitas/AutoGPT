@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from models.deal import DealState, AnalysisRequest, SolveRequest
 from services.underwriting_engine import build_proforma
-from services.waterfall_engine import run_waterfall, solve_for_price, solve_for_exit_cap
+from services.waterfall_engine import waterfall_from_proforma, solve_for_price, solve_for_exit_cap
 from services.sensitivity_engine import generate_all_sensitivities
 
 router = APIRouter()
@@ -10,22 +10,7 @@ router = APIRouter()
 def full_analysis(deal: DealState) -> dict:
     """Run proforma + waterfall and return combined results."""
     pf = build_proforma(deal)
-
-    # Operating levered CFs (years 1..N-1, excluding year 0 and exit)
-    lev_cfs = pf["cash_flows"]["levered"]
-    annual_ops = [float(c) for c in lev_cfs[1:-1]]  # years 1..N-1
-    # Final year operating CF (before exit)
-    if len(lev_cfs) > 1:
-        annual_ops.append(float(lev_cfs[-1]) - float(pf["exit"]["net_sale_proceeds"]))
-
-    exit_proceeds = float(pf["exit"]["net_sale_proceeds"])
-
-    wf = run_waterfall(
-        equity_required=float(pf["total_equity"]),
-        annual_levered_cfs=annual_ops,
-        exit_proceeds=exit_proceeds,
-        config=deal.waterfall_config,
-    )
+    wf = waterfall_from_proforma(pf, deal.waterfall_config)
 
     return {
         "proforma": pf,

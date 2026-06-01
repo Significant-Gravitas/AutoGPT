@@ -9,7 +9,12 @@ backend/.env
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+frontend/.vite/
 
 # Build artifacts
 *.egg-info/
 .DS_Store
+
+# Test caches
+backend/.pytest_cache/
+frontend/coverage/

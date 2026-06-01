@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Input, Toggle } from '../components/ui/Input';
+import { NumericInput } from '../components/ui/NumericInput';
 import { Button } from '../components/ui/Button';
 import { useDealStore } from '../store/dealStore';
 import type { Assumptions, ValueAddAssumptions } from '../types/deal';
@@ -47,8 +48,8 @@ export function AssumptionsPage() {
               onChange={(e) => upA('expense_growth_rate', +e.target.value)} />
             <Input label="Management Fee (% of EGI)" type="number" suffix="%" value={a.management_fee_pct}
               onChange={(e) => upA('management_fee_pct', +e.target.value)} hint="Replaces T12 management fee" />
-            <Input label="CapEx Reserves ($/unit/yr)" type="number" prefix="$" value={a.capex_reserves_per_unit}
-              onChange={(e) => upA('capex_reserves_per_unit', +e.target.value)} />
+            <NumericInput label="CapEx Reserves ($/unit/yr)" prefix="$" value={a.capex_reserves_per_unit}
+              onChange={(v) => upA('capex_reserves_per_unit', v)} />
           </div>
         </Card>
       </div>
@@ -66,10 +67,10 @@ export function AssumptionsPage() {
               <Input label="Units to Renovate" type="number" value={va.units_to_renovate}
                 onChange={(e) => upVA('units_to_renovate', +e.target.value)}
                 hint={`of ${deal.property_info.units} total`} />
-              <Input label="Reno Cost / Unit" type="number" prefix="$" value={va.renovation_cost_per_unit}
-                onChange={(e) => upVA('renovation_cost_per_unit', +e.target.value)} />
-              <Input label="Rent Premium / Unit / Mo" type="number" prefix="$" value={va.rent_premium_per_unit}
-                onChange={(e) => upVA('rent_premium_per_unit', +e.target.value)} />
+              <NumericInput label="Reno Cost / Unit" prefix="$" value={va.renovation_cost_per_unit}
+                onChange={(v) => upVA('renovation_cost_per_unit', v)} />
+              <NumericInput label="Rent Premium / Unit / Mo" prefix="$" value={va.rent_premium_per_unit}
+                onChange={(v) => upVA('rent_premium_per_unit', v)} />
               <Input label="Absorption Period (yrs)" type="number" value={va.absorption_years}
                 onChange={(e) => upVA('absorption_years', +e.target.value)} />
             </div>

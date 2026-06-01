@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { NumericInput } from '../components/ui/NumericInput';
 import { Button } from '../components/ui/Button';
 import { RentRollTable } from '../components/tables/RentRollTable';
 import { useDealStore } from '../store/dealStore';
@@ -89,11 +90,11 @@ export function ReviewDataPage() {
           <Input label="Address" value={deal.property_info.address} onChange={(e) => updateProp('address', e.target.value)} />
           <Input label="Market" value={deal.property_info.market} onChange={(e) => updateProp('market', e.target.value)} />
           <Input label="Asset Type" value={deal.property_info.asset_type} onChange={(e) => updateProp('asset_type', e.target.value)} />
-          <Input label="Total Units" type="number" value={deal.property_info.units} onChange={(e) => updateProp('units', +e.target.value)} />
-          <Input label="Total SqFt" type="number" value={deal.property_info.sqft} onChange={(e) => updateProp('sqft', +e.target.value)} />
+          <NumericInput label="Total Units" value={deal.property_info.units} onChange={(v) => updateProp('units', v)} />
+          <NumericInput label="Total SqFt" value={deal.property_info.sqft} onChange={(v) => updateProp('sqft', v)} />
           <Input label="Year Built" type="number" value={deal.property_info.year_built} onChange={(e) => updateProp('year_built', +e.target.value)} />
-          <Input label="Purchase Price" type="number" prefix="$" value={deal.property_info.purchase_price} onChange={(e) => updateProp('purchase_price', +e.target.value)} />
-          <Input label="Asking Price" type="number" prefix="$" value={deal.property_info.asking_price} onChange={(e) => updateProp('asking_price', +e.target.value)} />
+          <NumericInput label="Purchase Price" prefix="$" value={deal.property_info.purchase_price} onChange={(v) => updateProp('purchase_price', v)} />
+          <NumericInput label="Asking Price" prefix="$" value={deal.property_info.asking_price} onChange={(v) => updateProp('asking_price', v)} />
         </div>
       )}
 
@@ -110,8 +111,8 @@ export function ReviewDataPage() {
                   ['other_income', 'Other Income'],
                 ] as [keyof T12Data, string][]
               ).map(([k, label]) => (
-                <Input key={k} label={label} type="number" prefix="$" value={deal.t12_data[k] as number}
-                  onChange={(e) => updateT12(k, +e.target.value)} />
+                <NumericInput key={k} label={label} prefix="$" value={deal.t12_data[k] as number}
+                  onChange={(v) => updateT12(k, v)} />
               ))}
               <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
                 <div className="flex justify-between text-sm">
@@ -138,8 +139,8 @@ export function ReviewDataPage() {
                   ['other_expenses', 'Other Expenses'],
                 ] as [keyof T12Data, string][]
               ).map(([k, label]) => (
-                <Input key={k} label={label} type="number" prefix="$" value={deal.t12_data[k] as number}
-                  onChange={(e) => updateT12(k, +e.target.value)} />
+                <NumericInput key={k} label={label} prefix="$" value={deal.t12_data[k] as number}
+                  onChange={(v) => updateT12(k, v)} />
               ))}
               <div className="pt-2 border-t border-gray-200 dark:border-gray-600 space-y-1">
                 <div className="flex justify-between text-sm">

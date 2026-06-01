@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card';
 import { Input, Toggle } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { useDealStore } from '../store/dealStore';
+import { fmtCurrency } from '../utils/calculations';
 import type { WaterfallConfig, WaterfallTier } from '../types/deal';
 
 export function WaterfallConfigPage() {
@@ -51,11 +52,11 @@ export function WaterfallConfigPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input label="LP Equity (%)" type="number" suffix="%" value={wf.lp_equity_pct}
-                onChange={(e) => { const v = +e.target.value; upWF('lp_equity_pct', v); upWF('gp_equity_pct', 100 - v); }}
-                hint={`LP invests ~$${(lpEquity / 1_000_000).toFixed(1)}M`} />
+                onChange={(e) => { const v = Math.max(0, Math.min(100, +e.target.value)); updateDeal({ waterfall_config: { ...wf, lp_equity_pct: v, gp_equity_pct: 100 - v } }); }}
+                hint={`LP invests ${fmtCurrency(lpEquity, true)}`} />
               <Input label="GP Equity (%)" type="number" suffix="%" value={wf.gp_equity_pct}
-                onChange={(e) => { const v = +e.target.value; upWF('gp_equity_pct', v); upWF('lp_equity_pct', 100 - v); }}
-                hint={`GP invests ~$${(gpEquity / 1_000_000).toFixed(1)}M`} />
+                onChange={(e) => { const v = Math.max(0, Math.min(100, +e.target.value)); updateDeal({ waterfall_config: { ...wf, gp_equity_pct: v, lp_equity_pct: 100 - v } }); }}
+                hint={`GP invests ${fmtCurrency(gpEquity, true)}`} />
             </div>
             <div className="w-full h-4 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden flex">
               <div className="h-full bg-brand-500 transition-all" style={{ width: `${wf.lp_equity_pct}%` }} />
@@ -110,9 +111,9 @@ export function WaterfallConfigPage() {
                 onChange={(e) => updateTier(i, 'irr_max', +e.target.value)}
                 hint={tier.irr_max >= 999 ? '(uncapped)' : undefined} />
               <Input label="LP Split (%)" type="number" suffix="%" value={tier.lp_split}
-                onChange={(e) => { updateTier(i, 'lp_split', +e.target.value); updateTier(i, 'gp_split', 100 - +e.target.value); }} />
+                onChange={(e) => { const v = Math.max(0, Math.min(100, +e.target.value)); updateDeal({ waterfall_config: { ...wf, tiers: wf.tiers.map((t, idx) => idx === i ? { ...t, lp_split: v, gp_split: 100 - v } : t) } }); }} />
               <Input label="GP Split (%)" type="number" suffix="%" value={tier.gp_split}
-                onChange={(e) => { updateTier(i, 'gp_split', +e.target.value); updateTier(i, 'lp_split', 100 - +e.target.value); }} />
+                onChange={(e) => { const v = Math.max(0, Math.min(100, +e.target.value)); updateDeal({ waterfall_config: { ...wf, tiers: wf.tiers.map((t, idx) => idx === i ? { ...t, gp_split: v, lp_split: 100 - v } : t) } }); }} />
               <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={() => removeTier(i)}
                 disabled={wf.tiers.length <= 1} className="text-red-500 hover:text-red-600" />
             </div>

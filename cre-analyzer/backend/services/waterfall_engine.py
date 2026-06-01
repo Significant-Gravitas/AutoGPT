@@ -206,6 +206,29 @@ def run_waterfall(
     }
 
 
+def waterfall_from_proforma(pf: Dict[str, Any], config: WaterfallConfig) -> Dict[str, Any]:
+    """
+    Run the waterfall directly from a pro-forma result.
+
+    Separates the levered cash-flow array into operating distributions and the
+    exit event: the final year's operating CF is stripped out of the embedded
+    exit proceeds so it is distributed as its own operating event, while the
+    net sale proceeds form the IRR-promote exit event. This must stay the single
+    source of truth — full_analysis and the solvers all rely on it so their LP
+    IRR functions cannot drift apart.
+    """
+    lev_cfs = pf["cash_flows"]["levered"]
+    annual_ops = [float(c) for c in lev_cfs[1:-1]]
+    if len(lev_cfs) > 1:
+        annual_ops.append(float(lev_cfs[-1]) - float(pf["exit"]["net_sale_proceeds"]))
+    return run_waterfall(
+        equity_required=float(pf["total_equity"]),
+        annual_levered_cfs=annual_ops,
+        exit_proceeds=float(pf["exit"]["net_sale_proceeds"]),
+        config=config,
+    )
+
+
 def _allocate_by_irr_tiers(
     lp_invested: float,
     prior_lp_dists: List[float],
@@ -273,13 +296,7 @@ def solve_for_price(
     def lp_irr_at_price(price: float) -> float:
         d = deepcopy(deal)
         d.property_info.purchase_price = price
-        pf = build_fn(d)
-        wf = run_waterfall(
-            equity_required=pf["total_equity"],
-            annual_levered_cfs=pf["cash_flows"]["levered"][1:-1],
-            exit_proceeds=pf["exit"]["net_sale_proceeds"],
-            config=d.waterfall_config,
-        )
+        wf = waterfall_from_proforma(build_fn(d), d.waterfall_config)
         return wf["lp_irr"] or 0
 
     for _ in range(60):
@@ -308,13 +325,7 @@ def solve_for_exit_cap(
     def lp_irr_at_cap(cap: float) -> float:
         d = deepcopy(deal)
         d.exit_assumptions.exit_cap_rate = cap
-        pf = build_fn(d)
-        wf = run_waterfall(
-            equity_required=pf["total_equity"],
-            annual_levered_cfs=pf["cash_flows"]["levered"][1:-1],
-            exit_proceeds=pf["exit"]["net_sale_proceeds"],
-            config=d.waterfall_config,
-        )
+        wf = waterfall_from_proforma(build_fn(d), d.waterfall_config)
         return wf["lp_irr"] or 0
 
     for _ in range(60):

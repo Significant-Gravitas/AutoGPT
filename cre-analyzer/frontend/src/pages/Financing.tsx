@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Input, Select, Toggle } from '../components/ui/Input';
+import { NumericInput } from '../components/ui/NumericInput';
 import { Button } from '../components/ui/Button';
 import { useDealStore } from '../store/dealStore';
 import { fmtCurrency } from '../utils/calculations';

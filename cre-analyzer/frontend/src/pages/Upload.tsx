@@ -46,8 +46,11 @@ export function UploadPage() {
       setFiles((prev) => prev.map((f) => f.docType === entry.docType ? { ...f, status: 'done', result: res.data } : f));
       return res.data;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Parse error';
+      // Extract the server's error detail from axios response if available
+      const axiosMsg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const msg = axiosMsg || (e instanceof Error ? e.message : 'Parse error');
       setFiles((prev) => prev.map((f) => f.docType === entry.docType ? { ...f, status: 'error', error: msg } : f));
+      setGlobalError(`Parse failed: ${msg}`);
       throw e;
     }
   };
@@ -57,22 +60,48 @@ export function UploadPage() {
     setParseAll(true);
     setGlobalError(null);
     const merged: Record<string, unknown> = {};
+    let anySuccess = false;
     for (const f of files) {
       try {
         const data = await parseFile(f);
         Object.assign(merged, data);
-      } catch { /* handled in parseFile */ }
+        anySuccess = true;
+      } catch { /* error already shown in parseFile */ }
     }
-    applyExtraction(merged);
-    setParseAll(false);
-    setStep('review');
+    if (anySuccess) {
+      applyExtraction(merged);
+      setParseAll(false);
+      setStep('review');
+    } else {
+      setParseAll(false);
+    }
   };
 
   const applyExtraction = (data: Record<string, unknown>) => {
     const updates: Partial<typeof deal> = { raw_extraction: data };
-    if (data.property_info) updates.property_info = { ...deal.property_info, ...(data.property_info as object) };
-    if (data.t12_data) updates.t12_data = { ...deal.t12_data, ...(data.t12_data as object) };
-    if (Array.isArray(data.rent_roll)) updates.rent_roll = data.rent_roll as typeof deal.rent_roll;
+
+    // Property info — handle both direct and nested shapes
+    const pi = data.property_info as Record<string, unknown> | undefined;
+    if (pi) updates.property_info = { ...deal.property_info, ...pi };
+
+    // T12 — Claude may return t12_data directly or inline financials
+    const t12 = data.t12_data as Record<string, unknown> | undefined;
+    if (t12) updates.t12_data = { ...deal.t12_data, ...t12 };
+
+    // Rent roll
+    if (Array.isArray(data.rent_roll)) {
+      updates.rent_roll = data.rent_roll as typeof deal.rent_roll;
+    }
+
+    // OM may return unit_mix — convert to rough GPR estimate
+    const unitMix = data.unit_mix as Array<{ count?: number; market_rent?: number }> | undefined;
+    if (unitMix && !t12) {
+      const annualGPR = unitMix.reduce((sum, u) => sum + (u.count ?? 0) * (u.market_rent ?? 0) * 12, 0);
+      if (annualGPR > 0) {
+        updates.t12_data = { ...deal.t12_data, gross_potential_rent: annualGPR };
+      }
+    }
+
     updateDeal(updates);
   };
 

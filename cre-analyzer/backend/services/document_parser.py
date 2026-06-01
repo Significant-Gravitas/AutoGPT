@@ -13,7 +13,7 @@ import openpyxl
 
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODEL = "claude-sonnet-4-20250514"
+MODEL = "claude-sonnet-4-6"
 
 
 OM_PROMPT = """You are a commercial real estate analyst extracting data from an Offering Memorandum (OM).
