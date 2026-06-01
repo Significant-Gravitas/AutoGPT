@@ -22,6 +22,7 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
 
 from backend.copilot.service import (
+    _fallback_title_from_message,
     _generate_session_title,
     _record_title_generation_cost,
     _title_usage_from_response,
@@ -62,6 +63,48 @@ def _usage_with_cost(cost: object | None) -> CompletionUsage:
     if cost is not None:
         payload["cost"] = cost
     return CompletionUsage.model_validate(payload)
+
+
+class TestFallbackTitleFromMessage:
+    def test_short_message_is_unchanged(self):
+        title = _fallback_title_from_message("Build an invoice tool")
+        assert title == "Build an invoice tool"
+
+    def test_whitespace_and_newlines_are_collapsed(self):
+        title = _fallback_title_from_message("  Build\n\nan\tinvoice   tool  ")
+        assert title == "Build an invoice tool"
+
+    def test_injected_context_prefixes_are_stripped(self):
+        title = _fallback_title_from_message(
+            "<memory_context>\nfacts\n</memory_context>\n\n"
+            "<budget_context>\nlimit: $1\n</budget_context>\n\n"
+            "Build an invoice tool"
+        )
+        assert title == "Build an invoice tool"
+
+    def test_empty_message_returns_new_chat(self):
+        title = _fallback_title_from_message("  \n\t ")
+        assert title == "New chat"
+
+    def test_more_than_six_words_uses_first_six_with_ellipsis(self):
+        title = _fallback_title_from_message(
+            "Build me a competitor research dashboard today please"
+        )
+        assert title == "Build me a competitor research dashboard..."
+
+    def test_long_message_is_truncated_to_fifty_chars(self):
+        title = _fallback_title_from_message(
+            "aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff"
+        )
+        assert len(title) == 50
+        assert title.endswith("...")
+
+    def test_shortened_title_near_limit_stays_within_fifty_chars(self):
+        title = _fallback_title_from_message(
+            "aaaaaaaa bbbbbbbb cccccccc dddddddd eeeeeeee ffffffff extra"
+        )
+        assert len(title) == 50
+        assert title.endswith("...")
 
 
 class TestTitleUsageFromResponse:
@@ -416,9 +459,9 @@ class TestUpdateTitleAsync:
 
     @pytest.mark.asyncio
     async def test_generation_returns_none_response_skips_cost(self):
-        """``_generate_session_title`` swallows exceptions and returns
-        ``(None, None)`` — no response means no cost to record."""
-        gen = AsyncMock(return_value=(None, None))
+        """``_generate_session_title`` swallows exceptions and returns a
+        fallback title with no response, so no cost is recorded."""
+        gen = AsyncMock(return_value=("msg", None))
         update = AsyncMock()
         record = AsyncMock()
         with (
@@ -437,15 +480,14 @@ class TestUpdateTitleAsync:
         ):
             await _update_title_async("sess-5", "msg", user_id="u")
 
-        update.assert_not_awaited()
+        update.assert_awaited_once_with("sess-5", "u", "msg", only_if_empty=True)
         record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_empty_title_with_response_still_records_cost(self):
-        """Title came back empty but we still paid for the LLM call —
-        cost recording runs even though the title write is skipped."""
+    async def test_fallback_title_with_response_persists_and_records_cost(self):
+        """Fallback title is persisted while cost recording still runs."""
         resp = _build_completion(usage=_usage_with_cost(0.0001))
-        gen = AsyncMock(return_value=(None, resp))
+        gen = AsyncMock(return_value=("fallback title", resp))
         update = AsyncMock()
         record = AsyncMock()
         with (
@@ -464,7 +506,9 @@ class TestUpdateTitleAsync:
         ):
             await _update_title_async("sess-6", "msg", user_id="u")
 
-        update.assert_not_awaited()
+        update.assert_awaited_once_with(
+            "sess-6", "u", "fallback title", only_if_empty=True
+        )
         record.assert_awaited_once()
 
 
@@ -518,23 +562,23 @@ class TestGenerateSessionTitle:
         assert title.endswith("...")
 
     @pytest.mark.asyncio
-    async def test_empty_choices_returns_none_title_with_response(self):
+    async def test_empty_choices_returns_fallback_title_with_response(self):
         """No ``choices`` on the response (shouldn't happen per SDK
-        typing) must not raise IndexError — response is preserved so the
-        caller can still record the paid-for cost."""
+        typing) must not raise IndexError. The response is preserved so
+        the caller can still record the paid-for cost."""
         resp = _build_completion(choices=[])
         helper = AsyncMock(return_value=resp)
         with patch(
             "backend.copilot.service.call_provider_openai_compat_sync",
             new=helper,
         ):
-            title, response = await _generate_session_title("x")
-        assert title is None
+            title, response = await _generate_session_title("write a sales email")
+        assert title == "write a sales email"
         assert response is resp
 
     @pytest.mark.asyncio
-    async def test_missing_message_returns_none_title(self):
-        """A choice whose ``.message`` is absent produces a None title
+    async def test_missing_message_returns_fallback_title(self):
+        """A choice whose ``.message`` is absent produces a fallback title
         but the response still lands on the caller."""
         fake_choice = SimpleNamespace(message=None)
         fake_response = SimpleNamespace(choices=[fake_choice])
@@ -543,23 +587,46 @@ class TestGenerateSessionTitle:
             "backend.copilot.service.call_provider_openai_compat_sync",
             new=helper,
         ):
-            title, response = await _generate_session_title("x")
-        assert title is None
+            title, response = await _generate_session_title("summarize this document")
+        assert title == "summarize this document"
         assert response is fake_response
 
     @pytest.mark.asyncio
-    async def test_llm_call_raises_returns_none_none(self):
-        """Network / API errors on the create call are swallowed;
-        ``(None, None)`` ensures the caller skips both title and cost
-        without crashing the background task."""
+    async def test_llm_call_raises_returns_fallback_title_and_no_response(self):
+        """Network / API errors on the dispatch call are swallowed and
+        the caller gets back the fallback title + a ``None`` response
+        so the background task doesn't crash."""
         helper = AsyncMock(side_effect=RuntimeError("connection reset"))
         with patch(
             "backend.copilot.service.call_provider_openai_compat_sync",
             new=helper,
         ):
-            title, response = await _generate_session_title("x")
-        assert title is None
+            title, response = await _generate_session_title("build me an invoice tool")
+        assert title == "build me an invoice tool"
         assert response is None
+
+    @pytest.mark.asyncio
+    async def test_aux_client_unavailable_returns_fallback_title_and_no_response(self):
+        with patch(
+            "backend.copilot.service._get_aux_client",
+            side_effect=RuntimeError("missing aux API key"),
+        ):
+            title, response = await _generate_session_title("research CRM options")
+        assert title == "research CRM options"
+        assert response is None
+
+    @pytest.mark.asyncio
+    async def test_empty_content_returns_fallback_title_with_response(self):
+        resp = _build_completion(content="   ")
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value=resp)
+        with patch(
+            "backend.copilot.service._get_aux_client",
+            return_value=client,
+        ):
+            title, response = await _generate_session_title("plan next sprint")
+        assert title == "plan next sprint"
+        assert response is resp
 
     @pytest.mark.asyncio
     async def test_create_receives_usage_include_extra_body(self):
