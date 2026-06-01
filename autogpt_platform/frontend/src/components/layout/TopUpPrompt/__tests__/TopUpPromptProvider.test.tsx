@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   render,
@@ -194,6 +195,47 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     // (not that state was applied), kept as belt-and-suspenders.
     await screen.findByText("ready");
     await waitForCreditsFetch();
+
+    expect(screen.queryByText(/out of automation credits/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+  });
+
+  test("renders nothing when the user still has a positive balance", async () => {
+    const { waitForCreditsFetch } = setupCredits({
+      credits: 500,
+      amount: 0,
+      threshold: 0,
+    });
+
+    renderProvider();
+
+    await screen.findByText("ready");
+    await waitForCreditsFetch();
+
+    expect(screen.queryByText(/out of automation credits/i)).toBeNull();
+    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+  });
+
+  test("suppresses the prompt when the credits fetch fails", async () => {
+    // Simulates a transient backend error on GET /credits. The client used to
+    // silently treat this as a `$0` balance, which fired the out-of-credits
+    // prompt on any API failure. Returning `null` from `getUserCredit` on
+    // error keeps the provider's `credits !== null` guard short-circuiting.
+    let autoTopUpRequested = false;
+    server.use(
+      http.get("*/api/v1/credits", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+      getGetV1GetAutoTopUpMockHandler(() => {
+        autoTopUpRequested = true;
+        return { amount: 0, threshold: 0 };
+      }),
+    );
+
+    renderProvider();
+
+    await screen.findByText("ready");
+    await waitFor(() => expect(autoTopUpRequested).toBe(true));
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
     expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();

@@ -105,7 +105,7 @@ export function WalletRefill() {
             <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
               Enter an amount (min. $5) and add credits instantly.
             </div>
-            <TopUpForm submitLabel="Top up" />
+            <TopUpForm submitLabel="Top up" size="small" />
           </TabsContent>
           <TabsContent value="auto-refill" className="flex flex-col">
             <div className="justify-start font-sans text-sm font-medium leading-snug text-zinc-900">

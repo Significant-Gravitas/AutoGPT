@@ -220,11 +220,13 @@ async def test_handle_dispute_with_sufficient_balance(
 async def test_handle_dispute_with_insufficient_balance(
     mock_get_user, mock_stripe_modify, mock_settings, server: SpinTestServer
 ):
-    """Test handling dispute when user has insufficient balance (evidence gets added)."""
-    topup_tx = await setup_test_user_with_topup()
+    """Test handling dispute when user has insufficient balance (evidence gets added).
 
-    # Save original method for restoration before any try blocks
-    original_get_history = credit_system.get_transaction_history
+    handle_dispute reads CreditTransaction rows directly via prisma, so the
+    evidence-building path is exercised against the real DB state created by
+    setup_test_user_with_topup — this is an integration test by design.
+    """
+    topup_tx = await setup_test_user_with_topup()
 
     try:
         # Mock settings to have a high tolerance threshold so dispute isn't closed
@@ -234,13 +236,6 @@ async def test_handle_dispute_with_insufficient_balance(
         mock_user = MagicMock()
         mock_user.email = f"{REFUND_TEST_USER_ID}@example.com"
         mock_get_user.return_value = mock_user
-
-        # Mock the transaction history method to return an async result
-        from unittest.mock import AsyncMock
-
-        mock_history = MagicMock()
-        mock_history.transactions = []
-        credit_system.get_transaction_history = AsyncMock(return_value=mock_history)
 
         # Create a mock dispute object for full amount (user has 1000, disputing 1000)
         dispute = MagicMock(spec=stripe.Dispute)
@@ -270,7 +265,6 @@ async def test_handle_dispute_with_insufficient_balance(
         assert user_balance.balance == 1000, "Balance should remain unchanged"
 
     finally:
-        credit_system.get_transaction_history = original_get_history
         await cleanup_test_user()
 
 
