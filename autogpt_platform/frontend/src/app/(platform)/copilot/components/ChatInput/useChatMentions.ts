@@ -80,8 +80,11 @@ export function useChatMentions({
     setActive(null);
   }
 
-  function accept(item: WorkspaceFileItem) {
-    if (!active) return;
+  function accept(item: WorkspaceFileItem | undefined) {
+    // The highlighted index is clamped in an effect, so a shrinking result
+    // list can momentarily leave it pointing past the end — guard against the
+    // out-of-bounds `undefined` before touching the item.
+    if (!active || !item) return;
     setValue(value.slice(0, active.start) + value.slice(active.end));
     addWorkspaceFile(item);
     setActive(null);

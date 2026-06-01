@@ -166,4 +166,35 @@ describe("useChatMentions", () => {
     expect(result.current.isOpen).toBe(false);
     expect(addWorkspaceFile).not.toHaveBeenCalled();
   });
+
+  it("ignores accept when the highlighted item is out of bounds", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+    const setValue = vi.fn();
+    const addWorkspaceFile = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @al",
+          setValue,
+          addWorkspaceFile,
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @al")));
+    await waitFor(() => expect(result.current.files).toHaveLength(1));
+
+    // A shrinking result list can leave the highlighted index pointing past
+    // the end before the clamp effect runs — accepting that must be a no-op,
+    // not a crash on an undefined item.
+    act(() => result.current.accept(undefined));
+
+    expect(setValue).not.toHaveBeenCalled();
+    expect(addWorkspaceFile).not.toHaveBeenCalled();
+  });
 });
