@@ -56,7 +56,7 @@ class DataComponent(MessageProvider):
 Components can be configured using a pydantic model.
 To make component configurable, it must inherit from `ConfigurableComponent[BM]` where `BM` is the configuration class inheriting from pydantic's `BaseModel`.
 You should pass the configuration instance to the `ConfigurableComponent`'s `__init__` or set its `config` property directly.
-Using configuration allows you to load confugration from a file, and also serialize and deserialize it easily for any agent.
+Using configuration allows you to load configuration from a file, and also serialize and deserialize it easily for any agent.
 To learn more about configuration, including storing sensitive information and serialization see [Component Configuration](./components.md#component-configuration).
 
 ```py
