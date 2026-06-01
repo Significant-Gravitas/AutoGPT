@@ -127,7 +127,7 @@ from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -1641,12 +1641,12 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    # Activate (validate node credentials, clear stale optional ones) BEFORE
+    # Validate node credentials (and clear stale optional ones) BEFORE
     # persisting, so a credential issue can't leave the graph/library agent
-    # half-saved. on_graph_activate may also mutate input_default; those edits
+    # half-saved. before_graph_activate may also mutate input_default; those edits
     # need to be persisted, so it must run before create_graph.
     try:
-        graph = await on_graph_activate(graph, user_id=user_id)
+        graph = await before_graph_activate(graph, user_id=user_id)
     except GraphActivationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -1700,11 +1700,11 @@ async def update_graph(
 
     # If this new version is going to be active, validate node credentials
     # BEFORE persisting so a credential issue can't leave a half-saved version
-    # behind. on_graph_activate may also clear stale optional credentials —
+    # behind. before_graph_activate may also clear stale optional credentials —
     # those edits must be persisted, hence the pre-save call.
     if graph.is_active:
         try:
-            graph = await on_graph_activate(graph, user_id=user_id)
+            graph = await before_graph_activate(graph, user_id=user_id)
         except GraphActivationError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -1763,9 +1763,14 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
     try:
-        await on_graph_activate(new_active_graph, user_id=user_id)
+        new_active_graph = await before_graph_activate(
+            new_active_graph, user_id=user_id
+        )
     except GraphActivationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     # Ensure new version is the only active version

@@ -28,34 +28,39 @@ class GraphActivationError(Exception):
     """
 
 
-async def on_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
+async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     """
-    Hook to be called when a graph is activated/created.
+    Pre-activation hook: validates node credentials and clears stale optional
+    credential references in-memory. MUST be called BEFORE the graph is
+    persisted (and before it is marked active) — a failure here means nothing
+    should be saved, and the returned graph carries cleanup mutations that
+    need to be persisted by the caller.
 
-    ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
-    this hook calls `on_node_activate` on all nodes in this graph.
+    Do not use this for post-activation state changes; it has no DB writes
+    and is intentionally side-effect-free outside the passed-in graph object.
+
+    ⚠️ Assumes node entities are not re-used between graph versions. ⚠️
 
     Raises:
         GraphActivationError: when a required node credential is missing or
-            unusable. Run this BEFORE persisting the graph so a failure can't
-            leave the DB with a half-saved/unactivated graph.
+            unusable.
     """
-    graph = await _on_graph_activate(graph, user_id)
+    graph = await _before_graph_activate(graph, user_id)
     graph.sub_graphs = await asyncio.gather(
-        *(_on_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
+        *(_before_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
     )
     return graph
 
 
 @overload
-async def _on_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel": ...
+async def _before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel": ...
 
 
 @overload
-async def _on_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph": ...
+async def _before_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph": ...
 
 
-async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
+async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     get_credentials = credentials_manager.cached_getter(user_id)
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)

@@ -28,7 +28,7 @@ from backend.data.includes import (
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
@@ -686,12 +686,12 @@ async def create_graph_in_library(
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
-    # Activate (validate credentials, clean stale optional ones) BEFORE
+    # Validate credentials (and clean stale optional ones) BEFORE
     # persisting so a credential issue can't leave the graph and library
     # agent half-saved. Raises GraphActivationError for the caller to map
     # to a user-friendly response.
     if graph_model.is_active:
-        graph_model = await on_graph_activate(graph_model, user_id=user_id)
+        graph_model = await before_graph_activate(graph_model, user_id=user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -725,10 +725,10 @@ async def update_graph_in_library(
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
 
-    # Activate BEFORE persisting so a credential issue can't leave the new
+    # Validate BEFORE persisting so a credential issue can't leave the new
     # version half-saved. Raises GraphActivationError for the caller.
     if graph_model.is_active:
-        graph_model = await on_graph_activate(graph_model, user_id=user_id)
+        graph_model = await before_graph_activate(graph_model, user_id=user_id)
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
@@ -2068,7 +2068,7 @@ async def fork_library_agent(
     new_graph = await graph_db.fork_graph(
         original_agent.graph_id, original_agent.graph_version, user_id
     )
-    new_graph = await on_graph_activate(new_graph, user_id=user_id)
+    new_graph = await before_graph_activate(new_graph, user_id=user_id)
 
     # Create a library agent for the new graph, preserving safe mode settings
     return (

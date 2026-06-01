@@ -4,7 +4,7 @@ import pytest
 
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
-    _on_graph_activate,
+    _before_graph_activate,
 )
 
 
@@ -30,7 +30,7 @@ def _make_node(
 
 
 @pytest.mark.asyncio
-async def test_on_graph_activate_oauth_refresh_failure_raises_clear_error():
+async def test_before_graph_activate_oauth_refresh_failure_raises_clear_error():
     """A required credential whose OAuth refresh raises (e.g. invalid_grant)
     must surface as GraphActivationError with a 'please reconnect' message —
     not as an opaque 500."""
@@ -45,7 +45,7 @@ async def test_on_graph_activate_oauth_refresh_failure_raises_clear_error():
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
         with pytest.raises(GraphActivationError) as excinfo:
-            await _on_graph_activate(graph, "user-1")
+            await _before_graph_activate(graph, "user-1")
 
     msg = str(excinfo.value)
     assert "cred-1" in msg
@@ -54,7 +54,7 @@ async def test_on_graph_activate_oauth_refresh_failure_raises_clear_error():
 
 
 @pytest.mark.asyncio
-async def test_on_graph_activate_clears_optional_unloadable_credentials():
+async def test_before_graph_activate_clears_optional_unloadable_credentials():
     """An optional credential whose refresh fails should be cleared, not raise."""
     node = _make_node(required=False, optional_marker=True)
     graph = MagicMock(nodes=[node])
@@ -66,13 +66,13 @@ async def test_on_graph_activate_clears_optional_unloadable_credentials():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
-        await _on_graph_activate(graph, "user-1")
+        await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"] == {}
 
 
 @pytest.mark.asyncio
-async def test_on_graph_activate_missing_required_credential_raises_clear_error():
+async def test_before_graph_activate_missing_required_credential_raises_clear_error():
     """A required credential that no longer exists in the DB (returns None)
     raises GraphActivationError that names the missing credential and asks
     the user to pick a different one."""
@@ -84,7 +84,7 @@ async def test_on_graph_activate_missing_required_credential_raises_clear_error(
     ) as mgr:
         mgr.cached_getter.return_value = AsyncMock(return_value=None)
         with pytest.raises(GraphActivationError) as excinfo:
-            await _on_graph_activate(graph, "user-1")
+            await _before_graph_activate(graph, "user-1")
 
     msg = str(excinfo.value)
     assert "cred-1" in msg
@@ -92,7 +92,7 @@ async def test_on_graph_activate_missing_required_credential_raises_clear_error(
 
 
 @pytest.mark.asyncio
-async def test_on_graph_activate_succeeds_when_credentials_resolve():
+async def test_before_graph_activate_succeeds_when_credentials_resolve():
     """The happy path should be a no-op (no mutation, no raise)."""
     node = _make_node()
     graph = MagicMock(nodes=[node])
@@ -101,6 +101,6 @@ async def test_on_graph_activate_succeeds_when_credentials_resolve():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = AsyncMock(return_value=MagicMock())
-        await _on_graph_activate(graph, "user-1")
+        await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"] == {"id": "cred-1"}
