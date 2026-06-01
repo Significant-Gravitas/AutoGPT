@@ -57,7 +57,7 @@ describe("useAutoOpenArtifacts (card-based)", () => {
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
-  it("resets the panel state when sessionId changes", () => {
+  it("clears artifact preview state when sessionId changes", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
@@ -70,13 +70,14 @@ describe("useAutoOpenArtifacts (card-based)", () => {
       rerender({ sessionId: "s2" });
     });
 
+    // `isOpen` is shared with ContextPanel and intentionally left alone;
+    // the drawer hides because activeArtifact is null.
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
   });
 
-  it("closes the panel on unmount (SECRT-2254)", () => {
+  it("clears artifact preview on unmount (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
@@ -85,8 +86,9 @@ describe("useAutoOpenArtifacts (card-based)", () => {
       unmount();
     });
 
+    // Drawer is gated on activeArtifact, so clearing it is what hides the
+    // preview after nav-away. `isOpen` belongs to ContextPanel.
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
     expect(s.activeArtifact).toBeNull();
   });
 });
