@@ -308,7 +308,7 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
         "migrate_webhook_presets_to_new_version",
         return_value=2,
     )
-    mocker.patch.object(v1, "before_graph_activate", return_value=None)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
     body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)
@@ -347,7 +347,7 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
         "migrate_webhook_presets_to_new_version",
         return_value=0,
     )
-    mocker.patch.object(v1, "before_graph_activate", return_value=None)
+    mocker.patch.object(v1, "before_graph_activate", side_effect=lambda g, user_id: g)
     mocker.patch.object(v1, "on_graph_deactivate", return_value=None)
 
     body = v1.SetGraphActiveVersion(active_graph_version=target_graph.version)

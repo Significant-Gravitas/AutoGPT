@@ -10,7 +10,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.graph import BaseGraph, GraphModel, NodeModel
+    from backend.data.graph import BaseGraph, GraphModel, Node, NodeModel
     from backend.data.model import Credentials
 
     from ._base import BaseWebhooksManager
@@ -66,7 +66,7 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     # Collect every (node, field) credential reference up front so we can
     # resolve them in one parallel batch — important when a graph has
     # several distinct OAuth credentials that each need a refresh round-trip.
-    refs: list[tuple["NodeModel", str, dict, BlockSchema]] = []
+    refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
         for creds_field_name in block_input_schema.get_credentials_fields().keys():
@@ -97,7 +97,7 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
 
 
 def _apply_credential_result(
-    new_node: "NodeModel",
+    new_node: "Node | NodeModel",
     creds_field_name: str,
     creds_meta: dict,
     block_input_schema: BlockSchema,

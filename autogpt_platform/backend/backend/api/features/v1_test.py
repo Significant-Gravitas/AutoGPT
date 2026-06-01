@@ -932,6 +932,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
     response = client.put(
         "/graphs/graph-123",
         json={
+            "id": "graph-123",
             "name": "Test Graph",
             "description": "Test",
             "nodes": [],
