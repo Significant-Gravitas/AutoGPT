@@ -125,8 +125,8 @@ from backend.data.user import (
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
+from backend.api.utils.graph_activation import raise_400_on_activation_error
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    GraphActivationError,
     before_graph_activate,
     on_graph_deactivate,
 )
@@ -1645,10 +1645,8 @@ async def create_new_graph(
     # persisting, so a credential issue can't leave the graph/library agent
     # half-saved. before_graph_activate may also mutate input_default; those edits
     # need to be persisted, so it must run before create_graph.
-    try:
+    with raise_400_on_activation_error():
         graph = await before_graph_activate(graph, user_id=user_id)
-    except GraphActivationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
 
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
@@ -1703,10 +1701,8 @@ async def update_graph(
     # behind. before_graph_activate may also clear stale optional credentials —
     # those edits must be persisted, hence the pre-save call.
     if graph.is_active:
-        try:
+        with raise_400_on_activation_error():
             graph = await before_graph_activate(graph, user_id=user_id)
-        except GraphActivationError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
 
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
@@ -1767,12 +1763,10 @@ async def set_graph_active_version(
     # Capture the returned graph: before_graph_activate may clear stale
     # optional credential references, which we want propagated to the library
     # agent's settings sync below.
-    try:
+    with raise_400_on_activation_error():
         new_active_graph = await before_graph_activate(
             new_active_graph, user_id=user_id
         )
-    except GraphActivationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,

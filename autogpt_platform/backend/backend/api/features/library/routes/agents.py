@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 from prisma.enums import OnboardingStep
 
+from backend.api.utils.graph_activation import raise_400_on_activation_error
 from backend.data.onboarding import complete_onboarding_step
 
 from .. import db as library_db
@@ -213,10 +214,15 @@ async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
-    return await library_db.fork_library_agent(
-        library_agent_id=library_agent_id,
-        user_id=user_id,
-    )
+    # `library_db.fork_library_agent` activates the forked graph (validates
+    # node credentials) after the fork's own DB write. Catching the error
+    # at the route boundary at least surfaces it as a 400 today; making the
+    # save itself atomic is tracked as a follow-up.
+    with raise_400_on_activation_error():
+        return await library_db.fork_library_agent(
+            library_agent_id=library_agent_id,
+            user_id=user_id,
+        )
 
 
 # ── Trigger agent endpoints ─────────────────────────────────────────
