@@ -79,10 +79,31 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
             try:
                 resolved = await get_credentials(creds_meta["id"])
             except Exception as e:
-                logger.warning(
+                # Distinguish known credential-side failures (OAuth refresh
+                # rejected, 401/403 from the provider) from infra failures
+                # (DB pool exhaustion, Redis timeout, TypeError, …) so the
+                # latter show up at error level with a stack trace instead
+                # of being silently misreported as "please reconnect".
+                error_str = repr(e).lower()
+                is_known_credential_error = any(
+                    sig in error_str
+                    for sig in (
+                        "invalid_grant",
+                        "invalid_token",
+                        "unauthorized",
+                        "forbidden",
+                        " 401",
+                        " 403",
+                    )
+                )
+                log_message = (
                     f"Node #{new_node.id}: failed to load credentials "
                     f"#{creds_meta['id']} for '{creds_field_name}': {e!r}"
                 )
+                if is_known_credential_error:
+                    logger.warning(log_message)
+                else:
+                    logger.error(log_message, exc_info=True)
                 resolved = None
                 refresh_error = str(e) or e.__class__.__name__
 
