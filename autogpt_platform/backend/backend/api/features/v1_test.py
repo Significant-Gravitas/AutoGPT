@@ -844,6 +844,108 @@ def test_delete_graph(
     )
 
 
+def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Core atomicity guarantee: when before_graph_activate raises,
+    POST /graphs must return 400 and never call create_graph / create_library_agent.
+    Reordering activation back to post-save would break this test."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import (
+        GraphActivationError,
+    )
+
+    mock_graph_model = Mock()
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    create_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "name": "Test Graph",
+                "description": "Test",
+                "nodes": [],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    create_lib_agent_mock.assert_not_awaited()
+
+
+def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Same atomicity guarantee on PUT /graphs/{id}: an activation failure
+    must short-circuit with 400 before any new graph version is written."""
+    from backend.integrations.webhooks.graph_lifecycle_hooks import (
+        GraphActivationError,
+    )
+
+    mock_graph_model = Mock(is_active=True)
+    existing_version = Mock(version=1, is_active=True)
+    mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[existing_version]),
+    )
+    mocker.patch(
+        "backend.api.features.v1.graph_db.make_graph_model",
+        return_value=mock_graph_model,
+    )
+    activate_mock = mocker.patch(
+        "backend.api.features.v1.before_graph_activate",
+        new=AsyncMock(
+            side_effect=GraphActivationError(
+                "Credential #cred-1 needs reconnect — please reconnect"
+            )
+        ),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
+    )
+    update_lib_agent_mock = mocker.patch(
+        "backend.api.features.v1.library_db.update_library_agent_version_and_settings",
+        new=AsyncMock(),
+    )
+
+    response = client.put(
+        "/graphs/graph-123",
+        json={
+            "name": "Test Graph",
+            "description": "Test",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "reconnect" in response.json()["detail"]
+    activate_mock.assert_awaited_once()
+    create_graph_mock.assert_not_awaited()
+    update_lib_agent_mock.assert_not_awaited()
+
+
 # Invalid request tests
 def test_invalid_json_request() -> None:
     """Test endpoint with invalid JSON"""
