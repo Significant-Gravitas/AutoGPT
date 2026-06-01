@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRef } from "../store";
-import { useCopilotUIStore } from "../store";
+import { DEFAULT_PANEL_WIDTH, useCopilotUIStore } from "../store";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
@@ -221,7 +221,7 @@ describe("artifactPanel store actions", () => {
     expect(s.isMaximized).toBe(false);
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
-    expect(s.width).toBe(600); // DEFAULT_PANEL_WIDTH
+    expect(s.width).toBe(DEFAULT_PANEL_WIDTH);
   });
 });
 
