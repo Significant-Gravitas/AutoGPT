@@ -77,6 +77,7 @@ export async function downloadFilesAsZip(
   const save = deps.save ?? triggerDownload;
   const zip = new JSZip();
   const used = new Set<string>();
+  let added = 0;
   for (const entry of entries) {
     const res = await fetchImpl(fileDownloadUrl(entry.id));
     if (!res.ok) continue;
@@ -84,6 +85,10 @@ export async function downloadFilesAsZip(
     while (used.has(name)) name = `${entry.id.slice(0, 8)}-${name}`;
     used.add(name);
     zip.file(name, await res.blob());
+    added++;
+  }
+  if (added === 0) {
+    throw new Error("No files could be downloaded.");
   }
   const blob = await zip.generateAsync({ type: "blob" });
   save(blob, "workspace-files.zip");

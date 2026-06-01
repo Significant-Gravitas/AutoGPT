@@ -13,6 +13,7 @@ const DEFAULT_VIEWPORT_WIDTH = 1280;
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
+  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const minimizeArtifactPanel = useCopilotUIStore(
     (s) => s.minimizeArtifactPanel,
   );
@@ -50,13 +51,16 @@ export function useArtifactPanel() {
       if (e.key === "Escape") {
         if (document.querySelector('[role="dialog"], [data-state="open"]'))
           return;
-        closeArtifactPanel();
+        // Clear the preview content only — the drawer is gated on
+        // `activeArtifact`, so this hides it without touching the legacy
+        // `isOpen` persistence (which is shared with ContextPanel).
+        clearArtifactPreview();
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [artifactPanel.isOpen, closeArtifactPanel]);
+  }, [artifactPanel.isOpen, clearArtifactPreview]);
 
   // Track viewport width reactively for maximize mode.
   const [viewportWidth, setViewportWidth] = useState(

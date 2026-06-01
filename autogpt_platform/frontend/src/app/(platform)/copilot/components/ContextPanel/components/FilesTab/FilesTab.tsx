@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
@@ -71,8 +72,14 @@ export function FilesTab({ sessionId }: Props) {
 
   async function handleConfirmDelete() {
     if (!pendingDelete) return;
-    await deleteFile({ fileId: pendingDelete.item.id });
-    setPendingDelete(null);
+    try {
+      await deleteFile({ fileId: pendingDelete.item.id });
+    } catch {
+      // onError toast already surfaces the failure; swallow so the await
+      // settles and the dialog closes instead of staying open on rejection.
+    } finally {
+      setPendingDelete(null);
+    }
   }
 
   async function handleDownloadAll() {
@@ -103,9 +110,13 @@ export function FilesTab({ sessionId }: Props) {
 
   if (isError) {
     return (
-      <p className="p-6 text-center text-sm text-red-500">
-        Failed to load files.
-      </p>
+      <div className="p-3">
+        <ErrorCard
+          isSuccess={false}
+          context="files"
+          responseError={{ message: "Failed to load files." }}
+        />
+      </div>
     );
   }
 

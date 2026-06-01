@@ -45,9 +45,10 @@ export function ArtifactDragHandle({
       const delta = startXRef.current - moveEvent.clientX;
       const fromPercent =
         window.innerWidth * (maxWidthPercentRef.current / 100);
-      const effectiveMax = maxWidthRef.current
+      const rawMax = maxWidthRef.current
         ? Math.min(maxWidthRef.current, fromPercent)
         : fromPercent;
+      const effectiveMax = Math.max(minWidthRef.current, rawMax);
       const newWidth = Math.min(
         effectiveMax,
         Math.max(minWidthRef.current, startWidthRef.current + delta),
