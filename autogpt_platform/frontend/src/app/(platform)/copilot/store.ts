@@ -299,9 +299,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     })),
   resetArtifactPanel: () =>
     set((state) => ({
+      // Clear preview state only — leave `isOpen` alone since it's shared
+      // with ContextPanel, which would otherwise collapse on session
+      // switches (resetArtifactPanel runs in useAutoOpenArtifacts).
       artifactPanel: {
         ...state.artifactPanel,
-        isOpen: false,
         isMinimized: false,
         isMaximized: false,
         activeArtifact: null,

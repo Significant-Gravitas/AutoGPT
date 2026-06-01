@@ -136,7 +136,7 @@ describe("artifactPanel store actions", () => {
     expect(s.activeArtifact?.id).toBe("bin");
   });
 
-  it("resetArtifactPanel clears active artifact and history", () => {
+  it("resetArtifactPanel clears active artifact and history without touching isOpen", () => {
     const a = makeArtifact("a");
     const b = makeArtifact("b");
     useCopilotUIStore.getState().openArtifact(a);
@@ -146,7 +146,9 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().resetArtifactPanel();
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(false);
+    // `isOpen` is intentionally left alone — it's shared with ContextPanel
+    // and resetArtifactPanel runs on every session change.
+    expect(s.isOpen).toBe(true);
     expect(s.isMinimized).toBe(false);
     expect(s.isMaximized).toBe(false);
     expect(s.activeArtifact).toBeNull();
