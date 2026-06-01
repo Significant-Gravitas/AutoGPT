@@ -16,10 +16,7 @@ export function MorphingTextAnimation({ text, className }: Props) {
     // command strings.
     <div className={cn("min-w-0 overflow-hidden", className)}>
       <AnimatePresence mode="popLayout" initial={false}>
-        <motion.div
-          key={text}
-          className="truncate whitespace-nowrap"
-        >
+        <motion.div key={text} className="truncate whitespace-nowrap">
           <motion.span className="inline-flex overflow-hidden">
             {letters.map((char, index) => (
               <motion.span

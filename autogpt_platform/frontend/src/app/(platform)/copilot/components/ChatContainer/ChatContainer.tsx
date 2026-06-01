@@ -10,7 +10,6 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCopilotUIStore } from "../../store";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
