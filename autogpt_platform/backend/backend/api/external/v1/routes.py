@@ -23,7 +23,10 @@ from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
 )
-from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.integrations.webhooks.graph_lifecycle_hooks import (
+    GraphActivationError,
+    on_graph_activate,
+)
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
 
@@ -148,11 +151,17 @@ async def create_graph(
     graph_model.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
     graph_model.validate_graph(for_run=False)
 
+    # Activate BEFORE persisting so a credential issue can't leave the graph
+    # and library agent half-saved.
+    try:
+        graph_model = await on_graph_activate(graph_model, user_id=auth.user_id)
+    except GraphActivationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     await graph_db.create_graph(graph_model, user_id=auth.user_id)
     await library_db.create_library_agent(graph_model, auth.user_id)
-    activated_graph = await on_graph_activate(graph_model, user_id=auth.user_id)
 
-    return activated_graph
+    return graph_model
 
 
 @v1_router.post(

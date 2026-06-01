@@ -116,6 +116,7 @@ from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
+    GraphActivationError,
     on_graph_activate,
     on_graph_deactivate,
 )
@@ -1622,11 +1623,19 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
+    # Activate (validate node credentials, clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. on_graph_activate may also mutate input_default; those edits
+    # need to be persisted, so it must run before create_graph.
+    try:
+        graph = await on_graph_activate(graph, user_id=user_id)
+    except GraphActivationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    return activated_graph
+    return graph
 
 
 @v1_router.delete(
@@ -1671,13 +1680,22 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. on_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        try:
+            graph = await on_graph_activate(graph, user_id=user_id)
+        except GraphActivationError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
         )
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
@@ -1719,7 +1737,10 @@ async def set_graph_active_version(
     )
 
     # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    try:
+        await on_graph_activate(new_active_graph, user_id=user_id)
+    except GraphActivationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
