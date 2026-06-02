@@ -24,10 +24,7 @@ from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
 )
-from backend.api.utils.graph_activation import raise_400_on_activation_error
-from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    before_graph_activate,
-)
+from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -167,8 +164,7 @@ async def create_graph(
 
     # Validate BEFORE persisting so a credential issue can't leave the graph
     # and library agent half-saved.
-    with raise_400_on_activation_error():
-        graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
+    graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
 
     await graph_db.create_graph(graph_model, user_id=auth.user_id)
     await library_db.create_library_agent(graph_model, auth.user_id)
