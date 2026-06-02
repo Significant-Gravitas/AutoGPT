@@ -29,6 +29,7 @@ class ProviderName(str, Enum):
     ENRICHLAYER = "enrichlayer"
     IDEOGRAM = "ideogram"
     JINA = "jina"
+    LINKEDIN = "linkedin"
     LLAMA_API = "llama_api"
     MCP = "mcp"
     MEDIUM = "medium"

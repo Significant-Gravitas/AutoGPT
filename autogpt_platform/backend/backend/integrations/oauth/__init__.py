@@ -9,6 +9,7 @@ from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
+from .linkedin import LinkedInOAuthHandler
 from .twitter import TwitterOAuthHandler
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ _ORIGINAL_HANDLERS = [
     NotionOAuthHandler,
     RedditOAuthHandler,
     TwitterOAuthHandler,
+    LinkedInOAuthHandler,
     TodoistOAuthHandler,
 ]
 
