@@ -278,7 +278,10 @@ class DiscordAdapter(PlatformAdapter):
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
             return True  # DMs always count
-        return bool(self._client.user and self._client.user.mentioned_in(message))
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        return any(user.id == bot_user.id for user in message.mentions)
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
