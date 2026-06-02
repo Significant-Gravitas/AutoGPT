@@ -761,6 +761,64 @@ class TestStreamReplayCount:
             ChatConfig(stream_replay_count=0)
 
 
+class TestBaselineProvider:
+    """``baseline_provider`` keeps the baseline wire format and cost attribution
+    aligned with the endpoint ``main_client_credentials`` actually dials."""
+
+    def test_subscription_with_openrouter_creds_resolves_to_openrouter(self):
+        """Subscription + OR creds present routes the baseline OpenAI-compat
+        client to OpenRouter (the CLI's OAuth can't drive it), so the wire
+        format must be OpenRouter too. Regression for keying the dialect on
+        ``transport.name == "openrouter"`` — ``"subscription"`` here — which
+        sent direct-Anthropic shape to the OR endpoint."""
+        cfg = ChatConfig(
+            use_claude_code_subscription=True,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        # The endpoint and the dialect must agree.
+        assert cfg.effective_transport == "subscription"
+        assert cfg.main_client_credentials == (
+            "or-key",
+            "https://openrouter.ai/api/v1",
+        )
+        assert cfg.baseline_provider == "openrouter"
+
+    def test_subscription_without_openrouter_resolves_to_anthropic(self):
+        cfg = _make_direct_safe_config(use_claude_code_subscription=True)
+        assert cfg.baseline_provider == "anthropic"
+
+    def test_local_creds_do_not_leak_to_openrouter(self):
+        """A local install whose default ``api_key="ollama"`` satisfies the
+        shape-only ``openrouter_active`` must still resolve to ``local`` so OR
+        request shape never leaks into local turns."""
+        cfg = ChatConfig(
+            use_local=True,
+            use_openrouter=True,
+            api_key="ollama",
+            base_url="http://h:11434/v1",
+        )
+        assert cfg.baseline_provider == "local"
+
+    def test_openrouter_transport_resolves_to_openrouter(self):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        assert cfg.baseline_provider == "openrouter"
+
+    def test_direct_mode_resolves_to_anthropic(self):
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            direct_anthropic_api_key="anthropic-key",
+            api_key=None,
+            base_url=None,
+        )
+        assert cfg.baseline_provider == "anthropic"
+
+
 class TestMainClientCredentials:
     """``main_client_credentials`` picks the right (api_key, base_url) per transport."""
 

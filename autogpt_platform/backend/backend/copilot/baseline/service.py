@@ -784,15 +784,17 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
-        # ``openrouter_active`` is shape-only (use_openrouter + truthy api_key +
-        # http-ish base_url) — a local Ollama install with the default
-        # ``use_openrouter=True`` and ``api_key="ollama"`` satisfies it too,
-        # so OR-specific request shape would leak into local turns. Branch on
-        # the resolved transport name instead: that's the single source of
-        # truth for "what wire format is this turn actually using".
-        is_openrouter_transport = config.transport.name == "openrouter"
+        # The wire format must match the endpoint ``main_client_credentials``
+        # actually dialed — ``baseline_provider`` is the shared truth for both
+        # (local → openrouter_active → anthropic). Keying on
+        # ``transport.name == "openrouter"`` would send direct-Anthropic shape
+        # to an OpenRouter endpoint in subscription mode with OR creds present,
+        # where ``transport.name`` is ``"subscription"`` but the baseline client
+        # still routes to OpenRouter.
+        baseline_provider = config.baseline_provider
+        is_openrouter_transport = baseline_provider == "openrouter"
         extra_body: dict[str, Any] = {}
-        if config.transport.name == "local":
+        if baseline_provider == "local":
             # Ollama's OpenAI shim defaults to ``num_ctx=4096`` regardless of
             # the model's advertised window — silently truncating AutoPilot's
             # ~8 k system prompt and producing nonsense responses on the very
@@ -865,9 +867,7 @@ async def _baseline_llm_caller(
                     # non-Anthropic slug, so the recovery is a no-op for
                     # local — skip it explicitly so the intent is clear and
                     # we don't burn a rate-card lookup per usage chunk.
-                    direct_mode = (
-                        not is_openrouter_transport and config.transport.name != "local"
-                    )
+                    direct_mode = baseline_provider == "anthropic"
                     if cost is None and direct_mode:
                         # Direct mode: no usage.cost field (OR extension); compute from rate card.
                         ptd = chunk.usage.prompt_tokens_details
@@ -2366,13 +2366,8 @@ async def stream_chat_completion_baseline(
         # ``persist_and_record_usage`` no-ops the cost-credit charge when
         # ``cost_usd`` is None. Skip the rate-card call explicitly under
         # local transport so the intent is clear.
-        is_openrouter_transport = config.transport.name == "openrouter"
-        is_local_transport = config.transport.name == "local"
-        if (
-            state.cost_usd is None
-            and not is_openrouter_transport
-            and not is_local_transport
-        ):
+        baseline_provider = config.baseline_provider
+        if state.cost_usd is None and baseline_provider == "anthropic":
             recovered = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
@@ -2401,7 +2396,11 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            provider=config.transport.cost_log_provider,
+            provider=(
+                "open_router"
+                if baseline_provider == "openrouter"
+                else config.transport.cost_log_provider
+            ),
         )
 
         # Persist structured tool-call history (assistant + tool messages)

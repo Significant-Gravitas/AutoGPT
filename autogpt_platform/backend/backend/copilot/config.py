@@ -705,6 +705,33 @@ class ChatConfig(BaseSettings):
         return self.transport.supports_sdk
 
     @property
+    def baseline_provider(self) -> Literal["local", "openrouter", "anthropic"]:
+        """Endpoint + wire dialect the baseline OpenAI-compat client speaks.
+
+        The single source of truth that ``main_client_credentials`` (which
+        picks the endpoint) and the baseline request-shaping / cost path
+        (wire format + cost attribution) both read, so the dialect can never
+        disagree with the endpoint the client actually dialed.  Resolved
+        ``local → openrouter_active → anthropic`` — the same ladder as
+        ``main_client_credentials``.
+
+        Deliberately *not* ``effective_transport`` / ``transport.name``: in
+        subscription mode the CLI authenticates via OAuth, which can't drive
+        an OpenAI-compat client, so the baseline falls back to
+        OR-if-available-else-direct.  Keying the dialect on
+        ``transport.name == "openrouter"`` (which is ``"subscription"`` here)
+        while ``main_client_credentials`` still routes to OpenRouter (gated on
+        ``openrouter_active``) would send direct-Anthropic shape to an
+        OpenRouter endpoint.  ``local`` is checked first because its default
+        ``api_key="ollama"`` also satisfies the shape-only ``openrouter_active``.
+        """
+        if self.transport.name == "local":
+            return "local"
+        if self.openrouter_active:
+            return "openrouter"
+        return "anthropic"
+
+    @property
     def main_client_credentials(self) -> tuple[str | None, str | None]:
         """``(api_key, base_url)`` for the main OpenAI-compatible client.
 
@@ -724,9 +751,7 @@ class ChatConfig(BaseSettings):
           so the baseline OpenAI-compat client talks straight to
           api.anthropic.com.
         """
-        if self.transport.name == "local":
-            return self.api_key, self.base_url
-        if self.openrouter_active:
+        if self.baseline_provider in ("local", "openrouter"):
             return self.api_key, self.base_url
         return self.direct_anthropic_api_key, ANTHROPIC_OPENAI_COMPAT_BASE_URL
 
