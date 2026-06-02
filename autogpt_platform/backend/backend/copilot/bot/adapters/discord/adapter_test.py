@@ -1,7 +1,7 @@
 """Tests for DiscordAdapter helpers that don't need a live gateway."""
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -529,3 +529,57 @@ class TestRefreshServerNames:
         api.refresh_server_name.side_effect = RuntimeError("rpc down")
         # Must not raise — refreshing names is never critical-path.
         await adapter._refresh_server_name(_guild(1, "Server One"))
+
+
+# ── on_thread_remove ────────────────────────────────────────────────────
+
+
+def _thread(thread_id: int) -> MagicMock:
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = thread_id
+    return thread
+
+
+def _register_events_with_mocked_decorator(adapter: DiscordAdapter) -> dict:
+    """Capture the @client.event handlers without actually attaching to
+    discord.py. Returns a name→coroutine map for direct invocation."""
+    handlers: dict = {}
+
+    def _event(coro):
+        handlers[coro.__name__] = coro
+        return coro
+
+    adapter._client.event = _event  # type: ignore[assignment]
+    adapter._register_events()
+    return handlers
+
+
+class TestOnThreadRemove:
+    @pytest.mark.asyncio
+    async def test_removal_unsubscribes_thread(self):
+        # We use on_thread_remove instead of on_thread_member_remove so we
+        # don't need the privileged `members` intent. The trade-off is that
+        # this only tells us the bot lost access — which is exactly when we
+        # want to drop the subscription, so the trade-off is free.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await handlers["on_thread_remove"](_thread(555))
+
+        mock_unsub.assert_awaited_once_with("discord", "555")
+
+    @pytest.mark.asyncio
+    async def test_swallows_redis_failures(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            # Must not raise — cleanup is never critical-path.
+            await handlers["on_thread_remove"](_thread(555))

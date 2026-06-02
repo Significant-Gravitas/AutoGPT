@@ -12,6 +12,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import (
@@ -214,6 +215,21 @@ class DiscordAdapter(PlatformAdapter):
         async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
             if before.name != after.name:
                 await self._refresh_server_name(after)
+
+        @self._client.event
+        async def on_thread_remove(thread: discord.Thread) -> None:
+            # Fires when a thread is removed from the client's cache — the
+            # typical path is the bot being kicked or the thread being made
+            # private without us in it. Drop the auto-reply subscription so a
+            # subsequent re-add by @mention starts in the @-only mode again.
+            # Unlike on_thread_member_remove, this event only requires the
+            # default Intents.guilds and not the privileged members intent.
+            try:
+                await threads.unsubscribe("discord", str(thread.id))
+            except Exception:
+                logger.exception(
+                    f"Failed to unsubscribe thread {thread.id} after removal"
+                )
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
