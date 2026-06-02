@@ -111,14 +111,17 @@ class ChatConfig(BaseSettings):
         "via env without code changes.",
     )
     simulation_model: str = Field(
-        default=LlmModel.CLAUDE_4_5_HAIKU.value,
-        description="Model for dry-run block simulation. Must be a real LlmModel "
-        "slug — OrchestratorBlock's input validates this against the enum, and a "
-        "bad value here breaks every dry-run of an agent that contains an "
-        "Orchestrator. Default is Claude Haiku 4.5 because the Orchestrator "
-        "dry-run picks tools and produces a finish message, so a substitute "
-        "with stronger reasoning gives a more faithful preview than Flash-Lite "
-        "while staying cheap.",
+        default=LlmModel.GEMINI_2_5_FLASH_LITE.value,
+        description="Model for dry-run block simulation. Constraints: "
+        "(1) the LLM-simulation path calls OpenRouter's OpenAI-compat "
+        "endpoint with ``response_format=json_object`` and "
+        "``json.loads()`` the response — Claude wraps JSON in markdown "
+        "fences here, Gemini doesn't; (2) the orchestrator BUILT_IN "
+        "dry-run path dispatches on ``llm_model.metadata.provider`` — "
+        "a Claude default would hit ``api.anthropic.com`` with the "
+        "platform OR key and 401, while Gemini has provider=open_router "
+        "and routes correctly. Flash-Lite satisfies both and keeps "
+        "platform OR cost low.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(

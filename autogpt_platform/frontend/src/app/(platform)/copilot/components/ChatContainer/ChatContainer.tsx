@@ -17,6 +17,7 @@ import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/Copilo
 import { EmptySession } from "../EmptySession/EmptySession";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
+import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
@@ -206,6 +207,7 @@ export const ChatContainer = ({
                     </div>
                   </div>
                 )}
+                <SharedChatNotice sessionId={sessionId} />
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>

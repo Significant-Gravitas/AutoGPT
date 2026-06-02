@@ -15,6 +15,7 @@ from backend.copilot.response_model import (
 from backend.platform_linking.models import (
     ChatTurnHandle,
     LinkTokenResponse,
+    Platform,
     ResolveResponse,
 )
 from backend.util.exceptions import (
@@ -53,6 +54,24 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+
+
+class TestRefreshServerName:
+    @pytest.mark.asyncio
+    async def test_forwards_uppercased_platform(self, api: BotBackend):
+        api._client.refresh_server_link_name = AsyncMock()
+        await api.refresh_server_name("discord", "g1", "AutoGPT HQ")
+        api._client.refresh_server_link_name.assert_awaited_once_with(
+            platform=Platform.DISCORD,
+            platform_server_id="g1",
+            server_name="AutoGPT HQ",
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_call_when_server_name_is_empty(self, api: BotBackend):
+        api._client.refresh_server_link_name = AsyncMock()
+        await api.refresh_server_name("discord", "g1", "")
+        api._client.refresh_server_link_name.assert_not_awaited()
 
 
 class TestCreateLinkTokens:

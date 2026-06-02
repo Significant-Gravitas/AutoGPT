@@ -156,6 +156,20 @@ class TestManagerWiring:
         stub.assert_awaited_once_with(req)
         assert result is fake_response
 
+    @pytest.mark.asyncio
+    async def test_refresh_server_link_name_delegates(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.refresh_server_link_name = AsyncMock()
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            await manager.refresh_server_link_name(Platform.DISCORD, "g1", "AutoGPT HQ")
+        db_mock.refresh_server_link_name.assert_awaited_once_with(
+            "DISCORD", "g1", "AutoGPT HQ"
+        )
+
 
 class TestAdversarialConfirmRace:
     """Concurrent confirm of one token: exactly one winner via ``update_many``

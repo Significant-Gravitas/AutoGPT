@@ -218,6 +218,49 @@ class TestTruncationAndStashIntegration:
             sdk_cwd="/tmp/test",
         )
 
+    @pytest.mark.asyncio
+    async def test_empty_args_triggers_guard_when_required_args_present(self):
+        """Tools with at least one required arg should reject empty-args calls."""
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(
+            handler,
+            "tool_with_required",
+            input_schema={"type": "object", "properties": {"file_path": {}}},
+            required_args=["file_path"],
+        )
+        result = await wrapper({})
+        assert called is False
+        assert result.get("isError") is True
+        assert "empty arguments" in _text_from_mcp_result(result)
+
+    @pytest.mark.asyncio
+    async def test_empty_args_allowed_when_no_required_args(self):
+        """Tools whose params are all optional (filters-only) accept empty args."""
+        called = False
+
+        async def handler(args):
+            nonlocal called
+            called = True
+            assert args == {}
+            return {"content": [{"type": "text", "text": "listed"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(
+            handler,
+            "list_only_optional_filters",
+            input_schema={"type": "object", "properties": {"graph_id": {}}},
+            required_args=[],
+        )
+        result = await wrapper({})
+        assert called is True
+        assert result.get("isError") is not True
+        assert _text_from_mcp_result(result) == "listed"
+
     def test_small_output_stashed(self):
         """Non-error output is stashed for the response adapter."""
         result = {
@@ -663,6 +706,9 @@ class TestSDKDisallowedTools:
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
 
+    def test_schedule_wakeup_tool_is_disallowed(self):
+        assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
 
 # ---------------------------------------------------------------------------
 # _read_file_handler — bridge_and_annotate integration
@@ -719,6 +765,113 @@ class TestReadFileHandlerBridge:
             assert len(bridge_calls) == 1
             assert bridge_calls[0][0] is fake_sandbox
             assert "/tmp/abc-data.json" in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_skipped_when_envelope_pretty_printed(
+        self, tmp_path, monkeypatch
+    ):
+        """Pretty-printing the MCP envelope transforms the content the
+        model reads. The on-disk bytes are the raw envelope, so bridging
+        them to the sandbox would point the model at content that
+        doesn't match what ``read_tool_result`` just returned. Skip the
+        bridge in that case — the model can re-read or pipe via
+        ``@@agptfile:`` if it needs bash access."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # MCP envelope with JSON inner payload — _navigable_tool_result_text
+        # will pretty-print this, so navigable != raw.
+        test_file = tmp_path / "tool-results" / "envelope.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"execution": {"node_executions": [{"status": "OK"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        test_file.write_text(envelope)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-envelope.json]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {"file_path": str(test_file), "offset": 0, "limit": 2000}
+            )
+
+            assert result["isError"] is False
+            # The bridge MUST NOT be called: model sees pretty-printed
+            # JSON but the on-disk file holds the raw envelope.
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
+            # And the returned text is the pretty-printed payload, not
+            # the envelope wrapper, so the slicing is useful.
+            assert '"status": "OK"' in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_skipped_when_char_offset_used(self, tmp_path, monkeypatch):
+        """``char_offset`` slices the navigable content; the on-disk
+        bytes don't carry that slice, so bridging would mislead bash
+        operations into reading a different range than the model just
+        saw. Skip the bridge regardless of whether pretty-printing
+        kicked in for this file."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        # File whose content is NOT an envelope — navigable == raw.
+        # The bridge would normally fire here; char_offset must still
+        # suppress it.
+        test_file = tmp_path / "tool-results" / "plain.txt"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text("the quick brown fox " * 100)
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox: Any = object()
+        token = _current_sandbox.set(fake_sandbox)
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-plain.txt]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {
+                    "file_path": str(test_file),
+                    "char_offset": 100,
+                    "char_limit": 50,
+                }
+            )
+
+            assert result["isError"] is False
+            assert bridge_calls == []
+            assert "Sandbox copy" not in result["content"][0]["text"]
         finally:
             _current_sandbox.reset(token)
 
@@ -1079,3 +1232,50 @@ class TestCreateCopilotMcpServerHidden:
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+class TestNavigableToolResultText:
+    """``_navigable_tool_result_text`` unwraps the CLI's MCP envelope and
+    pretty-prints inner JSON so line-based offset/limit slice into the
+    actual payload, not the envelope wrapper. Regression coverage for
+    the bug where the model bounced off ``bash_exec | python3 -c`` to
+    parse a tool result it could have read directly."""
+
+    def test_envelope_with_json_payload_is_pretty_printed(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        payload = {"execution": {"node_executions": [{"status": "FAILED"}]}}
+        envelope = json.dumps([{"type": "text", "text": json.dumps(payload)}])
+        out = _navigable_tool_result_text(envelope)
+        # The output should be pretty-printed JSON with multiple lines,
+        # not the single minified blob that was inside the envelope.
+        assert "\n" in out
+        assert '"status": "FAILED"' in out
+        assert json.loads(out) == payload
+
+    def test_envelope_with_non_json_text_returns_unwrapped(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        envelope = json.dumps(
+            [{"type": "text", "text": "plain shell output\nwith newlines\n"}]
+        )
+        out = _navigable_tool_result_text(envelope)
+        assert out == "plain shell output\nwith newlines\n"
+
+    def test_non_envelope_input_is_returned_unchanged(self):
+        from .tool_adapter import _navigable_tool_result_text
+
+        # Files that don't match the envelope shape stay as-is.
+        assert _navigable_tool_result_text("not even json") == "not even json"
+        assert (
+            _navigable_tool_result_text('{"single": "object"}')
+            == '{"single": "object"}'
+        )
+        # Multi-block envelope: don't unwrap (lossy).
+        multi = json.dumps(
+            [
+                {"type": "text", "text": "a"},
+                {"type": "image", "data": "..."},
+            ]
+        )
+        assert _navigable_tool_result_text(multi) == multi

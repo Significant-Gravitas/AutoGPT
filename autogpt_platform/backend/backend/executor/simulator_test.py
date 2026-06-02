@@ -20,6 +20,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 from backend.blocks.llm import LlmModel
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _extract_cost_usd,
@@ -171,10 +172,129 @@ class TestPrepareDryRun:
         # Simulation model must parse as a real LlmModel so OrchestratorBlock's
         # Pydantic input validation accepts it.
         assert LlmModel(result["model"]) is not None
+        # The injected model must be a canonical LlmModel value (string equal
+        # to one of the enum's ``.value``s), not an OpenRouter alias slug —
+        # OrchestratorBlock.validate_data → jsonschema only accepts literal
+        # ``LlmModel.value``s in the schema's ``enum``, and the alias map
+        # in ``LlmModel._missing_`` does not surface in the generated
+        # JSON Schema.  Anything else trips
+        # ``"'<slug>' is not one of [...]"`` at runtime.
+        canonical_values = {m.value for m in LlmModel}
+        assert result["model"] in canonical_values, (
+            f"prepare_dry_run injected non-canonical model {result['model']!r}; "
+            f"jsonschema validation will reject it"
+        )
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
+
+    def test_orchestrator_invalid_sim_model_override_falls_back_to_default(
+        self,
+    ) -> None:
+        """An invalid ``CHAT_SIMULATION_MODEL`` env value must not crash
+        ``prepare_dry_run`` — fall back to the default so dry-run keeps
+        working.  Without the guard, ``LlmModel('<garbage>')`` raises
+        ``ValueError`` and aborts every Orchestrator dry-run."""
+        with (
+            patch(
+                "backend.executor.simulator._get_platform_openrouter_key",
+                return_value="sk-or-test-key",
+            ),
+            patch(
+                "backend.executor.simulator._simulator_model",
+                return_value="not-a-real-model-slug",
+            ),
+        ):
+            result = prepare_dry_run(
+                OrchestratorBlock(),
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        # Must land on the default value, not the garbage override.
+        assert result["model"] == LlmModel(_DEFAULT_SIMULATOR_MODEL).value, (
+            "Invalid CHAT_SIMULATION_MODEL should fall back to default; "
+            f"got {result['model']!r}"
+        )
+
+    def test_orchestrator_forces_built_in_execution_mode(self) -> None:
+        """prepare_dry_run overrides ``execution_mode`` to ``BUILT_IN``
+        regardless of user choice.  With ``sim_model`` defaulting to
+        Gemini Flash-Lite (provider=open_router):
+
+          - BUILT_IN routes ``llm.llm_call`` to its open_router branch
+            (OpenAI SDK against openrouter.ai with the OR key) — works.
+          - EXTENDED_THINKING would hit the SDK subprocess's
+            ``model.value.startswith("claude")`` guard and raise
+            ``ValueError`` for any non-Claude sim_model.
+
+        Honouring the user's pick would force sim_model back to Claude
+        (to satisfy EXTENDED_THINKING), which in turn breaks the
+        LLM-simulation path for every non-Orchestrator block in the
+        same graph (Claude wraps JSON-mode output in markdown fences,
+        Gemini doesn't)."""
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            # User explicitly picked EXTENDED_THINKING — the dry-run
+            # still overrides to BUILT_IN.
+            result = prepare_dry_run(
+                block,
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        assert result["execution_mode"] == ExecutionMode.BUILT_IN.value, (
+            f"prepare_dry_run must force BUILT_IN to keep Gemini sim_model "
+            f"off the SDK's Claude-only gate; got {result['execution_mode']!r}"
+        )
+
+    def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
+        """The injected dry-run input must pass OrchestratorBlock.validate_data.
+
+        Pinning this prevents the SECRT-2368 follow-up bug class where
+        prepare_dry_run injects an OpenRouter slug that LlmModel resolves
+        via the alias map at the Pydantic layer, but jsonschema enum
+        validation (which runs *before* Pydantic) rejects.
+        """
+        block = OrchestratorBlock()
+        user_input = {
+            "prompt": "test",
+            "model": LlmModel.CLAUDE_4_7_OPUS.value,
+            "credentials": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "provider": "open_router",
+                "type": "api_key",
+            },
+            "agent_mode_max_iterations": 1,
+            "execution_mode": "built_in",
+            "multiple_tool_calls": False,
+            "max_tokens": 50,
+            "retry": 0,
+        }
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            dry_input = prepare_dry_run(block, user_input)
+        assert dry_input is not None
+        # Strip simulator-internal markers before validating, just like
+        # manager.py does before calling Input(**...).
+        validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
+        err = block.input_schema.validate_data(validation_input)
+        assert (
+            err is None
+        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
@@ -570,17 +690,31 @@ def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
 
 
 class TestDefaultSimulatorModel:
-    """Pin the default model — anyone flipping this without a cost review
-    trips the test, and anyone setting it to a non-enum value fails the
-    LlmModel parseability check (the bug class behind SECRT-2368)."""
+    """Pin the default model.  Four guards line up with the constraints
+    laid out next to ``_DEFAULT_SIMULATOR_MODEL`` in ``simulator.py``:
+    value pin, ``LlmModel`` parseability, OpenRouter slug shape, and
+    ``open_router`` provider routing (so the BUILT_IN orchestrator path
+    in ``llm.llm_call`` doesn't get routed through ``api.anthropic.com``
+    with the platform OR key)."""
 
-    def test_default_is_haiku_4_5(self) -> None:
-        assert _DEFAULT_SIMULATOR_MODEL == "claude-haiku-4-5-20251001"
+    def test_default_is_gemini_flash_lite(self) -> None:
+        assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
 
     def test_default_parses_as_llm_model(self) -> None:
-        # OrchestratorBlock.Input.model is typed as LlmModel and rejects
-        # any default that isn't an enum member — keep this guard tight.
-        assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.CLAUDE_4_5_HAIKU
+        assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.GEMINI_2_5_FLASH_LITE
+
+    def test_default_is_openrouter_slug(self) -> None:
+        # The LLM-simulation path hits OpenRouter's OpenAI-compat endpoint,
+        # which only accepts canonical ``<vendor>/<model>`` slugs.
+        assert "/" in _DEFAULT_SIMULATOR_MODEL
+
+    def test_default_provider_is_open_router(self) -> None:
+        # ``llm.llm_call`` dispatches on ``llm_model.metadata.provider``.
+        # An ``anthropic`` provider would route OR-dry-run-credentials
+        # at ``api.anthropic.com`` → 401.  Pin ``open_router`` here so
+        # a future default change that breaks this routing trips at
+        # unit-test time.
+        assert LlmModel(_DEFAULT_SIMULATOR_MODEL).metadata.provider == "open_router"
 
 
 class TestExtractCostUsd:
