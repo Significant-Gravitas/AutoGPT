@@ -14,6 +14,7 @@ import openpyxl
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 MODEL = "claude-sonnet-4-6"
+MAX_TOKENS = 16384
 
 
 OM_PROMPT = """You are a commercial real estate analyst extracting data from an Offering Memorandum (OM).
@@ -127,12 +128,29 @@ def _excel_to_text(file_bytes: bytes) -> str:
     return "\n".join(lines)
 
 
+def _parse_response(response) -> Dict[str, Any]:
+    """Extract JSON from a Claude response, surfacing truncation clearly."""
+    if response.stop_reason == "max_tokens":
+        raise ValueError(
+            "Document is too large to extract in a single pass (model output was "
+            f"truncated at {MAX_TOKENS} tokens). Try splitting the document or "
+            "uploading a summary rent roll."
+        )
+    text = response.content[0].text.strip()
+    # Strip markdown code fences if present
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text)
+
+
 def _call_claude_pdf(pdf_bytes: bytes, prompt: str) -> Dict[str, Any]:
     """Send PDF to Claude for extraction."""
     b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
     response = client.messages.create(
         model=MODEL,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         messages=[
             {
                 "role": "user",
@@ -150,20 +168,14 @@ def _call_claude_pdf(pdf_bytes: bytes, prompt: str) -> Dict[str, Any]:
             }
         ],
     )
-    text = response.content[0].text.strip()
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text)
+    return _parse_response(response)
 
 
 def _call_claude_text(content: str, prompt: str) -> Dict[str, Any]:
     """Send text content to Claude for extraction."""
     response = client.messages.create(
         model=MODEL,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         messages=[
             {
                 "role": "user",
@@ -171,12 +183,7 @@ def _call_claude_text(content: str, prompt: str) -> Dict[str, Any]:
             }
         ],
     )
-    text = response.content[0].text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text)
+    return _parse_response(response)
 
 
 def parse_offering_memorandum(file_bytes: bytes, filename: str) -> Dict[str, Any]:
