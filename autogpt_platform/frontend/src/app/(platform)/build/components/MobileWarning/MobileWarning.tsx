@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { DeviceMobile } from "@phosphor-icons/react";
+import { DeviceMobileIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 export function MobileWarning() {
@@ -19,18 +19,12 @@ export function MobileWarning() {
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="builder-mobile-warning-title"
+      role="alert"
       className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-50/95 p-6 backdrop-blur-sm"
     >
       <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-lg">
-        <DeviceMobile className="h-10 w-10 text-amber-600" />
-        <Text
-          variant="h3"
-          id="builder-mobile-warning-title"
-          className="text-center text-amber-900"
-        >
+        <DeviceMobileIcon className="h-10 w-10 text-amber-600" />
+        <Text variant="h3" className="text-center text-amber-900">
           Builder works best on desktop
         </Text>
         <Text variant="body" className="text-center text-amber-800">
