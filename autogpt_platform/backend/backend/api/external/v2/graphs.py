@@ -8,12 +8,14 @@ import logging
 from typing import Optional
 from uuid import uuid4
 
+import prisma.models
 from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
+from backend.api.features.store.model import StoreAgentDetails
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -443,10 +445,6 @@ async def get_marketplace_listing_for_graph(
     ),
 ) -> MarketplaceAgentDetails:
     """Get the marketplace listing for a given graph, if one exists."""
-    import prisma.models
-
-    from backend.api.features.store.model import StoreAgentDetails
-
     agent = await prisma.models.StoreAgent.prisma().find_first(
         where={"graph_id": graph_id}
     )

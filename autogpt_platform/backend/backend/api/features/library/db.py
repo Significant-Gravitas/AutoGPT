@@ -557,7 +557,7 @@ async def update_agent_version_in_library(
                     },
                 },
             },
-            include={"AgentGraph": True},
+            include={"AgentGraph": {"include": {"Nodes": True}}},
         )
 
     if lib is None:
@@ -565,7 +565,10 @@ async def update_agent_version_in_library(
             f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
         )
 
-    return library_model.LibraryAgent.from_db(lib)
+    sub_graphs = (
+        await graph_db.get_sub_graphs(lib.AgentGraph) if lib.AgentGraph else None
+    )
+    return library_model.LibraryAgent.from_db(lib, sub_graphs=sub_graphs)
 
 
 async def create_graph_in_library(

@@ -13,6 +13,7 @@ from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.external.middleware import require_auth, require_permission
+from backend.api.features.library import db as library_db
 from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
 from backend.api.features.store import media as store_media
@@ -20,6 +21,7 @@ from backend.api.features.store.db import (
     StoreAgentsSortOptions,
     StoreCreatorsSortOptions,
 )
+from backend.api.features.store.model import ProfileUpdateRequest
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.virus_scanner import scan_content_safe
 
@@ -147,8 +149,6 @@ async def add_agent_to_library(
     ),
 ) -> LibraryAgent:
     """Add a marketplace agent to the authenticated user's library."""
-    from backend.api.features.library import db as library_db
-
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
 
@@ -262,8 +262,6 @@ async def update_profile(
     ),
 ) -> MarketplaceUserProfile:
     """Update the authenticated user's marketplace profile."""
-    from backend.api.features.store.model import ProfileUpdateRequest
-
     profile = ProfileUpdateRequest(
         name=request.name,
         username=request.username,

@@ -18,6 +18,11 @@ from backend.api.external.middleware import require_permission
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.execution import ExecutionContext
+from backend.data.graph import get_graph_settings
+from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.user import get_user_by_id
+from backend.data.workspace import get_or_create_workspace
 from backend.executor import utils as execution_utils
 from backend.util.settings import Settings
 
@@ -315,13 +320,31 @@ async def submit_reviews(
     All pending reviews for the run must be included in the request.
     Approving a review continues execution; rejecting terminates that branch.
     """
+    # Validate run_id: ensure the submitted node_exec_ids belong to this run
+    pending_reviews = await review_db.get_pending_reviews_for_execution(
+        graph_exec_id=run_id,
+        user_id=auth.user_id,
+    )
+    valid_node_exec_ids = {r.node_exec_id for r in pending_reviews}
+    submitted_ids = {d.node_exec_id for d in request.reviews}
+    invalid_ids = submitted_ids - valid_node_exec_ids
+    if invalid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Review IDs not found for run {run_id}: " f"{', '.join(invalid_ids)}"
+            ),
+        )
+
     # Build review decisions dict for process_all_reviews_for_execution
     review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}
 
     for decision in request.reviews:
-        status = ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED
+        decision_status = (
+            ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED
+        )
         review_decisions[decision.node_exec_id] = (
-            status,
+            decision_status,
             decision.edited_payload,
             decision.message,
         )
@@ -337,6 +360,36 @@ async def submit_reviews(
     rejected_count = sum(
         1 for r in results.values() if r.status == ReviewStatus.REJECTED
     )
+
+    # Resume graph execution if no more pending reviews remain
+    if results:
+        still_has_pending = await review_db.has_pending_reviews_for_graph_exec(run_id)
+        if not still_has_pending:
+            first_review = next(iter(results.values()))
+            try:
+                user = await get_user_by_id(auth.user_id)
+                settings = await get_graph_settings(
+                    user_id=auth.user_id, graph_id=first_review.graph_id
+                )
+                user_timezone = (
+                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+                )
+                workspace = await get_or_create_workspace(auth.user_id)
+                execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=(settings.human_in_the_loop_safe_mode),
+                    sensitive_action_safe_mode=(settings.sensitive_action_safe_mode),
+                    user_timezone=user_timezone,
+                    workspace_id=workspace.id,
+                )
+                await execution_utils.add_graph_execution(
+                    graph_id=first_review.graph_id,
+                    user_id=auth.user_id,
+                    graph_exec_id=run_id,
+                    execution_context=execution_context,
+                )
+                logger.info(f"Resumed execution {run_id}")
+            except Exception as e:
+                logger.error(f"Failed to resume execution {run_id}: {e}")
 
     return AgentRunReviewsSubmitResponse(
         run_id=run_id,
