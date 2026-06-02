@@ -63,10 +63,14 @@ WORKDIR /app/autogpt_platform/backend
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+# libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
+# Node (copied from the builder, which had it via build-essential) dynamically
+# links libatomic.so.1 — without it `node` exits 127 and migrate crash-loops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
     python3-pip \
     ca-certificates \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from builder (needed for Prisma CLI)
@@ -106,6 +110,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     tree \
     bubblewrap \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy poetry (build-time only, for `poetry install --only-root` to create entry points)

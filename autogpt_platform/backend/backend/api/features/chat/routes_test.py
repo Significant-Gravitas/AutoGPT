@@ -1144,7 +1144,11 @@ def test_stream_chat_accepts_exactly_max_length_message(
 # ─── list_sessions ────────────────────────────────────────────────────
 
 
-def _make_session_info(session_id: str = "sess-1", title: str | None = "Test"):
+def _make_session_info(
+    session_id: str = "sess-1",
+    title: str | None = "Test",
+    source_platform: str | None = None,
+):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -1155,7 +1159,7 @@ def _make_session_info(session_id: str = "sess-1", title: str | None = "Test"):
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(),
+        metadata=ChatSessionMetadata(source_platform=source_platform),
     )
 
 
@@ -1187,6 +1191,32 @@ def test_list_sessions_returns_sessions(mocker: pytest_mock.MockerFixture) -> No
     assert len(data["sessions"]) == 1
     assert data["sessions"][0]["id"] == "sess-abc"
     assert data["sessions"][0]["is_processing"] is False
+
+
+def test_list_sessions_returns_source_platform(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _make_session_info("sess-discord", source_platform="discord")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=["done"])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["source_platform"] == "discord"
 
 
 def test_list_sessions_marks_running_as_processing(
