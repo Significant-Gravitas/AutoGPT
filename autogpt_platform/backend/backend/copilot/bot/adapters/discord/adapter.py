@@ -12,6 +12,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import (
@@ -214,6 +215,22 @@ class DiscordAdapter(PlatformAdapter):
         async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
             if before.name != after.name:
                 await self._refresh_server_name(after)
+
+        @self._client.event
+        async def on_thread_member_remove(member: discord.ThreadMember) -> None:
+            # Fires when anyone is removed from a thread (kicked or self-leave).
+            # If the kicked member is us, drop the auto-reply subscription so
+            # we don't keep replying if someone re-adds us by @mention later.
+            bot_user = self._client.user
+            if bot_user is None or member.id != bot_user.id:
+                return
+            try:
+                await threads.unsubscribe("discord", str(member.thread_id))
+            except Exception:
+                logger.exception(
+                    "Failed to unsubscribe thread %s after bot kick",
+                    member.thread_id,
+                )
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:

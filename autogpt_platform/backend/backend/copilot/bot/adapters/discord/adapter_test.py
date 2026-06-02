@@ -1,7 +1,7 @@
 """Tests for DiscordAdapter helpers that don't need a live gateway."""
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -514,3 +514,67 @@ class TestRefreshServerNames:
         api.refresh_server_name.side_effect = RuntimeError("rpc down")
         # Must not raise — refreshing names is never critical-path.
         await adapter._refresh_server_name(_guild(1, "Server One"))
+
+
+# ── on_thread_member_remove ─────────────────────────────────────────────
+
+
+def _thread_member(member_id: int, thread_id: int) -> MagicMock:
+    member = MagicMock(spec=discord.ThreadMember)
+    member.id = member_id
+    member.thread_id = thread_id
+    return member
+
+
+def _register_events_with_mocked_decorator(adapter: DiscordAdapter) -> dict:
+    """Capture the @client.event handlers without actually attaching to
+    discord.py. Returns a name→coroutine map for direct invocation."""
+    handlers: dict = {}
+
+    def _event(coro):
+        handlers[coro.__name__] = coro
+        return coro
+
+    adapter._client.event = _event  # type: ignore[assignment]
+    adapter._register_events()
+    return handlers
+
+
+class TestOnThreadMemberRemove:
+    @pytest.mark.asyncio
+    async def test_bot_kicked_unsubscribes_thread(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await handlers["on_thread_member_remove"](_thread_member(1000, 555))
+
+        mock_unsub.assert_awaited_once_with("discord", "555")
+
+    @pytest.mark.asyncio
+    async def test_other_member_kicked_is_ignored(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await handlers["on_thread_member_remove"](_thread_member(2000, 555))
+
+        mock_unsub.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_swallows_redis_failures(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            # Must not raise — kick handling is never critical-path.
+            await handlers["on_thread_member_remove"](_thread_member(1000, 555))
