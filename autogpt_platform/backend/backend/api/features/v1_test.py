@@ -11,12 +11,12 @@ import starlette.datastructures
 from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.rest_api import handle_internal_http_error
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
     SkillNotFoundError,
 )
-from backend.api.rest_api import handle_internal_http_error
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
@@ -855,9 +855,7 @@ def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(
     """Core atomicity guarantee: when before_graph_activate raises,
     POST /graphs must return 400 and never call create_graph / create_library_agent.
     Reordering activation back to post-save would break this test."""
-    from backend.integrations.webhooks.graph_lifecycle_hooks import (
-        GraphActivationError,
-    )
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 
     mock_graph_model = Mock()
     mocker.patch(
@@ -904,9 +902,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
 ) -> None:
     """Same atomicity guarantee on PUT /graphs/{id}: an activation failure
     must short-circuit with 400 before any new graph version is written."""
-    from backend.integrations.webhooks.graph_lifecycle_hooks import (
-        GraphActivationError,
-    )
+    from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 
     mock_graph_model = Mock(is_active=True)
     existing_version = Mock(version=1, is_active=True)

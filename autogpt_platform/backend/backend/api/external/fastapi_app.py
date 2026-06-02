@@ -31,9 +31,7 @@ async def _user_paywalled_handler(_request: Request, exc: UserPaywalledError):
 # Mirror of rest_api.py's mapping — bad/revoked node credentials during graph
 # activation surface as a clear 400 instead of an opaque 500.
 @external_api.exception_handler(GraphActivationError)
-async def _graph_activation_error_handler(
-    _request: Request, exc: GraphActivationError
-):
+async def _graph_activation_error_handler(_request: Request, exc: GraphActivationError):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
