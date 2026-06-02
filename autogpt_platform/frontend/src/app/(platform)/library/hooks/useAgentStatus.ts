@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import {
   isActive,
+  isAgentScheduled,
   isFailed,
   toEndTime,
   SEVENTY_TWO_HOURS_MS,
@@ -64,7 +65,7 @@ function computeAgentStatus(
         "Execution failed";
     } else if (agent.has_external_trigger) {
       status = "listening";
-    } else if (agent.is_scheduled || agent.recommended_schedule_cron) {
+    } else if (isAgentScheduled(agent)) {
       status = "scheduled";
     } else {
       status = "idle";
@@ -196,7 +197,7 @@ export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
         counts.error += 1;
       } else if (agent.has_external_trigger) {
         counts.listening += 1;
-      } else if (agent.is_scheduled || agent.recommended_schedule_cron) {
+      } else if (isAgentScheduled(agent)) {
         counts.scheduled += 1;
       } else {
         counts.idle += 1;
