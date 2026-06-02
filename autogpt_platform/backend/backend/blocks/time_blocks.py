@@ -445,7 +445,7 @@ class CountdownTimerBlock(Block):
         repeat: int = SchemaField(
             description="Number of times to repeat the timer",
             default=1,
-            ge=1,
+            ge=0,
             le=1000,
         )
 
@@ -472,6 +472,9 @@ class CountdownTimerBlock(Block):
         )
 
     MAX_TOTAL_SECONDS = 7 * 86400  # 7 days
+    # Override the default 30-minute block timeout so the configured cap
+    # is actually reachable; add a small buffer for scheduler overhead.
+    execution_timeout_seconds: int | None = MAX_TOTAL_SECONDS + 60
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         seconds = int(input_data.seconds)
@@ -485,10 +488,12 @@ class CountdownTimerBlock(Block):
             raise ValueError(
                 f"Countdown duration must be non-negative, got {total_seconds}s"
             )
-        if total_seconds > self.MAX_TOTAL_SECONDS:
+        cumulative_seconds = total_seconds * input_data.repeat
+        if cumulative_seconds > self.MAX_TOTAL_SECONDS:
             raise ValueError(
-                f"Countdown duration {total_seconds}s exceeds max "
-                f"({self.MAX_TOTAL_SECONDS}s = 7 days)"
+                f"Cumulative countdown duration {cumulative_seconds}s "
+                f"(per-iteration {total_seconds}s × repeat {input_data.repeat}) "
+                f"exceeds max ({self.MAX_TOTAL_SECONDS}s = 7 days)"
             )
 
         for _ in range(input_data.repeat):

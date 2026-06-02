@@ -20,6 +20,13 @@ async def test_countdown_timer_rejects_excessive_duration():
 
 
 @pytest.mark.asyncio
+async def test_countdown_timer_rejects_cumulative_duration_over_cap():
+    block = CountdownTimerBlock()
+    with pytest.raises(ValueError, match="exceeds max"):
+        await _run(block, days=1, repeat=10)
+
+
+@pytest.mark.asyncio
 async def test_countdown_timer_rejects_negative_duration():
     block = CountdownTimerBlock()
     with pytest.raises(ValueError, match="non-negative"):
@@ -35,3 +42,16 @@ async def test_countdown_timer_allows_duration_at_cap(mocker):
     outputs = await _run(block, days=7, repeat=1)
     assert outputs == [("output_message", "timer finished")]
     sleep_mock.assert_awaited_once_with(7 * 86400)
+
+
+@pytest.mark.asyncio
+async def test_countdown_timer_allows_repeat_zero():
+    block = CountdownTimerBlock()
+    outputs = await _run(block, seconds=1, repeat=0)
+    assert outputs == []
+
+
+def test_countdown_timer_execution_timeout_covers_max_duration():
+    block = CountdownTimerBlock()
+    assert block.execution_timeout_seconds is not None
+    assert block.execution_timeout_seconds >= block.MAX_TOTAL_SECONDS
