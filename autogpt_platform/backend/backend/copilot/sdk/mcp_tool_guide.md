@@ -20,15 +20,9 @@ Use these URLs directly without asking the user:
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |
 | Atlassian / Jira | `https://mcp.atlassian.com/mcp` |
 
-For other services, search the MCP registry API:
-```http
-GET https://registry.modelcontextprotocol.io/v0/servers?q=<search_term>
-```
-Each result includes a `remotes` array with the exact server URL to use.
-
-If the registry has no entry, **web-search for the service's official MCP
-server URL** (e.g. "`<service>` MCP server URL") — many vendors host an MCP
-server that isn't registered yet. Treat search results as unvetted: confirm
+For other services, **web-search for the service's official MCP server URL**
+(e.g. "`<service>` MCP server URL") — many vendors host an MCP server even
+when it's not in the list above. Treat search results as unvetted: confirm
 the hostname is vendor-owned before using it (see below).
 
 ### Important: Check blocks first, then MCP is MANDATORY
@@ -42,17 +36,14 @@ on their behalf. Before telling the user a service isn't supported, you
 MUST:
 
 1. Check the known hosted MCP servers list above, AND
-2. If the service isn't there, search the registry API
-   (`https://registry.modelcontextprotocol.io/v0/servers?q=<service>`), AND
-3. If the registry has no entry, web-search for the service's official MCP
+2. If the service isn't there, web-search for the service's official MCP
    server URL.
 
-Only after **all** of these return nothing may you say the service isn't
+Only after **both** of these return nothing may you say the service isn't
 supported.
 
 **Never guess or construct MCP server URLs.** Only use URLs from the known
-servers list above, the `remotes[].url` field in MCP registry search
-results, or a vendor-owned URL confirmed via web search.
+servers list above, or a vendor-owned URL confirmed via web search.
 
 ### Authentication
 
