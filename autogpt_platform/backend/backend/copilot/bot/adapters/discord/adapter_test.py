@@ -516,14 +516,13 @@ class TestRefreshServerNames:
         await adapter._refresh_server_name(_guild(1, "Server One"))
 
 
-# ── on_thread_member_remove ─────────────────────────────────────────────
+# ── on_thread_remove ────────────────────────────────────────────────────
 
 
-def _thread_member(member_id: int, thread_id: int) -> MagicMock:
-    member = MagicMock(spec=discord.ThreadMember)
-    member.id = member_id
-    member.thread_id = thread_id
-    return member
+def _thread(thread_id: int) -> MagicMock:
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = thread_id
+    return thread
 
 
 def _register_events_with_mocked_decorator(adapter: DiscordAdapter) -> dict:
@@ -540,9 +539,13 @@ def _register_events_with_mocked_decorator(adapter: DiscordAdapter) -> dict:
     return handlers
 
 
-class TestOnThreadMemberRemove:
+class TestOnThreadRemove:
     @pytest.mark.asyncio
-    async def test_bot_kicked_unsubscribes_thread(self):
+    async def test_removal_unsubscribes_thread(self):
+        # We use on_thread_remove instead of on_thread_member_remove so we
+        # don't need the privileged `members` intent. The trade-off is that
+        # this only tells us the bot lost access — which is exactly when we
+        # want to drop the subscription, so the trade-off is free.
         adapter, _ = _bare_adapter(bot_id=1000)
         handlers = _register_events_with_mocked_decorator(adapter)
 
@@ -550,22 +553,9 @@ class TestOnThreadMemberRemove:
             "backend.copilot.bot.threads.unsubscribe",
             new=AsyncMock(),
         ) as mock_unsub:
-            await handlers["on_thread_member_remove"](_thread_member(1000, 555))
+            await handlers["on_thread_remove"](_thread(555))
 
         mock_unsub.assert_awaited_once_with("discord", "555")
-
-    @pytest.mark.asyncio
-    async def test_other_member_kicked_is_ignored(self):
-        adapter, _ = _bare_adapter(bot_id=1000)
-        handlers = _register_events_with_mocked_decorator(adapter)
-
-        with patch(
-            "backend.copilot.bot.threads.unsubscribe",
-            new=AsyncMock(),
-        ) as mock_unsub:
-            await handlers["on_thread_member_remove"](_thread_member(2000, 555))
-
-        mock_unsub.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_swallows_redis_failures(self):
@@ -576,5 +566,5 @@ class TestOnThreadMemberRemove:
             "backend.copilot.bot.threads.unsubscribe",
             new=AsyncMock(side_effect=RuntimeError("redis down")),
         ):
-            # Must not raise — kick handling is never critical-path.
-            await handlers["on_thread_member_remove"](_thread_member(1000, 555))
+            # Must not raise — cleanup is never critical-path.
+            await handlers["on_thread_remove"](_thread(555))
