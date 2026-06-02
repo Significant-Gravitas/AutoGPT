@@ -7,6 +7,9 @@ agents, runs, library, and other platform features programmatically.
 
 Uses Streamable HTTP transport with stateless sessions, authenticated via the
 same API key / OAuth bearer token mechanism as the rest of the external API.
+
+Tool visibility is scope-aware: ``tools/list`` only returns tools whose
+required permissions are satisfied by the caller's API key / OAuth token.
 """
 
 import logging
@@ -38,6 +41,8 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
+META_KEY_REQUIRED_SCOPES = "required_scopes"
+
 
 # ---------------------------------------------------------------------------
 # Server factory
@@ -49,7 +54,7 @@ def create_mcp_server() -> FastMCP:
     settings = Settings()
     base_url = settings.config.platform_base_url or "https://platform.agpt.co"
 
-    server = FastMCP(
+    server = _ScopeAwareMCP(
         name="autogpt-platform",
         instructions=(
             "AutoGPT Platform MCP Server. "
@@ -81,6 +86,29 @@ def create_mcp_app() -> Starlette:
     """Create the Starlette ASGI app for the MCP server."""
     server = create_mcp_server()
     return server.streamable_http_app()
+
+
+# ---------------------------------------------------------------------------
+# Scope-aware FastMCP subclass
+# ---------------------------------------------------------------------------
+
+
+class _ScopeAwareMCP(FastMCP):
+    """FastMCP subclass that filters ``tools/list`` by the caller's scopes."""
+
+    async def list_tools(self) -> list:
+        all_tools = await super().list_tools()
+        access_token = get_access_token()
+        if not access_token:
+            return []
+        caller_scopes = set(access_token.scopes)
+        return [
+            t
+            for t in all_tools
+            if caller_scopes.issuperset(
+                (t.meta or {}).get(META_KEY_REQUIRED_SCOPES, [])
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +153,7 @@ def _create_tool_handler(
     """Create an async MCP tool handler that wraps a BaseTool subclass.
 
     The handler checks that the caller's API key / OAuth token
-    has all `required_scopes` before executing the tool.
+    has all ``required_scopes`` before executing the tool.
     """
 
     async def handler(ctx: Context, **kwargs: Any) -> str:
@@ -133,14 +161,13 @@ def _create_tool_handler(
         if not access_token:
             return "Authentication required"
 
-        # Enforce per-tool permission scopes
         if required_scopes:
             missing = [s for s in required_scopes if s not in access_token.scopes]
             if missing:
-                return f"Missing required permission(s): " f"{', '.join(missing)}"
+                return f"Missing required permission(s): {', '.join(missing)}"
 
         user_id = access_token.client_id
-        session = ChatSession.new(user_id)
+        session = ChatSession.new(user_id, dry_run=False)
 
         result = await _execute_tool_sync(tool, user_id, session, kwargs)
 
@@ -170,6 +197,7 @@ def _register_tool(
         is_async=True,
         context_kwarg="ctx",
         annotations=None,
+        meta={META_KEY_REQUIRED_SCOPES: required_scopes},
     )
     server._tool_manager._tools[tool.name] = mcp_tool
 
