@@ -106,7 +106,12 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["metadata"] == {"origin": "user-upload"}
     assert data["files"][1]["id"] == "f2"
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=True
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -128,7 +133,12 @@ def test_list_files_scopes_to_session_when_provided(
     assert data["has_more"] is False
     mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", "sess-123")
     mock_instance.list_files.assert_called_once_with(
-        limit=201, offset=0, include_all_sessions=False
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -544,7 +554,12 @@ def test_list_files_has_more_true_when_limit_exceeded(
     assert data["files"][0]["id"] == "f1"
     assert data["files"][1]["id"] == "f2"
     mock_instance.list_files.assert_called_once_with(
-        limit=3, offset=0, include_all_sessions=True
+        path=None,
+        limit=3,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
 
 
@@ -579,8 +594,176 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     assert response.status_code == 200
     assert response.json()["offset"] == 50
     mock_instance.list_files.assert_called_once_with(
-        limit=11, offset=50, include_all_sessions=True
+        path=None,
+        limit=11,
+        offset=50,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
     )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_origin_autopilot_scopes_to_sessions_path(
+    mock_manager_cls, mock_get_workspace
+):
+    """origin=autopilot maps to path='/sessions/' on the manager call."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=autopilot")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path="/sessions/",
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_origin_builder_excludes_sessions_path(
+    mock_manager_cls, mock_get_workspace
+):
+    """origin=builder maps to path_not_starts_with='/sessions/'."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=builder")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with="/sessions/",
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_origin_ignored_when_session_id_set(
+    mock_manager_cls, mock_get_workspace
+):
+    """origin is dropped when session_id is provided (session implies origin)."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?origin=builder&session_id=sess-123")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=False,
+        name_contains=None,
+        path_not_starts_with=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_q_search_passed_through(mock_manager_cls, mock_get_workspace):
+    """q forwards to name_contains after stripping."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=report")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="report",
+        path_not_starts_with=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_blank_q_becomes_none(mock_manager_cls, mock_get_workspace):
+    """Whitespace-only q is normalized to None instead of an empty filter."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=%20%20%20")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_q_and_origin_combine(mock_manager_cls, mock_get_workspace):
+    """q and origin compose into one filter on the manager call."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?q=report&origin=autopilot")
+    assert response.status_code == 200
+    mock_instance.list_files.assert_called_once_with(
+        path="/sessions/",
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="report",
+        path_not_starts_with=None,
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_empty_session_id_treated_as_omitted(
+    mock_manager_cls, mock_get_workspace, test_user_id
+):
+    """Empty session_id must not silently list files across every session."""
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?session_id=")
+    assert response.status_code == 200
+    # Manager should be constructed with session_id=None, not ""
+    mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", None)
+    mock_instance.list_files.assert_called_once_with(
+        path=None,
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains=None,
+        path_not_starts_with=None,
+    )
+
+
+def test_list_files_rejects_invalid_origin():
+    """FastAPI Literal validation rejects unknown origin values."""
+    response = client.get("/files?origin=nonsense")
+    assert response.status_code == 422
 
 
 def test_upload_virus_scan_infrastructure_error_returns_500(mocker):

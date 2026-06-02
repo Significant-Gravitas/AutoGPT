@@ -11,7 +11,7 @@ from datetime import datetime
 import discord
 from discord import app_commands
 
-from backend.copilot.bot import sessions
+from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
 from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
@@ -54,6 +54,13 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
     )
     async def resume_command(interaction: discord.Interaction) -> None:
         await _handle_resume(interaction, api)
+
+    @tree.command(
+        name="leave",
+        description="Stop AutoPilot from auto-replying in this thread",
+    )
+    async def leave_command(interaction: discord.Interaction) -> None:
+        await _handle_leave(interaction)
 
 
 async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> None:
@@ -183,6 +190,31 @@ async def _handle_new(interaction: discord.Interaction) -> None:
 
     await interaction.response.send_message(
         "Started a fresh conversation — send a message to begin.",
+        ephemeral=True,
+    )
+
+
+async def _handle_leave(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.channel, discord.Thread):
+        await interaction.response.send_message(
+            "Use `/leave` inside a thread. I only auto-reply in threads I'm "
+            "subscribed to.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        await threads.unsubscribe("discord", str(interaction.channel.id))
+    except Exception:
+        logger.exception("Failed to unsubscribe thread for /leave")
+        await interaction.response.send_message(
+            "Couldn't step out of this thread right now. Please try again in a moment.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        "Going quiet in this thread. @mention me to bring me back.",
         ephemeral=True,
     )
 
