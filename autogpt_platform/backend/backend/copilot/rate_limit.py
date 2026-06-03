@@ -951,8 +951,14 @@ async def _maybe_reconcile_stale_stripe_tier(user_id: str) -> bool:
     if user.subscription_tier_source != SubscriptionTierSource.STRIPE:
         return False
     last = user.last_stripe_reconciled_at
-    if last is not None and datetime.now(UTC) - last < _STRIPE_STALE_AFTER:
-        return False
+    if last is not None:
+        # The column is TIMESTAMP (no tz); Prisma may hand it back tz-naive.
+        # Coerce to UTC before comparing against the aware now() to avoid a
+        # "can't subtract offset-naive and offset-aware datetimes" TypeError.
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        if datetime.now(UTC) - last < _STRIPE_STALE_AFTER:
+            return False
     return await _maybe_reconcile_stripe_tier(user_id)
 
 

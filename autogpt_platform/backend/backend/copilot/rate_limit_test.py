@@ -2830,3 +2830,27 @@ class TestMaybeReconcileStaleStripeTier:
         ):
             assert await _maybe_reconcile_stale_stripe_tier(_USER) is True
             inner.assert_awaited_once_with(_USER)
+
+    @pytest.mark.asyncio
+    async def test_naive_reconciled_timestamp_does_not_raise(self):
+        # Prisma can hand back the TIMESTAMP column tz-naive; a fresh naive value
+        # must compare cleanly (no aware/naive TypeError) and skip the reconcile.
+        user = MagicMock()
+        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.last_stripe_reconciled_at = datetime.now(UTC).replace(
+            tzinfo=None
+        ) - timedelta(hours=1)
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is False
+            inner.assert_not_awaited()
