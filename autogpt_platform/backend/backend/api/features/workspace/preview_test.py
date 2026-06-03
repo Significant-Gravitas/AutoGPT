@@ -171,6 +171,23 @@ def test_office_preview_corrupt_zip_returns_415(mocker):
     response = client.get("/files/file-001/preview")
 
     assert response.status_code == 415
+    assert response.json()["detail"] == "Cannot render preview"
+
+
+def test_preview_404_when_bytes_missing_from_storage(mocker):
+    _mock_lookups(mocker, _make_file(mime_type="text/plain"))
+    storage = mocker.MagicMock()
+    storage.retrieve_partial = AsyncMock(side_effect=FileNotFoundError("gone"))
+    storage.retrieve = AsyncMock(side_effect=FileNotFoundError("gone"))
+    mocker.patch(
+        "backend.api.features.workspace.preview.get_workspace_storage",
+        AsyncMock(return_value=storage),
+    )
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 404
 
 
 def test_text_preview_caps_bytes(mocker):

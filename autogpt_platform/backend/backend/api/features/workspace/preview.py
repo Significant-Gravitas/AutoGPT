@@ -72,6 +72,16 @@ async def build_preview_response(
     file: WorkspaceFile, *, width: int, max_bytes: int
 ) -> Response:
     """Dispatch on MIME type and return the smallest useful preview."""
+    try:
+        return await _dispatch_preview(file, width=width, max_bytes=max_bytes)
+    except FileNotFoundError as e:
+        # File row exists but its bytes are gone from storage.
+        raise fastapi.HTTPException(status_code=404, detail="File not found") from e
+
+
+async def _dispatch_preview(
+    file: WorkspaceFile, *, width: int, max_bytes: int
+) -> Response:
     mime = (file.mime_type or "").lower()
 
     if mime.startswith("image/") and "svg" not in mime:
