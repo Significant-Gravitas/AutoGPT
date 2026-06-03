@@ -72,7 +72,9 @@ TEST_CREDENTIALS_INPUT = {
 class _StreamHandle(Protocol):
     def start(self, *, require_auth: bool = ...) -> None: ...
     def get_auth_key(self) -> str: ...
-    def get_url(self, *, auth_key: Optional[str] = ...) -> str: ...
+    def get_url(
+        self, *, auth_key: Optional[str] = ..., view_only: bool = ...
+    ) -> str: ...
 
 
 class _CommandsHandle(Protocol):
@@ -201,12 +203,21 @@ class E2BDesktopCreateBlock(Block):
             )
         )
         stream_url: str = SchemaField(
-            description="Live browser-accessible stream URL. Embed as an iframe."
+            description=(
+                "Interactive stream URL — the viewer can control the desktop "
+                "(mouse + keyboard). Embed as an iframe for the active operator."
+            )
+        )
+        view_only_url: str = SchemaField(
+            description=(
+                "View-only stream URL — same live desktop, but input is disabled. "
+                "Share this to let others watch without being able to interact."
+            )
         )
         auth_key: str = SchemaField(
             description=(
                 "Auth key required to view the stream (when "
-                "stream_require_auth=True). Already included in stream_url."
+                "stream_require_auth=True). Already included in both URLs."
             )
         )
         error: str = SchemaField(description="Error message if creation failed.")
@@ -236,12 +247,17 @@ class E2BDesktopCreateBlock(Block):
             test_output=[
                 ("sandbox_id", "mock-sandbox-id"),
                 ("stream_url", "https://mock-stream.e2b.dev/stream?auth=mock-key"),
+                (
+                    "view_only_url",
+                    "https://mock-stream.e2b.dev/stream?auth=mock-key&view_only=true",
+                ),
                 ("auth_key", "mock-auth-key"),
             ],
             test_mock={
                 "create_desktop": lambda *args, **kwargs: (
                     "mock-sandbox-id",
                     "https://mock-stream.e2b.dev/stream?auth=mock-key",
+                    "https://mock-stream.e2b.dev/stream?auth=mock-key&view_only=true",
                     "mock-auth-key",
                 )
             },
@@ -256,7 +272,7 @@ class E2BDesktopCreateBlock(Block):
         stream_require_auth: bool,
         resolution: tuple[int, int],
         dpi: int,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, str]:
         desktop = _create_sandbox(
             api_key, template_id or None, timeout, resolution, dpi
         )
@@ -266,7 +282,10 @@ class E2BDesktopCreateBlock(Block):
         desktop.stream.start(require_auth=stream_require_auth)
         auth_key = desktop.stream.get_auth_key() if stream_require_auth else ""
         stream_url = desktop.stream.get_url(auth_key=auth_key or None)
-        return desktop.sandbox_id, stream_url, auth_key
+        view_only_url = desktop.stream.get_url(
+            auth_key=auth_key or None, view_only=True
+        )
+        return desktop.sandbox_id, stream_url, view_only_url, auth_key
 
     async def create_desktop(
         self,
@@ -277,7 +296,7 @@ class E2BDesktopCreateBlock(Block):
         stream_require_auth: bool,
         resolution: tuple[int, int],
         dpi: int,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, str]:
         return await asyncio.to_thread(
             self._create_desktop,
             api_key,
@@ -297,7 +316,7 @@ class E2BDesktopCreateBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            sandbox_id, stream_url, auth_key = await self.create_desktop(
+            sandbox_id, stream_url, view_only_url, auth_key = await self.create_desktop(
                 api_key=credentials.api_key.get_secret_value(),
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
@@ -308,6 +327,7 @@ class E2BDesktopCreateBlock(Block):
             )
             yield "sandbox_id", sandbox_id
             yield "stream_url", stream_url
+            yield "view_only_url", view_only_url
             yield "auth_key", auth_key
         except Exception as e:
             yield "error", str(e)
