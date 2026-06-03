@@ -46,7 +46,7 @@ export function VideoPreview({ file, onError }: PreviewProps) {
         preload="metadata"
         muted
         playsInline
-        onLoadedData={() => setIsLoaded(true)}
+        onLoadedMetadata={() => setIsLoaded(true)}
         onError={onError}
         className={cn(
           "h-full w-full object-cover transition-opacity duration-300",

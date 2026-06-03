@@ -18,6 +18,37 @@ function sniffDelimiter(firstLine: string): string {
   return best;
 }
 
+// Quote-aware CSV field tokenizer (RFC 4180): respects quoted fields that
+// contain the delimiter and "" escaped quotes. Keeps preview tables correct for
+// values like `"Doe, John",42`.
+function splitCsvLine(line: string, delimiter: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"' && line[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        cell += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === delimiter) {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell);
+  return cells.map((value) => value.trim());
+}
+
 export function parseCsv(
   text: string,
   opts: { maxRows?: number; maxCols?: number } = {},
@@ -25,18 +56,18 @@ export function parseCsv(
   const maxRows = opts.maxRows ?? 6;
   const maxCols = opts.maxCols ?? 6;
 
+  // The byte-capped fetch can cut mid-row, leaving a trailing partial line with
+  // no terminating newline. Only drop the last line in that truncated case so
+  // complete files keep every row.
+  const truncated = text.length > 0 && !/\r?\n\s*$/.test(text);
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  // The byte-capped fetch may cut mid-row; drop the last (possibly partial) line.
-  if (lines.length > 1) lines.pop();
+  if (truncated && lines.length > 1) lines.pop();
   if (lines.length === 0) return null;
 
   const delimiter = sniffDelimiter(lines[0]);
-  const cells = lines.slice(0, maxRows).map((line) =>
-    line
-      .split(delimiter)
-      .slice(0, maxCols)
-      .map((cell) => cell.trim().replace(/^"|"$/g, "")),
-  );
+  const cells = lines
+    .slice(0, maxRows)
+    .map((line) => splitCsvLine(line, delimiter).slice(0, maxCols));
 
   const [headers, ...rows] = cells;
   return { headers, rows };

@@ -134,7 +134,12 @@ async def _pdf_thumbnail(file: WorkspaceFile, width: int) -> bytes:
 async def _office_thumbnail(file: WorkspaceFile, width: int) -> bytes:
     async def render() -> bytes:
         content = await _retrieve(file)
-        raw = await asyncio.to_thread(_extract_zip_thumbnail, content)
+        try:
+            raw = await asyncio.to_thread(_extract_zip_thumbnail, content)
+        except Exception as e:
+            raise fastapi.HTTPException(
+                status_code=415, detail="Cannot render preview"
+            ) from e
         if raw is None:
             raise fastapi.HTTPException(status_code=415, detail="No embedded thumbnail")
         return await _to_thread_webp(_resize_webp, raw, width)

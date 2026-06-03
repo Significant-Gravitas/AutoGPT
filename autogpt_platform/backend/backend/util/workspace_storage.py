@@ -327,11 +327,11 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
         """Retrieve the first ``max_bytes`` of a local file."""
         file_path = self._parse_storage_path(storage_path)
 
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {storage_path}")
-
-        async with aiofiles.open(file_path, "rb") as f:
-            return await f.read(max_bytes)
+        try:
+            async with aiofiles.open(file_path, "rb") as f:
+                return await f.read(max_bytes)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"File not found: {storage_path}") from e
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from local storage."""

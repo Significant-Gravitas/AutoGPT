@@ -163,6 +163,16 @@ def test_office_preview_without_thumbnail_returns_415(mocker):
     assert response.status_code == 415
 
 
+def test_office_preview_corrupt_zip_returns_415(mocker):
+    _mock_lookups(mocker, _make_file(mime_type=PPTX_MIME))
+    _mock_storage(mocker, b"not-a-zip-file")
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 415
+
+
 def test_text_preview_caps_bytes(mocker):
     _mock_lookups(mocker, _make_file(mime_type="text/plain"))
     storage = _mock_storage(mocker, b"x" * 10_000)

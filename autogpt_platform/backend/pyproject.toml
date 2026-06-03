@@ -102,7 +102,7 @@ pymssql = "^2.3.2"
 pymysql = "^1.1.1"
 pyarrow = "^23.0.0"
 sqlparse = "^0.5.5"
-pillow = "<12"
+pillow = ">=9.1.0,<12"
 pypdfium2 = "^5.8.0"
 
 [tool.poetry.group.dev.dependencies]

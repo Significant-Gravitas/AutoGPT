@@ -13,6 +13,7 @@ export function useFileText(url: string, onError: () => void): string | null {
 
   useEffect(() => {
     let cancelled = false;
+    setText(null);
     async function load() {
       try {
         const res = await fetch(url);
