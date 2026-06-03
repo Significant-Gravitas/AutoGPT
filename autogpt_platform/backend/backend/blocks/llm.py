@@ -304,8 +304,8 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
 # Reverse mapping: LlmModel → OpenRouter slug for provider dispatch.
 # When sending requests to OpenRouter we must use the provider-prefixed
 # slug (e.g. ``anthropic/claude-opus-4-7``) rather than the bare enum
-# value (``claude-opus-4-7``).  Built lazily from _OPENROUTER_ALIASES
-# so the two tables stay in sync.
+# value (``claude-opus-4-7``).  Built from _OPENROUTER_ALIASES via dict
+# inversion so the two tables stay in sync.
 _OPENROUTER_REVERSE: dict[LlmModel, str] = {
     v: k for k, v in _OPENROUTER_ALIASES.items()
 }
