@@ -19,15 +19,34 @@ from prisma.enums import SubscriptionTier, SubscriptionTierSource
 from prisma.models import User
 from pydantic import BaseModel
 
-from backend.data.credit import build_price_to_tier_map, set_subscription_tier
+from backend.data.credit import (
+    alert_tier_reconciliation_discrepancy,
+    build_price_to_tier_map,
+    log_tier_reconciliation_discrepancy,
+    set_subscription_tier,
+)
 
 logger = logging.getLogger(__name__)
+
+# Cap how many per-user lines are inlined into the Discord ops alert so a mass
+# incident doesn't post a wall of text; the full set is in the logs/PostHog.
+_ALERT_DETAIL_CAP = 25
 
 # Bound the Stripe pagination so a runaway/unexpected dataset can't loop forever.
 # At 100 subs/page this caps a single sweep at 500k subscriptions; if it's ever
 # hit the sweep logs and stops rather than silently truncating without notice.
 _MAX_SUBSCRIPTION_PAGES = 5000
 _PAGE_SIZE = 100
+
+
+class TierDiscrepancy(BaseModel):
+    """One Stripe<->DB tier mismatch the sweep had to correct."""
+
+    user_id: str
+    stripe_customer_id: str | None
+    previous_tier: SubscriptionTier
+    new_tier: SubscriptionTier
+    direction: str
 
 
 class ReconciliationSummary(BaseModel):
@@ -40,6 +59,7 @@ class ReconciliationSummary(BaseModel):
     unchanged: int = 0
     errors: int = 0
     pagination_capped: bool = False
+    discrepancies: list[TierDiscrepancy] = []
 
 
 async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
@@ -66,7 +86,42 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
         summary.errors,
         summary.pagination_capped,
     )
+    if summary.discrepancies:
+        await _alert_sweep_discrepancies(summary)
     return summary
+
+
+async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
+    """Loudly surface that the sweep had to correct tiers.
+
+    A non-empty sweep means Stripe webhooks were dropped or missed — a payments-
+    integrity incident, not a routine correction. Steady state must be ZERO, so
+    any correction pages the ops channel and logs at ERROR (→ Sentry).
+    """
+    lines = "\n".join(
+        f"- {d.direction}: {d.previous_tier.value} → {d.new_tier.value} "
+        f"user={d.user_id} customer={d.stripe_customer_id}"
+        for d in summary.discrepancies[:_ALERT_DETAIL_CAP]
+    )
+    overflow = len(summary.discrepancies) - _ALERT_DETAIL_CAP
+    if overflow > 0:
+        lines += f"\n…and {overflow} more"
+    logger.error(
+        "Stripe tier reconciliation sweep corrected %d discrepancy(ies) "
+        "(%d downgrade, %d upgrade) — Stripe webhooks are likely dropping events; "
+        "steady state must be ZERO.",
+        len(summary.discrepancies),
+        summary.downgrades,
+        summary.upgrades,
+    )
+    await alert_tier_reconciliation_discrepancy(
+        f"🚨 **Stripe tier reconciliation sweep corrected "
+        f"{len(summary.discrepancies)} discrepancy(ies)** "
+        f"({summary.downgrades} downgrade, {summary.upgrades} upgrade).\n"
+        f"Each means a Stripe webhook was likely missed — **investigate the "
+        f"webhook pipeline**; this is a payments-integrity signal, not a routine "
+        f"correction. Steady state must be ZERO.\n{lines}"
+    )
 
 
 async def _reconcile_one(
@@ -93,6 +148,22 @@ async def _reconcile_one(
             user.id[:8],
         )
         return
+    direction = log_tier_reconciliation_discrepancy(
+        user_id=user.id,
+        stripe_customer_id=user.stripeCustomerId,
+        previous_tier=current_tier,
+        new_tier=target_tier,
+        via="sweep",
+    )
+    summary.discrepancies.append(
+        TierDiscrepancy(
+            user_id=user.id,
+            stripe_customer_id=user.stripeCustomerId,
+            previous_tier=current_tier,
+            new_tier=target_tier,
+            direction=direction,
+        )
+    )
     if target_tier == SubscriptionTier.NO_TIER:
         summary.downgrades += 1
     else:

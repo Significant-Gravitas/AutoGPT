@@ -551,11 +551,51 @@ async def test_reconcile_stripe_tier_no_active_sub_downgrades_payer(
     mock_set = mocker.patch(
         "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
     )
+    mock_alert = mocker.patch(
+        "backend.data.credit.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+    )
 
     assert await reconcile_stripe_tier_for_user("user_abc") is True
     mock_set.assert_awaited_once_with(
         "user_abc", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
     )
+    # A silently-missed cancellation webhook must alert ops, not be corrected quietly.
+    mock_alert.assert_awaited_once()
+    assert "DOWNGRADED" in mock_alert.await_args.args[0]
+
+
+async def test_reconcile_stripe_tier_lazy_upgrade_alerts(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A lazy reconcile that finds an active sub the DB missed also alerts ops."""
+    user = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.NO_TIER,
+        subscription_tier_source=SubscriptionTierSource.STRIPE,
+    )
+    upgraded = MagicMock(subscription_tier=SubscriptionTier.PRO)
+    mocker.patch(
+        "backend.data.credit.get_user_by_id",
+        new_callable=AsyncMock,
+        side_effect=[user, upgraded],
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value={"id": "sub_1", "customer": "cus_abc", "status": "active"},
+    )
+    mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    mock_alert = mocker.patch(
+        "backend.data.credit.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+    )
+
+    assert await reconcile_stripe_tier_for_user("user_abc") is True
+    mock_alert.assert_awaited_once()
+    assert "upgrade" in mock_alert.await_args.args[0]
 
 
 async def test_reconcile_stripe_tier_admin_user_skipped(

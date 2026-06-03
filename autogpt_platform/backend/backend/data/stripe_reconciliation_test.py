@@ -48,9 +48,19 @@ def _patch_stripe_pages(
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_alert(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Patch the Discord ops alert for every test so none hits the network."""
+    return mocker.patch(
+        "backend.data.stripe_reconciliation.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+    )
+
+
 @pytest.mark.asyncio
 async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
 ) -> None:
     mocker.patch(
         "backend.data.stripe_reconciliation.build_price_to_tier_map",
@@ -90,6 +100,46 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     set_tier.assert_any_await(
         "u_down", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
     )
+    # Each correction is recorded, and the sweep alerts ops exactly once (not
+    # per-user) with the discrepancy counts.
+    assert {d.direction for d in summary.discrepancies} == {"upgrade", "downgrade"}
+    assert len(summary.discrepancies) == 2
+    mock_alert.assert_awaited_once()
+    alert_msg = mock_alert.await_args.args[0]
+    assert "2 discrepancy" in alert_msg
+    assert "1 downgrade" in alert_msg and "1 upgrade" in alert_msg
+
+
+@pytest.mark.asyncio
+async def test_sweep_no_discrepancies_does_not_alert(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    """Steady state (every candidate already correct) must stay silent."""
+    mocker.patch(
+        "backend.data.stripe_reconciliation.build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={"price_pro": SubscriptionTier.PRO},
+    )
+    _patch_stripe_pages(mocker, {"active": [_sub("cus_keep", "price_pro")]})
+    mocker.patch(
+        "backend.data.stripe_reconciliation.User.prisma",
+        return_value=MagicMock(
+            find_many=AsyncMock(
+                return_value=[_candidate("u_keep", "cus_keep", SubscriptionTier.PRO)]
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.data.stripe_reconciliation.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    assert summary.unchanged == 1
+    assert summary.discrepancies == []
+    mock_alert.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -178,4 +228,5 @@ def test_summary_defaults_to_zero() -> None:
         "unchanged": 0,
         "errors": 0,
         "pagination_capped": False,
+        "discrepancies": [],
     }

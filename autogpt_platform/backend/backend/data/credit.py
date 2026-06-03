@@ -35,9 +35,9 @@ from backend.data.model import (
     RefundRequest,
     TopUpType,
     TransactionHistory,
-    UserTransaction,
 )
 from backend.data.model import User as AppUser
+from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
@@ -45,6 +45,7 @@ from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
+from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Settings
@@ -2429,7 +2430,24 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
     if sub is not None:
         await sync_subscription_from_stripe(dict(sub))
-        return current_tier != (await get_user_by_id(user_id)).subscription_tier
+        new_tier = (
+            await get_user_by_id(user_id)
+        ).subscription_tier or SubscriptionTier.NO_TIER
+        if new_tier == current_tier:
+            return False
+        direction = log_tier_reconciliation_discrepancy(
+            user_id=user_id,
+            stripe_customer_id=user.stripe_customer_id,
+            previous_tier=current_tier,
+            new_tier=new_tier,
+            via="lazy-reconcile",
+        )
+        await alert_tier_reconciliation_discrepancy(
+            f"⚠️ Payments integrity: on-access reconcile {direction} user "
+            f"`{user_id}` {current_tier.value} → {new_tier.value} — Stripe "
+            f"disagreed with our DB, a subscription webhook was likely missed."
+        )
+        return True
     # No active/trialing sub — downgrade a STRIPE-sourced row to NO_TIER.
     if current_tier == SubscriptionTier.NO_TIER:
         await _stamp_stripe_reconciled(user_id)
@@ -2437,11 +2455,18 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
     await set_subscription_tier(
         user_id, SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
     )
-    logger.info(
-        "reconcile_stripe_tier_for_user: downgraded user %s from %s to NO_TIER"
-        " (no active Stripe sub)",
-        user_id[:8],
-        current_tier.value,
+    log_tier_reconciliation_discrepancy(
+        user_id=user_id,
+        stripe_customer_id=user.stripe_customer_id,
+        previous_tier=current_tier,
+        new_tier=SubscriptionTier.NO_TIER,
+        via="lazy-reconcile",
+    )
+    await alert_tier_reconciliation_discrepancy(
+        f"🚨 Payments integrity: on-access reconcile DOWNGRADED user `{user_id}` "
+        f"{current_tier.value} → NO_TIER — no active Stripe subscription, but our "
+        f"DB had them on a paid tier. A cancellation webhook was likely missed; "
+        f"investigate the webhook pipeline."
     )
     return True
 
@@ -2788,6 +2813,60 @@ def _invoice_subscription_id(invoice: dict) -> str:
                 return new_sub
     legacy = invoice.get("subscription")
     return legacy if isinstance(legacy, str) and legacy else ""
+
+
+TIER_RECONCILIATION_DISCREPANCY_EVENT = "subscription_tier_reconciliation_discrepancy"
+
+
+def log_tier_reconciliation_discrepancy(
+    *,
+    user_id: str,
+    stripe_customer_id: str | None,
+    previous_tier: SubscriptionTier,
+    new_tier: SubscriptionTier,
+    via: str,
+) -> str:
+    """Record a Stripe<->DB tier discrepancy that reconciliation had to correct.
+
+    A correction means a Stripe webhook was missed or dropped — a payments-
+    integrity signal to investigate, NOT a routine fix. Emits an ERROR log
+    (captured by Sentry via the logging integration) plus a PostHog event so the
+    rate of discrepancies is trended. Returns the direction ("downgrade"/"upgrade").
+    """
+    direction = "upgrade" if is_tier_upgrade(previous_tier, new_tier) else "downgrade"
+    logger.error(
+        "Stripe tier reconciliation %s for user %s (%s -> %s, via %s): a Stripe "
+        "webhook was likely missed. Investigate the webhook pipeline — payments-"
+        "integrity signal, not a routine correction.",
+        direction,
+        user_id[:8],
+        previous_tier.value,
+        new_tier.value,
+        via,
+    )
+    _track_billing_event(
+        TIER_RECONCILIATION_DISCREPANCY_EVENT,
+        user_id,
+        {
+            "direction": direction,
+            "previous_subscription_tier": previous_tier.value,
+            "subscription_tier": new_tier.value,
+            "via": via,
+            "stripe_customer_id": stripe_customer_id,
+        },
+    )
+    return direction
+
+
+async def alert_tier_reconciliation_discrepancy(message: str) -> None:
+    """Best-effort ops alert to the platform Discord channel. Never raises so a
+    Discord outage can't break reconciliation."""
+    try:
+        await discord_send_alert(message, DiscordChannel.PLATFORM)
+    except Exception:
+        logger.warning(
+            "failed to send tier-reconciliation Discord alert", exc_info=True
+        )
 
 
 def _track_billing_event(
