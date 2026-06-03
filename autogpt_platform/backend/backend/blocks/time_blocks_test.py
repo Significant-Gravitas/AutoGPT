@@ -79,3 +79,16 @@ def test_countdown_timer_execution_timeout_covers_max_duration():
     block = CountdownTimerBlock()
     assert block.execution_timeout_seconds is not None
     assert block.execution_timeout_seconds >= block.MAX_TOTAL_SECONDS
+
+
+def test_countdown_timer_get_field_errors_reports_per_field_bound_violations():
+    block = CountdownTimerBlock()
+    errors = block.input_schema.get_field_errors({"repeat": 1200})
+    assert "repeat" in errors
+    assert "1200" in errors["repeat"]
+    assert "1000" in errors["repeat"]
+
+
+def test_countdown_timer_get_field_errors_clean_when_within_bounds():
+    block = CountdownTimerBlock()
+    assert block.input_schema.get_field_errors({"repeat": 5}) == {}

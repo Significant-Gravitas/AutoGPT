@@ -107,7 +107,7 @@ The block supports a repeat parameter (1–1000), allowing the timer to fire mul
 | minutes | Duration in minutes | int \| str | No |
 | hours | Duration in hours | int \| str | No |
 | days | Duration in days | int \| str | No |
-| repeat | Number of times to repeat the timer | int | No |
+| repeat | Number of times to repeat the timer (1–1000) | int | No |
 
 ### Outputs
 
