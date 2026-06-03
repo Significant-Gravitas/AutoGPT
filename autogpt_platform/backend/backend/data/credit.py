@@ -2592,7 +2592,9 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     # ENTERPRISE user to a different tier — if a user on ENTERPRISE somehow has
     # a self-service Stripe sub, it's a data-consistency issue for an operator,
     # not something the webhook should automatically "fix".
-    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
+    # Prisma returns the enum column as a plain str at runtime, so coerce to the
+    # enum before any `.value` access (e.g. the upgrade analytics event below).
+    current_tier = SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER)
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "sync_subscription_from_stripe: refusing to overwrite ENTERPRISE tier"
@@ -2817,7 +2819,7 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         metadata = _invoice_subscription_metadata(invoice)
         tier = (
             metadata.get("tier")
-            or (user.subscriptionTier or SubscriptionTier.NO_TIER).value
+            or SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER).value
         )
         billing_cycle = metadata.get("billing_cycle") or (
             await get_user_billing_cycle(user.id) or "monthly"
