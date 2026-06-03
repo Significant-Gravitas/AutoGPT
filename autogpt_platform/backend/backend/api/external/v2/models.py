@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
     )
+    from backend.api.features.search.hybrid_search import (
+        ContentTypeValue as SearchContentType,
+    )
     from backend.api.features.store.model import CreatorDetails
     from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.api.features.store.model import (
@@ -38,7 +41,7 @@ if TYPE_CHECKING:
     from backend.data.graph import GraphMeta as _GraphMeta
     from backend.data.graph import GraphModel as _GraphModel
     from backend.data.graph import GraphSettings as _GraphSettings
-    from backend.data.model import Credentials, UserTransaction
+    from backend.data.model import Credentials, UserCreditTransaction
     from backend.executor.scheduler import GraphExecutionJobInfo
 
 # ============================================================================
@@ -869,7 +872,9 @@ class CreditBalance(BaseModel):
     balance: int = Field(description="Current credit balance")
 
 
-TransactionType: TypeAlias = Literal["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"]
+TransactionType: TypeAlias = Literal[
+    "TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK", "SUBSCRIPTION"
+]
 
 
 class CreditTransactionOrigin(BaseModel):
@@ -890,20 +895,13 @@ class CreditTransaction(BaseModel):
     amount: int = Field(description="Transaction amount (positive or negative)")
     type: TransactionType
     transaction_time: datetime
-    running_balance: Optional[int] = Field(description="Balance after this transaction")
     description: Optional[str]
-    reason: Optional[str] = Field(
-        description=(
-            "Contextual explanation for this transaction "
-            "(e.g. admin grant reason, refund justification)"
-        ),
-    )
     origin: Optional[CreditTransactionOrigin] = Field(
         description="Origin context linking this transaction to a graph (execution)",
     )
 
     @classmethod
-    def from_internal(cls, t: UserTransaction) -> Self:
+    def from_internal(cls, t: UserCreditTransaction) -> Self:
         origin = None
         if t.usage_graph_id or t.usage_execution_id:
             origin = CreditTransactionOrigin(
@@ -915,9 +913,7 @@ class CreditTransaction(BaseModel):
             amount=t.amount,
             type=t.transaction_type.value,
             transaction_time=t.transaction_time,
-            running_balance=t.running_balance,
             description=t.description,
-            reason=t.reason,
             origin=origin,
         )
 
@@ -1404,11 +1400,6 @@ class MarketplaceMediaUploadResponse(BaseModel):
     """Response after uploading media."""
 
     url: str = Field(description="Public URL of the uploaded media")
-
-
-SearchContentType: TypeAlias = Literal[
-    "STORE_AGENT", "BLOCK", "INTEGRATION", "DOCUMENTATION", "LIBRARY_AGENT"
-]
 
 
 class MarketplaceSearchResult(BaseModel):

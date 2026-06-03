@@ -269,6 +269,14 @@ export function usePublishAgentModal({
 
   function handleBack() {
     if (currentState.step === "info") {
+      // When the modal was opened pre-scoped to a specific agent (e.g. from
+      // the builder or library), there is no upstream picker to go back to —
+      // close the modal instead of surfacing a picker the caller intentionally
+      // skipped.
+      if (preSelectedAgentId) {
+        handleClose();
+        return;
+      }
       updateState({
         ...currentState,
         step: "select",
@@ -282,7 +290,7 @@ export function usePublishAgentModal({
   }
 
   function handleGoToDashboard() {
-    router.push("/profile/dashboard");
+    router.push("/settings/creator-dashboard");
     handleClose();
   }
 

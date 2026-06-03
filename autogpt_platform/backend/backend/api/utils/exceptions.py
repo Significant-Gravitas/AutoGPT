@@ -8,6 +8,7 @@ ensures that all mounted sub-apps (v1, v2, main) handle errors uniformly.
 
 import json
 import logging
+from typing import Sequence
 
 import fastapi
 import fastapi.responses
@@ -21,6 +22,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
@@ -42,6 +44,12 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
         # It's the client's problem: HTTP 4XX
         NotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
         NotAuthorizedError: _handle_error(status.HTTP_403_FORBIDDEN),
+        # UserPaywalledError raised at deep enqueue paths (e.g. add_graph_execution)
+        # maps to HTTP 402. log_error=False because it's not an error from the
+        # server's perspective — the user just lacks entitlement.
+        UserPaywalledError: _handle_error(
+            status.HTTP_402_PAYMENT_REQUIRED, log_error=False
+        ),
         PreconditionFailed: _handle_error(status.HTTP_428_PRECONDITION_REQUIRED),
         RequestValidationError: _handle_validation_error,
         pydantic.ValidationError: _handle_validation_error,
@@ -103,9 +111,9 @@ async def _handle_validation_error(
         request.url.path,
         exc,
     )
-    errors: list | str
-    if hasattr(exc, "errors"):
-        errors = exc.errors()  # type: ignore[call-arg]
+    errors: Sequence | str
+    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        errors = exc.errors()
     else:
         errors = str(exc)
 

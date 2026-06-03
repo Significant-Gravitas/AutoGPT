@@ -54,7 +54,7 @@ async def list_all_schedules(
     ),
 ) -> AgentRunScheduleListResponse:
     """List schedules for the authenticated user."""
-    schedules = await get_scheduler_client().get_execution_schedules(
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
     )

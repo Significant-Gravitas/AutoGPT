@@ -226,6 +226,9 @@ async def get_library_agents_for_generation(
             page=1,
             page_size=max_results,
             include_executions=True,
+            # Hide trigger agents — they aren't reusable as sub-agents
+            # (parent-coupled, single-purpose).
+            is_hidden=False,
         )
 
         results: list[LibraryAgentSummary] = []
@@ -603,6 +606,7 @@ async def save_agent_to_library(
     user_id: str,
     is_update: bool = False,
     folder_id: str | None = None,
+    is_hidden: bool = False,
 ) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
@@ -611,6 +615,7 @@ async def save_agent_to_library(
         user_id: User ID
         is_update: Whether this is an update to an existing agent
         folder_id: Optional folder ID to place the agent in
+        is_hidden: Whether the agent should be hidden from library listing
 
     Returns:
         Tuple of (created Graph, LibraryAgent)
@@ -619,7 +624,9 @@ async def save_agent_to_library(
     db = library_db()
     if is_update:
         return await db.update_graph_in_library(graph, user_id)
-    return await db.create_graph_in_library(graph, user_id, folder_id=folder_id)
+    return await db.create_graph_in_library(
+        graph, user_id, folder_id=folder_id, is_hidden=is_hidden
+    )
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:

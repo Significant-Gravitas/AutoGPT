@@ -2,6 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { Check } from "@phosphor-icons/react";
 
 interface Props {
   icon: React.ReactNode;
@@ -24,13 +25,18 @@ export function SelectableCard({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "flex h-[9rem] w-[10.375rem] shrink-0 flex-col items-center justify-center gap-3 rounded-xl border-2 bg-white px-6 py-5 transition-all hover:shadow-sm md:shrink lg:gap-2 lg:px-10 lg:py-8",
+        "relative flex h-[9rem] w-[10.375rem] shrink-0 flex-col items-center justify-center gap-3 rounded-xl border-2 bg-white px-6 py-5 transition-all hover:shadow-sm md:shrink lg:gap-2 lg:px-10 lg:py-8",
         className,
         selected
           ? "border-purple-500 bg-purple-50 shadow-sm"
           : "border-transparent",
       )}
     >
+      {selected && (
+        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+          <Check size={12} weight="bold" className="text-white" />
+        </span>
+      )}
       <Text
         variant="lead"
         as="span"

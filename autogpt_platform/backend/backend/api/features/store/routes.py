@@ -10,12 +10,12 @@ from pydantic import BaseModel
 
 import backend.data.graph
 import backend.util.json
+from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
 from . import db as store_db
-from . import hybrid_search as store_hybrid_search
 from . import image_gen as store_image_gen
 from . import media as store_media
 from . import model as store_model
@@ -91,7 +91,7 @@ async def unified_search(
     """
 
     # Perform unified hybrid search
-    results, total = await store_hybrid_search.unified_hybrid_search(
+    results, total = await search_engine.unified_hybrid_search(
         query=query,
         content_types=content_types,
         user_id=user_id,
@@ -331,9 +331,17 @@ async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
+    sort_by: store_model.MyAgentsSortBy = Query(
+        default=store_model.MyAgentsSortBy.MOST_RECENT
+    ),
 ) -> store_model.MyUnpublishedAgentsResponse:
     """List the authenticated user's unpublished agents"""
-    agents = await store_db.get_my_agents(user_id, page=page, page_size=page_size)
+    agents = await store_db.get_my_agents(
+        user_id,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+    )
     return agents
 
 

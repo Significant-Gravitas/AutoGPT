@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, Security
 from prisma.enums import ContentType as SearchContentType
 
 from backend.api.external.middleware import require_auth
-from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.data.auth.base import APIAuthorizationInfo
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -60,9 +60,9 @@ async def search(
     return MarketplaceSearchResponse(
         results=[
             MarketplaceSearchResult(
-                content_type=r.get("content_type", ""),
-                content_id=r.get("content_id", ""),
-                searchable_text=r.get("searchable_text", ""),
+                content_type=r["content_type"],
+                content_id=r["content_id"],
+                searchable_text=r["searchable_text"],
                 metadata=r.get("metadata"),
                 updated_at=r.get("updated_at"),
                 combined_score=r.get("combined_score"),

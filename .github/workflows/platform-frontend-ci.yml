@@ -46,8 +46,10 @@ jobs:
             components:
               - 'autogpt_platform/frontend/src/components/**'
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -67,8 +69,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -98,8 +102,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -130,8 +136,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
 
       - name: Set up Node
         uses: actions/setup-node@v6

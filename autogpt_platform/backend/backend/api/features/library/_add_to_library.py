@@ -12,6 +12,7 @@ import prisma.errors
 import prisma.models
 
 import backend.api.features.library.model as library_model
+from backend.api.features.library.db import _fetch_schedule_info
 from backend.data.graph import GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -116,4 +117,5 @@ async def add_graph_to_library(
                 f"v{graph_version} not found after UniqueViolationError"
             )
 
-    return library_model.LibraryAgent.from_db(added_agent)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_id)
+    return library_model.LibraryAgent.from_db(added_agent, schedule_info=schedule_info)

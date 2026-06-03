@@ -7,25 +7,17 @@ import {
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 import { resolveResponse } from "@/app/api/helpers";
-import { Button } from "@/components/__legacy__/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import {
+  ApiError,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createContext,
   ReactNode,
@@ -36,6 +28,7 @@ import {
   useState,
 } from "react";
 import {
+  decideOnboardingRedirect,
   fromBackendUserOnboarding,
   LocalOnboardingStateUpdate,
   shouldRedirectFromOnboarding,
@@ -92,7 +85,6 @@ export default function OnboardingProvider({
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
   const [step, setStep] = useState(1);
-  const [npsDialogOpen, setNpsDialogOpen] = useState(false);
   const hasInitialized = useRef(false);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
@@ -100,6 +92,7 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { isLoggedIn } = useSupabase();
 
@@ -122,6 +115,19 @@ export default function OnboardingProvider({
   }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+  // Logged-in users sitting on the auth pages need to be routed onward by us;
+  // otherwise the signup/login pages show their `isLoggedIn` loader forever.
+  // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
+  // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
+  const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
+  // When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its
+  // own redirect to the requested target. Skip our redirect in that window so
+  // the deep link isn't clobbered by the awaited completion check. Sanitize
+  // with the same helper the auth pages use — otherwise an unsafe value (e.g.
+  // `?next=https://evil.site`) would defer us here while the auth page drops
+  // it as `null`, deadlocking the user on the auth loader.
+  const hasPendingAuthDeepLink =
+    isOnAuthRoute && sanitizeAuthNext(searchParams.get("next")) !== null;
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
@@ -132,9 +138,27 @@ export default function OnboardingProvider({
     return processedOnboarding;
   }, []);
 
+  // If a logged-in user navigates back to /signup or /login after the
+  // initialize-once effect already ran (e.g., browser back from /onboarding,
+  // manual URL edit), the guard below would early-return and leave them
+  // stranded on the auth page's `isLoggedIn` loader. Reset the guard on
+  // re-entry so the main effect re-runs and routes them away.
+  useEffect(() => {
+    if (isLoggedIn && isOnAuthRoute) {
+      hasInitialized.current = false;
+    }
+  }, [isLoggedIn, isOnAuthRoute]);
+
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current || !isLoggedIn) {
+      return;
+    }
+
+    // Defer to the auth-page's own deep-link redirect (`?next=…`) instead of
+    // racing it. Don't mark hasInitialized so the next pathname change
+    // (after the auth page redirects) gets us properly initialized.
+    if (hasPendingAuthDeepLink) {
       return;
     }
 
@@ -146,11 +170,14 @@ export default function OnboardingProvider({
           getV1CheckIfOnboardingIsCompleted(),
         );
 
-        if (!is_completed && !isOnOnboardingRoute) {
-          router.replace("/onboarding");
-          return;
-        } else if (is_completed && isOnOnboardingRoute) {
-          router.replace("/copilot");
+        const redirectTarget = decideOnboardingRedirect({
+          isCompleted: is_completed,
+          isOnOnboardingRoute,
+          isOnAuthRoute,
+          hasPendingAuthDeepLink,
+        });
+        if (redirectTarget) {
+          router.replace(redirectTarget);
           return;
         }
 
@@ -164,6 +191,11 @@ export default function OnboardingProvider({
           router.replace("/copilot");
         }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({
@@ -176,16 +208,20 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
+  }, [
+    api,
+    isOnOnboardingRoute,
+    isOnAuthRoute,
+    hasPendingAuthDeepLink,
+    router,
+    isLoggedIn,
+    pathname,
+  ]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
       if (!isLoggedIn || notification.type !== "onboarding") {
         return;
-      }
-
-      if (notification.step === "RUN_AGENTS") {
-        setNpsDialogOpen(true);
       }
 
       fetchOnboarding().catch((error) => {
@@ -284,33 +320,6 @@ export default function OnboardingProvider({
         completeStep,
       }}
     >
-      <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>We&apos;d love your feedback</DialogTitle>
-            <DialogDescription>
-              You&apos;ve run 10 agents — amazing! We&apos;re constantly
-              improving the platform, and your thoughts help shape what we build
-              next. This 1-minute form is just a few quick questions to share
-              how things are going.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setNpsDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Link href="https://tally.so/r/w4El0b" target="_blank">
-              <Button type="button" onClick={() => setNpsDialogOpen(false)}>
-                Give Feedback
-              </Button>
-            </Link>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {children}
     </OnboardingContext.Provider>
   );

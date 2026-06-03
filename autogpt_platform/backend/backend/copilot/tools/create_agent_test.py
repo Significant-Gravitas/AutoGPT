@@ -1,6 +1,6 @@
 """Tests for CreateAgentTool."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -127,7 +127,161 @@ async def test_local_mode_validation_failure(tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "validation_failed"
-    assert "Block 'bad-block' not found" in result.message
+    assert result.details is not None
+    assert "Block 'bad-block' not found" in result.details["errors"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_hidden", [True, False])
+async def test_is_hidden_passes_through_to_pipeline(tool, session, is_hidden):
+    """The is_hidden param on create_agent must reach
+    fix_validate_and_save unchanged so trigger agents land in the DB
+    hidden. Regression for an earlier review finding that the kwarg
+    plumbing was untested."""
+    agent_json = {
+        "name": "Trigger Watcher",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+    mock_fix = MagicMock(name="fix_validate_and_save_result")
+    with (
+        patch(
+            "backend.copilot.tools.create_agent.fetch_library_agents",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.create_agent.fix_validate_and_save",
+            new=AsyncMock(return_value=mock_fix),
+        ) as mock_fix_validate,
+    ):
+        await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json=agent_json,
+            is_hidden=is_hidden,
+        )
+
+    mock_fix_validate.assert_awaited_once()
+    assert mock_fix_validate.call_args.kwargs["is_hidden"] is is_hidden
+
+
+# ── Library similarity gate tests ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_agent_gated_until_library_check(tool):
+    """Without prior find_library_agent, create_agent must refuse."""
+    session = make_session(_TEST_USER_ID, library_check=False)
+
+    agent_json = {
+        "name": "Test Agent",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_json=agent_json,
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert "find_library_agent" in result.message
+    assert "library_check_ack" in result.message
+
+
+@pytest.mark.asyncio
+async def test_create_agent_skipped_with_ack(tool):
+    """library_check_ack=True bypasses the gate even when find_library_agent
+    was never called this session."""
+    session = make_session(_TEST_USER_ID, library_check=False)
+
+    agent_json = {
+        "name": "Test Agent",
+        "description": "A test agent",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+    with (
+        patch(
+            "backend.copilot.tools.create_agent.fetch_library_agents",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.create_agent.fix_validate_and_save",
+            new=AsyncMock(return_value=MagicMock()),
+        ) as mock_fix_validate,
+    ):
+        await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json=agent_json,
+            library_check_ack=True,
+        )
+
+    mock_fix_validate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_agent_skipped_in_builder_context(tool):
+    """Builder-bound sessions bypass the library gate (no goal to match)."""
+    session = make_session(_TEST_USER_ID, library_check=False)
+    session.metadata.builder_graph_id = "some-graph-id"
+
+    agent_json = {
+        "name": "Test Agent",
+        "description": "A test agent",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+    with (
+        patch(
+            "backend.copilot.tools.create_agent.fetch_library_agents",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.create_agent.fix_validate_and_save",
+            new=AsyncMock(return_value=MagicMock()),
+        ) as mock_fix_validate,
+    ):
+        await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json=agent_json,
+        )
+
+    mock_fix_validate.assert_awaited_once()
 
 
 @pytest.mark.asyncio

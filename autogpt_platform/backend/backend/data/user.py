@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
-cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
+cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
 @cache_user_lookup
@@ -80,6 +80,28 @@ async def get_user_by_email(email: str) -> Optional[User]:
         return User.from_db(user) if user else None
     except Exception as e:
         raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+
+
+async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
+    """Search users by partial email or name.
+
+    Returns a list of ``(user_id, email)`` tuples, up to *limit* results.
+    Searches the User table directly — no dependency on credit history.
+    """
+    query = query.strip()
+    if not query or len(query) < 3:
+        return []
+    users = await prisma.user.find_many(
+        where={
+            "OR": [
+                {"email": {"contains": query, "mode": "insensitive"}},
+                {"name": {"contains": query, "mode": "insensitive"}},
+            ],
+        },
+        take=limit,
+        order={"email": "asc"},
+    )
+    return [(u.id, u.email) for u in users]
 
 
 async def update_user_email(user_id: str, email: str):
@@ -487,8 +509,15 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
 
-        # Invalidate cache for this user
+        # Invalidate user caches so subsequent reads see the new timezone.
+        # get_user_by_id and get_user_by_email are keyed by a single value
+        # and can be deleted surgically; get_or_create_user is keyed by the
+        # JWT-payload dict so we can't delete a single entry — clear it
+        # entirely.
         get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
+        get_or_create_user.cache_clear()
 
         return User.from_db(user)
     except Exception as e:

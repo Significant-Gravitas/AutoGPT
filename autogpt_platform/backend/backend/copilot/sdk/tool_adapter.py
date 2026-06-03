@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Iterable
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -25,8 +26,7 @@ from backend.copilot.context import (
     _current_user_id,
     _encode_cwd_for_cli,
     get_execution_context,
-    get_sdk_cwd,
-    is_allowed_local_path,
+    is_sdk_tool_path,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -34,11 +34,27 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
+from .e2b_file_tools import (
+    E2B_FILE_TOOL_NAMES,
+    E2B_FILE_TOOLS,
+    EDIT_TOOL_DESCRIPTION,
+    EDIT_TOOL_NAME,
+    EDIT_TOOL_SCHEMA,
+    READ_TOOL_DESCRIPTION,
+    READ_TOOL_NAME,
+    READ_TOOL_SCHEMA,
+    WRITE_TOOL_DESCRIPTION,
+    WRITE_TOOL_NAME,
+    WRITE_TOOL_SCHEMA,
+    bridge_and_annotate,
+    get_edit_tool_handler,
+    get_read_tool_handler,
+    get_write_tool_handler,
+)
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -47,12 +63,35 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
-_MCP_MAX_CHARS = 500_000
+# Max MCP response size in chars — sized to the Claude CLI's internal cap.
+#
+# The CLI has a default ``maxResultSizeChars = 1e5`` (100K chars) annotation
+# for MCP tool results, but the actual trigger is TOKEN-based (see
+# ``sizeEstimateTokens`` in the bundled CLI at ``tengu_mcp_large_result_handled``)
+# and fires around 20–25K tokens.  For JSON-heavy tool output (~3–4 chars/token)
+# that lands anywhere from ~60K to ~100K chars in practice; we've observed the
+# error path at 81K chars in production.  When it fires, the CLI persists the
+# full output to disk and REPLACES the returned content with a synthetic
+# ``"Error: result (N characters) exceeds maximum allowed tokens. Output has
+# been saved to …"`` message — which destroys any `<user_follow_up>` block
+# we injected.
+#
+# 70K gives us headroom below the observed 81K trigger and leaves ~6K for the
+# follow-up injection plus CLI wire overhead.  Oversized content is still
+# reachable via ``read_tool_result`` against the persisted disk file; only
+# the inline reply to this specific call is truncated.
+_MCP_MAX_CHARS = 70_000
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
+
+# Fields stripped from the MCP tool result JSON before it is forwarded to the LLM.
+# These fields would reveal execution mode (e.g. dry_run) to the model.
+# Stripping happens AFTER the tool output is stashed for the frontend SSE stream,
+# so StreamToolOutputAvailable still receives the full output including these fields.
+_STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
+
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -223,7 +262,14 @@ async def _execute_tool_sync(
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response."""
+    """Execute a tool inline and return an MCP-formatted response.
+
+    The call runs to completion — no per-handler timeout, no parking. The
+    stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
+    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    30-min idle safety net (SECRT-2247). A genuine hang is handled by the
+    broader session lifecycle (user closes the tab / cancel endpoint).
+    """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -339,11 +385,18 @@ def create_tool_handler(base_tool: BaseTool):
 
 
 def _build_input_schema(base_tool: BaseTool) -> dict[str, Any]:
-    """Build a JSON Schema input schema for a tool."""
+    """Build a JSON Schema input schema for a tool.
+
+    ``required`` is intentionally omitted from the schema sent to the MCP SDK.
+    The SDK validates ``required`` fields BEFORE calling the Python handler \u2014
+    when the LLM's output tokens are truncated the tool call arrives as ``{}``
+    and the SDK rejects it with an opaque ``'X' is a required property`` error.
+    By omitting ``required`` the empty-args case reaches our Python handler
+    where ``_make_truncating_wrapper`` returns actionable chunking guidance.
+    """
     return {
         "type": "object",
         "properties": base_tool.parameters.get("properties", {}),
-        "required": base_tool.parameters.get("required", []),
     }
 
 
@@ -353,15 +406,40 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     Supports ``workspace://`` URIs (delegated to the workspace manager) and
     local paths within the session's allowed directories (sdk_cwd + tool-results).
     """
-    file_path = args.get("file_path", "")
-    offset = max(0, int(args.get("offset", 0)))
-    limit = max(1, int(args.get("limit", 2000)))
 
     def _mcp_err(text: str) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": text}], "isError": True}
 
     def _mcp_ok(text: str) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": text}], "isError": False}
+
+    if not args:
+        return _mcp_err(
+            "Your Read call had empty arguments \u2014 this means your previous "
+            "response was too long and the tool call was truncated by the API. "
+            "Break your work into smaller steps."
+        )
+
+    file_path = args.get("file_path", "")
+    char_offset_arg = args.get("char_offset")
+    char_limit_arg = args.get("char_limit")
+    try:
+        offset = max(0, int(args.get("offset", 0)))
+        limit = max(1, int(args.get("limit", 2000)))
+        char_offset = (
+            max(0, int(char_offset_arg)) if char_offset_arg is not None else None
+        )
+        char_limit = max(1, int(char_limit_arg)) if char_limit_arg is not None else None
+    except (ValueError, TypeError):
+        return _mcp_err("Invalid offset/limit \u2014 must be integers.")
+
+    if not file_path:
+        if "offset" in args or "limit" in args:
+            return _mcp_err(
+                "Your Read call was truncated (file_path missing but "
+                "offset/limit were present). Resend with the full file_path."
+            )
+        return _mcp_err("file_path is required")
 
     if file_path.startswith("workspace://"):
         user_id, session = get_execution_context()
@@ -378,21 +456,58 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         )
         return _mcp_ok(numbered)
 
-    if not is_allowed_local_path(file_path, get_sdk_cwd()):
-        return _mcp_err(f"Path not allowed: {file_path}")
+    # Use is_sdk_tool_path (not is_allowed_local_path) to restrict this tool
+    # to only SDK-internal tool-results/tool-outputs paths.  is_sdk_tool_path
+    # validates session membership via _current_project_dir, preventing
+    # cross-session reads.  sdk_cwd files (workspace outputs) are NOT allowed
+    # here — they are served by the e2b_file_tools Read handler instead.
+    if not is_sdk_tool_path(file_path):
+        return _mcp_err(f"Path not allowed: {os.path.basename(file_path)}")
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
+        # Read the whole file: tool-result envelopes are usually small JSON
+        # but the payload inside is often one massive minified line, so
+        # line-based offset/limit applied to the raw bytes is useless.
+        # _navigable_tool_result_text() unwraps the envelope and pretty-
+        # prints inner JSON so line offsets actually slice the payload.
         with open(resolved, encoding="utf-8", errors="replace") as f:
-            selected = list(itertools.islice(f, offset, offset + limit))
+            raw = f.read()
+        navigable = _navigable_tool_result_text(raw)
+        if char_offset is not None or char_limit is not None:
+            # Character-mode slicing: precise control for huge payloads
+            # where even the pretty-printed inner JSON has multi-KB lines
+            # (e.g. base64 blobs in tool results).
+            start = char_offset or 0
+            end = start + char_limit if char_limit is not None else len(navigable)
+            text = navigable[start:end]
+        else:
+            lines = navigable.splitlines(keepends=True)
+            text = "".join(lines[offset : offset + limit])
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
-        text = "".join(selected)
+        # CAVEAT: only bridge when the on-disk bytes and what the model
+        # just read are the same — i.e. when ``_navigable_tool_result_text``
+        # did *not* transform the content. If we pretty-printed an MCP
+        # envelope, the model sees a pretty-printed slice while the
+        # bridged sandbox file would hold the raw envelope; bash commands
+        # operating on the bridged copy would then see different content
+        # than the model just read, leading to silent format-mismatch
+        # bugs. Same constraint applies to char-mode slices. The new
+        # bash_exec SDK-path redirect (added in this PR) covers the
+        # alternative workflow when the bridge is skipped — the model
+        # can use ``read_tool_result`` again with offsets, or pipe a
+        # slice via ``@@agptfile:<path>[<start>-<end>]``.
         sandbox = _current_sandbox.get(None)
-        if sandbox is not None:
+        if (
+            sandbox is not None
+            and navigable == raw
+            and char_offset is None
+            and char_limit is None
+        ):
             annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
             if annotation:
                 text += annotation
@@ -403,10 +518,60 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         return _mcp_err(f"Error reading file: {e}")
 
 
-_READ_TOOL_NAME = "Read"
+def _navigable_tool_result_text(raw: str) -> str:
+    """Return *raw* in a form the model can actually slice with offset/limit.
+
+    Tool-result files are stored as the MCP envelope ``[{"type":"text",
+    "text": "<payload>"}]``. The outer list is pretty-printed but the
+    inner ``text`` field is one giant minified string, so line-based
+    offset/limit on the raw file content slices the *envelope* — useless.
+
+    This helper unwraps the envelope (when the shape matches) and
+    pretty-prints the inner payload (when it parses as JSON) so the model
+    can navigate ``execution.node_executions[…].error`` etc. with normal
+    line offsets. Falls back to the raw text on any mismatch.
+    """
+    try:
+        outer = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    inner = _extract_single_text_block(outer)
+    if inner is None:
+        return raw
+    try:
+        return json.dumps(json.loads(inner), indent=2, ensure_ascii=False)
+    except (ValueError, TypeError):
+        # Inner text wasn't JSON (e.g. a bash command's stdout) — return
+        # it raw so the model sees the payload without the envelope noise.
+        return inner
+
+
+def _extract_single_text_block(envelope: object) -> str | None:
+    """Return the text of a single-text-block MCP envelope, else None.
+
+    Matches ``[{"type": "text", "text": <str>}]`` exactly. Returns None
+    for envelopes with images, multiple blocks, or any other shape.
+    """
+    if not isinstance(envelope, list) or len(envelope) != 1:
+        return None
+    block = envelope[0]
+    if not isinstance(block, dict) or block.get("type") != "text":
+        return None
+    text = block.get("text")
+    return text if isinstance(text, str) else None
+
+
+_READ_TOOL_NAME = "read_tool_result"
 _READ_TOOL_DESCRIPTION = (
-    "Read a file from the local filesystem. "
-    "Use offset and limit to read specific line ranges for large files."
+    "Read an SDK-internal tool-result file or a workspace:// URI. "
+    "Use this tool only for paths under ~/.claude/projects/.../tool-results/ "
+    "or tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "For files in the working directory use read_file instead. "
+    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, "
+    "so offset/limit (line-based) slice into the actual payload, not the "
+    "envelope wrapper. For piping a slice into another tool's command, "
+    "use `@@agptfile:<absolute-path>[<start>-<end>]` in that tool's "
+    "argument instead — it works in bash_exec and avoids a round-trip."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",
@@ -423,8 +588,23 @@ _READ_TOOL_SCHEMA = {
             "type": "integer",
             "description": "Number of lines to read. Default: 2000",
         },
+        "char_offset": {
+            "type": "integer",
+            "description": (
+                "Character offset to start reading from (0-indexed). "
+                "Overrides `offset`. Use when even pretty-printed lines "
+                "are too long to slice with line offsets (e.g. base64 "
+                "blobs in a tool result)."
+            ),
+        },
+        "char_limit": {
+            "type": "integer",
+            "description": (
+                "Number of characters to read. Pairs with `char_offset` "
+                "and overrides `limit`."
+            ),
+        },
     },
-    "required": ["file_path"],
 }
 
 
@@ -446,9 +626,156 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
 
 
 _PARALLEL_ANNOTATION = ToolAnnotations(readOnlyHint=True)
+_MUTATING_ANNOTATION = ToolAnnotations(readOnlyHint=False)
 
 
-def create_copilot_mcp_server(*, use_e2b: bool = False):
+def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
+    """Strip fields in *_STRIP_FROM_LLM* from every JSON text block in *result*.
+
+    Called by *_truncating* AFTER the output has been stashed for the frontend
+    SSE stream, so StreamToolOutputAvailable still receives the full payload
+    (including ``is_dry_run``).  The returned dict is what the LLM sees.
+
+    Non-JSON blocks, non-dict JSON values, and error results are returned unchanged.
+
+    Note: only top-level keys are stripped. Nested occurrences of _STRIP_FROM_LLM
+    fields (e.g. inside an ``outputs`` sub-dict) are not removed. Current tool
+    responses only set these fields at the top level.
+    """
+    if result.get("isError"):
+        return result
+    content = result.get("content", [])
+    new_content = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            raw = block.get("text", "")
+            # Skip JSON parse/re-serialise round-trip when no stripped field
+            # appears in the raw text — fast path for the common non-dry-run case.
+            if not any(field in raw for field in _STRIP_FROM_LLM):
+                new_content.append(block)
+                continue
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                logger.debug("_strip_llm_fields: skipping non-JSON block: %s", exc)
+                new_content.append(block)
+                continue
+            if isinstance(parsed, dict):
+                for field in _STRIP_FROM_LLM:
+                    parsed.pop(field, None)
+                block = {**block, "text": json.dumps(parsed)}
+        new_content.append(block)
+    return {**result, "content": new_content}
+
+
+def _make_truncating_wrapper(
+    fn,
+    tool_name: str,
+    input_schema: dict[str, Any] | None = None,
+    required_args: list[str] | None = None,
+):
+    """Return a wrapper around *fn* that truncates output, stashes it for the
+    frontend SSE stream, and strips LLM-revealing fields before returning.
+
+    Extracted from ``create_copilot_mcp_server`` so it can be tested directly.
+
+    ``required_args`` is the tool's original list of required parameter names
+    (before ``_build_input_schema`` stripped ``required`` from the SDK-visible
+    schema). It's used to distinguish a truncated empty call from a legitimate
+    no-arg invocation on a tool whose params are all optional (e.g.
+    ``list_schedules``). When the list is empty/None the empty-args truncation
+    guard is skipped — the model is free to call the tool with no arguments.
+
+    WARNING: ``stash_pending_tool_output`` must be called BEFORE
+    ``_strip_llm_fields`` so the frontend SSE stream receives the full payload
+    (including ``is_dry_run``) while the LLM sees a cleaned version.
+    Swapping this order would cause the frontend to lose ``is_dry_run``.
+    """
+
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        # Detect empty-args truncation: args is empty AND the original tool
+        # declared at least one *required* property. Tools whose params are all
+        # optional (filters-only tools like list_schedules) legitimately accept
+        # no args, so we skip the guard for them.
+        # NOTE: _build_input_schema intentionally omits "required" from the
+        # SDK-visible schema to avoid SDK-side validation rejecting truncated
+        # calls before reaching this handler. We carry required_args through
+        # the wrapper instead.
+        if not args and required_args:
+            logger.warning(
+                "[MCP] %s called with empty args (likely output "
+                "token truncation) — returning guidance",
+                tool_name,
+            )
+            return _mcp_error(
+                f"Your call to {tool_name} had empty arguments — "
+                f"this means your previous response was too long and "
+                f"the tool call input was truncated by the API. "
+                f"To fix this: break your work into smaller steps. "
+                f"For large content, first write it to a file using "
+                f"bash_exec with cat >> (append section by section), "
+                f"then pass it via @@agptfile:filename reference. "
+                f"Do NOT retry with the same approach — it will "
+                f"be truncated again."
+            )
+
+        original_args = args
+        stop_msg = _check_circuit_breaker(tool_name, original_args)
+        if stop_msg:
+            return _mcp_error(stop_msg)
+
+        user_id, session = get_execution_context()
+        if session is not None:
+            try:
+                args = await expand_file_refs_in_args(
+                    args, user_id, session, input_schema=input_schema
+                )
+            except FileRefExpansionError as exc:
+                _record_tool_failure(tool_name, original_args)
+                return _mcp_error(
+                    f"@@agptfile: reference could not be resolved: {exc}. "
+                    "Ensure the file exists before referencing it. "
+                    "For sandbox paths use bash_exec to verify the file exists first; "
+                    "for workspace files use a workspace:// URI."
+                )
+        result = await fn(args)
+        truncated = truncate(result, _MCP_MAX_CHARS)
+
+        if truncated.get("isError"):
+            _record_tool_failure(tool_name, original_args)
+        else:
+            _clear_tool_failures(tool_name)
+
+        # Stash the raw tool output for the frontend SSE stream so widgets
+        # (bash, tool viewers) receive clean JSON.  Mid-turn user follow-up
+        # injection for MCP + built-in tools is now handled uniformly by
+        # the ``PostToolUse`` hook via ``additionalContext`` so Claude sees
+        # the follow-up attached to the tool_result without mutating the
+        # frontend-facing payload.
+        if not truncated.get("isError"):
+            text = _text_from_mcp_result(truncated)
+            if text:
+                stash_pending_tool_output(tool_name, text)
+
+        # Strip is_dry_run only when the session itself is in dry_run mode.
+        # In that case the LLM must not know it is simulating — it should act
+        # as if every tool call produced real results.
+        # In normal (non-session-dry_run) mode, is_dry_run=True is intentionally
+        # left visible to the LLM so it knows a specific tool was simulated and
+        # can reason about the reliability of that output.
+        if session is not None and session.dry_run:
+            truncated = _strip_llm_fields(truncated)
+
+        return truncated
+
+    return wrapper
+
+
+def create_copilot_mcp_server(
+    *,
+    use_e2b: bool = False,
+    hidden_tool_names: Iterable[str] = (),
+):
     """Create an in-process MCP server configuration for CoPilot tools.
 
     All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
@@ -462,91 +789,24 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     that route directly to the E2B sandbox filesystem, and the caller should
     disable the corresponding SDK built-in tools via
     :func:`get_sdk_disallowed_tools`.
+
+    Short tool names in *hidden_tool_names* are not registered at all — the
+    model never sees them.  ``allowed_tools``/``disallowed_tools`` alone are
+    insufficient because the CLI auto-rejects calls to denied tools with a
+    canned "Permission to use ... has been denied" string that the model
+    then narrates as a Claude-Code-style approval prompt (no such UI exists
+    in copilot).  Hiding the tool removes the temptation entirely.
     """
 
-    def _truncating(fn, tool_name: str, input_schema: dict[str, Any] | None = None):
-        """Wrap a tool handler so its response is truncated to stay under the
-        SDK's 10 MB JSON buffer, and stash the (truncated) output for the
-        response adapter before the SDK can apply its own head-truncation.
-
-        Also expands ``@@agptfile:`` references in args so every registered tool
-        (BaseTool, E2B file tools, Read) receives resolved content uniformly.
-
-        Applied once to every registered tool."""
-
-        async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
-            # Empty tool args = model's output was truncated by the API's
-            # max_tokens limit.  Instead of letting the tool fail with a
-            # confusing error (and eventually tripping the circuit breaker),
-            # return clear guidance so the model can self-correct.
-            if not args and input_schema and input_schema.get("required"):
-                logger.warning(
-                    "[MCP] %s called with empty args (likely output "
-                    "token truncation) — returning guidance",
-                    tool_name,
-                )
-                return _mcp_error(
-                    f"Your call to {tool_name} had empty arguments — "
-                    f"this means your previous response was too long and "
-                    f"the tool call input was truncated by the API. "
-                    f"To fix this: break your work into smaller steps. "
-                    f"For large content, first write it to a file using "
-                    f"bash_exec with cat >> (append section by section), "
-                    f"then pass it via @@agptfile:filename reference. "
-                    f"Do NOT retry with the same approach — it will "
-                    f"be truncated again."
-                )
-
-            # Circuit breaker: stop infinite retry loops with identical args.
-            # Use the original (pre-expansion) args for fingerprinting so
-            # check and record always use the same key — @@agptfile:
-            # expansion mutates args, which would cause a key mismatch.
-            original_args = args
-            stop_msg = _check_circuit_breaker(tool_name, original_args)
-            if stop_msg:
-                return _mcp_error(stop_msg)
-
-            user_id, session = get_execution_context()
-            if session is not None:
-                try:
-                    args = await expand_file_refs_in_args(
-                        args, user_id, session, input_schema=input_schema
-                    )
-                except FileRefExpansionError as exc:
-                    _record_tool_failure(tool_name, original_args)
-                    return _mcp_error(
-                        f"@@agptfile: reference could not be resolved: {exc}. "
-                        "Ensure the file exists before referencing it. "
-                        "For sandbox paths use bash_exec to verify the file exists first; "
-                        "for workspace files use a workspace:// URI."
-                    )
-            result = await fn(args)
-            truncated = truncate(result, _MCP_MAX_CHARS)
-
-            # Track consecutive failures for circuit breaker
-            if truncated.get("isError"):
-                _record_tool_failure(tool_name, original_args)
-            else:
-                _clear_tool_failures(tool_name)
-
-            # Stash the text so the response adapter can forward our
-            # middle-out truncated version to the frontend instead of the
-            # SDK's head-truncated version (for outputs >~100 KB the SDK
-            # persists to tool-results/ with a 2 KB head-only preview).
-            if not truncated.get("isError"):
-                text = _text_from_mcp_result(truncated)
-                if text:
-                    stash_pending_tool_output(tool_name, text)
-
-            return truncated
-
-        return wrapper
-
+    hidden = frozenset(hidden_tool_names)
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
+        if tool_name in hidden:
+            continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
+        required = list(base_tool.parameters.get("required", []))
         # All tools annotated readOnlyHint=True to enable parallel dispatch.
         # The SDK CLI uses this hint to dispatch concurrent tool calls in
         # parallel rather than sequentially.  Side-effect safety is ensured
@@ -556,28 +816,105 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             base_tool.description,
             schema,
             annotations=_PARALLEL_ANNOTATION,
-        )(_truncating(handler, tool_name, input_schema=schema))
+        )(
+            _make_truncating_wrapper(
+                handler, tool_name, input_schema=schema, required_args=required
+            )
+        )
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
+    # All E2B file tools have at least one required arg (the path), so empty
+    # args is always truncation — passing a sentinel non-empty required_args
+    # list keeps the truncation guard active for them.
+    _MUTATING_E2B_TOOLS = {"write_file", "edit_file"}
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
+            if name in hidden:
+                continue
+            ann = (
+                _MUTATING_ANNOTATION
+                if name in _MUTATING_E2B_TOOLS
+                else _PARALLEL_ANNOTATION
+            )
             decorated = tool(
                 name,
                 desc,
                 schema,
-                annotations=_PARALLEL_ANNOTATION,
-            )(_truncating(handler, name))
+                annotations=ann,
+            )(_make_truncating_wrapper(handler, name, required_args=["path"]))
             sdk_tools.append(decorated)
 
+    # Unified Write/Read/Edit tools — replace the CLI's built-in versions
+    # which have no defence against output-token truncation.
+    # Skip in E2B mode: E2B_FILE_TOOLS already registers "write_file",
+    # "read_file", and "edit_file".  Registering both would give the LLM
+    # duplicate tools per operation.
+    if not use_e2b:
+        if WRITE_TOOL_NAME not in hidden:
+            write_handler = get_write_tool_handler()
+            write_tool = tool(
+                WRITE_TOOL_NAME,
+                WRITE_TOOL_DESCRIPTION,
+                WRITE_TOOL_SCHEMA,
+                annotations=_MUTATING_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    write_handler,
+                    WRITE_TOOL_NAME,
+                    input_schema=WRITE_TOOL_SCHEMA,
+                    required_args=["file_path", "content"],
+                )
+            )
+            sdk_tools.append(write_tool)
+
+        if READ_TOOL_NAME not in hidden:
+            read_file_handler = get_read_tool_handler()
+            read_file_tool = tool(
+                READ_TOOL_NAME,
+                READ_TOOL_DESCRIPTION,
+                READ_TOOL_SCHEMA,
+                annotations=_PARALLEL_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    read_file_handler,
+                    READ_TOOL_NAME,
+                    input_schema=READ_TOOL_SCHEMA,
+                    required_args=["file_path"],
+                )
+            )
+            sdk_tools.append(read_file_tool)
+
+        if EDIT_TOOL_NAME not in hidden:
+            edit_handler = get_edit_tool_handler()
+            edit_tool = tool(
+                EDIT_TOOL_NAME,
+                EDIT_TOOL_DESCRIPTION,
+                EDIT_TOOL_SCHEMA,
+                annotations=_MUTATING_ANNOTATION,
+            )(
+                _make_truncating_wrapper(
+                    edit_handler,
+                    EDIT_TOOL_NAME,
+                    input_schema=EDIT_TOOL_SCHEMA,
+                    required_args=["file_path", "old_string", "new_string"],
+                )
+            )
+            sdk_tools.append(edit_tool)
+
     # Read tool for SDK-truncated tool results (always needed, read-only).
-    read_tool = tool(
-        _READ_TOOL_NAME,
-        _READ_TOOL_DESCRIPTION,
-        _READ_TOOL_SCHEMA,
-        annotations=_PARALLEL_ANNOTATION,
-    )(_truncating(_read_file_handler, _READ_TOOL_NAME))
-    sdk_tools.append(read_tool)
+    if _READ_TOOL_NAME not in hidden:
+        read_tool = tool(
+            _READ_TOOL_NAME,
+            _READ_TOOL_DESCRIPTION,
+            _READ_TOOL_SCHEMA,
+            annotations=_PARALLEL_ANNOTATION,
+        )(
+            _make_truncating_wrapper(
+                _read_file_handler, _READ_TOOL_NAME, required_args=["file_path"]
+            )
+        )
+        sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(
         name=MCP_SERVER_NAME,
@@ -597,7 +934,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
+# WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
+# ``mcp__copilot__web_search`` so cost tracking is unified across paths.
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
@@ -606,10 +945,31 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
 # AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+# Write: the CLI's built-in Write tool has no defence against output-token
+#   truncation.  When the LLM generates a very large `content` argument the
+#   API truncates the response mid-JSON and Ajv rejects it with the opaque
+#   "'file_path' is a required property" error, losing the user's work.
+#   All writes go through our MCP Write tool (e2b_file_tools.py) where we
+#   control validation and return actionable guidance.
+# Edit: same truncation risk as Write — the CLI's built-in Edit has no
+#   defence against output-token truncation.  All edits go through our
+#   MCP Edit tool (e2b_file_tools.py).
+# Read: already disallowed in E2B mode (prod/dev) via
+#   _SDK_BUILTIN_FILE_TOOLS.  Disallow in non-E2B too for consistency
+#   — our MCP read_file handles tool-results paths via
+#   is_allowed_local_path() and has been the only Read available in
+#   prod without issues.
+# ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
+#   {"scheduledFor": 0} and nothing is scheduled.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
+    "WebSearch",
     "AskUserQuestion",
+    "Write",
+    "Edit",
+    "Read",
+    "ScheduleWakeup",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -626,7 +986,13 @@ BLOCKED_TOOLS = {
 # Tools allowed only when their path argument stays within the SDK workspace.
 # The SDK uses these to handle oversized tool results (writes to tool-results/
 # files, then reads them back) and for workspace file operations.
-WORKSPACE_SCOPED_TOOLS = {"Read", "Write", "Edit", "Glob", "Grep"}
+# Read is included because the SDK reads back oversized tool results from
+# tool-results/ and tool-outputs/ directories.  It is also in
+# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
+# but the security hooks check workspace scope BEFORE the blocked list
+# so that these internal reads are permitted.
+# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
 
 # Dangerous patterns in tool inputs
 DANGEROUS_PATTERNS = [
@@ -645,25 +1011,62 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
+# Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
+# Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
+# keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
+# there is no double exposure.  Public (no leading underscore) so a future
+# refactor renaming it is visible at both call sites —
+# ``permissions.apply_tool_permissions`` maps short tool names back to the
+# CLI built-in form for SDK mode.
+BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
+
+
+def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
+    return [
+        f"{MCP_TOOL_PREFIX}{name}"
+        for name in TOOL_REGISTRY.keys()
+        if name not in BASELINE_ONLY_MCP_TOOLS and name not in hidden
+    ]
+
+
 # Static tool name list for the non-E2B case (backward compatibility).
+# Includes all capability-gated tools; per-user filtering happens in
+# ``get_copilot_tool_names`` when the caller passes ``disabled_groups``.
 COPILOT_TOOL_NAMES = [
-    *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+    *_registry_mcp_tools(),
+    f"{MCP_TOOL_PREFIX}{WRITE_TOOL_NAME}",
+    f"{MCP_TOOL_PREFIX}{READ_TOOL_NAME}",
+    f"{MCP_TOOL_PREFIX}{EDIT_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
     *_SDK_BUILTIN_TOOLS,
 ]
 
 
-def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
+def get_copilot_tool_names(
+    *,
+    use_e2b: bool = False,
+    disabled_groups: Iterable[ToolGroup] = (),
+) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
     When *use_e2b* is True the SDK built-in file tools are replaced by MCP
-    equivalents that route to the E2B sandbox.
+    equivalents that route to the E2B sandbox.  Tools belonging to any of
+    *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
+    in ``backend.copilot.tools`` for the full list.
     """
-    if not use_e2b:
-        return list(COPILOT_TOOL_NAMES)
+    hidden_short_names = tool_names_in_groups(disabled_groups)
+    hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
+    if not use_e2b:
+        if not hidden_mcp_names:
+            return list(COPILOT_TOOL_NAMES)
+        return [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
+
+    # In E2B mode, Write/Edit are NOT registered (E2B uses write_file/edit_file
+    # from E2B_FILE_TOOLS instead), so don't include them here.
+    # _READ_TOOL_NAME is still needed for SDK tool-result reads.
     return [
-        *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+        *_registry_mcp_tools(hidden=hidden_short_names),
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
         *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
         *_SDK_BUILTIN_ALWAYS,

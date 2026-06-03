@@ -25,6 +25,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from .helpers import merge_exa_cost
 
 
 class ResearchModel(str, Enum):
@@ -232,6 +233,7 @@ class ExaCreateResearchBlock(Block):
 
                     if research.cost_dollars:
                         yield "cost_total", research.cost_dollars.total
+                        merge_exa_cost(self, research)
                     return
 
                 await asyncio.sleep(check_interval)
@@ -346,6 +348,7 @@ class ExaGetResearchBlock(Block):
             yield "cost_searches", research.cost_dollars.num_searches
             yield "cost_pages", research.cost_dollars.num_pages
             yield "cost_reasoning_tokens", research.cost_dollars.reasoning_tokens
+            merge_exa_cost(self, research)
 
         yield "error_message", research.error
 
@@ -432,6 +435,7 @@ class ExaWaitForResearchBlock(Block):
 
                 if research.cost_dollars:
                     yield "cost_total", research.cost_dollars.total
+                    merge_exa_cost(self, research)
 
                 return
 

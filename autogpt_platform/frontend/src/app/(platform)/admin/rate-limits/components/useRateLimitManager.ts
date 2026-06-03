@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import type { SetUserTierRequest } from "@/app/api/__generated__/models/setUserTierRequest";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
-  getV2GetAllUsersHistory,
+  getV2SearchUsersByNameOrEmail,
   postV2ResetUserRateLimitUsage,
+  postV2SetUserRateLimitTier,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 
 export interface UserOption {
@@ -14,18 +16,10 @@ export interface UserOption {
   user_email: string;
 }
 
-/**
- * Returns true when the input looks like a complete email address.
- * Used to decide whether to call the direct email lookup endpoint
- * vs. the broader user-history search.
- */
 function looksLikeEmail(input: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
 }
 
-/**
- * Returns true when the input looks like a UUID (user ID).
- */
 function looksLikeUuid(input: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     input,
@@ -41,7 +35,6 @@ export function useRateLimitManager() {
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
-  /** Direct lookup by email or user ID via the rate-limit endpoint. */
   async function handleDirectLookup(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -77,7 +70,6 @@ export function useRateLimitManager() {
     }
   }
 
-  /** Fuzzy name/email search via the spending-history endpoint. */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -85,38 +77,21 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
-      const response = await getV2GetAllUsersHistory({
-        search: trimmed,
-        page: 1,
-        page_size: 50,
+      const response = await getV2SearchUsersByNameOrEmail({
+        query: trimmed,
+        limit: 20,
       });
       if (response.status !== 200) {
         throw new Error("Failed to search users");
       }
 
-      // Deduplicate by user_id to get unique users
-      const seen = new Set<string>();
-      const users: UserOption[] = [];
-      for (const tx of response.data.history) {
-        if (!seen.has(tx.user_id)) {
-          seen.add(tx.user_id);
-          users.push({
-            user_id: tx.user_id,
-            user_email: String(tx.user_email ?? tx.user_id),
-          });
-        }
-      }
-
+      const users = (response.data ?? []).map((u) => ({
+        user_id: u.user_id,
+        user_email: u.user_email ?? u.user_id,
+      }));
       if (users.length === 0) {
-        toast({
-          title: "No results",
-          description: "No users found matching your search.",
-        });
+        toast({ title: "No results", description: "No users found." });
       }
-
-      // Always show the result list so the user explicitly picks a match.
-      // The history endpoint paginates transactions, not users, so a single
-      // page may not be authoritative -- avoid auto-selecting.
       setSearchResults(users);
     } catch (error) {
       console.error("Error searching users:", error);
@@ -199,6 +174,32 @@ export function useRateLimitManager() {
     }
   }
 
+  async function handleTierChange(newTier: string) {
+    if (!rateLimitData) return;
+
+    const response = await postV2SetUserRateLimitTier({
+      user_id: rateLimitData.user_id,
+      tier: newTier as SetUserTierRequest["tier"],
+    });
+
+    if (response.status !== 200) {
+      throw new Error("Failed to update tier");
+    }
+
+    // Re-fetch rate limit data to reflect new tier-adjusted limits.
+    try {
+      const refreshResponse = await getV2GetUserRateLimit({
+        user_id: rateLimitData.user_id,
+      });
+      if (refreshResponse.status === 200) {
+        setRateLimitData(refreshResponse.data);
+      }
+    } catch {
+      // Tier was changed server-side; UI will be stale but not incorrect.
+      // The caller's success toast is still valid — the tier change worked.
+    }
+  }
+
   return {
     isSearching,
     isLoadingRateLimit,
@@ -208,5 +209,6 @@ export function useRateLimitManager() {
     handleSearch,
     handleSelectUser,
     handleReset,
+    handleTierChange,
   };
 }

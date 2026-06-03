@@ -4,13 +4,6 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/atoms/Tooltip/BaseTooltip";
-import { Question } from "@phosphor-icons/react";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { useOnboardingWizardStore } from "../store";
 
@@ -40,36 +33,16 @@ export function WelcomeStep() {
           <Text variant="h3">Welcome to AutoGPT</Text>
           <Text variant="lead" as="span" className="!text-zinc-500">
             Let&apos;s personalize your experience so{" "}
-            <span className="relative mr-3 inline-block bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-              Autopilot
-              <span className="absolute -right-4 top-0">
-                <TooltipProvider delayDuration={400}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label="What is Autopilot?"
-                        className="inline-flex text-purple-500"
-                      >
-                        <Question size={14} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Autopilot is AutoGPT&apos;s AI assistant that watches your
-                      connected apps, spots repetitive tasks you do every day
-                      and runs them for you automatically.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </span>
+            <span className="bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
+              AutoPilot
             </span>{" "}
-            can start saving you time right away
+            can start saving you time
           </Text>
         </div>
 
         <Input
           id="first-name"
-          label="Your first name"
+          label="What should I call you?"
           placeholder="e.g. John"
           value={name}
           onChange={(e) => setName(e.target.value)}

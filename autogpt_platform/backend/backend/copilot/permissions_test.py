@@ -257,6 +257,9 @@ class TestValidateToolNames:
     def test_valid_sdk_builtin(self):
         assert validate_tool_names(["Read", "Task", "WebSearch"]) == []
 
+    def test_disabled_legacy_tool_name_is_accepted(self):
+        assert validate_tool_names(["ask_question"]) == []
+
     def test_invalid_tool(self):
         result = validate_tool_names(["nonexistent_tool"])
         assert "nonexistent_tool" in result
@@ -408,12 +411,12 @@ class TestApplyToolPermissions:
         assert "Task" not in allowed
 
     def test_read_tool_always_included_even_when_blacklisted(self, mocker):
-        """mcp__copilot__Read must stay in allowed even if Read is explicitly blacklisted."""
+        """mcp__copilot__read_tool_result must stay in allowed even if Read is explicitly blacklisted."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "Task",
             ],
         )
@@ -432,17 +435,19 @@ class TestApplyToolPermissions:
         # Explicitly blacklist Read
         perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert (
+            "mcp__copilot__read_tool_result" in allowed
+        )  # always preserved for SDK internals
         assert "mcp__copilot__run_block" in allowed
         assert "Task" in allowed
 
     def test_read_tool_always_included_with_narrow_whitelist(self, mocker):
-        """mcp__copilot__Read must stay in allowed even when not in a whitelist."""
+        """mcp__copilot__read_tool_result must stay in allowed even when not in a whitelist."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "Task",
             ],
         )
@@ -461,7 +466,9 @@ class TestApplyToolPermissions:
         # Whitelist only run_block — Read not listed
         perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
         allowed, _ = apply_tool_permissions(perms, use_e2b=False)
-        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert (
+            "mcp__copilot__read_tool_result" in allowed
+        )  # always preserved for SDK internals
         assert "mcp__copilot__run_block" in allowed
 
     def test_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
@@ -470,7 +477,7 @@ class TestApplyToolPermissions:
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "mcp__copilot__write_file",
                 "Task",
@@ -500,13 +507,48 @@ class TestApplyToolPermissions:
         # Write not whitelisted — write_file should NOT be included
         assert "mcp__copilot__write_file" not in allowed
 
+    def test_non_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
+        """In non-E2B mode, whitelisting 'Write' must include mcp__copilot__Write."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Write",
+                "mcp__copilot__Edit",
+                "mcp__copilot__read_file",
+                "mcp__copilot__read_tool_result",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=["Bash"],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Write", "Edit", "Task"]),
+        )
+        # Whitelist Write and run_block — mcp__copilot__Write should be included
+        perms = CopilotPermissions(tools=["Write", "run_block"], tools_exclude=False)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=False)
+        assert "mcp__copilot__Write" in allowed
+        assert "mcp__copilot__run_block" in allowed
+        # Edit not whitelisted — should NOT be included
+        assert "mcp__copilot__Edit" not in allowed
+        # read_tool_result always preserved for SDK internals
+        assert "mcp__copilot__read_tool_result" in allowed
+
     def test_e2b_file_tools_excluded_when_sdk_builtin_blacklisted(self, mocker):
         """In E2B mode, blacklisting 'Read' must also remove mcp__copilot__read_file."""
         mocker.patch(
             "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=[
                 "mcp__copilot__run_block",
-                "mcp__copilot__Read",
+                "mcp__copilot__read_tool_result",
                 "mcp__copilot__read_file",
                 "Task",
             ],
@@ -532,8 +574,8 @@ class TestApplyToolPermissions:
         allowed, _ = apply_tool_permissions(perms, use_e2b=True)
         assert "mcp__copilot__read_file" not in allowed
         assert "mcp__copilot__run_block" in allowed
-        # mcp__copilot__Read is always preserved for SDK internals
-        assert "mcp__copilot__Read" in allowed
+        # mcp__copilot__read_tool_result is always preserved for SDK internals
+        assert "mcp__copilot__read_tool_result" in allowed
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +585,11 @@ class TestApplyToolPermissions:
 
 class TestSdkBuiltinToolNames:
     def test_expected_builtins_present(self):
+        # ``TodoWrite`` is DELIBERATELY absent: baseline ships an MCP-wrapped
+        # platform version for model-flexibility parity, so it appears in
+        # PLATFORM_TOOL_NAMES / TOOL_REGISTRY instead. ``Task`` remains
+        # SDK-only — baseline uses ``run_sub_session`` for the equivalent
+        # context-isolation role.
         expected = {
             "Agent",
             "Read",
@@ -552,9 +599,9 @@ class TestSdkBuiltinToolNames:
             "Grep",
             "Task",
             "WebSearch",
-            "TodoWrite",
         }
         assert expected.issubset(SDK_BUILTIN_TOOL_NAMES)
+        assert "TodoWrite" not in SDK_BUILTIN_TOOL_NAMES
 
     def test_platform_names_match_tool_registry(self):
         """PLATFORM_TOOL_NAMES (derived from ToolName Literal) must match TOOL_REGISTRY keys."""

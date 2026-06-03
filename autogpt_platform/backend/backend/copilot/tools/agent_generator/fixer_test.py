@@ -580,6 +580,29 @@ class TestFixAiModelParameter:
 
         assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar"
 
+    def test_ai_block_without_model_property_is_skipped(self):
+        """AI-category blocks that have no 'model' input property should not
+        have a model injected — they simply don't expose a model selector."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(node_id="n1", block_id=block_id, input_default={})
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "name": "SomeAIBlock",
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {"prompt": {"type": "string"}},
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert "model" not in result["nodes"][0]["input_default"]
+
 
 class TestFixAgentExecutorBlocks:
     """Tests for fix_agent_executor_blocks."""

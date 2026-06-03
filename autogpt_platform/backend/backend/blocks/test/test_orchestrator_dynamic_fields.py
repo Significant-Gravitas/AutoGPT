@@ -306,6 +306,9 @@ async def test_output_yielding_with_dynamic_fields():
     mock_response.raw_response = {"role": "assistant", "content": "test"}
     mock_response.prompt_tokens = 100
     mock_response.completion_tokens = 50
+    mock_response.cache_read_tokens = 0
+    mock_response.cache_creation_tokens = 0
+    mock_response.provider_cost = None
 
     # Mock the LLM call
     with patch(
@@ -637,6 +640,14 @@ async def test_validation_errors_dont_pollute_conversation():
                 mock_node_stats.error = None
                 mock_execution_processor.on_node_execution.return_value = (
                     mock_node_stats
+                )
+                # Mock charge_node_usage (called after successful tool execution).
+                # Must be AsyncMock because it is async and is awaited in
+                # _execute_single_tool_with_manager — a plain MagicMock would
+                # return a non-awaitable tuple and TypeError out, then be
+                # silently swallowed by the orchestrator's catch-all.
+                mock_execution_processor.charge_node_usage = AsyncMock(
+                    return_value=(0, 0)
                 )
 
                 async for output_name, output_value in block.run(
