@@ -59,7 +59,7 @@ export function NotificationToggle() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-3">
+      <PopoverContent align="start" className="z-[80] w-56 p-3">
         <div className="flex flex-col gap-3">
           <label className="flex items-center justify-between">
             <span className="text-sm text-zinc-700">Notifications</span>

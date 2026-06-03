@@ -30,7 +30,7 @@ export function UsagePopover() {
           <ChartBarIcon className="!size-5" weight="light" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-4">
+      <PopoverContent align="start" className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <Text variant="body-medium" className="text-neutral-800">
