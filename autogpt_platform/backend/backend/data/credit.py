@@ -2436,6 +2436,9 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
             await get_user_by_id(user_id)
         ).subscription_tier or SubscriptionTier.NO_TIER
         if new_tier == current_tier:
+            # Active sub matches the DB tier — stamp so the lazy staleness gate
+            # doesn't re-check this steady-state payer against Stripe every cycle.
+            await _stamp_stripe_reconciled(user_id)
             return False
         direction = log_tier_reconciliation_discrepancy(
             user_id=user_id,

@@ -668,3 +668,35 @@ async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
 
     assert await reconcile_stripe_tier_for_user("user_abc") is True
     mock_sync.assert_called_once_with(dict(fake_sub))
+
+
+async def test_reconcile_stripe_tier_active_sub_unchanged_stamps_and_returns_false(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Active sub already matches the DB tier: stamp lastStripeReconciledAt and
+    return False so the lazy staleness gate doesn't re-check every cycle."""
+    user = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.PRO,
+        subscription_tier_source=SubscriptionTierSource.STRIPE,
+    )
+    after = MagicMock(subscription_tier=SubscriptionTier.PRO)
+    mocker.patch(
+        "backend.data.credit.get_user_by_id",
+        new_callable=AsyncMock,
+        side_effect=[user, after],
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    )
+    mocker.patch(
+        "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
+    )
+    mock_stamp = mocker.patch(
+        "backend.data.credit._stamp_stripe_reconciled", new_callable=AsyncMock
+    )
+
+    assert await reconcile_stripe_tier_for_user("user_abc") is False
+    mock_stamp.assert_awaited_once_with("user_abc")
