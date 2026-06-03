@@ -2854,3 +2854,22 @@ class TestMaybeReconcileStaleStripeTier:
         ):
             assert await _maybe_reconcile_stale_stripe_tier(_USER) is False
             inner.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_user_tier_refetch_failure_after_stale_reconcile_fails_safe():
+    """If the post-reconcile tier re-read throws, return NO_TIER — never the
+    stale (possibly just-downgraded) pre-reconcile tier."""
+    with (
+        patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new_callable=AsyncMock,
+            side_effect=[SubscriptionTier.PRO, RuntimeError("db blip")],
+        ),
+        patch(
+            "backend.copilot.rate_limit._maybe_reconcile_stale_stripe_tier",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        assert await get_user_tier(_USER) is SubscriptionTier.NO_TIER

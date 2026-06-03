@@ -1036,10 +1036,15 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
             except Exception as exc:
                 logger.warning(
                     "get_user_tier: tier re-read failed after stale reconcile"
-                    " for %s: %s",
+                    " for %s: %s — returning NO_TIER to avoid serving the stale"
+                    " pre-reconcile tier",
                     user_id[:8],
                     exc,
                 )
+                # The reconcile just changed the tier (possibly a downgrade). If
+                # we can't read the new value, fail safe rather than grant the
+                # old, higher tier for this request.
+                return SubscriptionTier.NO_TIER
         return tier
 
     if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
