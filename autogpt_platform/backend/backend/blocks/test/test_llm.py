@@ -1184,12 +1184,16 @@ class TestUserErrorStatusCodeHandling:
 
     @pytest.mark.asyncio
     async def test_generic_bad_request_does_not_append_model_guidance(self):
-        """Non-model 400 errors should keep their original provider message."""
+        """Non-model 400 errors should keep their original provider message and
+        still be retried (i.e. they are not treated as non-retryable)."""
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
 
         async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
             response = httpx.Response(
                 400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
             )
@@ -1205,16 +1209,56 @@ class TestUserErrorStatusCodeHandling:
                 expected_format={"key": "desc"},
                 model=llm.LlmModel.CLAUDE_4_5_HAIKU,
                 credentials=_TEST_AI_CREDENTIALS,
-                retry=1,
+                retry=2,
             )
 
             with pytest.raises(RuntimeError) as exc_info:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
+        # Generic 400s are retryable, so the mock must be invoked more than once.
+        assert call_count > 1
         error_message = str(exc_info.value).lower()
         assert "check anthropic's current model list" not in error_message
         assert "update the block's model configuration" not in error_message
+
+    @pytest.mark.asyncio
+    async def test_anthropic_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors from the Anthropic SDK should also surface
+        remediation guidance and skip retries."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(404, request=request)
+            raise anthropic.APIStatusError(
+                "Error code: 404 - model `claude-imaginary` does not exist",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LlmModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" in error_message
+        assert "update the block's model configuration" in error_message
 
 
 class TestLlmModelMissing:

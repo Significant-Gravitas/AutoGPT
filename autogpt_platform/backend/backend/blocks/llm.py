@@ -28,6 +28,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -35,7 +36,6 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
-from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.clients import OPENROUTER_BASE_URL
@@ -58,6 +58,7 @@ fmt = TextFormatter(autoescape=False)
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
+
 # Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
 # Messages calls finish in seconds; anything past this is almost certainly a
 # stalled socket (server keeping connection alive but starving response bytes,
@@ -91,6 +92,8 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
+
+
 def AICredentialsField() -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
@@ -1674,6 +1677,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
+                # Invalid/retired model IDs (often surfaced as 400s) are
+                # non-retryable by design: a fresh attempt with the same model
+                # will fail identically. Other 400s are intentionally left to
+                # exhaust retries since they may be transient.
                 invalid_model_error = is_invalid_model_error(e)
                 is_user_error = invalid_model_error or (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
@@ -1681,7 +1688,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 )
                 if is_user_error:
                     logger.warning(f"Error calling LLM: {e}")
-                    error_feedback_message = format_llm_error_message(e, llm_model)
+                    error_feedback_message = format_llm_error_message(
+                        e, llm_model, is_invalid_model=invalid_model_error
+                    )
                     break
                 if isinstance(e, TimeoutError):
                     # A request that hung once will most likely hang again on
