@@ -454,6 +454,13 @@ class CountdownTimerBlock(Block):
             description="Message after the timer finishes"
         )
 
+    MAX_TOTAL_SECONDS = 7 * 86400  # 7 days
+    MIN_REPEAT = 1
+    MAX_REPEAT = 1000
+    # Override the default 30-minute block timeout so the configured cap
+    # is actually reachable; add a small buffer for scheduler overhead.
+    execution_timeout_seconds: int | None = MAX_TOTAL_SECONDS + 60
+
     def __init__(self):
         super().__init__(
             id="d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
@@ -471,18 +478,18 @@ class CountdownTimerBlock(Block):
             ],
         )
 
-    MAX_TOTAL_SECONDS = 7 * 86400  # 7 days
-    MIN_REPEAT = 1
-    MAX_REPEAT = 1000
-    # Override the default 30-minute block timeout so the configured cap
-    # is actually reachable; add a small buffer for scheduler overhead.
-    execution_timeout_seconds: int | None = MAX_TOTAL_SECONDS + 60
+    @staticmethod
+    def _coerce_duration_field(field_name: str, value: Union[int, str]) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} must be a valid integer, got {value!r}")
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        seconds = int(input_data.seconds)
-        minutes = int(input_data.minutes)
-        hours = int(input_data.hours)
-        days = int(input_data.days)
+        seconds = self._coerce_duration_field("seconds", input_data.seconds)
+        minutes = self._coerce_duration_field("minutes", input_data.minutes)
+        hours = self._coerce_duration_field("hours", input_data.hours)
+        days = self._coerce_duration_field("days", input_data.days)
         repeat = input_data.repeat
 
         # Defense-in-depth: also enforce here in case Pydantic constraints
