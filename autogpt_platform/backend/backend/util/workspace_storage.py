@@ -20,6 +20,7 @@ from google.cloud import storage as gcs_storage
 
 from backend.util.data import get_data_path
 from backend.util.gcs_utils import (
+    download_range,
     download_with_fresh_session,
     generate_signed_url,
     parse_gcs_path,
@@ -64,6 +65,22 @@ class WorkspaceStorageBackend(ABC):
 
         Returns:
             File content as bytes
+        """
+        pass
+
+    @abstractmethod
+    async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
+        """
+        Retrieve up to ``max_bytes`` from the start of the file.
+
+        Used for cheap text previews so large files are not loaded in full.
+
+        Args:
+            storage_path: The storage path returned from store()
+            max_bytes: Maximum number of leading bytes to return
+
+        Returns:
+            At most ``max_bytes`` of file content as bytes
         """
         pass
 
@@ -173,6 +190,11 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         """Retrieve file from GCS."""
         bucket_name, blob_name = parse_gcs_path(storage_path)
         return await download_with_fresh_session(bucket_name, blob_name)
+
+    async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
+        """Retrieve the first ``max_bytes`` of a GCS file via a Range request."""
+        bucket_name, blob_name = parse_gcs_path(storage_path)
+        return await download_range(bucket_name, blob_name, max_bytes)
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from GCS."""
@@ -300,6 +322,16 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
 
         async with aiofiles.open(file_path, "rb") as f:
             return await f.read()
+
+    async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
+        """Retrieve the first ``max_bytes`` of a local file."""
+        file_path = self._parse_storage_path(storage_path)
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {storage_path}")
+
+        async with aiofiles.open(file_path, "rb") as f:
+            return await f.read(max_bytes)
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from local storage."""

@@ -1,25 +1,19 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
-import {
-  deriveBadgeLabel,
-  FileIllustration,
-  pickFileTypeKey,
-} from "../FileIllustration";
-import {
-  getFileDownloadUrl,
-  getPreviewKind,
-  type PreviewKind,
-} from "../helpers";
+import { useCallback, useState } from "react";
+import { getPreviewKind, type PreviewKind } from "../helpers";
+import { ImagePreview, VideoPreview } from "./MediaPreview";
+import { Fallback } from "./PreviewParts";
+import { IcsPreview, VcardPreview } from "./StructuredPreviews";
+import { CsvPreview, JsonPreview, TextSnippetPreview } from "./TextPreviews";
 
 interface Props {
   file: WorkspaceFileItem;
 }
 
 export function CardPreview({ file }: Props) {
-  const kind = getPreviewKind(file.mime_type, file.size_bytes);
+  const kind = getPreviewKind(file.mime_type, file.size_bytes, file.name);
 
   return (
     <div className="relative aspect-[16/10] overflow-hidden border-b border-zinc-200 bg-zinc-100">
@@ -30,155 +24,28 @@ export function CardPreview({ file }: Props) {
   );
 }
 
-function PreviewBody({
-  file,
-  kind,
-}: {
-  file: WorkspaceFileItem;
-  kind: PreviewKind;
-}) {
+function PreviewBody({ file, kind }: { file: WorkspaceFileItem; kind: PreviewKind }) {
   const [hasError, setHasError] = useState(false);
   const handleError = useCallback(() => setHasError(true), []);
 
-  if (hasError || kind === "none") {
-    return <Fallback file={file} />;
+  if (hasError || kind === "none") return <Fallback file={file} />;
+
+  switch (kind) {
+    case "image":
+    case "pdf":
+    case "office":
+      return <ImagePreview file={file} onError={handleError} />;
+    case "video":
+      return <VideoPreview file={file} onError={handleError} />;
+    case "csv":
+      return <CsvPreview file={file} onError={handleError} />;
+    case "json":
+      return <JsonPreview file={file} onError={handleError} />;
+    case "ics":
+      return <IcsPreview file={file} onError={handleError} />;
+    case "vcard":
+      return <VcardPreview file={file} onError={handleError} />;
+    default:
+      return <TextSnippetPreview file={file} onError={handleError} />;
   }
-
-  if (kind === "image") {
-    return <ImagePreview file={file} onError={handleError} />;
-  }
-
-  if (kind === "video") {
-    return <VideoPreview file={file} onError={handleError} />;
-  }
-
-  return <TextSnippetPreview file={file} onError={handleError} />;
-}
-
-function ImagePreview({
-  file,
-  onError,
-}: {
-  file: WorkspaceFileItem;
-  onError: () => void;
-}) {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  return (
-    <>
-      {!isLoaded ? <LoadingPlaceholder file={file} /> : null}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={getFileDownloadUrl(file.id)}
-        alt={file.name}
-        loading="lazy"
-        onLoad={() => setIsLoaded(true)}
-        onError={onError}
-        className={cn(
-          "h-full w-full object-cover transition-opacity duration-300",
-          isLoaded ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </>
-  );
-}
-
-function VideoPreview({
-  file,
-  onError,
-}: {
-  file: WorkspaceFileItem;
-  onError: () => void;
-}) {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  return (
-    <>
-      {!isLoaded ? <LoadingPlaceholder file={file} /> : null}
-      <video
-        src={getFileDownloadUrl(file.id)}
-        preload="metadata"
-        muted
-        playsInline
-        onLoadedData={() => setIsLoaded(true)}
-        onError={onError}
-        className={cn(
-          "h-full w-full object-cover transition-opacity duration-300",
-          isLoaded ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </>
-  );
-}
-
-function Fallback({ file }: { file: WorkspaceFileItem }) {
-  return (
-    <div className="flex h-full w-full items-center justify-center">
-      <FileIllustration
-        typeKey={pickFileTypeKey(file.mime_type)}
-        label={deriveBadgeLabel(file.name, file.mime_type)}
-        size="md"
-      />
-    </div>
-  );
-}
-
-function LoadingPlaceholder({ file }: { file: WorkspaceFileItem }) {
-  return (
-    <div className="absolute inset-0">
-      <Fallback file={file} />
-      <ProgressBar />
-    </div>
-  );
-}
-
-function ProgressBar() {
-  return (
-    <div
-      className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-zinc-200/70"
-      aria-hidden
-    >
-      <div className="h-full w-1/3 animate-progress-bar rounded-full bg-zinc-500" />
-    </div>
-  );
-}
-
-const TEXT_SNIPPET_CHARS = 1500;
-
-function TextSnippetPreview({
-  file,
-  onError,
-}: {
-  file: WorkspaceFileItem;
-  onError: () => void;
-}) {
-  const [text, setText] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch(getFileDownloadUrl(file.id));
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        const body = await res.text();
-        if (!cancelled) setText(body.slice(0, TEXT_SNIPPET_CHARS));
-      } catch {
-        if (!cancelled) onError();
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [file.id, onError]);
-
-  if (text === null) {
-    return <LoadingPlaceholder file={file} />;
-  }
-
-  return (
-    <pre className="h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-white p-3 font-mono text-[10px] leading-[1.35] text-zinc-700">
-      {text}
-    </pre>
-  );
 }
