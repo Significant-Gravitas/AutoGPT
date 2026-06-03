@@ -1089,11 +1089,15 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid). Don't label it STRIPE-authored — that would make
+                # reconciliation treat the row as Stripe-authoritative.
                 await set_subscription_tier(
-                    user_id, tier, SubscriptionTierSource.STRIPE
+                    user_id, tier, SubscriptionTierSource.SYSTEM
                 )
             return await get_subscription_status(user_id)
-        await set_subscription_tier(user_id, tier, SubscriptionTierSource.STRIPE)
+        # Payments disabled — the flip is a local/system action, not Stripe.
+        await set_subscription_tier(user_id, tier, SubscriptionTierSource.SYSTEM)
         return await get_subscription_status(user_id)
 
     if not payment_enabled:

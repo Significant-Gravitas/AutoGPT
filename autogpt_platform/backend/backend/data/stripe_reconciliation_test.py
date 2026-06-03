@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_mock
+import stripe
 from prisma.enums import SubscriptionTier, SubscriptionTierSource
 
 from backend.data.stripe_reconciliation import (
@@ -170,6 +171,41 @@ async def test_sweep_only_queries_stripe_sourced_users(
 
 
 @pytest.mark.asyncio
+async def test_sweep_incomplete_map_skips_downgrades(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    """A failed/partial Stripe snapshot must never downgrade an absent user."""
+    mocker.patch(
+        "backend.data.stripe_reconciliation.build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={"price_pro": SubscriptionTier.PRO},
+    )
+    # Stripe list fails -> _collect_status_page returns capped -> map incomplete.
+    mocker.patch(
+        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        side_effect=stripe.StripeError("rate limited"),
+    )
+    candidates = [_candidate("u_down", "cus_gone", SubscriptionTier.PRO)]
+    mocker.patch(
+        "backend.data.stripe_reconciliation.User.prisma",
+        return_value=MagicMock(find_many=AsyncMock(return_value=candidates)),
+    )
+    set_tier = mocker.patch(
+        "backend.data.stripe_reconciliation.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    assert summary.pagination_capped is True
+    assert summary.skipped_incomplete == 1
+    assert summary.downgrades == 0
+    set_tier.assert_not_called()
+    mock_alert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_sweep_counts_errors_without_aborting(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -227,6 +263,7 @@ def test_summary_defaults_to_zero() -> None:
         "downgrades": 0,
         "unchanged": 0,
         "errors": 0,
+        "skipped_incomplete": 0,
         "pagination_capped": False,
         "discrepancies": [],
     }

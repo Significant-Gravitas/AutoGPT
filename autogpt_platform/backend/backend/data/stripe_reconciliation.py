@@ -58,6 +58,7 @@ class ReconciliationSummary(BaseModel):
     downgrades: int = 0
     unchanged: int = 0
     errors: int = 0
+    skipped_incomplete: int = 0
     pagination_capped: bool = False
     discrepancies: list[TierDiscrepancy] = []
 
@@ -73,16 +74,18 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
         where={"subscriptionTierSource": SubscriptionTierSource.STRIPE},
     )
     summary.candidate_users = len(candidates)
+    map_complete = not customer_to_tier.capped
     for user in candidates:
-        await _reconcile_one(user, customer_to_tier.tiers, summary)
+        await _reconcile_one(user, customer_to_tier.tiers, summary, map_complete)
     logger.info(
         "reconcile_all_stripe_tiers: active_subs=%d candidates=%d upgrades=%d"
-        " downgrades=%d unchanged=%d errors=%d capped=%s",
+        " downgrades=%d unchanged=%d skipped_incomplete=%d errors=%d capped=%s",
         summary.stripe_active_subscriptions,
         summary.candidate_users,
         summary.upgrades,
         summary.downgrades,
         summary.unchanged,
+        summary.skipped_incomplete,
         summary.errors,
         summary.pagination_capped,
     )
@@ -128,9 +131,10 @@ async def _reconcile_one(
     user: User,
     customer_to_tier: dict[str, SubscriptionTier],
     summary: ReconciliationSummary,
+    map_complete: bool,
 ) -> None:
     """Set one user's tier from the Stripe map, updating the summary counts."""
-    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
+    current_tier = SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER)
     target_tier = SubscriptionTier.NO_TIER
     if user.stripeCustomerId:
         target_tier = customer_to_tier.get(
@@ -138,6 +142,14 @@ async def _reconcile_one(
         )
     if target_tier == current_tier:
         summary.unchanged += 1
+        return
+    # When the Stripe snapshot is incomplete (a failed list page or the
+    # pagination cap), absence from the map is unreliable — the user may sit on
+    # a page we never fetched. Never revoke a tier off a partial snapshot;
+    # upgrades (the customer IS in the map) stay safe.
+    in_map = bool(user.stripeCustomerId) and user.stripeCustomerId in customer_to_tier
+    if not map_complete and not in_map:
+        summary.skipped_incomplete += 1
         return
     try:
         await set_subscription_tier(user.id, target_tier, SubscriptionTierSource.STRIPE)
@@ -202,7 +214,18 @@ async def _collect_status_page(
         list_kwargs: dict = {"status": status, "limit": _PAGE_SIZE}
         if starting_after:
             list_kwargs["starting_after"] = starting_after
-        subs = await run_in_threadpool(stripe.Subscription.list, **list_kwargs)
+        try:
+            subs = await run_in_threadpool(stripe.Subscription.list, **list_kwargs)
+        except stripe.StripeError:
+            # A Stripe outage/rate-limit must not abort the whole sweep. Stop
+            # this status and flag the run incomplete so we don't downgrade users
+            # off a partial map (treated like the pagination cap below).
+            logger.exception(
+                "reconcile_all_stripe_tiers: Stripe list failed for status=%s;"
+                " reconciliation is incomplete this run",
+                status,
+            )
+            return True
         for sub in subs.data:
             _record_subscription(sub, price_to_tier, tiers)
         if not subs.has_more or not subs.data:

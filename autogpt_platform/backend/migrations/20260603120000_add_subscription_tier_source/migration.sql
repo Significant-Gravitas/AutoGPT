@@ -20,8 +20,11 @@ SET "subscriptionTierSource" = 'ENTERPRISE'
 WHERE "subscriptionTier" = 'ENTERPRISE'
   AND "subscriptionTierSource" = 'SYSTEM';
 
+-- Also stamp lastStripeReconciledAt so the lazy on-access stale check (>12h)
+-- doesn't fire for every migrated STRIPE user at once right after deploy.
 UPDATE "User"
-SET "subscriptionTierSource" = 'STRIPE'
+SET "subscriptionTierSource" = 'STRIPE',
+    "lastStripeReconciledAt" = CURRENT_TIMESTAMP
 WHERE "subscriptionTier" <> 'NO_TIER'
   AND "subscriptionTier" <> 'ENTERPRISE'
   AND "stripeCustomerId" IS NOT NULL
