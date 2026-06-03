@@ -23,12 +23,16 @@ def _sub(customer: str, price_id: str) -> dict:
 
 
 def _candidate(
-    user_id: str, customer_id: str | None, tier: SubscriptionTier
+    user_id: str,
+    customer_id: str | None,
+    tier: SubscriptionTier,
+    source: SubscriptionTierSource = SubscriptionTierSource.STRIPE,
 ) -> MagicMock:
     user = MagicMock()
     user.id = user_id
     user.stripeCustomerId = customer_id
     user.subscriptionTier = tier
+    user.subscriptionTierSource = source
     return user
 
 
@@ -58,10 +62,20 @@ def mock_alert(mocker: pytest_mock.MockFixture) -> AsyncMock:
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_stamp(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Patch the reconcile-timestamp stamp so unit tests don't touch the DB."""
+    return mocker.patch(
+        "backend.data.stripe_reconciliation._stamp_stripe_reconciled",
+        new_callable=AsyncMock,
+    )
+
+
 @pytest.mark.asyncio
 async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     mocker: pytest_mock.MockFixture,
     mock_alert: AsyncMock,
+    mock_stamp: AsyncMock,
 ) -> None:
     mocker.patch(
         "backend.data.stripe_reconciliation.build_price_to_tier_map",
@@ -109,6 +123,9 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     alert_msg = mock_alert.await_args.args[0]
     assert "2 discrepancy" in alert_msg
     assert "1 downgrade" in alert_msg and "1 upgrade" in alert_msg
+    # The unchanged STRIPE payer gets its reconcile timestamp refreshed so the
+    # lazy staleness gate won't redundantly re-check it before the next sweep.
+    mock_stamp.assert_awaited_once_with("u_keep")
 
 
 @pytest.mark.asyncio
