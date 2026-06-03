@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.time_blocks import CountdownTimerBlock
 
@@ -33,6 +34,36 @@ async def test_countdown_timer_rejects_negative_duration():
         await _run(block, seconds="-1")
 
 
+def test_countdown_timer_rejects_repeat_zero_at_schema():
+    block = CountdownTimerBlock()
+    with pytest.raises(ValidationError):
+        block.input_schema(seconds=1, repeat=0)
+
+
+def test_countdown_timer_rejects_repeat_over_max_at_schema():
+    block = CountdownTimerBlock()
+    with pytest.raises(ValidationError):
+        block.input_schema(seconds=1, repeat=1001)
+
+
+@pytest.mark.asyncio
+async def test_countdown_timer_run_rejects_repeat_zero_defense_in_depth():
+    block = CountdownTimerBlock()
+    bypassed = block.input_schema.model_construct(seconds=1, repeat=0)
+    with pytest.raises(ValueError, match="Repeat must be between"):
+        async for _ in block.run(bypassed):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_countdown_timer_run_rejects_repeat_over_max_defense_in_depth():
+    block = CountdownTimerBlock()
+    bypassed = block.input_schema.model_construct(seconds=1, repeat=1001)
+    with pytest.raises(ValueError, match="Repeat must be between"):
+        async for _ in block.run(bypassed):
+            pass
+
+
 @pytest.mark.asyncio
 async def test_countdown_timer_allows_duration_at_cap(mocker):
     sleep_mock = mocker.patch(
@@ -42,13 +73,6 @@ async def test_countdown_timer_allows_duration_at_cap(mocker):
     outputs = await _run(block, days=7, repeat=1)
     assert outputs == [("output_message", "timer finished")]
     sleep_mock.assert_awaited_once_with(7 * 86400)
-
-
-@pytest.mark.asyncio
-async def test_countdown_timer_allows_repeat_zero():
-    block = CountdownTimerBlock()
-    outputs = await _run(block, seconds=1, repeat=0)
-    assert outputs == []
 
 
 def test_countdown_timer_execution_timeout_covers_max_duration():

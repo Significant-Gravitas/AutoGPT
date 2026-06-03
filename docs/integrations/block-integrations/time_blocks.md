@@ -86,7 +86,7 @@ A block that acts as a countdown timer, triggering after a specified duration.
 This block waits for a specified amount of time and then outputs a message.
 
 ### How it works
-The block takes input for the duration in days, hours, minutes, and seconds. It calculates the total wait time in seconds, pauses execution for that duration, and then outputs the specified message. The cumulative duration (per-iteration delay × `repeat`) is capped at 7 days, and `repeat` is bounded to 0–1000.
+The block takes input for the duration in days, hours, minutes, and seconds. It calculates the total wait time in seconds, pauses execution for that duration, and then outputs the specified message. The cumulative duration (per-iteration delay × `repeat`) is capped at 7 days, and `repeat` is bounded to 1–1000.
 
 ### Inputs
 | Input | Description | Default |
@@ -96,7 +96,7 @@ The block takes input for the duration in days, hours, minutes, and seconds. It 
 | minutes | The number of minutes to wait. | 0 |
 | hours | The number of hours to wait. | 0 |
 | days | The number of days to wait. | 0 |
-| repeat | The number of times to repeat the timer (0–1000). | 1 |
+| repeat | The number of times to repeat the timer (1–1000). | 1 |
 
 ### Outputs
 | Output | Description |
