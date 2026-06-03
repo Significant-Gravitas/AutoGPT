@@ -191,6 +191,7 @@ async def test_create_store_submission(mocker):
         notifyOnAgentRejected=True,
         timezone="Europe/Delft",
         subscriptionTier=prisma.enums.SubscriptionTier.BASIC,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
+        subscriptionTierSource=prisma.enums.SubscriptionTierSource.SYSTEM,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
     )
     mock_agent = prisma.models.AgentGraph(
         id="agent-id",
