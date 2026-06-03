@@ -172,7 +172,7 @@ async def list_library_agents(
         where_clause["isHidden"] = is_hidden
 
     # Build published listing filter (used in search and non-search paths)
-    listing_condition: dict | None = None
+    listing_condition: prisma.types.AgentGraphWhereInput | None = None
     if published is not None:
         active_listing_filter: prisma.types.StoreListingVersionWhereInput = {
             "isAvailable": True,
@@ -190,22 +190,21 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
-        name_condition: dict = {
+        name_filter: prisma.types.AgentGraphWhereInput = {
             "name": {"contains": search_term, "mode": "insensitive"}
         }
-        desc_condition: dict = {
+        desc_filter: prisma.types.AgentGraphWhereInput = {
             "description": {"contains": search_term, "mode": "insensitive"}
         }
         if listing_condition:
-            # Merge search + published into each OR branch
             where_clause["OR"] = [
-                {"AgentGraph": {"is": {**name_condition, **listing_condition}}},
-                {"AgentGraph": {"is": {**desc_condition, **listing_condition}}},
+                {"AgentGraph": {"is": {**name_filter, **listing_condition}}},
+                {"AgentGraph": {"is": {**desc_filter, **listing_condition}}},
             ]
         else:
             where_clause["OR"] = [
-                {"AgentGraph": {"is": name_condition}},
-                {"AgentGraph": {"is": desc_condition}},
+                {"AgentGraph": {"is": name_filter}},
+                {"AgentGraph": {"is": desc_filter}},
             ]
     elif listing_condition:
         where_clause["AgentGraph"] = {"is": listing_condition}
