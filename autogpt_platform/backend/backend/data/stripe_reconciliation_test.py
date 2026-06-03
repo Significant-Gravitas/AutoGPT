@@ -144,9 +144,11 @@ async def test_sweep_no_discrepancies_does_not_alert(
 
 
 @pytest.mark.asyncio
-async def test_sweep_only_queries_stripe_sourced_users(
+async def test_sweep_queries_reconcilable_users(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    """Candidates mirror `_is_stripe_reconcilable`: STRIPE rows + SYSTEM rows
+    that have a Stripe customer; ADMIN/ENTERPRISE are excluded."""
     mocker.patch(
         "backend.data.stripe_reconciliation.build_price_to_tier_map",
         new_callable=AsyncMock,
@@ -166,7 +168,15 @@ async def test_sweep_only_queries_stripe_sourced_users(
     await reconcile_all_stripe_tiers()
 
     find_many.assert_awaited_once_with(
-        where={"subscriptionTierSource": SubscriptionTierSource.STRIPE},
+        where={
+            "OR": [
+                {"subscriptionTierSource": SubscriptionTierSource.STRIPE},
+                {
+                    "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
+                    "stripeCustomerId": {"not": None},
+                },
+            ]
+        },
     )
 
 

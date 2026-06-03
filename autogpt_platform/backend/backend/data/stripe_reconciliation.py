@@ -70,8 +70,20 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
         stripe_active_subscriptions=len(customer_to_tier.tiers),
         pagination_capped=customer_to_tier.capped,
     )
+    # Match `_is_stripe_reconcilable`: STRIPE-sourced rows, plus SYSTEM rows that
+    # have a Stripe customer (a missed *upgrade* webhook leaves a paid-but-NO_TIER
+    # user as SYSTEM+customer — the sweep should recover them too, not only the
+    # lazy on-access path). ADMIN/ENTERPRISE stay excluded.
     candidates = await User.prisma().find_many(
-        where={"subscriptionTierSource": SubscriptionTierSource.STRIPE},
+        where={
+            "OR": [
+                {"subscriptionTierSource": SubscriptionTierSource.STRIPE},
+                {
+                    "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
+                    "stripeCustomerId": {"not": None},
+                },
+            ]
+        },
     )
     summary.candidate_users = len(candidates)
     map_complete = not customer_to_tier.capped
