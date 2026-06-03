@@ -247,8 +247,7 @@ describe("GlobalSearchModal", () => {
 
     // Non-exact match keeps navigation after the search results.
     expect(
-      builder.compareDocumentPosition(alpha) &
-        Node.DOCUMENT_POSITION_PRECEDING,
+      builder.compareDocumentPosition(alpha) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
   });
 
@@ -266,8 +265,7 @@ describe("GlobalSearchModal", () => {
 
     // Exact match: Builder is rendered before the first search result.
     expect(
-      builder.compareDocumentPosition(alpha) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      builder.compareDocumentPosition(alpha) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

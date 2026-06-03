@@ -118,9 +118,7 @@ export function buildNavigationBucket(
 } {
   const normalized = query.trim().toLocaleLowerCase();
 
-  const available = NAV_TARGETS.filter(
-    (target) => target.href !== currentPath,
-  );
+  const available = NAV_TARGETS.filter((target) => target.href !== currentPath);
   const matches = normalized
     ? available.filter((target) => matchesQuery(target, normalized))
     : available.slice(0, IDLE_NAV_LIMIT);
