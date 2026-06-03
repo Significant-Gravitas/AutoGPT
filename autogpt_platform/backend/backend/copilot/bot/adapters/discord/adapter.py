@@ -12,6 +12,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import (
@@ -21,7 +22,7 @@ from ..base import (
     MessageHistoryEntry,
     PlatformAdapter,
 )
-from . import commands, config
+from . import commands, config, intro
 
 logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 20
@@ -176,6 +177,11 @@ class DiscordAdapter(PlatformAdapter):
         @self._client.event
         async def on_ready() -> None:
             logger.info(f"Discord bot connected as {self._client.user}")
+            # Refresh display names for every guild we're currently in — keeps
+            # the Bots settings page in sync with renames and backfills any
+            # rows that pre-date name capture. Cheap: in-memory cache only,
+            # no Discord API calls.
+            await self._refresh_known_server_names()
             # Sync slash commands once per process — on_ready fires on every
             # gateway reconnect, but the command tree only needs uploading once.
             if self._commands_synced:
@@ -186,6 +192,44 @@ class DiscordAdapter(PlatformAdapter):
                 logger.info(f"Synced {len(synced)} slash commands")
             except Exception:
                 logger.exception("Failed to sync slash commands")
+
+        @self._client.event
+        async def on_guild_join(guild: discord.Guild) -> None:
+            await self._refresh_server_name(guild)
+            channel = intro.pick_intro_channel(guild)
+            if channel is None:
+                logger.info(
+                    "No sendable channel in guild %s for intro message", guild.id
+                )
+                return
+            try:
+                await channel.send(
+                    intro.intro_message(),
+                    tts=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except discord.HTTPException:
+                logger.exception("Failed to post intro message in guild %s", guild.id)
+
+        @self._client.event
+        async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
+            if before.name != after.name:
+                await self._refresh_server_name(after)
+
+        @self._client.event
+        async def on_thread_remove(thread: discord.Thread) -> None:
+            # Fires when a thread is removed from the client's cache — the
+            # typical path is the bot being kicked or the thread being made
+            # private without us in it. Drop the auto-reply subscription so a
+            # subsequent re-add by @mention starts in the @-only mode again.
+            # Unlike on_thread_member_remove, this event only requires the
+            # default Intents.guilds and not the privileged members intent.
+            try:
+                await threads.unsubscribe("discord", str(thread.id))
+            except Exception:
+                logger.exception(
+                    f"Failed to unsubscribe thread {thread.id} after removal"
+                )
 
         @self._client.event
         async def on_message(message: discord.Message) -> None:
@@ -221,15 +265,39 @@ class DiscordAdapter(PlatformAdapter):
             )
             await self._on_message_callback(ctx, self)
 
+    async def _refresh_known_server_names(self) -> None:
+        """Push current display names for every guild the bot is in."""
+        for guild in self._client.guilds:
+            await self._refresh_server_name(guild)
+
+    async def _refresh_server_name(self, guild: discord.Guild) -> None:
+        if not guild.name:
+            return
+        try:
+            await self._api.refresh_server_name(
+                platform="discord",
+                platform_server_id=str(guild.id),
+                server_name=guild.name,
+            )
+        except Exception:
+            logger.exception("Failed to refresh display name for guild %s", guild.id)
+
     def _should_ignore_message(self, message: discord.Message) -> bool:
-        return (
-            self._client.user is not None and message.author.id == self._client.user.id
-        )
+        if self._client.user is not None and message.author.id == self._client.user.id:
+            return True
+        # Other bots reach us only by @mentioning us; without this gate two
+        # bots in a shared thread (our own dev + prod included) loop forever.
+        if message.author.bot:
+            return not self._is_mentioned(message)
+        return False
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
             return True  # DMs always count
-        return bool(self._client.user and self._client.user.mentioned_in(message))
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        return any(user.id == bot_user.id for user in message.mentions)
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:
