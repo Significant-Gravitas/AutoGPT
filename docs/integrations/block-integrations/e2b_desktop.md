@@ -42,6 +42,9 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 | Setup Commands | Shell commands to run after sandbox creation (e.g. `git clone`, `npm install`) |
 | Timeout | Sandbox lifetime in seconds (default: 3600 = 1 hour; max 86400 on Pro) |
 | Stream Require Auth | Whether to password-protect the stream URL (default: true — always recommended) |
+| Width | Desktop screen width in pixels (default: 1280). Lower resolutions stream more smoothly |
+| Height | Desktop screen height in pixels (default: 720) |
+| DPI | Desktop DPI (default: 96). Raise to scale up UI on high-resolution screens |
 
 #### Outputs
 | Output | Description |

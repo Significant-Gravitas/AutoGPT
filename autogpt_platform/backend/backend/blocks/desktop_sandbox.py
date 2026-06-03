@@ -98,11 +98,21 @@ class _DesktopSandbox(Protocol):
 
 
 def _create_sandbox(
-    api_key: str, template: Optional[str], timeout: int
+    api_key: str,
+    template: Optional[str],
+    timeout: int,
+    resolution: tuple[int, int],
+    dpi: int,
 ) -> _DesktopSandbox:
     return cast(
         _DesktopSandbox,
-        Sandbox.create(api_key=api_key, template=template, timeout=timeout),
+        Sandbox.create(
+            api_key=api_key,
+            template=template,
+            timeout=timeout,
+            resolution=resolution,
+            dpi=dpi,
+        ),
     )
 
 
@@ -161,6 +171,27 @@ class E2BDesktopCreateBlock(Block):
             default=True,
             advanced=True,
         )
+        width: int = SchemaField(
+            description=(
+                "Desktop screen width in pixels. Lower resolutions stream more "
+                "smoothly (fewer pixels per frame); higher ones are sharper."
+            ),
+            default=1280,
+            advanced=True,
+        )
+        height: int = SchemaField(
+            description="Desktop screen height in pixels.",
+            default=720,
+            advanced=True,
+        )
+        dpi: int = SchemaField(
+            description=(
+                "Desktop DPI (dots per inch). Raise it to scale up UI on "
+                "high-resolution screens; 96 is the standard default."
+            ),
+            default=96,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         sandbox_id: str = SchemaField(
@@ -198,6 +229,9 @@ class E2BDesktopCreateBlock(Block):
                 "setup_commands": [],
                 "timeout": 3600,
                 "stream_require_auth": True,
+                "width": 1280,
+                "height": 720,
+                "dpi": 96,
             },
             test_output=[
                 ("sandbox_id", "mock-sandbox-id"),
@@ -220,8 +254,12 @@ class E2BDesktopCreateBlock(Block):
         setup_commands: list[str],
         timeout: int,
         stream_require_auth: bool,
+        resolution: tuple[int, int],
+        dpi: int,
     ) -> tuple[str, str, str]:
-        desktop = _create_sandbox(api_key, template_id or None, timeout)
+        desktop = _create_sandbox(
+            api_key, template_id or None, timeout, resolution, dpi
+        )
         for cmd in setup_commands:
             desktop.commands.run(cmd)
 
@@ -237,6 +275,8 @@ class E2BDesktopCreateBlock(Block):
         setup_commands: list[str],
         timeout: int,
         stream_require_auth: bool,
+        resolution: tuple[int, int],
+        dpi: int,
     ) -> tuple[str, str, str]:
         return await asyncio.to_thread(
             self._create_desktop,
@@ -245,6 +285,8 @@ class E2BDesktopCreateBlock(Block):
             setup_commands,
             timeout,
             stream_require_auth,
+            resolution,
+            dpi,
         )
 
     async def run(
@@ -261,6 +303,8 @@ class E2BDesktopCreateBlock(Block):
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
                 stream_require_auth=input_data.stream_require_auth,
+                resolution=(input_data.width, input_data.height),
+                dpi=input_data.dpi,
             )
             yield "sandbox_id", sandbox_id
             yield "stream_url", stream_url
