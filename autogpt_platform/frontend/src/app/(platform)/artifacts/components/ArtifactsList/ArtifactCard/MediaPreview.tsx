@@ -46,6 +46,10 @@ export function VideoPreview({ file, onError }: PreviewProps) {
         preload="metadata"
         muted
         playsInline
+        // Reveal on the first painted frame when available (avoids a blank
+        // box); fall back to metadata so the video is never left hidden when
+        // the browser only fetches metadata under preload="metadata".
+        onLoadedData={() => setIsLoaded(true)}
         onLoadedMetadata={() => setIsLoaded(true)}
         onError={onError}
         className={cn(
