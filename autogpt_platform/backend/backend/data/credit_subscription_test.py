@@ -14,6 +14,7 @@ from prisma.models import User
 from backend.data.credit import (
     UserCredit,
     _is_stripe_reconcilable,
+    build_price_to_tier_map,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -60,6 +61,45 @@ async def test_set_subscription_tier_updates_db():
                 "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_stripe_source_stamps_reconciled_at():
+    """A STRIPE-sourced write must stamp ``lastStripeReconciledAt`` (non-null
+    datetime) so the lazy on-access staleness gate can detect stale rows."""
+    from datetime import datetime
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=AsyncMock()),
+        ) as mock_prisma,
+        patch("backend.data.credit.get_user_by_id"),
+    ):
+        await set_subscription_tier(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
+        update_call = mock_prisma.return_value.update.await_args
+        data = update_call.kwargs["data"]
+        assert data["subscriptionTier"] == SubscriptionTier.PRO
+        assert data["subscriptionTierSource"] == SubscriptionTierSource.STRIPE
+        assert isinstance(data["lastStripeReconciledAt"], datetime)
+
+
+@pytest.mark.asyncio
+async def test_set_subscription_tier_system_source_does_not_stamp_reconciled_at():
+    """The default/SYSTEM path must NOT stamp ``lastStripeReconciledAt`` — only
+    Stripe-driven writes update the reconcile timestamp."""
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(update=AsyncMock()),
+        ) as mock_prisma,
+        patch("backend.data.credit.get_user_by_id"),
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+        data = mock_prisma.return_value.update.await_args.kwargs["data"]
+        assert "lastStripeReconciledAt" not in data
 
 
 @pytest.mark.asyncio
@@ -308,6 +348,42 @@ async def test_sync_subscription_from_stripe_cancelled():
         "customer": "cus_123",
         "status": "canceled",
         "items": {"data": []},
+    }
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+        )
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
+    """``past_due`` is NOT active/trialing, so it falls into the non-active else
+    branch: with no OTHER active/trialing sub, the user is revoked to NO_TIER.
+
+    This locks the product decision that an unpaid (past_due) subscription
+    immediately loses its tier rather than coasting until cancellation."""
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_pastdue",
+        "customer": "cus_123",
+        "status": "past_due",
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
     empty_list = MagicMock()
     empty_list.data = []
@@ -4574,3 +4650,49 @@ def test_is_stripe_reconcilable_system_with_customer():
 def test_is_stripe_reconcilable_system_without_customer():
     user = _reconcilable_user(SubscriptionTierSource.SYSTEM, None)
     assert _is_stripe_reconcilable(user) is False
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_includes_monthly_and_yearly():
+    """Every priceable tier's monthly AND yearly price ID must map back to that
+    tier, so a yearly plan resolves to the same tier as its monthly twin."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        return f"price_{tier.value.lower()}_{billing_cycle}"
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    for tier in (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ):
+        assert price_to_tier[f"price_{tier.value.lower()}_monthly"] == tier
+        assert price_to_tier[f"price_{tier.value.lower()}_yearly"] == tier
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_skips_unconfigured_prices():
+    """A tier/cycle with no configured price ID (None) is simply omitted from
+    the map rather than crashing or mapping an empty key."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        # Only PRO monthly is configured.
+        if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+            return "price_pro_monthly"
+        return None
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    assert price_to_tier == {"price_pro_monthly": SubscriptionTier.PRO}

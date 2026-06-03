@@ -1,7 +1,11 @@
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
 import pytest
+from prisma.enums import SubscriptionTier, SubscriptionTierSource
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials, NodeExecutionStats
+from backend.data.model import HostScopedCredentials, NodeExecutionStats, User
 
 
 class TestHostScopedCredentials:
@@ -247,3 +251,58 @@ class TestNodeExecutionStatsIadd:
         b = NodeExecutionStats()
         a += b
         assert a.provider_cost_type == "tokens"
+
+
+def _fake_prisma_user(**overrides) -> SimpleNamespace:
+    """Minimal stand-in for prisma's User row carrying the fields ``from_db``
+    reads. Overrides let each test pin the subscription-provenance fields."""
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    base = dict(
+        id="user-1",
+        email="user@example.com",
+        emailVerified=True,
+        name="User",
+        createdAt=now,
+        updatedAt=now,
+        metadata=None,
+        integrations=None,
+        stripeCustomerId=None,
+        topUpConfig=None,
+        subscriptionTier=SubscriptionTier.PRO,
+        subscriptionTierSource=SubscriptionTierSource.STRIPE,
+        lastStripeReconciledAt=now,
+        maxEmailsPerDay=3,
+        notifyOnAgentRun=True,
+        notifyOnZeroBalance=True,
+        notifyOnLowBalance=True,
+        notifyOnBlockExecutionFailed=True,
+        notifyOnContinuousAgentError=True,
+        notifyOnDailySummary=True,
+        notifyOnWeeklySummary=True,
+        notifyOnMonthlySummary=True,
+        timezone="UTC",
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+class TestUserFromDb:
+    def test_maps_subscription_tier_source_and_reconciled_at(self):
+        reconciled = datetime(2026, 2, 3, tzinfo=timezone.utc)
+        prisma_user = _fake_prisma_user(
+            subscriptionTierSource=SubscriptionTierSource.STRIPE,
+            lastStripeReconciledAt=reconciled,
+        )
+        user = User.from_db(prisma_user)
+        assert user.subscription_tier_source == SubscriptionTierSource.STRIPE
+        assert user.last_stripe_reconciled_at == reconciled
+
+    def test_subscription_tier_source_defaults_to_system_when_none(self):
+        prisma_user = _fake_prisma_user(subscriptionTierSource=None)
+        user = User.from_db(prisma_user)
+        assert user.subscription_tier_source == SubscriptionTierSource.SYSTEM
+
+    def test_last_stripe_reconciled_at_defaults_to_none_when_null(self):
+        prisma_user = _fake_prisma_user(lastStripeReconciledAt=None)
+        user = User.from_db(prisma_user)
+        assert user.last_stripe_reconciled_at is None
