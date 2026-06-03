@@ -1295,6 +1295,8 @@ enum ContentType {
   INTEGRATION // File-based: Python classes (blocks with credentials)
   DOCUMENTATION // File-based: .md/.mdx files
   LIBRARY_AGENT // Database: User's personal agents
+  WORKSPACE_FILE // Database: UserWorkspaceFile (per-user)
+  CHAT_SESSION // Database: ChatSession (per-user)
 }
 
 // Unified embeddings table for all searchable content types

@@ -17,6 +17,7 @@ from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
+from .decompose_goal import DecomposeGoalTool
 from .edit_agent import EditAgentTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
@@ -70,6 +71,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
+    "decompose_goal": DecomposeGoalTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),

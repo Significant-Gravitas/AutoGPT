@@ -1,5 +1,5 @@
 from datetime import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.errors
@@ -351,49 +351,76 @@ async def test_get_user_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_with_search_parameterized(mocker):
-    """Test that search query uses parameterized SQL - validates the fix works"""
+async def test_get_store_agents_with_search_parameterized():
+    """Malicious search input is passed as a parameter, not concatenated into SQL."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as hybrid_query_raw, patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_search = "test'; DROP TABLE StoreAgent; --"
+        result = await db.get_store_agents(search_query=malicious_search)
 
-    # Call function with search query containing potential SQL injection
-    malicious_search = "test'; DROP TABLE StoreAgent; --"
-    result = await db.get_store_agents(search_query=malicious_search)
-
-    # Verify query executed safely
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        hybrid_sql, *hybrid_params = hybrid_query_raw.call_args.args
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_search in hybrid_params
+        assert malicious_search not in hybrid_sql
+        assert malicious_search in fallback_params
+        assert malicious_search not in fallback_sql
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_and_filters_parameterized():
-    """Test parameterized SQL with multiple filters"""
+    """Malicious creator/category values are bound as parameters across all filters."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ), patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_creator = "creator1'; DROP TABLE Users; --"
+        malicious_category = "AI'; DELETE FROM StoreAgent; --"
+        result = await db.get_store_agents(
+            search_query="test",
+            creators=[malicious_creator, "creator2"],
+            category=malicious_category,
+            featured=True,
+            sorted_by=db.StoreAgentsSortOptions.RATING,
+            page=1,
+            page_size=20,
+        )
 
-    # Call with multiple filters including potential injection attempts
-    result = await db.get_store_agents(
-        search_query="test",
-        creators=["creator1'; DROP TABLE Users; --", "creator2"],
-        category="AI'; DELETE FROM StoreAgent; --",
-        featured=True,
-        sorted_by=db.StoreAgentsSortOptions.RATING,
-        page=1,
-        page_size=20,
-    )
-
-    # Verify the query executed without error
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_category in fallback_params
+        assert malicious_category not in fallback_sql
+        assert [malicious_creator, "creator2"] in fallback_params
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_search_category_array_injection():
-    """Test that category parameter is safely passed as a parameter"""
-    # Try SQL injection via category
-    malicious_category = "AI'; DROP TABLE StoreAgent; --"
-    result = await db.get_store_agents(
-        search_query="test",
-        category=malicious_category,
-    )
+    """Category injection attempt is bound as a parameter, not interpolated."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ), patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        malicious_category = "AI'; DROP TABLE StoreAgent; --"
+        result = await db.get_store_agents(
+            search_query="test",
+            category=malicious_category,
+        )
 
-    # Verify the query executed without error
-    # Category should be parameterized, preventing SQL injection
-    assert isinstance(result.agents, list)
+        assert isinstance(result.agents, list)
+        fallback_sql, *fallback_params = fallback_query_raw.call_args.args
+        assert malicious_category in fallback_params
+        assert malicious_category not in fallback_sql
 
 
 @pytest.mark.asyncio(loop_scope="session")
