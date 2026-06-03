@@ -105,7 +105,7 @@ Takes a screenshot of the current desktop state and stores it in the AutoGPT wor
 ### E2B Desktop Pause Block
 
 #### What it does
-Pauses a running sandbox, preserving its filesystem and memory so it can be resumed later. Compute billing stops while paused (a small storage fee applies). Resuming is automatic — pass the returned `sandbox_id` to any other E2B Desktop block and the sandbox wakes up where it left off. Use this instead of Kill when you want to keep state across an idle gap.
+Pauses a running sandbox, preserving its filesystem and memory so it can be resumed later. Billing stops entirely while paused — E2B does not charge for paused sandboxes, they're kept indefinitely, and they don't count toward your concurrency limit. Resuming is automatic — pass the returned `sandbox_id` to any other E2B Desktop block and the sandbox wakes up where it left off. Use this instead of Kill whenever you might want the sandbox back.
 
 > Note: the live stream drops while a sandbox is paused — restart it after the sandbox resumes.
 

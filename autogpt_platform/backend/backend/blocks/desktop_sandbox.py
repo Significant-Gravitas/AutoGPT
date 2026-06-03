@@ -663,10 +663,12 @@ class E2BDesktopPauseBlock(Block):
     """
     Pause a running E2B Desktop sandbox, preserving its filesystem and memory.
 
-    Pausing stops compute billing while keeping the full sandbox state, so you
-    can resume later exactly where you left off — just pass the same sandbox_id
-    to any other E2B Desktop block and it resumes automatically. Unlike Kill,
-    pausing keeps state (a small storage fee applies) rather than destroying it.
+    Pausing stops billing entirely (E2B does not charge for paused sandboxes)
+    while keeping the full sandbox state, so you can resume later exactly where
+    you left off — just pass the same sandbox_id to any other E2B Desktop block
+    and it resumes automatically. Paused sandboxes are kept indefinitely and do
+    not count toward your concurrency limit. Unlike Kill, pausing preserves
+    state rather than destroying it permanently.
 
     Note: the live stream drops while paused; restart it with a Create/stream
     step after the sandbox resumes.
