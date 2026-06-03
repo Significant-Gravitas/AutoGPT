@@ -115,7 +115,7 @@ function matchesQuery(target: NavTarget, query: string): boolean {
 }
 
 /**
- * Build the static "Go to" bucket filtered by ``query``. The
+ * Build the static "Navigate" bucket filtered by ``query``. The
  * destination matching ``currentPath`` is dropped — there's no point
  * navigating to the page you're already on. An empty query previews a
  * few destinations alongside the idle recent-items list; typing reveals

@@ -4,10 +4,16 @@ import {
 } from "@/app/api/__generated__/endpoints/search/search.msw";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { server } from "@/mocks/mock-server";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { GlobalSearchModal } from "../GlobalSearchModal";
+import { NAV_BUCKET_LABEL } from "../navigation";
 
 function fixedResponse(
   overrides: Partial<GlobalSearchResponse> = {},
@@ -127,8 +133,13 @@ describe("GlobalSearchModal", () => {
     renderModal();
 
     // Navigation is always available, so the idle empty-state never
-    // shows; the "Go to" destinations stand in for an empty list.
-    expect(await screen.findByText("Go to")).toBeDefined();
+    // shows; the navigation destinations stand in for an empty list.
+    // Scope to the result list so the "Navigate" footer hint (the
+    // ``↑↓ Navigate`` shortcut) doesn't collide with the section label.
+    const results = await screen.findByRole("listbox", {
+      name: "Search results",
+    });
+    expect(within(results).getByText(NAV_BUCKET_LABEL)).toBeDefined();
     expect(screen.getByRole("option", { name: /builder/i })).toBeDefined();
     expect(screen.queryByText("No recent items")).toBeNull();
   });
@@ -240,9 +251,15 @@ describe("GlobalSearchModal", () => {
     const input = screen.getByRole("textbox", { name: /global search/i });
     await user.type(input, "build");
 
-    // "Go to" section surfaces the Builder destination.
-    expect(await screen.findByText("Go to")).toBeDefined();
-    const builder = screen.getByRole("option", { name: /builder/i });
+    // Navigation section surfaces the Builder destination. Scope to the
+    // result list so the "Navigate" footer hint doesn't collide.
+    const navResults = await screen.findByRole("listbox", {
+      name: "Search results",
+    });
+    expect(within(navResults).getByText(NAV_BUCKET_LABEL)).toBeDefined();
+    // The matched substring ("Build") renders in its own span, so the
+    // option's accessible name is "Build er" — allow the split.
+    const builder = screen.getByRole("option", { name: /build\s*er/i });
     const alpha = screen.getByRole("option", { name: /alpha agent/i });
 
     // Non-exact match keeps navigation after the search results.
