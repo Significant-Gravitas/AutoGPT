@@ -116,7 +116,7 @@ describe("GlobalSearchModal", () => {
     expect(screen.queryByText("Chats")).toBeNull();
   });
 
-  it("shows the empty state when the API returns no items", async () => {
+  it("shows navigation destinations when the API returns no recent items", async () => {
     server.use(
       getGetSearchGlobalSearchMockHandler200({
         agents: [],
@@ -126,7 +126,11 @@ describe("GlobalSearchModal", () => {
     );
     renderModal();
 
-    expect(await screen.findByText("No recent items")).toBeDefined();
+    // Navigation is always available, so the idle empty-state never
+    // shows; the "Go to" destinations stand in for an empty list.
+    expect(await screen.findByText("Go to")).toBeDefined();
+    expect(screen.getByRole("option", { name: /builder/i })).toBeDefined();
+    expect(screen.queryByText("No recent items")).toBeNull();
   });
 
   it("shows a query-specific empty state when searching with no results", async () => {
@@ -225,6 +229,93 @@ describe("GlobalSearchModal", () => {
     });
     await user.click(clearButton);
     expect(input.value).toBe("");
+  });
+
+  it("shows navigation matches below search results while typing", async () => {
+    const user = userEvent.setup();
+    server.use(getGetSearchGlobalSearchMockHandler200(fixedResponse()));
+    renderModal();
+
+    await screen.findByText("Alpha agent");
+    const input = screen.getByRole("textbox", { name: /global search/i });
+    await user.type(input, "build");
+
+    // "Go to" section surfaces the Builder destination.
+    expect(await screen.findByText("Go to")).toBeDefined();
+    const builder = screen.getByRole("option", { name: /builder/i });
+    const alpha = screen.getByRole("option", { name: /alpha agent/i });
+
+    // Non-exact match keeps navigation after the search results.
+    expect(
+      builder.compareDocumentPosition(alpha) &
+        Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+  });
+
+  it("hoists navigation above search results on an exact name match", async () => {
+    const user = userEvent.setup();
+    server.use(getGetSearchGlobalSearchMockHandler200(fixedResponse()));
+    renderModal();
+
+    await screen.findByText("Alpha agent");
+    const input = screen.getByRole("textbox", { name: /global search/i });
+    await user.type(input, "Builder");
+
+    const builder = await screen.findByRole("option", { name: /builder/i });
+    const alpha = screen.getByRole("option", { name: /alpha agent/i });
+
+    // Exact match: Builder is rendered before the first search result.
+    expect(
+      builder.compareDocumentPosition(alpha) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows a spinner and stays open while a navigation item is routing", async () => {
+    const user = userEvent.setup();
+    server.use(getGetSearchGlobalSearchMockHandler200(fixedResponse()));
+    const onClose = vi.fn();
+    const onSelectItem = vi.fn();
+    renderModal({ onClose, onSelectItem });
+
+    const input = await screen.findByRole("textbox", {
+      name: /global search/i,
+    });
+    await user.type(input, "Builder");
+
+    const builder = await screen.findByRole("option", { name: /builder/i });
+    await user.click(builder);
+
+    // Navigation routes internally via the router, not through the
+    // ``onSelectItem`` API-item contract. The modal stays open with a
+    // trailing spinner until the destination page mounts.
+    expect(onSelectItem).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText("Opening")).toBeDefined();
+  });
+
+  it("exposes the Copy user ID action and closes when chosen", async () => {
+    const user = userEvent.setup();
+    server.use(getGetSearchGlobalSearchMockHandler200(fixedResponse()));
+    const onClose = vi.fn();
+    const onSelectItem = vi.fn();
+    renderModal({ onClose, onSelectItem });
+
+    const input = await screen.findByRole("textbox", {
+      name: /global search/i,
+    });
+    await user.type(input, "copy");
+
+    expect(await screen.findByText("Actions")).toBeDefined();
+    const action = await screen.findByRole("option", {
+      name: /copy user id/i,
+    });
+    await user.click(action);
+
+    // Actions run a side effect locally, never the API-item contract,
+    // then close once the work settles.
+    expect(onSelectItem).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("highlights the matching query substring inside the title", async () => {

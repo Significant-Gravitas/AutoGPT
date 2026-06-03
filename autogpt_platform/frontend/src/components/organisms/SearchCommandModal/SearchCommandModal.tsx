@@ -34,6 +34,8 @@ interface Props {
   isError?: boolean;
   placeholder?: string;
   inputAriaLabel?: string;
+  /** Id of the row whose action is in-flight (renders a spinner). */
+  loadingItemId?: string;
 }
 
 export function SearchCommandModal({
@@ -50,6 +52,7 @@ export function SearchCommandModal({
   isError = false,
   placeholder = "Search…",
   inputAriaLabel = "Search",
+  loadingItemId,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const reactId = useId();
@@ -114,14 +117,11 @@ export function SearchCommandModal({
       <RXDialog.Portal>
         <RXDialog.Overlay className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm" />
         <RXDialog.Content
-          aria-labelledby={`${idPrefix}-title`}
           onOpenAutoFocus={handleOpenAutoFocus}
           className="fixed left-1/2 top-[18vh] z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-zinc-200 focus:outline-none"
           onKeyDown={handleKeyDown}
         >
-          <RXDialog.Title id={`${idPrefix}-title`} className="sr-only">
-            Search
-          </RXDialog.Title>
+          <RXDialog.Title className="sr-only">Search</RXDialog.Title>
           <div className="flex items-center gap-3 bg-zinc-50 p-3">
             <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-zinc-800" />
             <Input
@@ -181,6 +181,7 @@ export function SearchCommandModal({
                   highlightedRef={highlightedRef}
                   onHighlight={setHighlightedIndex}
                   onSelect={onSelectItem}
+                  loadingItemId={loadingItemId}
                 />
               ) : showLoading ? (
                 // Skeleton over text: the input-side spinner already
