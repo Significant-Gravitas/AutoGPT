@@ -97,6 +97,33 @@ class _DesktopSandbox(Protocol):
     def screenshot(self) -> bytes: ...
     def pause(self) -> Optional[str]: ...
     def kill(self) -> None: ...
+    def wait(self, ms: int) -> None: ...
+
+
+# VNC server is started by the SDK on these fixed ports (see e2b_desktop SDK).
+_VNC_PORT = 5900
+# Re-tuned x11vnc poll/defer for smooth high-motion streaming (default is 50ms
+# poll ≈ 20 FPS). ~10ms ≈ 100 FPS; lower = smoother but more CPU/bandwidth.
+_SMOOTH_VNC_WAIT_MS = 10
+_SMOOTH_VNC_DEFER_MS = 10
+
+
+def _retune_stream_for_smoothness(desktop: _DesktopSandbox, require_auth: bool) -> None:
+    """Restart x11vnc with a higher refresh rate for smoother motion.
+
+    The SDK starts x11vnc with ``-wait 50`` (~20 FPS). We kill it and relaunch
+    on the same port with a tighter poll/defer so animations stream smoothly.
+    The noVNC proxy keeps running and the browser reconnects automatically.
+    """
+    pwd_flag = "-usepw" if require_auth else "-nopw"
+    desktop.commands.run(
+        "pkill x11vnc; sleep 1; "
+        f"x11vnc -bg -display :0 -forever -shared "
+        f"-wait {_SMOOTH_VNC_WAIT_MS} -defer {_SMOOTH_VNC_DEFER_MS} "
+        f"-threads -nodpms -rfbport {_VNC_PORT} {pwd_flag} "
+        "2>/tmp/x11vnc_smooth.log"
+    )
+    desktop.wait(1500)
 
 
 def _create_sandbox(
@@ -194,6 +221,17 @@ class E2BDesktopCreateBlock(Block):
             default=96,
             advanced=True,
         )
+        smooth_stream: bool = SchemaField(
+            description=(
+                "Re-tune the VNC server for high-motion content. The default "
+                "stream only refreshes ~20 FPS, which makes animations look "
+                "laggy; this raises the poll/update rate for a much smoother "
+                "stream at the cost of more sandbox CPU and bandwidth. Disable "
+                "if the desktop feels overloaded."
+            ),
+            default=True,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         sandbox_id: str = SchemaField(
@@ -243,6 +281,7 @@ class E2BDesktopCreateBlock(Block):
                 "width": 1280,
                 "height": 720,
                 "dpi": 96,
+                "smooth_stream": True,
             },
             test_output=[
                 ("sandbox_id", "mock-sandbox-id"),
@@ -272,6 +311,7 @@ class E2BDesktopCreateBlock(Block):
         stream_require_auth: bool,
         resolution: tuple[int, int],
         dpi: int,
+        smooth_stream: bool,
     ) -> tuple[str, str, str, str]:
         desktop = _create_sandbox(
             api_key, template_id or None, timeout, resolution, dpi
@@ -280,6 +320,8 @@ class E2BDesktopCreateBlock(Block):
             desktop.commands.run(cmd)
 
         desktop.stream.start(require_auth=stream_require_auth)
+        if smooth_stream:
+            _retune_stream_for_smoothness(desktop, stream_require_auth)
         auth_key = desktop.stream.get_auth_key() if stream_require_auth else ""
         stream_url = desktop.stream.get_url(auth_key=auth_key or None)
         view_only_url = desktop.stream.get_url(
@@ -296,6 +338,7 @@ class E2BDesktopCreateBlock(Block):
         stream_require_auth: bool,
         resolution: tuple[int, int],
         dpi: int,
+        smooth_stream: bool,
     ) -> tuple[str, str, str, str]:
         return await asyncio.to_thread(
             self._create_desktop,
@@ -306,6 +349,7 @@ class E2BDesktopCreateBlock(Block):
             stream_require_auth,
             resolution,
             dpi,
+            smooth_stream,
         )
 
     async def run(
@@ -324,6 +368,7 @@ class E2BDesktopCreateBlock(Block):
                 stream_require_auth=input_data.stream_require_auth,
                 resolution=(input_data.width, input_data.height),
                 dpi=input_data.dpi,
+                smooth_stream=input_data.smooth_stream,
             )
             yield "sandbox_id", sandbox_id
             yield "stream_url", stream_url

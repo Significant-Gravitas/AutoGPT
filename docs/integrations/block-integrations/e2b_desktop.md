@@ -45,6 +45,7 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 | Width | Desktop screen width in pixels (default: 1280). Lower resolutions stream more smoothly |
 | Height | Desktop screen height in pixels (default: 720) |
 | DPI | Desktop DPI (default: 96). Raise to scale up UI on high-resolution screens |
+| Smooth Stream | Re-tune the VNC server for high-motion content (default: true). The stock stream refreshes only ~20 FPS, making animations look laggy; this raises the poll/update rate for a much smoother stream at the cost of more sandbox CPU and bandwidth |
 
 #### Outputs
 | Output | Description |
