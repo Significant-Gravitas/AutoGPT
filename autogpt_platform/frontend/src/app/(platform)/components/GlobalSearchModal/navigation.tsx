@@ -93,6 +93,20 @@ function isExactTitleMatch(target: NavTarget, query: string): boolean {
   return target.title.toLocaleLowerCase() === query;
 }
 
+// True when ``currentPath`` is the target itself or any page nested under
+// it (e.g. ``/settings/billing`` is "on" ``/settings``). The trailing
+// slash keeps unrelated routes that merely share a prefix (``/settings-x``)
+// from matching.
+function isCurrentDestination(
+  target: NavTarget,
+  currentPath: string | null,
+): boolean {
+  if (!currentPath) return false;
+  return (
+    currentPath === target.href || currentPath.startsWith(`${target.href}/`)
+  );
+}
+
 function matchesQuery(target: NavTarget, query: string): boolean {
   if (target.title.toLocaleLowerCase().includes(query)) return true;
   return target.keywords.some((keyword) =>
@@ -118,7 +132,9 @@ export function buildNavigationBucket(
 } {
   const normalized = query.trim().toLocaleLowerCase();
 
-  const available = NAV_TARGETS.filter((target) => target.href !== currentPath);
+  const available = NAV_TARGETS.filter(
+    (target) => !isCurrentDestination(target, currentPath),
+  );
   const matches = normalized
     ? available.filter((target) => matchesQuery(target, normalized))
     : available.slice(0, IDLE_NAV_LIMIT);
