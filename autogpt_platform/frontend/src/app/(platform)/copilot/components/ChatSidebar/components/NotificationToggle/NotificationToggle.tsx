@@ -59,6 +59,9 @@ export function NotificationToggle() {
           )}
         </Button>
       </PopoverTrigger>
+      {/* z-[80]: must layer above the AutoPilot mobile drawer
+          (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
+          popover doesn't render under the drawer's blur. */}
       <PopoverContent align="start" className="z-[80] w-56 p-3">
         <div className="flex flex-col gap-3">
           <label className="flex items-center justify-between">

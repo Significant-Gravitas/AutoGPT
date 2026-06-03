@@ -99,4 +99,17 @@ describe("MobileDrawer controls", () => {
       screen.getByRole("button", { name: /notification settings/i }),
     ).toBeDefined();
   });
+
+  it("does not render the legacy standalone sound toggle (folded into NotificationToggle)", async () => {
+    render(<MobileDrawer />);
+
+    // Wait for header to render so we don't false-pass before mount.
+    await screen.findByRole("button", { name: /usage limits/i });
+
+    expect(
+      screen.queryByRole("button", {
+        name: /enable notification sound|disable notification sound/i,
+      }),
+    ).toBeNull();
+  });
 });

@@ -3,35 +3,11 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { Key, storage } from "@/services/storage/local-storage";
 import { DeviceMobileIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useMobileWarning } from "./useMobileWarning";
 
 export function MobileWarning() {
-  const breakpoint = useBreakpoint();
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [isSuppressed, setIsSuppressed] = useState(true);
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    setIsSuppressed(storage.get(Key.BUILDER_MOBILE_WARNING_SUPPRESSED) === "1");
-    // Defer the open-flip past the first paint so the Dialog's internal
-    // breakpoint hook has settled — otherwise it briefly mounts the desktop
-    // modal variant on mobile before switching to the drawer.
-    const id = requestAnimationFrame(() => setIsReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  const isMobile =
-    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-
-  const isOpen = isReady && isMobile && !isDismissed && !isSuppressed;
-
-  function handleDontShowAgain() {
-    storage.set(Key.BUILDER_MOBILE_WARNING_SUPPRESSED, "1");
-    setIsSuppressed(true);
-  }
+  const { isOpen, dismiss, suppress } = useMobileWarning();
 
   return (
     <Dialog
@@ -39,7 +15,7 @@ export function MobileWarning() {
       controlled={{
         isOpen,
         set: (next) => {
-          if (!next) setIsDismissed(true);
+          if (!next) dismiss();
         },
       }}
     >
@@ -48,18 +24,14 @@ export function MobileWarning() {
           <DeviceMobileIcon className="h-10 w-10 text-amber-600" />
           <Text variant="body" className="text-zinc-700">
             The agent builder relies on canvas interactions that don&apos;t work
-            well on a small screen. For the best experience, switch to a desktop
-            browser.
+            well on this screen size. For the best experience, switch to a
+            desktop browser.
           </Text>
           <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={() => setIsDismissed(true)}
-            >
+            <Button variant="secondary" size="small" onClick={dismiss}>
               Continue anyway
             </Button>
-            <Button variant="ghost" size="small" onClick={handleDontShowAgain}>
+            <Button variant="ghost" size="small" onClick={suppress}>
               Don&apos;t show again
             </Button>
           </div>

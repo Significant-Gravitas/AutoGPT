@@ -77,6 +77,17 @@ describe("MobileWarning", () => {
     ).toBeNull();
   });
 
+  it.each(["base", "sm", "md"] as const)(
+    "renders the warning at the %s breakpoint (mobile boundary coverage)",
+    async (bp) => {
+      mockUseBreakpoint.mockReturnValue(bp);
+      render(<MobileWarning />);
+      expect(
+        await screen.findByText(/builder works best on desktop/i),
+      ).toBeDefined();
+    },
+  );
+
   it("dismisses for the session when the user clicks 'Continue anyway'", async () => {
     render(<MobileWarning />);
     const dialog = await screen.findByRole("dialog");
