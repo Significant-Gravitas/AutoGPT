@@ -45,6 +45,19 @@ supported.
 **Never guess or construct MCP server URLs.** Only use URLs from the known
 servers list above, or a vendor-owned URL confirmed via web search.
 
+### Verifying the server hostname
+
+Before calling `run_mcp_tool` on a URL found via web search, **verify the
+hostname belongs to the service's vendor** (e.g. `mcp.sentry.dev` for
+Sentry, or a `mcp.<service>.com` / `mcp.<service>.dev` / other vendor-owned
+domain). Web-search results are unvetted, and the user is about to hand the
+server their sign-in, so this check matters:
+
+- If the hostname clearly belongs to the vendor, proceed.
+- If multiple plausible URLs exist, or the hostname's vendor isn't obvious,
+  surface the candidates to the user and ask which one to use — never
+  auto-pick when the match is ambiguous.
+
 ### Authentication
 
 If the server requires credentials, a `SetupRequirementsResponse` is returned with an OAuth

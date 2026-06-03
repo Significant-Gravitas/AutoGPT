@@ -178,7 +178,8 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    guide's communication-style rules.
 
 3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
-   exists (after `find_block` AND a web search for an MCP server), use
+   exists (after `find_block`, the known hosted list, AND a web search for
+   an MCP server), use
    `SendAuthenticatedWebRequestBlock` with existing host-scoped
    credentials. Check available credentials via `connect_integration`.
 
