@@ -101,6 +101,7 @@ pymssql = "^2.3.2"
 pymysql = "^1.1.1"
 pyarrow = "^23.0.0"
 sqlparse = "^0.5.5"
+e2b-desktop = ">=2.0,<2.3"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

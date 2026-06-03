@@ -1,28 +1,29 @@
 # E2B Desktop Sandbox Blocks
 
 ## What it is
-The E2B Desktop Sandbox blocks provide a secure, isolated virtual Linux desktop environment for AI agents. Built on [E2B's Desktop Sandbox](https://e2b.dev), these blocks let agents spin up a full graphical desktop, run applications, execute commands, edit files, take screenshots, and stream the live desktop view — all programmatically.
+The E2B Desktop Sandbox blocks give AI agents a secure, isolated virtual **graphical** Linux desktop (Ubuntu + Xfce). Built on [E2B's Desktop Sandbox](https://e2b.dev), they let an agent spin up a full desktop, watch it over a live stream, drive the mouse and keyboard, and capture screenshots — the "computer use" workflow.
+
+For running code or shell commands in a **headless** sandbox (no GUI), use the Code Executor blocks (`Execute Code`, `Instantiate Code Sandbox`, `Execute Code Step`) instead. Both stacks share the same E2B API key.
 
 ## What it does
 These blocks enable agents to:
-- Spin up a persistent virtual desktop with a live stream URL
-- Run any bash command (foreground or background) inside the sandbox
-- Write or edit files directly (enabling instant HMR feedback for frontend dev)
+- Spin up a virtual desktop with a live, browser-embeddable stream URL
+- Control the mouse and keyboard (click, move, scroll, type, press keys)
 - Take screenshots of the current desktop state
 - Clean up and kill sandboxes to stop billing immediately
 
 ## How it works
-Each sandbox is a fully isolated Firecracker microVM running Linux + Xfce desktop. The blocks use the `e2b-desktop` SDK to communicate with the sandbox over E2B's API. A single E2B API key is shared across all blocks — the same key used by the existing `ExecuteCodeBlock`.
+Each sandbox is a fully isolated microVM running Linux + Xfce. The blocks use the `e2b-desktop` SDK to communicate with the sandbox over E2B's API. The SDK is synchronous, so each call runs in a worker thread to keep the executor responsive.
 
-The typical flow:
-1. **Create** a sandbox (optionally with setup commands like `git clone` or `npm install`)
-2. **Command** — run your dev server or tests in the background
-3. **WriteFile** — edit source files directly; HMR picks up changes in ~2 seconds
-4. **Screenshot** — capture the current state for visual QA
-5. **Kill** — destroy the sandbox and stop billing
+The typical "computer use" loop:
+1. **Create** a desktop sandbox and start the live stream
+2. **Screenshot** the desktop — the "see" step
+3. **Control** — perform a click, type text, or press a key based on what was seen
+4. Repeat 2–3 until the task is done
+5. **Kill** the sandbox to stop billing
 
 ## Prerequisites
-- An [E2B account](https://e2b.dev) and API key (same key as `ExecuteCodeBlock`)
+- An [E2B account](https://e2b.dev) and API key (same key as the Code Executor blocks)
 - E2B Pro plan recommended for sessions longer than 1 hour and custom CPU/RAM
 
 ## Blocks
@@ -36,7 +37,7 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key. Get one at [e2b.dev](https://e2b.dev/docs) |
-| Template ID | Optional E2B sandbox template ID for pre-baked environments (skips setup time) |
+| Template ID | Optional E2B desktop template ID for pre-baked environments (skips setup time) |
 | Setup Commands | Shell commands to run after sandbox creation (e.g. `git clone`, `npm install`) |
 | Timeout | Sandbox lifetime in seconds (default: 3600 = 1 hour; max 86400 on Pro) |
 | Stream Require Auth | Whether to password-protect the stream URL (default: true — always recommended) |
@@ -46,61 +47,40 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 |--------|-------------|
 | sandbox\_id | Unique ID of the running sandbox — pass to all other blocks |
 | stream\_url | Live desktop stream URL — embed in UI or share with reviewer |
-| auth\_key | Authentication key required to view the stream (when require\_auth=true) |
+| auth\_key | Authentication key required to view the stream (already included in stream\_url) |
 | error | Error message if sandbox creation failed |
 
 ---
 
-### E2B Desktop Command Block
+### E2B Desktop Control Block
 
 #### What it does
-Runs a bash command inside an existing sandbox. Supports foreground (wait for result) and background (fire-and-forget, for dev servers).
+Drives the mouse and keyboard of a running desktop sandbox. This is the "act" half of a computer-use loop — pair it with the Screenshot block to see, then act, then see again.
 
 #### Inputs
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key |
 | Sandbox ID | ID from `E2B Desktop Create Block` |
-| Command | Bash command to run (e.g. `npm run dev`, `pytest tests/`, `curl localhost:3000`) |
-| Timeout | Max seconds to wait for command (default: 60) |
-| Background | Run command in background without waiting for output (default: false). Use for long-running servers |
+| Action | Which input action to perform: `left_click`, `double_click`, `right_click`, `middle_click`, `move_mouse`, `scroll`, `type`, or `press` |
+| X / Y | Coordinates for click/move actions. Leave empty for clicks to use the current cursor position; required for `move_mouse` |
+| Text | Text to type (used by the `type` action) |
+| Keys | Key or combo to press (used by the `press` action), e.g. `enter`, `backspace`, or `ctrl+c` |
+| Scroll Direction | `up` or `down` (used by the `scroll` action) |
+| Scroll Amount | Number of scroll steps (used by the `scroll` action) |
 
 #### Outputs
 | Output | Description |
 |--------|-------------|
-| stdout | Standard output from the command |
-| stderr | Standard error output |
-| exit\_code | Exit code (0 = success) |
-| error | Error message if execution failed |
-
----
-
-### E2B Desktop Write File Block
-
-#### What it does
-Writes content to a file inside the sandbox. The fastest way to push code changes — bypasses git and CI entirely. When used with a running dev server, HMR picks up changes in ~2 seconds.
-
-#### Inputs
-| Input | Description |
-|-------|-------------|
-| Credentials | E2B API key |
-| Sandbox ID | ID from `E2B Desktop Create Block` |
-| File Path | Absolute path inside sandbox (must be under `/home/user` for security) |
-| Content | Full content to write to the file |
-
-#### Outputs
-| Output | Description |
-|--------|-------------|
-| file\_path | Confirmed path of the written file |
-| success | True if file was written successfully |
-| error | Error message if write failed or path is outside allowed directory |
+| success | True if the action was performed |
+| error | Error message if the action failed |
 
 ---
 
 ### E2B Desktop Screenshot Block
 
 #### What it does
-Takes a screenshot of the current desktop state and saves it to the AutoGPT workspace for use in PR comments, visual QA, or agent decisions.
+Takes a screenshot of the current desktop state and stores it in the AutoGPT workspace, ready to feed into a vision model, post to a PR comment, or use for visual QA.
 
 #### Inputs
 | Input | Description |
@@ -111,8 +91,7 @@ Takes a screenshot of the current desktop state and saves it to the AutoGPT work
 #### Outputs
 | Output | Description |
 |--------|-------------|
-| workspace\_ref | Workspace file reference — use with GitHub blocks to post to PRs |
-| file\_name | Screenshot filename |
+| image | The captured screenshot (a workspace reference in CoPilot, a data URI in graphs) — feed directly into downstream blocks |
 | error | Error message if screenshot failed |
 
 ---
@@ -131,8 +110,7 @@ Destroys a sandbox immediately. Billing stops within seconds. Always call this w
 #### Outputs
 | Output | Description |
 |--------|-------------|
-| status | `killed` if successful |
-| message | Human-readable confirmation message |
+| success | True if the sandbox was destroyed successfully |
 | error | Error message if kill failed |
 
 ---
@@ -143,24 +121,17 @@ E2B Desktop sandboxes are billed per second while running:
 - ~$0.016/GiB/hour for RAM
 - **Sleeping/killed sandboxes cost $0**
 
-A typical 2-hour PR review session costs ~$0.26. Always call `E2B Desktop Kill Block` when done.
+A typical 2-hour session costs ~$0.26. Always call `E2B Desktop Kill Block` when done.
 
 See [E2B Pricing](https://e2b.dev/pricing) for full details.
 
-## Example Use Case: Live Frontend Preview
+## Example Use Case: Computer-Use Loop
 
-An agent reviewing a pull request can:
-1. **Create** a sandbox and clone the frontend repo
-2. **Command** `npm run dev &` (background) to start the dev server
-3. Share the **stream\_url** so the reviewer watches the app live in their browser
-4. **WriteFile** to apply a code change — visible in the stream in ~2 seconds
-5. **Screenshot** the result and post it to the PR comment
-6. **Kill** the sandbox when review is complete
+An agent driving a desktop app can:
+1. **Create** a desktop sandbox and start the live stream
+2. **Screenshot** the desktop and send it to a vision model
+3. **Control** — click the button or type into the field the model identified
+4. **Screenshot** again to confirm the result, repeating until done
+5. **Kill** the sandbox when the task is complete
 
-This enables instant visual feedback without any CI/CD pipeline.
-
-## Combination with Bunnyshell
-For full-stack development, combine with the [Bunnyshell Environment Blocks](bunnyshell.md):
-- **Bunnyshell** runs your backend microservices + databases (full Docker stack)
-- **E2B Desktop** runs your frontend connected to the Bunnyshell API URL
-- Together: full-stack live preview with ~2s frontend change feedback
+The live `stream_url` lets a human watch the whole session in their browser.
