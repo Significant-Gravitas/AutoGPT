@@ -58,6 +58,7 @@ from enum import Enum
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
+from prisma.enums import SubscriptionTierSource
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
@@ -927,6 +928,32 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
 
 _STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
 _STRIPE_RECONCILE_TTL = 300  # seconds — matches the tier cache TTL
+# A STRIPE-sourced payer's tier is considered stale (eligible for a lazy
+# re-check) once this long has passed since its last Stripe reconcile. Kept
+# longer than the periodic sweep cadence so the sweep normally refreshes the
+# stamp first; the lazy check only fires when the sweep has lagged.
+_STRIPE_STALE_AFTER = timedelta(hours=12)
+
+
+async def _maybe_reconcile_stale_stripe_tier(user_id: str) -> bool:
+    """Lazily re-check a STRIPE-sourced payer whose tier is stale.
+
+    Only fires for users whose tier came from Stripe and whose last reconcile
+    is older than ``_STRIPE_STALE_AFTER``. Shares the same Redis gate +
+    authoritative bidirectional reconcile as the NO_TIER fallback, so a lost
+    cancel webhook can be caught between periodic sweeps. Returns True when the
+    tier was changed.
+    """
+    try:
+        user = await get_user_by_id(user_id)
+    except Exception:
+        return False
+    if user.subscription_tier_source != SubscriptionTierSource.STRIPE:
+        return False
+    last = user.last_stripe_reconciled_at
+    if last is not None and datetime.now(UTC) - last < _STRIPE_STALE_AFTER:
+        return False
+    return await _maybe_reconcile_stripe_tier(user_id)
 
 
 async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
@@ -992,6 +1019,21 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         tier_from_db = False
 
     if tier != SubscriptionTier.NO_TIER:
+        # A STRIPE-sourced payer whose last reconcile is stale gets a lazy
+        # re-check (gated) so a lost cancel webhook can't keep them on a paid
+        # tier indefinitely between periodic sweeps.
+        if tier_from_db and await _maybe_reconcile_stale_stripe_tier(user_id):
+            try:
+                return await _fetch_user_tier(user_id)
+            except _UserNotFoundError:
+                return SubscriptionTier.NO_TIER
+            except Exception as exc:
+                logger.warning(
+                    "get_user_tier: tier re-read failed after stale reconcile"
+                    " for %s: %s",
+                    user_id[:8],
+                    exc,
+                )
         return tier
 
     if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
@@ -1039,7 +1081,11 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """
     await PrismaUser.prisma().update(
         where={"id": user_id},
-        data={"subscriptionTier": tier.value},
+        data={
+            "subscriptionTier": tier.value,
+            # Admin overrides are immune to Stripe-driven reconciliation/downgrade.
+            "subscriptionTierSource": SubscriptionTierSource.ADMIN.value,
+        },
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
     # Local import: backend.data.credit imports from this module.

@@ -7,6 +7,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import stripe
+from prisma.enums import SubscriptionTier, SubscriptionTierSource
 
 from backend.data.credit import (
     _expire_open_subscription_sessions,
@@ -500,10 +501,15 @@ async def test_reconcile_stripe_tier_no_customer_returns_false(
     mock_get_sub.assert_not_called()
 
 
-async def test_reconcile_stripe_tier_no_active_sub_returns_false(
+async def test_reconcile_stripe_tier_no_active_sub_already_no_tier_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock(stripe_customer_id="cus_abc")
+    """A STRIPE-sourced user already on NO_TIER stays put (no write, no sync)."""
+    user = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.NO_TIER,
+        subscription_tier_source=SubscriptionTierSource.STRIPE,
+    )
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
     )
@@ -515,9 +521,65 @@ async def test_reconcile_stripe_tier_no_active_sub_returns_false(
     mock_sync = mocker.patch(
         "backend.data.credit.sync_subscription_from_stripe", new_callable=AsyncMock
     )
+    mock_set = mocker.patch(
+        "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+    )
+    mocker.patch("backend.data.credit._stamp_stripe_reconciled", new_callable=AsyncMock)
 
     assert await reconcile_stripe_tier_for_user("user_abc") is False
     mock_sync.assert_not_called()
+    mock_set.assert_not_called()
+
+
+async def test_reconcile_stripe_tier_no_active_sub_downgrades_payer(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A STRIPE-sourced payer with no active sub is downgraded to NO_TIER."""
+    user = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.PRO,
+        subscription_tier_source=SubscriptionTierSource.STRIPE,
+    )
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mocker.patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mock_set = mocker.patch(
+        "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+    )
+
+    assert await reconcile_stripe_tier_for_user("user_abc") is True
+    mock_set.assert_awaited_once_with(
+        "user_abc", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+    )
+
+
+async def test_reconcile_stripe_tier_admin_user_skipped(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An ADMIN-granted tier is never reconciled/downgraded against Stripe."""
+    user = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.MAX,
+        subscription_tier_source=SubscriptionTierSource.ADMIN,
+    )
+    mocker.patch(
+        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+    )
+    mock_get_active = mocker.patch(
+        "backend.data.credit._get_active_subscription", new_callable=AsyncMock
+    )
+    mock_set = mocker.patch(
+        "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+    )
+
+    assert await reconcile_stripe_tier_for_user("user_abc") is False
+    mock_get_active.assert_not_called()
+    mock_set.assert_not_called()
 
 
 async def test_reconcile_stripe_tier_stripe_error_returns_false(
@@ -543,10 +605,17 @@ async def test_reconcile_stripe_tier_stripe_error_returns_false(
 async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    user = MagicMock(stripe_customer_id="cus_abc")
+    before = MagicMock(
+        stripe_customer_id="cus_abc",
+        subscription_tier=SubscriptionTier.NO_TIER,
+        subscription_tier_source=SubscriptionTierSource.STRIPE,
+    )
+    after = MagicMock(subscription_tier=SubscriptionTier.PRO)
     fake_sub = MagicMock()
     mocker.patch(
-        "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
+        "backend.data.credit.get_user_by_id",
+        new_callable=AsyncMock,
+        side_effect=[before, after],
     )
     mocker.patch(
         "backend.data.credit._get_active_subscription",

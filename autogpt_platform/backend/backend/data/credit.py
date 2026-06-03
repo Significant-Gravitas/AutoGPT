@@ -15,10 +15,15 @@ from prisma.enums import (
     NotificationType,
     OnboardingStep,
     SubscriptionTier,
+    SubscriptionTierSource,
 )
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
-from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionWhereInput,
+    UserUpdateInput,
+)
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
@@ -32,6 +37,7 @@ from backend.data.model import (
     TransactionHistory,
     UserTransaction,
 )
+from backend.data.model import User as AppUser
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
@@ -1418,12 +1424,26 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
-    """Set the user's subscription tier (used by webhook and admin flows)."""
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"subscriptionTier": tier},
-    )
+async def set_subscription_tier(
+    user_id: str,
+    tier: SubscriptionTier,
+    source: SubscriptionTierSource = SubscriptionTierSource.SYSTEM,
+) -> None:
+    """Set the user's subscription tier and its provenance.
+
+    ``source`` records WHY the tier was set so periodic/lazy Stripe
+    reconciliation can safely downgrade only STRIPE-sourced rows while leaving
+    ADMIN/ENTERPRISE grants untouched. Stripe sync paths pass STRIPE; admin
+    grants pass ADMIN. STRIPE writes also stamp ``lastStripeReconciledAt`` so
+    the lazy on-access reconcile can detect stale rows.
+    """
+    data: UserUpdateInput = {
+        "subscriptionTier": tier,
+        "subscriptionTierSource": source,
+    }
+    if source == SubscriptionTierSource.STRIPE:
+        data["lastStripeReconciledAt"] = datetime.now(timezone.utc)
+    await User.prisma().update(where={"id": user_id}, data=data)
     get_user_by_id.cache_delete(user_id)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
     # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
@@ -1991,7 +2011,7 @@ async def modify_stripe_subscription_for_tier(
         # instead of being silently masked as benign DB-write-swallow events.
         db_flip_succeeded = False
         try:
-            await set_subscription_tier(user_id, tier)
+            await set_subscription_tier(user_id, tier, SubscriptionTierSource.STRIPE)
             db_flip_succeeded = True
         except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
@@ -2305,6 +2325,32 @@ async def get_subscription_price_id(
     return price_id if isinstance(price_id, str) and price_id else None
 
 
+_PRICEABLE_TIERS: tuple[SubscriptionTier, ...] = (
+    SubscriptionTier.BASIC,
+    SubscriptionTier.PRO,
+    SubscriptionTier.MAX,
+    SubscriptionTier.BUSINESS,
+)
+
+
+async def build_price_to_tier_map() -> dict[str, SubscriptionTier]:
+    """Map every configured monthly+yearly Stripe price ID to its tier.
+
+    Lets a yearly plan resolve back to the same tier as its monthly twin.
+    Shared by the webhook sync and the periodic reconciliation sweep so both
+    interpret Stripe prices identically.
+    """
+    prices = await asyncio.gather(
+        *[get_subscription_price_id(t, "monthly") for t in _PRICEABLE_TIERS],
+        *[get_subscription_price_id(t, "yearly") for t in _PRICEABLE_TIERS],
+    )
+    price_to_tier: dict[str, SubscriptionTier] = {}
+    for t, pid in zip(_PRICEABLE_TIERS + _PRICEABLE_TIERS, prices):
+        if pid:
+            price_to_tier[pid] = t
+    return price_to_tier
+
+
 async def _expire_open_subscription_sessions(customer_id: str) -> None:
     """Expire open subscription checkout sessions for the customer.
 
@@ -2342,15 +2388,35 @@ async def _expire_open_subscription_sessions(customer_id: str) -> None:
         )
 
 
-async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
-    """Check Stripe for an active subscription and sync tier if found.
+def _is_stripe_reconcilable(user: AppUser) -> bool:
+    """True when Stripe is the authoritative source for this user's tier.
 
-    Called as a lazy fallback when a user is on NO_TIER to recover from
-    missed webhooks. Returns True if an active subscription was found and
-    synced. Does NOT create a Stripe customer — only checks existing ones.
+    Stripe is authoritative when the tier was set by Stripe, OR when the user
+    has a Stripe customer and the tier was not deliberately granted by an admin
+    or set to ENTERPRISE. ADMIN/ENTERPRISE rows are immune to Stripe-driven
+    downgrades — they are managed out-of-band and must never be auto-revoked.
+    """
+    source = user.subscription_tier_source
+    if source in (SubscriptionTierSource.ADMIN, SubscriptionTierSource.ENTERPRISE):
+        return False
+    if source == SubscriptionTierSource.STRIPE:
+        return True
+    return user.stripe_customer_id is not None
+
+
+async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
+    """Make Stripe the source of truth for a single reconcilable user's tier.
+
+    Bidirectional: sets the tier to the user's current active/trialing Stripe
+    subscription, and DOWNGRADES to NO_TIER when no active sub exists. Never
+    touches ADMIN/ENTERPRISE rows. Returns True when the tier was changed.
+
+    Routes through ``sync_subscription_from_stripe`` so the active-sub path
+    shares the webhook's idempotency + "other active subs" downgrade guard.
+    Does NOT create a Stripe customer — only checks existing ones.
     """
     user = await get_user_by_id(user_id)
-    if not user.stripe_customer_id:
+    if not user.stripe_customer_id or not _is_stripe_reconcilable(user):
         return False
     try:
         sub = await _get_active_subscription(user.stripe_customer_id)
@@ -2360,10 +2426,37 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
             user_id[:8],
         )
         return False
-    if sub is None:
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if sub is not None:
+        await sync_subscription_from_stripe(dict(sub))
+        return current_tier != (await get_user_by_id(user_id)).subscription_tier
+    # No active/trialing sub — downgrade a STRIPE-sourced row to NO_TIER.
+    if current_tier == SubscriptionTier.NO_TIER:
+        await _stamp_stripe_reconciled(user_id)
         return False
-    await sync_subscription_from_stripe(dict(sub))
+    await set_subscription_tier(
+        user_id, SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+    )
+    logger.info(
+        "reconcile_stripe_tier_for_user: downgraded user %s from %s to NO_TIER"
+        " (no active Stripe sub)",
+        user_id[:8],
+        current_tier.value,
+    )
     return True
+
+
+async def _stamp_stripe_reconciled(user_id: str) -> None:
+    """Record a successful Stripe reconcile without changing the tier.
+
+    Keeps ``lastStripeReconciledAt`` fresh for STRIPE-sourced rows that are
+    already correct so the lazy staleness check doesn't re-fire every request.
+    """
+    await User.prisma().update(
+        where={"id": user_id},
+        data={"lastStripeReconciledAt": datetime.now(timezone.utc)},
+    )
+    get_user_by_id.cache_delete(user_id)
 
 
 async def sync_tier_from_checkout_session(data_object: dict) -> None:
@@ -2516,22 +2609,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        priceable = (
-            SubscriptionTier.BASIC,
-            SubscriptionTier.PRO,
-            SubscriptionTier.MAX,
-            SubscriptionTier.BUSINESS,
-        )
-        # Gather monthly + yearly price IDs for every priceable tier so a user
-        # on a yearly plan still maps back to the correct tier.
-        prices = await asyncio.gather(
-            *[get_subscription_price_id(t, "monthly") for t in priceable],
-            *[get_subscription_price_id(t, "yearly") for t in priceable],
-        )
-        price_to_tier: dict[str, SubscriptionTier] = {}
-        for t, pid in zip(priceable + priceable, prices):
-            if pid:
-                price_to_tier[pid] = t
+        price_to_tier = await build_price_to_tier_map()
         matched = price_to_tier.get(price_id) if price_id else None
         if matched is not None:
             tier = matched
@@ -2630,7 +2708,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    await set_subscription_tier(user.id, tier, SubscriptionTierSource.STRIPE)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
@@ -2894,7 +2972,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 customer_id,
             )
             return
-        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
+        await set_subscription_tier(
+            user.id, SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+        )
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:

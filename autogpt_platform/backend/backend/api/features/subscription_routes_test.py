@@ -8,7 +8,7 @@ import pytest
 import pytest_mock
 import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma.enums import SubscriptionTier
+from prisma.enums import SubscriptionTier, SubscriptionTierSource
 
 from .v1 import _validate_checkout_redirect_url, v1_router
 
@@ -1702,7 +1702,9 @@ def test_update_subscription_tier_no_tier_no_stripe_subscription(
     assert response.json()["url"] == ""
     cancel_mock.assert_awaited_once_with(TEST_USER_ID)
     # DB tier must be updated immediately — no webhook will fire for a missing sub
-    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.NO_TIER)
+    set_tier_mock.assert_awaited_once_with(
+        TEST_USER_ID, SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+    )
 
 
 def test_get_subscription_status_includes_pending_tier(

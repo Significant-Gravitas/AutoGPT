@@ -25,7 +25,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import SubscriptionTier, SubscriptionTierSource
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -1089,9 +1089,11 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
-                await set_subscription_tier(user_id, tier)
+                await set_subscription_tier(
+                    user_id, tier, SubscriptionTierSource.STRIPE
+                )
             return await get_subscription_status(user_id)
-        await set_subscription_tier(user_id, tier)
+        await set_subscription_tier(user_id, tier, SubscriptionTierSource.STRIPE)
         return await get_subscription_status(user_id)
 
     if not payment_enabled:

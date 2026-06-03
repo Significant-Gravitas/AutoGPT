@@ -7,12 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import SubscriptionTier
+from prisma.enums import SubscriptionTier, SubscriptionTierSource
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
     UserCredit,
+    _is_stripe_reconcilable,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -54,7 +55,10 @@ async def test_set_subscription_tier_updates_db():
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
         mock_prisma.return_value.update.assert_awaited_once_with(
             where={"id": "user-1"},
-            data={"subscriptionTier": SubscriptionTier.PRO},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
+            },
         )
 
 
@@ -123,7 +127,9 @@ async def test_sync_subscription_from_stripe_active():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -217,7 +223,9 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -318,7 +326,9 @@ async def test_sync_subscription_from_stripe_cancelled():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -337,7 +347,11 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     empty_list.data = []
     empty_list.has_more = False
 
-    async def _set_tier(_user_id: str, tier: SubscriptionTier) -> None:
+    async def _set_tier(
+        _user_id: str,
+        tier: SubscriptionTier,
+        source: SubscriptionTierSource = SubscriptionTierSource.SYSTEM,
+    ) -> None:
         mock_user.subscriptionTier = tier
 
     with (
@@ -472,7 +486,9 @@ async def test_sync_subscription_from_stripe_trialing():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -1007,7 +1023,9 @@ async def test_sync_subscription_from_stripe_business_tier():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -1059,7 +1077,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -1112,7 +1132,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, SubscriptionTierSource.STRIPE
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
@@ -1166,7 +1188,9 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
     ):
         # Must not raise — tier update proceeds even if cleanup cancel fails.
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -1505,7 +1529,9 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -1578,7 +1604,9 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         # No metadata → cross-check skipped → tier updated normally
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -2411,7 +2439,9 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
             "billing_cycle": "monthly",
         },
     )
-    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+    mock_set_tier.assert_awaited_once_with(
+        "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+    )
 
 
 @pytest.mark.asyncio
@@ -2476,7 +2506,9 @@ async def test_modify_stripe_subscription_for_tier_clears_cancel_at_period_end_o
         },
         cancel_at_period_end=False,
     )
-    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+    mock_set_tier.assert_awaited_once_with(
+        "user-1", SubscriptionTier.BUSINESS, SubscriptionTierSource.STRIPE
+    )
 
 
 @pytest.mark.asyncio
@@ -2829,7 +2861,9 @@ async def test_modify_stripe_subscription_for_tier_pro_to_max_bills_immediately(
             "billing_cycle": "monthly",
         },
     )
-    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.MAX)
+    mock_set_tier.assert_awaited_once_with(
+        "user-1", SubscriptionTier.MAX, SubscriptionTierSource.STRIPE
+    )
 
 
 @pytest.mark.asyncio
@@ -3603,7 +3637,9 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
+        )
 
 
 @pytest.mark.asyncio
@@ -4502,3 +4538,39 @@ async def test_modify_stripe_subscription_tier_upgrade_yearly_still_immediate():
     _, kwargs = mock_modify.call_args
     assert kwargs["proration_behavior"] == "always_invoice"
     mock_schedule_create.assert_not_called()
+
+
+def _reconcilable_user(
+    source: SubscriptionTierSource, customer_id: str | None
+) -> MagicMock:
+    user = MagicMock()
+    user.subscription_tier_source = source
+    user.stripe_customer_id = customer_id
+    return user
+
+
+def test_is_stripe_reconcilable_stripe_source():
+    user = _reconcilable_user(SubscriptionTierSource.STRIPE, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_admin_immune():
+    user = _reconcilable_user(SubscriptionTierSource.ADMIN, "cus_1")
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_enterprise_immune():
+    user = _reconcilable_user(SubscriptionTierSource.ENTERPRISE, "cus_1")
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_system_with_customer():
+    # A SYSTEM-sourced row that happens to have a Stripe customer is treated as
+    # Stripe-authoritative (legacy rows pre-provenance backfill).
+    user = _reconcilable_user(SubscriptionTierSource.SYSTEM, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_system_without_customer():
+    user = _reconcilable_user(SubscriptionTierSource.SYSTEM, None)
+    assert _is_stripe_reconcilable(user) is False

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import SubscriptionTierSource
 from redis.exceptions import RedisClusterException, RedisError
 
 from .rate_limit import (
@@ -22,6 +23,7 @@ from .rate_limit import (
     _fetch_cost_limits_flag,
     _fetch_tier_multipliers_flag,
     _fetch_workspace_storage_limits_flag,
+    _maybe_reconcile_stale_stripe_tier,
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
@@ -1348,7 +1350,10 @@ class TestSetUserTier:
 
         mock_prisma.update.assert_awaited_once_with(
             where={"id": _USER},
-            data={"subscriptionTier": "PRO"},
+            data={
+                "subscriptionTier": "PRO",
+                "subscriptionTierSource": "ADMIN",
+            },
         )
 
     @pytest.mark.asyncio
@@ -2743,3 +2748,85 @@ class TestBuildBudgetCtx:
                 default_weekly_cost_limit=1_000_000_000,
             )
         assert block == ""
+
+
+class TestMaybeReconcileStaleStripeTier:
+    """Lazy staleness re-check for STRIPE-sourced payers."""
+
+    @pytest.mark.asyncio
+    async def test_admin_source_never_reconciled(self):
+        user = MagicMock()
+        user.subscription_tier_source = SubscriptionTierSource.ADMIN
+        user.last_stripe_reconciled_at = None
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is False
+            inner.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fresh_stripe_row_skipped(self):
+        user = MagicMock()
+        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.last_stripe_reconciled_at = datetime.now(UTC) - timedelta(hours=1)
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is False
+            inner.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stale_stripe_row_reconciles(self):
+        user = MagicMock()
+        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.last_stripe_reconciled_at = datetime.now(UTC) - timedelta(days=2)
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is True
+            inner.assert_awaited_once_with(_USER)
+
+    @pytest.mark.asyncio
+    async def test_never_reconciled_stripe_row_reconciles(self):
+        user = MagicMock()
+        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.last_stripe_reconciled_at = None
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is True
+            inner.assert_awaited_once_with(_USER)
