@@ -47,7 +47,9 @@ function parseDateTime(value: string | undefined): DateParts | null {
 }
 
 function weekdayLabel(dt: DateParts): string {
-  return WEEKDAYS[new Date(Date.UTC(dt.year, dt.month - 1, dt.day)).getUTCDay()];
+  return WEEKDAYS[
+    new Date(Date.UTC(dt.year, dt.month - 1, dt.day)).getUTCDay()
+  ];
 }
 
 function clock(hour: number, minute: number): string {

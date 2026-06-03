@@ -24,7 +24,13 @@ export function CardPreview({ file }: Props) {
   );
 }
 
-function PreviewBody({ file, kind }: { file: WorkspaceFileItem; kind: PreviewKind }) {
+function PreviewBody({
+  file,
+  kind,
+}: {
+  file: WorkspaceFileItem;
+  kind: PreviewKind;
+}) {
   const [hasError, setHasError] = useState(false);
   const handleError = useCallback(() => setHasError(true), []);
 

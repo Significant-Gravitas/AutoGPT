@@ -31,14 +31,12 @@ export function parseCsv(
   if (lines.length === 0) return null;
 
   const delimiter = sniffDelimiter(lines[0]);
-  const cells = lines
-    .slice(0, maxRows)
-    .map((line) =>
-      line
-        .split(delimiter)
-        .slice(0, maxCols)
-        .map((cell) => cell.trim().replace(/^"|"$/g, "")),
-    );
+  const cells = lines.slice(0, maxRows).map((line) =>
+    line
+      .split(delimiter)
+      .slice(0, maxCols)
+      .map((cell) => cell.trim().replace(/^"|"$/g, "")),
+  );
 
   const [headers, ...rows] = cells;
   return { headers, rows };
@@ -58,7 +56,11 @@ function unfold(text: string): string[] {
   return lines;
 }
 
-function splitProperty(line: string): { name: string; params: string; value: string } {
+function splitProperty(line: string): {
+  name: string;
+  params: string;
+  value: string;
+} {
   const colon = line.indexOf(":");
   if (colon === -1) return { name: "", params: "", value: "" };
   const head = line.slice(0, colon);
@@ -110,7 +112,8 @@ export function parseVcard(text: string): VcardPreview | null {
     else if (name === "TITLE") result.title = value;
     else if (name === "TEL" && !result.tel) result.tel = value;
     else if (name === "EMAIL" && !result.email) result.email = value;
-    else if (name === "PHOTO" && !result.photo) result.photo = toPhotoSrc(params, value);
+    else if (name === "PHOTO" && !result.photo)
+      result.photo = toPhotoSrc(params, value);
   }
   return result.name ? result : null;
 }

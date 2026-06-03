@@ -16,18 +16,26 @@ const preClass =
   "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-white p-3 font-mono text-[10px] leading-[1.35] text-zinc-700";
 
 export function TextSnippetPreview({ file, onError }: PreviewProps) {
-  const text = useFileText(getFilePreviewUrl(file.id, { bytes: 2048 }), onError);
+  const text = useFileText(
+    getFilePreviewUrl(file.id, { bytes: 2048 }),
+    onError,
+  );
 
   if (text === null) return <LoadingPlaceholder file={file} />;
   return <pre className={preClass}>{text.slice(0, TEXT_SNIPPET_CHARS)}</pre>;
 }
 
 export function JsonPreview({ file, onError }: PreviewProps) {
-  const text = useFileText(getFilePreviewUrl(file.id, { bytes: 4096 }), onError);
+  const text = useFileText(
+    getFilePreviewUrl(file.id, { bytes: 4096 }),
+    onError,
+  );
 
   if (text === null) return <LoadingPlaceholder file={file} />;
   return (
-    <pre className={preClass}>{prettyJson(text).slice(0, TEXT_SNIPPET_CHARS)}</pre>
+    <pre className={preClass}>
+      {prettyJson(text).slice(0, TEXT_SNIPPET_CHARS)}
+    </pre>
   );
 }
 
@@ -42,7 +50,10 @@ function prettyJson(text: string): string {
 }
 
 export function CsvPreview({ file, onError }: PreviewProps) {
-  const text = useFileText(getFilePreviewUrl(file.id, { bytes: 4096 }), onError);
+  const text = useFileText(
+    getFilePreviewUrl(file.id, { bytes: 4096 }),
+    onError,
+  );
 
   if (text === null) return <LoadingPlaceholder file={file} />;
 

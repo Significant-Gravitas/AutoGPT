@@ -182,11 +182,7 @@ function ReactContent() {
     <div className="flex h-16 items-center justify-center">
       <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
         <circle r="2" fill="rgb(24 24 27 / 0.55)" />
-        <g
-          fill="none"
-          stroke="rgb(24 24 27 / 0.35)"
-          strokeWidth="1"
-        >
+        <g fill="none" stroke="rgb(24 24 27 / 0.35)" strokeWidth="1">
           <ellipse rx="10" ry="4" />
           <ellipse rx="10" ry="4" transform="rotate(60)" />
           <ellipse rx="10" ry="4" transform="rotate(120)" />
