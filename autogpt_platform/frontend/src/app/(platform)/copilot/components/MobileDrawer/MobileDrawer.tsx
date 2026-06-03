@@ -130,6 +130,7 @@ export function MobileDrawer() {
                     size="icon"
                     aria-label="Close sessions"
                     onClick={closeDrawer}
+                    className="ml-3"
                   >
                     <X width="1rem" height="1rem" />
                   </Button>

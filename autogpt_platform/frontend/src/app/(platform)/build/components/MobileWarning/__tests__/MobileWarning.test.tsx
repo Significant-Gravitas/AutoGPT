@@ -47,10 +47,12 @@ describe("MobileWarning", () => {
 
   beforeEach(() => {
     mockUseBreakpoint.mockReturnValue("sm");
+    window.localStorage.clear();
   });
 
   afterEach(() => {
     mockUseBreakpoint.mockReset();
+    window.localStorage.clear();
   });
 
   it("renders the warning on mobile breakpoints", async () => {
@@ -60,6 +62,9 @@ describe("MobileWarning", () => {
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: /continue anyway/i }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /don.t show again/i }),
     ).toBeDefined();
   });
 
@@ -72,7 +77,7 @@ describe("MobileWarning", () => {
     ).toBeNull();
   });
 
-  it("dismisses when the user clicks 'Continue anyway'", async () => {
+  it("dismisses for the session when the user clicks 'Continue anyway'", async () => {
     render(<MobileWarning />);
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(
@@ -81,5 +86,28 @@ describe("MobileWarning", () => {
     await waitFor(() => {
       expect(dialog.getAttribute("data-state")).toBe("closed");
     });
+    expect(
+      window.localStorage.getItem("builder-mobile-warning-suppressed"),
+    ).toBeNull();
+  });
+
+  it("persists the suppressed state when the user clicks 'Don't show again'", async () => {
+    render(<MobileWarning />);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await screen.findByRole("button", { name: /don.t show again/i }),
+    );
+    await waitFor(() => {
+      expect(dialog.getAttribute("data-state")).toBe("closed");
+    });
+    expect(
+      window.localStorage.getItem("builder-mobile-warning-suppressed"),
+    ).toBe("1");
+  });
+
+  it("does not render when previously suppressed in this browser", () => {
+    window.localStorage.setItem("builder-mobile-warning-suppressed", "1");
+    render(<MobileWarning />);
+    expect(screen.queryByText(/builder works best on desktop/i)).toBeNull();
   });
 });
