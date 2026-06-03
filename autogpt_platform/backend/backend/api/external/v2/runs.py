@@ -267,6 +267,7 @@ async def list_reviews(
         default=None, description="Filter by graph execution ID"
     ),
     status: Optional[ReviewStatus] = Query(
+        default=None,
         description="Filter by review status",
     ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),

@@ -171,24 +171,8 @@ async def list_library_agents(
     if is_hidden is not None:
         where_clause["isHidden"] = is_hidden
 
-    # Build search filter if applicable
-    if search_term:
-        where_clause["OR"] = [
-            {
-                "AgentGraph": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
-                }
-            },
-            {
-                "AgentGraph": {
-                    "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
-                    }
-                }
-            },
-        ]
-
-    # Filter by marketplace publish status
+    # Build published listing filter (used in search and non-search paths)
+    listing_condition: dict | None = None
     if published is not None:
         active_listing_filter: prisma.types.StoreListingVersionWhereInput = {
             "isAvailable": True,
@@ -196,15 +180,35 @@ async def list_library_agents(
             "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
             "StoreListing": {"is": {"isDeleted": False}},
         }
-        where_clause["AgentGraph"] = {
-            "is": {
-                "StoreListingVersions": (
-                    {"some": active_listing_filter}
-                    if published
-                    else {"none": active_listing_filter}
-                )
-            }
+        listing_condition = {
+            "StoreListingVersions": (
+                {"some": active_listing_filter}
+                if published
+                else {"none": active_listing_filter}
+            )
         }
+
+    # Build search filter if applicable
+    if search_term:
+        name_condition: dict = {
+            "name": {"contains": search_term, "mode": "insensitive"}
+        }
+        desc_condition: dict = {
+            "description": {"contains": search_term, "mode": "insensitive"}
+        }
+        if listing_condition:
+            # Merge search + published into each OR branch
+            where_clause["OR"] = [
+                {"AgentGraph": {"is": {**name_condition, **listing_condition}}},
+                {"AgentGraph": {"is": {**desc_condition, **listing_condition}}},
+            ]
+        else:
+            where_clause["OR"] = [
+                {"AgentGraph": {"is": name_condition}},
+                {"AgentGraph": {"is": desc_condition}},
+            ]
+    elif listing_condition:
+        where_clause["AgentGraph"] = {"is": listing_condition}
 
     # Filter by favorite status
     if favorite is not None:
