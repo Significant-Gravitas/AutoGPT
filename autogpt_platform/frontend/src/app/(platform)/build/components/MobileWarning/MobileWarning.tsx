@@ -12,15 +12,21 @@ export function MobileWarning() {
   const breakpoint = useBreakpoint();
   const [isDismissed, setIsDismissed] = useState(false);
   const [isSuppressed, setIsSuppressed] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     setIsSuppressed(storage.get(Key.BUILDER_MOBILE_WARNING_SUPPRESSED) === "1");
+    // Defer the open-flip past the first paint so the Dialog's internal
+    // breakpoint hook has settled — otherwise it briefly mounts the desktop
+    // modal variant on mobile before switching to the drawer.
+    const id = requestAnimationFrame(() => setIsReady(true));
+    return () => cancelAnimationFrame(id);
   }, []);
 
   const isMobile =
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
-  const isOpen = isMobile && !isDismissed && !isSuppressed;
+  const isOpen = isReady && isMobile && !isDismissed && !isSuppressed;
 
   function handleDontShowAgain() {
     storage.set(Key.BUILDER_MOBILE_WARNING_SUPPRESSED, "1");
