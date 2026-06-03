@@ -14,6 +14,7 @@ Blocks:
   - E2BDesktopCreateBlock     : Create a desktop sandbox + start a live stream
   - E2BDesktopControlBlock    : Drive mouse + keyboard (click / type / press / scroll)
   - E2BDesktopScreenshotBlock : Capture the desktop screen as an image
+  - E2BDesktopPauseBlock       : Pause the sandbox (keep state, stop compute billing)
   - E2BDesktopKillBlock        : Destroy the desktop sandbox and stop billing
 
 The E2B Desktop SDK is synchronous, so every SDK call is dispatched to a
@@ -92,6 +93,7 @@ class _DesktopSandbox(Protocol):
     def write(self, text: str) -> None: ...
     def press(self, key: str | list[str]) -> None: ...
     def screenshot(self) -> bytes: ...
+    def pause(self) -> Optional[str]: ...
     def kill(self) -> None: ...
 
 
@@ -544,6 +546,86 @@ class E2BDesktopScreenshotBlock(Block):
                 return_format="for_block_output",
             )
             yield "image", stored
+        except Exception as e:
+            yield "error", str(e)
+
+
+class E2BDesktopPauseBlock(Block):
+    """
+    Pause a running E2B Desktop sandbox, preserving its filesystem and memory.
+
+    Pausing stops compute billing while keeping the full sandbox state, so you
+    can resume later exactly where you left off — just pass the same sandbox_id
+    to any other E2B Desktop block and it resumes automatically. Unlike Kill,
+    pausing keeps state (a small storage fee applies) rather than destroying it.
+
+    Note: the live stream drops while paused; restart it with a Create/stream
+    step after the sandbox resumes.
+    """
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.E2B], Literal["api_key"]
+        ] = CredentialsField(
+            description="E2B API key — must match the key used to create the sandbox.",
+        )
+        sandbox_id: str = SchemaField(
+            description="Sandbox ID from the Create Desktop Sandbox block to pause.",
+        )
+
+    class Output(BlockSchemaOutput):
+        sandbox_id: str = SchemaField(
+            description=(
+                "ID of the paused sandbox. Pass it to any E2B Desktop block "
+                "later to resume the sandbox automatically."
+            )
+        )
+        error: str = SchemaField(description="Error message if the pause failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="a7b8c9d0-e1f2-3456-abcd-567890123456",
+            description=(
+                "Pause a running E2B Desktop sandbox to stop compute billing while "
+                "keeping its full state. Resume later by passing the sandbox_id to "
+                "any other E2B Desktop block."
+            ),
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=E2BDesktopPauseBlock.Input,
+            output_schema=E2BDesktopPauseBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "sandbox_id": "mock-sandbox-id",
+            },
+            test_output=[
+                ("sandbox_id", "mock-sandbox-id"),
+            ],
+            test_mock={"pause_sandbox": lambda *args, **kwargs: "mock-sandbox-id"},
+        )
+
+    @staticmethod
+    def _pause_sandbox(api_key: str, sandbox_id: str) -> str:
+        desktop = _connect_sandbox(api_key, sandbox_id)
+        # pause() returns the (unchanged) sandbox ID; fall back to the input id.
+        return desktop.pause() or sandbox_id
+
+    async def pause_sandbox(self, api_key: str, sandbox_id: str) -> str:
+        return await asyncio.to_thread(self._pause_sandbox, api_key, sandbox_id)
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            paused_id = await self.pause_sandbox(
+                api_key=credentials.api_key.get_secret_value(),
+                sandbox_id=input_data.sandbox_id,
+            )
+            yield "sandbox_id", paused_id
         except Exception as e:
             yield "error", str(e)
 

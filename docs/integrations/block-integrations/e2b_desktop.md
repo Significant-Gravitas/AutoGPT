@@ -10,6 +10,7 @@ These blocks enable agents to:
 - Spin up a virtual desktop with a live, browser-embeddable stream URL
 - Control the mouse and keyboard (click, move, scroll, type, press keys)
 - Take screenshots of the current desktop state
+- Pause a sandbox to stop compute billing while keeping its full state
 - Clean up and kill sandboxes to stop billing immediately
 
 ## How it works
@@ -93,6 +94,27 @@ Takes a screenshot of the current desktop state and stores it in the AutoGPT wor
 |--------|-------------|
 | image | The captured screenshot (a workspace reference in CoPilot, a data URI in graphs) — feed directly into downstream blocks |
 | error | Error message if screenshot failed |
+
+---
+
+### E2B Desktop Pause Block
+
+#### What it does
+Pauses a running sandbox, preserving its filesystem and memory so it can be resumed later. Compute billing stops while paused (a small storage fee applies). Resuming is automatic — pass the returned `sandbox_id` to any other E2B Desktop block and the sandbox wakes up where it left off. Use this instead of Kill when you want to keep state across an idle gap.
+
+> Note: the live stream drops while a sandbox is paused — restart it after the sandbox resumes.
+
+#### Inputs
+| Input | Description |
+|-------|-------------|
+| Credentials | E2B API key |
+| Sandbox ID | ID from `E2B Desktop Create Block` to pause |
+
+#### Outputs
+| Output | Description |
+|--------|-------------|
+| sandbox\_id | ID of the paused sandbox — pass to any block later to resume it |
+| error | Error message if the pause failed |
 
 ---
 
