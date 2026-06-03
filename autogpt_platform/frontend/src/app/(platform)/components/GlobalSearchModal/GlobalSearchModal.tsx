@@ -2,7 +2,7 @@ import type { SearchResultItem } from "@/app/api/__generated__/models/searchResu
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { SearchCommandModal } from "@/components/organisms/SearchCommandModal/SearchCommandModal";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ACTIONS_BUCKET_KEY, COPY_USER_ID_ACTION } from "./actions";
 import { NAV_BUCKET_KEY, getNavigationHref } from "./navigation";
@@ -16,6 +16,7 @@ interface Props {
 
 export function GlobalSearchModal({ isOpen, onClose, onSelectItem }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
   const { user } = useSupabase();
   const { query, setQuery, buckets, itemsById, isFetching, isError } =
@@ -29,6 +30,15 @@ export function GlobalSearchModal({ isOpen, onClose, onSelectItem }: Props) {
   useEffect(() => {
     if (!isOpen) setBusyItemId(null);
   }, [isOpen]);
+
+  // A navigation row keeps the spinner up until the route actually
+  // changes (router.push resolves async). Clearing on the resolved
+  // pathname is the real end of the action — don't rely on the tree
+  // unmounting, so the row never stays stuck if this modal ever lives
+  // in a layout that persists across pages.
+  useEffect(() => {
+    setBusyItemId(null);
+  }, [pathname]);
 
   async function runAction(id: string) {
     if (id === COPY_USER_ID_ACTION) {
