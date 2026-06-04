@@ -1,12 +1,16 @@
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useGetSearchGlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
+import { buildActionsBucket } from "./actions";
 import { buildBucketsFromResponse } from "./helpers";
+import { buildNavigationBucket } from "./navigation";
 
 const DEBOUNCE_MS = 200;
 const PER_TYPE_LIMIT = 4;
 
 export function useGlobalSearch(isOpen: boolean) {
+  const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -43,7 +47,26 @@ export function useGlobalSearch(isOpen: boolean) {
   const response =
     data?.status === 200 ? (data.data as GlobalSearchResponse) : undefined;
 
-  const { buckets, itemsById } = buildBucketsFromResponse(response);
+  const { buckets: searchBuckets, itemsById } =
+    buildBucketsFromResponse(response);
+
+  // Client-side command buckets (navigation + actions) filtered against
+  // the live query (no debounce — local match is instant). On an exact
+  // name match ("Builder", "Copy user ID") the bucket is hoisted above
+  // the search results; otherwise it trails them so search stays the
+  // primary intent. Priority order on exact match: navigation, actions.
+  const commandBuckets = [
+    buildNavigationBucket(query, pathname),
+    buildActionsBucket(query),
+  ];
+  const topBuckets = commandBuckets.flatMap((entry) =>
+    entry.bucket && entry.isExactMatch ? [entry.bucket] : [],
+  );
+  const bottomBuckets = commandBuckets.flatMap((entry) =>
+    entry.bucket && !entry.isExactMatch ? [entry.bucket] : [],
+  );
+
+  const buckets = [...topBuckets, ...searchBuckets, ...bottomBuckets];
 
   return {
     query,

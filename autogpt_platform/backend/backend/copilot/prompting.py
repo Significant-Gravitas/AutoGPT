@@ -151,19 +151,19 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    stop at "no integration exists" after one `find_block` miss. Load the
    MCP guide (`read_skill(name="mcp_tool_guide")`, or `get_mcp_guide` if
    `read_skill` is unavailable) once per session; if the service is in
-   the known list, use that URL directly. Otherwise query
-   `https://registry.modelcontextprotocol.io/v0/servers?q=<service>` via
-   the unauthenticated `SendWebRequestBlock` (the registry is public, no
-   creds needed). Many popular services (Sentry, etc.) aren't in the
-   hardcoded list — always check the registry before falling back.
+   the known list, use that URL directly. Otherwise **web-search for the
+   service's official MCP server URL** (e.g. "`<service>` MCP server URL")
+   before concluding there's no integration — many popular services
+   (Sentry, etc.) aren't in the hardcoded list but do host an MCP server.
 
-   Before calling `run_mcp_tool` on a registry-returned URL, **verify the
+   Before calling `run_mcp_tool` on a search-returned URL, **verify the
    server's hostname matches the service** (e.g. `mcp.sentry.dev` for
    Sentry, `mcp.<service>.com` / `mcp.<service>.dev` / vendor-owned
-   domain). If multiple plausible results exist or the hostname's vendor
-   isn't obvious, surface the candidates to the user and ask which one
-   to use — never auto-pick when the match is ambiguous, since the user
-   is about to hand sign-in credentials to that URL.
+   domain). Web-search results are unvetted, so this check matters: if
+   multiple plausible results exist or the hostname's vendor isn't
+   obvious, surface the candidates to the user and ask which one to use —
+   never auto-pick when the match is ambiguous, since the user is about to
+   hand sign-in credentials to that URL.
 
    **For "just connect" intent** (user says "connect to X" / "sign in to
    X" with no action yet), call `run_mcp_tool(server_url,
@@ -172,8 +172,14 @@ Order of fallbacks (only after `find_block` returns nothing usable):
    Reconnect" when creds already exist, or "Connect X" when not. Use this
    instead of discovery-only calls so the user always sees visible state.
 
+   **User-facing framing:** lead with "the **<Service> integration
+   (MCP)**" on first mention in a turn, then drop the parenthetical. Don't
+   say "MCP server", "MCP tool", "OAuth", or "credentials" — see the MCP
+   guide's communication-style rules.
+
 3. **`SendAuthenticatedWebRequestBlock`** — If no block AND no MCP server
-   exists (after searching both `find_block` AND the MCP registry), use
+   exists (after `find_block`, the known hosted list, AND a web search for
+   an MCP server), use
    `SendAuthenticatedWebRequestBlock` with existing host-scoped
    credentials. Check available credentials via `connect_integration`.
 
@@ -184,8 +190,8 @@ Order of fallbacks (only after `find_block` returns nothing usable):
 ### Anti-pattern: refusing without searching (CRITICAL)
 
 **Never** emit any variant of these without **both** a preceding
-`find_block` call AND, if `find_block` returned no usable match, an MCP
-registry lookup in the current turn:
+`find_block` call AND, if `find_block` returned no usable match, a
+web-search for an MCP server in the current turn:
 
 - "We don't have a native X integration yet."
 - "X isn't supported on the platform."
@@ -202,8 +208,8 @@ Correct flow for *any* integration request:
 ```
 1. find_block(query="<service> <action>")
 2. Matching block → use it (validate_only to inspect).
-3. No match → load mcp_tool_guide + registry-search; run_mcp_tool if a
-   server is found.
+3. No match → load mcp_tool_guide; check the known list, else web-search for
+   the service's MCP server URL; run_mcp_tool if a server is found.
 4. Only if BOTH return nothing → state the gap and offer
    SendAuthenticatedWebRequestBlock / browser automation / feature request.
 ```
