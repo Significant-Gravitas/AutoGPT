@@ -16,12 +16,20 @@ function extractPromptFromUrl(): {
   if (typeof window === "undefined") return null;
 
   const searchParams = new URLSearchParams(window.location.search);
-  const autosubmit = searchParams.get("autosubmit") === "true";
+  const autosubmitFromUrl = searchParams.get("autosubmit") === "true";
 
-  // Check sessionStorage first (used by workflow import for large prompts)
+  // Check sessionStorage first (used by workflow import for large prompts
+  // and by the marketing-site CTA handoff via useCaptureMarketingPrompt).
   const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
   if (storedPrompt) {
     sessionStorage.removeItem("importWorkflowPrompt");
+
+    // Onboarding wipes URL params before we reach /copilot, so the
+    // marketing handoff stashes its autosubmit intent alongside the prompt.
+    const autosubmitFromStorage =
+      sessionStorage.getItem("importWorkflowAutosubmit") === "true";
+    sessionStorage.removeItem("importWorkflowAutosubmit");
+    const autosubmit = autosubmitFromUrl || autosubmitFromStorage;
 
     // Check for a pre-uploaded workflow file attached to this import
     let filePart: FileUIPart | undefined;
@@ -77,7 +85,7 @@ function extractPromptFromUrl(): {
     `${cleanURL.pathname}${cleanURL.search}`,
   );
 
-  return { prompt: prompt.trim(), autosubmit };
+  return { prompt: prompt.trim(), autosubmit: autosubmitFromUrl };
 }
 
 /**
@@ -87,13 +95,11 @@ function extractPromptFromUrl(): {
  * Extracted from useCopilotPage to keep that hook focused on page-level concerns.
  */
 export function useWorkflowImportAutoSubmit({
-  createSession,
-  setPendingMessage,
-  pendingFilePartsRef,
+  onSend,
+  setPendingFileParts,
 }: {
-  createSession: () => Promise<string | undefined>;
-  setPendingMessage: (msg: string | null) => void;
-  pendingFilePartsRef: React.MutableRefObject<FileUIPart[]>;
+  onSend: (message: string) => Promise<void>;
+  setPendingFileParts: (parts: FileUIPart[]) => void;
 }) {
   const { setInitialPrompt } = useCopilotUIStore();
   const hasProcessedUrlPrompt = useRef(false);
@@ -108,15 +114,13 @@ export function useWorkflowImportAutoSubmit({
 
     if (urlPrompt.autosubmit) {
       if (urlPrompt.filePart) {
-        pendingFilePartsRef.current = [urlPrompt.filePart];
+        setPendingFileParts([urlPrompt.filePart]);
       }
-      setPendingMessage(urlPrompt.prompt);
-      void createSession().catch(() => {
-        setPendingMessage(null);
+      void onSend(urlPrompt.prompt).catch(() => {
         setInitialPrompt(urlPrompt.prompt);
       });
     } else {
       setInitialPrompt(urlPrompt.prompt);
     }
-  }, [createSession, setInitialPrompt, setPendingMessage, pendingFilePartsRef]);
+  }, [onSend, setInitialPrompt, setPendingFileParts]);
 }

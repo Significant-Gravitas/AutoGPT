@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator, Literal, Optional, overload
+from typing import Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
@@ -354,18 +354,10 @@ async def publish_webhook_event(event: WebhookEvent):
     )
 
 
-async def listen_for_webhook_events(
-    webhook_id: str, event_type: Optional[str] = None
-) -> AsyncGenerator[WebhookEvent, None]:
-    async for event in _webhook_event_bus.listen_events(
-        f"{webhook_id}/{event_type or '*'}"
-    ):
-        yield event
-
-
 async def wait_for_webhook_event(
-    webhook_id: str, event_type: Optional[str] = None, timeout: Optional[float] = None
+    webhook_id: str, event_type: str, timeout: Optional[float] = None
 ) -> WebhookEvent | None:
+    # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(
-        f"{webhook_id}/{event_type or '*'}", timeout
+        f"{webhook_id}/{event_type}", timeout
     )

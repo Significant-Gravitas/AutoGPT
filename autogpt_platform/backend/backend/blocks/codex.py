@@ -151,6 +151,17 @@ class CodeGenerationBlock(Block):
         )
         self.execution_stats = NodeExecutionStats()
 
+    # GPT-5.1-Codex published pricing: $1.25 / 1M input, $10 / 1M output.
+    _INPUT_USD_PER_1M = 1.25
+    _OUTPUT_USD_PER_1M = 10.0
+
+    @staticmethod
+    def _compute_token_usd(input_tokens: int, output_tokens: int) -> float:
+        return (
+            input_tokens * CodeGenerationBlock._INPUT_USD_PER_1M
+            + output_tokens * CodeGenerationBlock._OUTPUT_USD_PER_1M
+        ) / 1_000_000
+
     async def call_codex(
         self,
         *,
@@ -189,13 +200,15 @@ class CodeGenerationBlock(Block):
         response_id = response.id or ""
 
         # Update usage stats
-        self.execution_stats.input_token_count = (
-            response.usage.input_tokens if response.usage else 0
-        )
-        self.execution_stats.output_token_count = (
-            response.usage.output_tokens if response.usage else 0
-        )
+        input_tokens = response.usage.input_tokens if response.usage else 0
+        output_tokens = response.usage.output_tokens if response.usage else 0
+        self.execution_stats.input_token_count = input_tokens
+        self.execution_stats.output_token_count = output_tokens
         self.execution_stats.llm_call_count += 1
+        self.execution_stats.provider_cost = self._compute_token_usd(
+            input_tokens, output_tokens
+        )
+        self.execution_stats.provider_cost_type = "cost_usd"
 
         return CodexCallResult(
             response=text_output,

@@ -237,8 +237,8 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
             f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:graph-3",
         ]
         mock_redis_client.scan_iter.return_value = async_iter(mock_keys)
-        # delete is awaited, so use AsyncMock
-        mock_redis_client.delete = AsyncMock(return_value=3)
+        # Each per-key DELETE returns 1 (one key deleted per call).
+        mock_redis_client.delete = AsyncMock(return_value=1)
 
         # Clear notifications
         result = await clear_insufficient_funds_notifications(user_id)
@@ -247,11 +247,15 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
         expected_pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
         mock_redis_client.scan_iter.assert_called_once_with(match=expected_pattern)
 
-        # Verify delete was called with all keys
-        mock_redis_client.delete.assert_called_once_with(*mock_keys)
+        # Keys span multiple graph IDs → different cluster slots, so DELETE
+        # is called once per key (not a single bulk DELETE).
+        assert mock_redis_client.delete.call_count == len(mock_keys)
+        assert {
+            call.args[0] for call in mock_redis_client.delete.call_args_list
+        } == set(mock_keys)
 
-        # Verify return value
-        assert result == 3
+        # Verify return value — sum of per-key DELETEs
+        assert result == len(mock_keys)
 
 
 @pytest.mark.asyncio(loop_scope="session")

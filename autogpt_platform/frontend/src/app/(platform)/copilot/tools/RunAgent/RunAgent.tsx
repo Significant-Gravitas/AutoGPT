@@ -24,7 +24,7 @@ import {
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
-import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
+import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 
 export interface RunAgentToolPart {
@@ -107,7 +107,10 @@ export function RunAgentTool({ part }: Props) {
 
       {setupRequirementsOutput && (
         <div className="mt-2">
-          <SetupRequirementsCard output={setupRequirementsOutput} />
+          <SetupRequirementsCard
+            output={setupRequirementsOutput}
+            inputsMode="preview"
+          />
         </div>
       )}
 
@@ -138,6 +141,10 @@ export function RunAgentTool({ part }: Props) {
                 graph_name: agentOutputResponse.agent_name,
                 library_agent_link:
                   agentOutputResponse.library_agent_link ?? undefined,
+                // Propagate the real terminal status (COMPLETED / FAILED /
+                // STOPPED …) so the card title matches what happened.
+                // Defaults to the "started" label when backend omits status.
+                status: agentOutputResponse.execution?.status ?? "COMPLETED",
               }}
             />
           )}

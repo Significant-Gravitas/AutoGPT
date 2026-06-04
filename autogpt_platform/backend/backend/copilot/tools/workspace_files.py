@@ -8,18 +8,20 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    looks_like_sdk_tool_result_path,
     resolve_sandbox_path,
+    sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
 from backend.util.settings import Config
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -598,9 +600,40 @@ class ReadWorkspaceFileTool(BaseTool):
                 # read it directly instead of failing.  The model sometimes
                 # calls read_workspace_file for these paths by mistake.
                 sdk_cwd = get_sdk_cwd()
+                # Relative SDK-tool-result shorthand must short-circuit
+                # *before* the ``is_allowed_local_path`` fallback: when
+                # ``sdk_cwd`` is set, the shorthand resolves under it and
+                # passes the allow check, but the file doesn't actually
+                # exist at that resolved path → ``_read_local_tool_result``
+                # returns a generic "Path not allowed" and the redirect
+                # branch below never runs. Catch relative shorthands here
+                # so the model sees the helpful redirect on the first try.
+                # Absolute SDK paths still take the local-read path below
+                # (legit fallback for ``read_workspace_file`` with an
+                # absolute SDK tool-results path).
+                if (
+                    path
+                    and not os.path.isabs(path)
+                    and not path.startswith("~")
+                    and looks_like_sdk_tool_result_path(path)
+                ):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
+                    )
                 if path and is_allowed_local_path(path, sdk_cwd):
                     return _read_local_tool_result(
                         path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
+                # Path looks like SDK tool-results but isn't reachable
+                # via the local-read path either (e.g. absolute SDK path
+                # not under sdk_cwd) — redirect to read_tool_result /
+                # @@agptfile rather than returning a generic
+                # "Path not allowed".
+                if path and looks_like_sdk_tool_result_path(path):
+                    return ErrorResponse(
+                        message=sdk_tool_result_redirect_hint(path),
+                        session_id=session_id,
                     )
                 return resolved
             target_file_id, file_info = resolved
@@ -712,6 +745,33 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
 
+# Paths under ``/skills/`` are managed by the skills registry — the
+# ``store_skill`` / ``delete_skill`` tools enforce frontmatter validation,
+# the per-user cap, name regex, and content sanitisation. Allowing plain
+# write_workspace_file / delete_workspace_file there would bypass all of
+# that and let the model accidentally (or maliciously) corrupt the
+# registry. Reads stay open so the model can still inspect sibling
+# references inside a skill bundle.
+_SKILLS_REGISTRY_PREFIX = "skills/"
+_SKILLS_REGISTRY_ERROR = (
+    "Path is managed by the skills registry; use store_skill / "
+    "delete_skill instead. (read_workspace_file can still read "
+    "sibling files inside a skill bundle.)"
+)
+
+
+def _path_under_skills_registry(path: str | None) -> bool:
+    """Return ``True`` when *path* normalises to a location under
+    the skills-registry folder (``/skills/...`` or ``skills/...``,
+    case-insensitive)."""
+    if not path:
+        return False
+    # Strip leading slashes + whitespace, lower-case so case variants
+    # (``Skills/foo``) cannot bypass the check.
+    normalised = path.strip().lstrip("/").lower()
+    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
+
+
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
 
@@ -815,6 +875,14 @@ class WriteWorkspaceFileTool(BaseTool):
                 message="Please provide a filename", session_id=session_id
             )
 
+        # Block writes to the skills registry folder — they would bypass
+        # store_skill's validation (cap, body limits, name regex,
+        # sanitisation of server-injected tags).  Either an explicit
+        # ``path`` or a ``filename`` defaulting to ``skills/...`` count.
+        candidate_path = path if path is not None else f"/{filename}"
+        if _path_under_skills_registry(candidate_path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
+
         source_path_arg: str | None = source_path
         content_text: str | None = content
         content_b64: str | None = content_base64
@@ -837,7 +905,6 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            await scan_content_safe(content_bytes, filename=filename)
             manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
                 content=content_bytes,
@@ -895,8 +962,21 @@ class WriteWorkspaceFileTool(BaseTool):
                 message=msg,
                 session_id=session_id,
             )
-        except ValueError as e:
+        except VirusDetectedError as e:
+            logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
             return ErrorResponse(message=str(e), session_id=session_id)
+        except VirusScanError as e:
+            logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
+            return ErrorResponse(message=str(e), session_id=session_id)
+        except ValueError as e:
+            msg = str(e)
+            if msg.startswith("Storage limit exceeded"):
+                msg += (
+                    " Use list_workspace_files to find candidates, then "
+                    "delete_workspace_file to free space and retry — or ask "
+                    "the user to upgrade their plan."
+                )
+            return ErrorResponse(message=msg, session_id=session_id)
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
@@ -956,12 +1036,29 @@ class DeleteWorkspaceFileTool(BaseTool):
                 message="Please provide either file_id or path", session_id=session_id
             )
 
+        # Reject deletes targeting the skills registry by path up-front.
+        # file_id targets are checked AFTER resolution below, since the
+        # path is only known once the file is looked up.
+        if _path_under_skills_registry(path):
+            return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved
             target_file_id, file_info = resolved
+
+            # Fail closed: if the resolved file has no ``path`` attribute the
+            # workspace shape has drifted and we cannot verify the ACL, so
+            # refuse to delete rather than fall through with ``None``.
+            resolved_path = getattr(file_info, "path", None)
+            if not isinstance(resolved_path, str) or _path_under_skills_registry(
+                resolved_path
+            ):
+                return ErrorResponse(
+                    message=_SKILLS_REGISTRY_ERROR, session_id=session_id
+                )
 
             if not await manager.delete_file(target_file_id):
                 return ErrorResponse(

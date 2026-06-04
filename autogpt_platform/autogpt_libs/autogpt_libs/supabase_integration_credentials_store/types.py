@@ -59,6 +59,8 @@ class OAuthState(BaseModel):
     code_verifier: Optional[str] = None
     scopes: list[str]
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
+    credential_id: Optional[str] = None
+    """If set, this OAuth flow upgrades an existing credential's scopes."""
 
 
 class UserMetadata(BaseModel):

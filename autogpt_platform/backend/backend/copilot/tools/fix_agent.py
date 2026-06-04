@@ -7,6 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,8 @@ class FixAgentGraphTool(BaseTool):
             "Auto-fix common agent JSON issues: missing/invalid UUIDs, StoreValueBlock prerequisites, "
             "double curly brace escaping, AddToList/AddToDictionary prerequisites, credentials, "
             "node spacing, AI model defaults, link static properties, and type mismatches. "
-            "Returns fixed JSON and list of fixes applied."
+            "Returns fixed JSON and list of fixes applied. "
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -55,6 +57,10 @@ class FixAgentGraphTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+
+        guide_gate = require_guide_read(session, "fix_agent_graph")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_json or not isinstance(agent_json, dict):
             return ErrorResponse(

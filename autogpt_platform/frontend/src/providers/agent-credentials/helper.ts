@@ -1,6 +1,8 @@
 // --8<-- [start:CredentialsProviderNames]
 // Helper function to convert provider names to display names
-export function toDisplayName(provider: string): string {
+export function toDisplayName(provider: unknown): string {
+  if (typeof provider !== "string" || provider.length === 0) return "";
+
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",

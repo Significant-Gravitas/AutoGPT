@@ -27,6 +27,12 @@ class TestUsdToMicrodollars:
     def test_none_returns_none(self):
         assert usd_to_microdollars(None) is None
 
+    def test_converts_usd_to_microdollars(self):
+        assert usd_to_microdollars(1.0) == 1_000_000
+
+    def test_fractional_usd(self):
+        assert usd_to_microdollars(0.0042) == 4200
+
     def test_zero_returns_zero(self):
         assert usd_to_microdollars(0.0) == 0
 

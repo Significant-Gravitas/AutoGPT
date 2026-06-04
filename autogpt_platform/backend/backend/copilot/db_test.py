@@ -61,6 +61,14 @@ def _make_session(
         totalCompletionTokens=0,
         title=None,
         metadata={},
+        chatStatus="idle",
+        # Sharing fields added by the chat-sharing PR — even with
+        # ``model_construct`` Pydantic v2 still validates required
+        # non-optional columns, so the mock needs them explicitly.
+        isShared=False,
+        shareToken=None,
+        sharedAt=None,
+        autoShareExecutions=False,
         Messages=messages or [],
     )
     return session
@@ -173,6 +181,138 @@ async def test_no_where_on_messages_without_before_sequence(
     call_kwargs = find_first.call_args
     include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
     assert "where" not in include["Messages"]
+
+
+# ---------- Visibility guarantee ----------
+
+
+@pytest.mark.asyncio
+async def test_visibility_expands_when_all_tool_messages(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When the entire page is tool messages, expand backward to find
+    at least one visible (user/assistant) message so the chat isn't blank."""
+    find_first, find_many = mock_db
+    # Newest 3 messages are all tool messages (DESC → reversed to ASC)
+    find_first.return_value = _make_session(
+        messages=[
+            _make_msg(12, role="tool"),
+            _make_msg(11, role="tool"),
+            _make_msg(10, role="tool"),
+        ],
+    )
+    # Boundary expansion finds the owning assistant first (boundary fix),
+    # then visibility expansion finds a user message further back
+    find_many.side_effect = [
+        # First call: boundary fix (oldest msg is tool → find owner)
+        [_make_msg(9, role="tool"), _make_msg(8, role="tool")],
+        # Second call: visibility expansion (still all tool → find visible)
+        [_make_msg(7, role="tool"), _make_msg(6, role="assistant")],
+    ]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
+
+    assert page is not None
+    # Should include the expanded messages + original tool messages
+    roles = [m.role for m in page.messages]
+    assert "assistant" in roles or "user" in roles
+    assert page.has_more is True
+
+
+@pytest.mark.asyncio
+async def test_no_visibility_expansion_when_visible_messages_present(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """No visibility expansion needed when page already has visible messages."""
+    find_first, find_many = mock_db
+    # Page has an assistant message among tool messages
+    find_first.return_value = _make_session(
+        messages=[
+            _make_msg(5, role="tool"),
+            _make_msg(4, role="assistant"),
+            _make_msg(3, role="user"),
+        ],
+    )
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
+
+    assert page is not None
+    # Boundary expansion might fire (oldest is tool), but NOT visibility
+    assert [m.sequence for m in page.messages][0] <= 3
+
+
+@pytest.mark.asyncio
+async def test_visibility_no_expansion_when_no_earlier_messages(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When the page is all tool messages but there are no earlier messages
+    in the DB, visibility expansion returns early without changes."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(1, role="tool"), _make_msg(0, role="tool")],
+    )
+    # Boundary expansion: no earlier messages
+    # Visibility expansion: no earlier messages
+    find_many.side_effect = [[], []]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert all(m.role == "tool" for m in page.messages)
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_reaches_seq_zero(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When visibility expansion finds a visible message at sequence 0,
+    has_more should be False."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(5, role="tool"), _make_msg(4, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(3, role="tool")],
+        # Visibility expansion — finds user at seq 0
+        [
+            _make_msg(2, role="tool"),
+            _make_msg(1, role="tool"),
+            _make_msg(0, role="user"),
+        ],
+    ]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert page.messages[0].role == "user"
+    assert page.messages[0].sequence == 0
+    assert page.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_with_user_id(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """Visibility expansion passes user_id filter to the boundary query."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(10, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(9, role="tool")],
+        # Visibility expansion
+        [_make_msg(8, role="assistant")],
+    ]
+
+    await get_chat_messages_paginated(SESSION_ID, limit=1, user_id="user-abc")
+
+    # Both find_many calls should include the user_id session filter
+    for call in find_many.call_args_list:
+        where = call.kwargs.get("where") or call[1].get("where")
+        assert "Session" in where
+        assert where["Session"] == {"is": {"userId": "user-abc"}}
 
 
 @pytest.mark.asyncio
@@ -329,7 +469,8 @@ async def test_boundary_expansion_warns_when_no_owner_found(
 
     with patch("backend.copilot.db.logger") as mock_logger:
         page = await get_chat_messages_paginated(SESSION_ID, limit=5)
-        mock_logger.warning.assert_called_once()
+        # Two warnings: boundary expansion + visibility expansion (all tool msgs)
+        assert mock_logger.warning.call_count == 2
 
     assert page is not None
     assert page.messages[0].role == "tool"
@@ -475,3 +616,190 @@ async def test_update_message_content_by_sequence_sanitizes_content():
         where={"sessionId": "sess-1", "sequence": 0},
         data={"content": "sanitized"},
     )
+
+
+# NOTE: previously this file had a separate suite for ``db.get_chat_session``
+# (windowed eager-load). That function was removed in favour of going through
+# ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
+# Cap-hit + tool-pair boundary behaviour is now covered by the paginated tests
+# above and the integration coverage in ``model_test.py``.
+
+
+# ChatSession lifecycle primitives + add_chat_message.
+
+
+@pytest.mark.asyncio
+async def test_count_chat_sessions_by_status_filters_by_user_and_status() -> None:
+    from backend.copilot.db import count_chat_sessions_by_status
+
+    count = AsyncMock(return_value=3)
+    with patch.object(PrismaChatSession, "prisma", return_value=AsyncMock(count=count)):
+        result = await count_chat_sessions_by_status(user_id="u1", status="running")
+    assert result == 3
+    where = count.call_args.kwargs["where"]
+    assert where == {"userId": "u1", "chatStatus": "running"}
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions_by_status_returns_app_models_oldest_first() -> None:
+    """Returns RPC-safe ``ChatSessionInfo`` rows (not raw Prisma) so the
+    function can serve the dispatcher across the DatabaseManager RPC
+    boundary from the CoPilotExecutor subprocess."""
+    from backend.copilot.db import list_chat_sessions_by_status
+
+    now = datetime.now(UTC)
+    rows = [
+        PrismaChatSession(
+            id="s1",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+            isShared=False,
+            shareToken=None,
+            sharedAt=None,
+            autoShareExecutions=False,
+        ),
+        PrismaChatSession(
+            id="s2",
+            userId="u1",
+            chatStatus="queued",
+            createdAt=now,
+            updatedAt=now,
+            credentials="{}",
+            successfulAgentRuns="{}",
+            successfulAgentSchedules="{}",
+            metadata="{}",
+            totalPromptTokens=0,
+            totalCompletionTokens=0,
+            isShared=False,
+            shareToken=None,
+            sharedAt=None,
+            autoShareExecutions=False,
+        ),
+    ]
+    find_many = AsyncMock(return_value=rows)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(find_many=find_many)
+    ):
+        result = await list_chat_sessions_by_status(user_id="u1", status="queued")
+    assert [r.session_id for r in result] == ["s1", "s2"]
+    assert all(r.chat_status == "queued" for r in result)
+    kwargs = find_many.call_args.kwargs
+    assert kwargs["where"] == {"userId": "u1", "chatStatus": "queued"}
+    assert kwargs["order"] == {"updatedAt": "asc"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_owner_gated_returns_true_on_match() -> None:
+    """User-initiated transition (cancel) gates on both ``chatStatus``
+    AND ``userId`` — both guards in one atomic update."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1",
+            expect_status="queued",
+            status="idle",
+            user_id="u1",
+        )
+    assert ok is True
+    kwargs = update_many.call_args.kwargs
+    assert kwargs["where"] == {"id": "s1", "chatStatus": "queued", "userId": "u1"}
+    assert kwargs["data"] == {"chatStatus": "idle"}
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_returns_false_when_cas_fails() -> None:
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=0)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        ok = await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="idle"
+        )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_status_dispatcher_path_omits_user_gate() -> None:
+    """Dispatcher-initiated transitions (claim / restore / release) don't
+    pass ``user_id`` — they act on the session regardless of owner."""
+    from backend.copilot.db import update_chat_session_status
+
+    update_many = AsyncMock(return_value=1)
+    with patch.object(
+        PrismaChatSession, "prisma", return_value=AsyncMock(update_many=update_many)
+    ):
+        await update_chat_session_status(
+            session_id="s1", expect_status="queued", status="running"
+        )
+    where = update_many.call_args.kwargs["where"]
+    assert "userId" not in where
+    assert where == {"id": "s1", "chatStatus": "queued"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_serialises_metadata_via_safejson() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata={"mode": "extended_thinking"},
+        )
+    data = create.call_args.kwargs["data"]
+    assert data["id"] == "m1"
+    metadata = data["metadata"]
+    inner = getattr(metadata, "data", metadata)
+    assert inner == {"mode": "extended_thinking"}
+
+
+@pytest.mark.asyncio
+async def test_add_chat_message_omits_metadata_when_none() -> None:
+    from backend.copilot.db import add_chat_message
+
+    create = AsyncMock(return_value=_make_msg(sequence=1))
+    session_update = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(create=create)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(update=session_update)
+        ),
+    ):
+        await add_chat_message(
+            message_id="m1",
+            session_id="s1",
+            role="user",
+            content="hi",
+            sequence=1,
+            metadata=None,
+        )
+    data = create.call_args.kwargs["data"]
+    assert "metadata" not in data

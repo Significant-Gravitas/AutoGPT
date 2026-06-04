@@ -7,6 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase, ValidationResultResponse
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ class ValidateAgentGraphTool(BaseTool):
         return (
             "Validate agent JSON for correctness: block_ids, links, required fields, "
             "type compatibility, nested sink notation, prompt brace escaping, "
-            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix."
+            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix. "
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -52,6 +54,10 @@ class ValidateAgentGraphTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+
+        guide_gate = require_guide_read(session, "validate_agent_graph")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_json or not isinstance(agent_json, dict):
             return ErrorResponse(

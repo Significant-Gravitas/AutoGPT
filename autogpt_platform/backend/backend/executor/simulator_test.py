@@ -5,6 +5,7 @@ Covers:
   - Input/output block passthrough
   - prepare_dry_run routing
   - simulate_block output-pin filling
+  - Default simulator model + OpenRouter cost tracking
 """
 
 from __future__ import annotations
@@ -13,8 +14,16 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
+from backend.blocks.llm import LlmModel
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
+    _DEFAULT_SIMULATOR_MODEL,
+    _extract_cost_usd,
     _truncate_input_values,
     _truncate_value,
     build_simulation_prompt,
@@ -156,13 +165,136 @@ class TestPrepareDryRun:
                 {"agent_mode_max_iterations": 10, "model": "gpt-4o", "other": "val"},
             )
         assert result is not None
-        assert result["agent_mode_max_iterations"] == 1
+        # Capped to min(original, 10) — user's 10 passes through unchanged.
+        assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
+        # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+        # Pydantic input validation accepts it.
+        assert LlmModel(result["model"]) is not None
+        # The injected model must be a canonical LlmModel value (string equal
+        # to one of the enum's ``.value``s), not an OpenRouter alias slug —
+        # OrchestratorBlock.validate_data → jsonschema only accepts literal
+        # ``LlmModel.value``s in the schema's ``enum``, and the alias map
+        # in ``LlmModel._missing_`` does not surface in the generated
+        # JSON Schema.  Anything else trips
+        # ``"'<slug>' is not one of [...]"`` at runtime.
+        canonical_values = {m.value for m in LlmModel}
+        assert result["model"] in canonical_values, (
+            f"prepare_dry_run injected non-canonical model {result['model']!r}; "
+            f"jsonschema validation will reject it"
+        )
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
+
+    def test_orchestrator_invalid_sim_model_override_falls_back_to_default(
+        self,
+    ) -> None:
+        """An invalid ``CHAT_SIMULATION_MODEL`` env value must not crash
+        ``prepare_dry_run`` — fall back to the default so dry-run keeps
+        working.  Without the guard, ``LlmModel('<garbage>')`` raises
+        ``ValueError`` and aborts every Orchestrator dry-run."""
+        with (
+            patch(
+                "backend.executor.simulator._get_platform_openrouter_key",
+                return_value="sk-or-test-key",
+            ),
+            patch(
+                "backend.executor.simulator._simulator_model",
+                return_value="not-a-real-model-slug",
+            ),
+        ):
+            result = prepare_dry_run(
+                OrchestratorBlock(),
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        # Must land on the default value, not the garbage override.
+        assert result["model"] == LlmModel(_DEFAULT_SIMULATOR_MODEL).value, (
+            "Invalid CHAT_SIMULATION_MODEL should fall back to default; "
+            f"got {result['model']!r}"
+        )
+
+    def test_orchestrator_forces_built_in_execution_mode(self) -> None:
+        """prepare_dry_run overrides ``execution_mode`` to ``BUILT_IN``
+        regardless of user choice.  With ``sim_model`` defaulting to
+        Gemini Flash-Lite (provider=open_router):
+
+          - BUILT_IN routes ``llm.llm_call`` to its open_router branch
+            (OpenAI SDK against openrouter.ai with the OR key) — works.
+          - EXTENDED_THINKING would hit the SDK subprocess's
+            ``model.value.startswith("claude")`` guard and raise
+            ``ValueError`` for any non-Claude sim_model.
+
+        Honouring the user's pick would force sim_model back to Claude
+        (to satisfy EXTENDED_THINKING), which in turn breaks the
+        LLM-simulation path for every non-Orchestrator block in the
+        same graph (Claude wraps JSON-mode output in markdown fences,
+        Gemini doesn't)."""
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            # User explicitly picked EXTENDED_THINKING — the dry-run
+            # still overrides to BUILT_IN.
+            result = prepare_dry_run(
+                block,
+                {
+                    "prompt": "test",
+                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        assert result["execution_mode"] == ExecutionMode.BUILT_IN.value, (
+            f"prepare_dry_run must force BUILT_IN to keep Gemini sim_model "
+            f"off the SDK's Claude-only gate; got {result['execution_mode']!r}"
+        )
+
+    def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
+        """The injected dry-run input must pass OrchestratorBlock.validate_data.
+
+        Pinning this prevents the SECRT-2368 follow-up bug class where
+        prepare_dry_run injects an OpenRouter slug that LlmModel resolves
+        via the alias map at the Pydantic layer, but jsonschema enum
+        validation (which runs *before* Pydantic) rejects.
+        """
+        block = OrchestratorBlock()
+        user_input = {
+            "prompt": "test",
+            "model": LlmModel.CLAUDE_4_7_OPUS.value,
+            "credentials": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "provider": "open_router",
+                "type": "api_key",
+            },
+            "agent_mode_max_iterations": 1,
+            "execution_mode": "built_in",
+            "multiple_tool_calls": False,
+            "max_tokens": 50,
+            "retry": 0,
+        }
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            dry_input = prepare_dry_run(block, user_input)
+        assert dry_input is not None
+        # Strip simulator-internal markers before validating, just like
+        # manager.py does before calling Input(**...).
+        validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
+        err = block.input_schema.validate_data(validation_input)
+        assert (
+            err is None
+        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
@@ -510,3 +642,237 @@ class TestSimulateBlockPassthrough:
             assert len(outputs) == 1
             assert outputs[0][0] == "error"
             assert "No client" in outputs[0][1]
+
+
+# ---------------------------------------------------------------------------
+# Default model + OpenRouter cost tracking
+# ---------------------------------------------------------------------------
+
+
+def _sim_usage(
+    *,
+    prompt_tokens: int = 1200,
+    completion_tokens: int = 300,
+    cost: object = 0.000157,
+) -> CompletionUsage:
+    """Typed ``CompletionUsage`` carrying OpenRouter's ``cost`` extension
+    via ``model_extra`` — same pattern as
+    ``copilot/tools/web_search_test.py::_usage``.  ``model_construct``
+    preserves unknown fields; ``model_validate`` would drop them."""
+    payload: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    if cost is not None:
+        payload["cost"] = cost
+    return CompletionUsage.model_construct(None, **payload)
+
+
+def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
+    """Typed ``ChatCompletion`` shaped like an OpenRouter simulator
+    response so the production code runs under real SDK types."""
+    message = ChatCompletionMessage.model_construct(
+        None, role="assistant", content=content
+    )
+    choice = Choice.model_construct(
+        None, index=0, finish_reason="stop", message=message
+    )
+    return ChatCompletion.model_construct(
+        None,
+        id="cmpl-sim",
+        object="chat.completion",
+        created=0,
+        model=_DEFAULT_SIMULATOR_MODEL,
+        choices=[choice],
+        usage=usage,
+    )
+
+
+class TestDefaultSimulatorModel:
+    """Pin the default model.  Four guards line up with the constraints
+    laid out next to ``_DEFAULT_SIMULATOR_MODEL`` in ``simulator.py``:
+    value pin, ``LlmModel`` parseability, OpenRouter slug shape, and
+    ``open_router`` provider routing (so the BUILT_IN orchestrator path
+    in ``llm.llm_call`` doesn't get routed through ``api.anthropic.com``
+    with the platform OR key)."""
+
+    def test_default_is_gemini_flash_lite(self) -> None:
+        assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
+
+    def test_default_parses_as_llm_model(self) -> None:
+        assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.GEMINI_2_5_FLASH_LITE
+
+    def test_default_is_openrouter_slug(self) -> None:
+        # The LLM-simulation path hits OpenRouter's OpenAI-compat endpoint,
+        # which only accepts canonical ``<vendor>/<model>`` slugs.
+        assert "/" in _DEFAULT_SIMULATOR_MODEL
+
+    def test_default_provider_is_open_router(self) -> None:
+        # ``llm.llm_call`` dispatches on ``llm_model.metadata.provider``.
+        # An ``anthropic`` provider would route OR-dry-run-credentials
+        # at ``api.anthropic.com`` → 401.  Pin ``open_router`` here so
+        # a future default change that breaks this routing trips at
+        # unit-test time.
+        assert LlmModel(_DEFAULT_SIMULATOR_MODEL).metadata.provider == "open_router"
+
+
+class TestExtractCostUsd:
+    """Provider-reported USD cost via typed ``model_extra`` — mirrors
+    ``copilot.tools.web_search._extract_cost_usd`` and
+    ``copilot.baseline.service._extract_usage_cost``."""
+
+    def test_returns_cost_value(self) -> None:
+        assert _extract_cost_usd(_sim_usage(cost=0.000157)) == pytest.approx(0.000157)
+
+    def test_returns_none_when_usage_missing(self) -> None:
+        assert _extract_cost_usd(None) is None
+
+    def test_returns_none_when_cost_field_missing(self) -> None:
+        assert _extract_cost_usd(_sim_usage(cost=None)) is None
+
+    def test_returns_none_when_cost_is_explicit_null(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost=None
+        )
+        assert _extract_cost_usd(usage) is None
+
+    def test_returns_none_when_cost_is_negative(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost=-0.5
+        )
+        assert _extract_cost_usd(usage) is None
+
+    def test_accepts_numeric_string(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost="0.017"
+        )
+        assert _extract_cost_usd(usage) == pytest.approx(0.017)
+
+
+class TestSimulatorCostTracking:
+    """Integration: mock the OpenAI client, confirm the simulator sends
+    the flash-lite default + extra_body, then plumbs through to
+    ``persist_and_record_usage`` with ``provider='open_router'`` and the
+    real ``usage.cost`` pulled off ``model_extra``."""
+
+    def _mock_client(self, fake_resp: ChatCompletion) -> tuple[Any, AsyncMock]:
+        """Build a fake ``AsyncOpenAI`` client.  Same nested-type pattern as
+        ``copilot/tools/web_search_test.py::_mock_client`` — avoids
+        MagicMock's auto-child-attr behaviour so the exact ``create`` call
+        surface is what gets invoked."""
+        create_mock = AsyncMock(return_value=fake_resp)
+        client = type(
+            "MC",
+            (),
+            {
+                "chat": type(
+                    "C",
+                    (),
+                    {"completions": type("CC", (), {"create": create_mock})()},
+                )()
+            },
+        )()
+        return client, create_mock
+
+    @pytest.mark.asyncio
+    async def test_passes_default_model_and_tracks_cost(self) -> None:
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "simulated"}',
+            usage=_sim_usage(prompt_tokens=1100, completion_tokens=220, cost=0.000189),
+        )
+        client, create_mock = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=1320),
+            ) as mock_track,
+        ):
+            outputs = []
+            async for name, data in simulate_block(
+                block, {"query": "hello"}, user_id="user-42"
+            ):
+                outputs.append((name, data))
+
+        assert ("result", "simulated") in outputs
+
+        create_kwargs = create_mock.await_args.kwargs
+        assert create_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
+        assert create_kwargs["extra_body"] == {"usage": {"include": True}}
+
+        track_kwargs = mock_track.await_args.kwargs
+        assert track_kwargs["provider"] == "open_router"
+        assert track_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
+        assert track_kwargs["user_id"] == "user-42"
+        assert track_kwargs["prompt_tokens"] == 1100
+        assert track_kwargs["completion_tokens"] == 220
+        assert track_kwargs["cost_usd"] == pytest.approx(0.000189)
+        assert track_kwargs["session"] is None
+        assert track_kwargs["log_prefix"] == "[simulator]"
+
+    @pytest.mark.asyncio
+    async def test_tracks_even_when_cost_absent(self) -> None:
+        """Provider may omit ``cost`` (e.g. non-OpenRouter proxies).  We
+        still record token counts — ``persist_and_record_usage`` logs the
+        turn and skips the rate-limit ledger when cost is ``None``."""
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "ok"}',
+            usage=_sim_usage(prompt_tokens=100, completion_tokens=20, cost=None),
+        )
+        client, _ = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=120),
+            ) as mock_track,
+        ):
+            async for _name, _data in simulate_block(
+                block, {"query": "x"}, user_id="user-7"
+            ):
+                pass
+
+        track_kwargs = mock_track.await_args.kwargs
+        assert track_kwargs["cost_usd"] is None
+        assert track_kwargs["user_id"] == "user-7"
+        assert track_kwargs["provider"] == "open_router"
+
+    @pytest.mark.asyncio
+    async def test_tracking_failure_does_not_break_simulation(self) -> None:
+        """Cost-tracking failures are warnings, not simulation failures —
+        the block output must still flow to the caller."""
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "simulated"}',
+            usage=_sim_usage(),
+        )
+        client, _ = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+        ):
+            outputs = []
+            async for name, data in simulate_block(
+                block, {"query": "hello"}, user_id="user-42"
+            ):
+                outputs.append((name, data))
+
+        assert ("result", "simulated") in outputs

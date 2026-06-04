@@ -100,7 +100,7 @@ async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
             )
 
 
-def _schedule_log(
+def schedule_platform_cost_log(
     db_client: "DatabaseManagerAsyncClient", entry: PlatformCostEntry
 ) -> None:
     async def _safe_log() -> None:
@@ -234,7 +234,13 @@ async def log_system_credential_cost(
 
             model_name = _extract_model_name(input_data.get("model"))
 
-            credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
+            # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)
+            # compute the *actual* charge from the captured stats. Without this
+            # the call hits the pre-flight path and records the historical
+            # estimate, skewing platform-cost analytics.
+            credit_cost, _ = block_usage_cost(
+                block=block, input_data=input_data, stats=stats
+            )
 
             provider_name = cred_data.get("provider", "unknown")
             tracking_type, tracking_amount = resolve_tracking(
@@ -263,7 +269,7 @@ async def log_system_credential_cost(
                 # type (USD for cost_usd, count for items/characters/per_run, etc.)
                 meta["provider_cost_raw"] = stats.provider_cost
 
-            _schedule_log(
+            schedule_platform_cost_log(
                 db_client,
                 PlatformCostEntry(
                     user_id=node_exec.user_id,
