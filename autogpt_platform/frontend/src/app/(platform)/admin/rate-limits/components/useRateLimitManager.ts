@@ -10,7 +10,6 @@ import {
   postV2ResetUserRateLimitUsage,
   postV2SetUserRateLimitTier,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 
 export interface UserOption {
   user_id: string;
@@ -36,12 +35,7 @@ export function useRateLimitManager() {
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
-  const { data: tierMultipliers } = useGetSubscriptionStatus({
-    query: {
-      select: (res) =>
-        res.status === 200 ? res.data.tier_multipliers : undefined,
-    },
-  });
+  const tierMultipliers = rateLimitData?.tier_multipliers;
 
   async function handleDirectLookup(trimmed: string) {
     setIsSearching(true);

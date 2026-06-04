@@ -341,6 +341,28 @@ describe("RateLimitDisplay", () => {
     expect(select.textContent).not.toContain("ENTERPRISE — 60");
   });
 
+  it("shows the multiplier for ENTERPRISE when present in the full map", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData()}
+        onReset={vi.fn()}
+        tierMultipliers={{
+          NO_TIER: 0,
+          BASIC: 1,
+          PRO: 5,
+          BUSINESS: 20,
+          ENTERPRISE: 60,
+        }}
+      />,
+    );
+    const select = screen.getByLabelText("Subscription tier");
+    expect(select.textContent).toContain("ENTERPRISE — 60× base limits");
+    expect(select.textContent).toContain("BUSINESS — 20× base limits");
+    expect(select.textContent).not.toContain("ENTERPRISE — tier limits");
+    // NO_TIER's 0 short-circuits to the paywalled label, not "0× base limits".
+    expect(select.textContent).toContain("NO_TIER — no access (paywalled)");
+  });
+
   it("falls back to generic labels when no multipliers map is provided", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");

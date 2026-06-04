@@ -26,8 +26,8 @@ const TIER_COLORS: Record<Tier, string> = {
 };
 
 // Derives the per-tier label from the live, LaunchDarkly-driven multiplier map.
-// NO_TIER is paywalled (0 / absent), and tiers missing from the map (not
-// priceable) fall back to a generic label rather than a fabricated number.
+// NO_TIER is paywalled (0 / absent), and tiers missing from the map fall back
+// to a generic label rather than a fabricated number.
 function tierLabel(
   tier: Tier,
   tierMultipliers?: Record<string, number>,
@@ -46,7 +46,7 @@ interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
   onTierChange?: (newTier: string) => Promise<void>;
-  /** Live LaunchDarkly-driven tier → multiplier map from the subscription status endpoint. */
+  /** Full per-tier multiplier map (incl. admin-managed tiers) from the admin rate-limit endpoint. */
   tierMultipliers?: Record<string, number>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;

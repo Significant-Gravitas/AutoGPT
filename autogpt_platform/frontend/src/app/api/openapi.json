@@ -20161,7 +20161,13 @@
             "type": "integer",
             "title": "Weekly Cost Used Microdollars"
           },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "default": {}
+          }
         },
         "type": "object",
         "required": [
