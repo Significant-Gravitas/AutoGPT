@@ -1,5 +1,12 @@
+import { IconType } from "@/components/__legacy__/ui/icons";
+import { CubeIcon } from "@phosphor-icons/react";
+import { isValidElement } from "react";
 import { describe, expect, test } from "vitest";
-import { getAccountMenuItems, loggedInLinks } from "../helpers";
+import {
+  getAccountMenuItems,
+  getAccountMenuOptionIcon,
+  loggedInLinks,
+} from "../helpers";
 
 describe("loggedInLinks", () => {
   test("does not expose Builder as a top-level navbar link", () => {
@@ -34,5 +41,13 @@ describe("getAccountMenuItems", () => {
     expect(profileIndex).toBeGreaterThanOrEqual(0);
     expect(labels[profileIndex + 1]).toBe("Builder");
     expect(labels).toContain("Admin");
+  });
+});
+
+describe("getAccountMenuOptionIcon", () => {
+  test("maps the Builder icon to the Phosphor CubeIcon for mobile", () => {
+    const result = getAccountMenuOptionIcon(IconType.Builder);
+    expect(isValidElement(result)).toBe(true);
+    expect((result as React.ReactElement).type).toBe(CubeIcon);
   });
 });
