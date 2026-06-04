@@ -19,7 +19,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
-from . import threads
+from . import sessions, threads
 from .adapters.base import MessageContext, PlatformAdapter
 from .bot_backend import BotBackend
 from .config import SESSION_TTL
@@ -64,13 +64,20 @@ class MessageHandler:
                 )
             return
 
-        should_subscribe_thread = False
+        # In a thread we only auto-reply when we own it (= we created it in
+        # response to an @mention in a channel). For any other existing
+        # thread we'd been added to, require an explicit @mention each turn
+        # so we don't hijack ongoing team conversations.
+        include_thread_history = False
         if ctx.channel_type == "thread":
             is_subscribed = await threads.is_subscribed(ctx.platform, ctx.channel_id)
             if not is_subscribed:
                 if not ctx.bot_mentioned:
                     return
-                should_subscribe_thread = True
+                # First time we're @-ed into this thread — pull the recent
+                # thread history into the prompt so AutoPilot has context,
+                # but DON'T subscribe. Future messages here need another @.
+                include_thread_history = True
 
         if not await self._ensure_linked(ctx, adapter):
             return
@@ -79,10 +86,7 @@ class MessageHandler:
         if not target_id:
             return  # Thread not subscribed, ignore silently
 
-        if should_subscribe_thread:
-            await threads.subscribe(ctx.platform, ctx.channel_id)
-
-        message_text = self._message_text(ctx) if should_subscribe_thread else ctx.text
+        message_text = self._message_text(ctx) if include_thread_history else ctx.text
         await self._enqueue_and_process(ctx, adapter, target_id, message_text)
 
     # -- Target resolution --
@@ -163,7 +167,7 @@ class MessageHandler:
         prefixed = format_batch(batch, ctx.platform)
 
         redis = await get_redis_async()
-        cache_key = f"copilot-bot:session:{ctx.platform}:{target_id}"
+        cache_key = sessions.session_cache_key(ctx.platform, target_id)
         cached_session_id = await redis.get(cache_key)
         active_session_id = (
             cached_session_id.decode()

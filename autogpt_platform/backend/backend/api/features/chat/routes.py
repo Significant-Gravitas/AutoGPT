@@ -43,7 +43,6 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import peek_pending_messages
-from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -97,6 +96,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TaskDecompositionResponse,
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
@@ -324,6 +324,7 @@ class SessionSummaryResponse(BaseModel):
     title: str | None = None
     chat_status: str = "idle"
     is_processing: bool
+    source_platform: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -416,6 +417,7 @@ async def list_sessions(
                 title=session.title,
                 chat_status=session.chat_status,
                 is_processing=session.session_id in processing_set,
+                source_platform=session.metadata.source_platform,
             )
             for session in sessions
         ],
@@ -1651,6 +1653,7 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
     | MemoryStoreResponse

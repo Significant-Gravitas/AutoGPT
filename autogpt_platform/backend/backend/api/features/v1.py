@@ -2,7 +2,6 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Sequence, cast, get_args
@@ -50,6 +49,15 @@ from backend.api.model import (
 )
 from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
+from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillNotFoundError,
+    delete_user_skill,
+    get_default_skill_with_body,
+    list_user_skill_sibling_paths,
+    list_user_skills,
+    read_user_skill_with_body,
+)
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -80,6 +88,11 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
+from backend.data.execution import ExecutionContext
+from backend.data.execution_cost_summary import (
+    UserExecutionCostSummary,
+    get_user_cost_summary,
+)
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
@@ -95,6 +108,7 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
 from backend.data.understanding import (
     BusinessUnderstandingInput,
@@ -490,13 +504,21 @@ async def execute_graph_block(
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
 
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity + timezone so blocks that depend on
+    # those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user.timezone),
+    )
+
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
             user_id=user_id,
-            # Note: graph_exec_id and graph_id are not available for direct block execution
+            execution_context=execution_context,
         ):
             output[name].append(data)
 
@@ -1076,6 +1098,8 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
@@ -1680,6 +1704,15 @@ async def update_graph(
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
+
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
@@ -1731,6 +1764,15 @@ async def set_graph_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=user_id,
+            graph_id=graph_id,
+            new_version=new_active_version,
+        )
 
 
 @v1_router.patch(
@@ -1907,6 +1949,43 @@ async def list_graphs_executions(
 
 
 @v1_router.get(
+    path="/executions/cost-summary",
+    summary="User cost summary",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def get_executions_cost_summary(
+    user_id: Annotated[str, Security(get_user_id)],
+    since: datetime | None = Query(
+        None,
+        description="Window start (UTC). Defaults to start of current calendar month.",
+    ),
+    until: datetime | None = Query(
+        None,
+        description="Window end (UTC). Defaults to now.",
+    ),
+    top_runs_limit: int = Query(
+        10,
+        ge=1,
+        le=50,
+        description="Maximum number of top-cost runs to return.",
+    ),
+) -> UserExecutionCostSummary:
+    """Aggregated cost breakdown for the calling user's graph executions."""
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="`since` must be earlier than or equal to `until`.",
+        )
+    return await get_user_cost_summary(
+        user_id=user_id,
+        since=since,
+        until=until,
+        top_runs_limit=top_runs_limit,
+    )
+
+
+@v1_router.get(
     path="/graphs/{graph_id}/executions",
     summary="List graph executions",
     tags=["graphs"],
@@ -2067,20 +2146,26 @@ async def enable_execution_sharing(
         raise HTTPException(status_code=404, detail="Execution not found")
 
     # Generate a unique share token
-    share_token = str(uuid.uuid4())
+    share_token = generate_share_token()
 
     # Remove stale allowlist records before updating the token — prevents a
     # window where old records + new token could coexist.
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Update the execution with share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=True,
-        share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
-    )
+    # Update the execution with share info — the underlying update_many
+    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
+    # between the pre-check above and this write surfaces as 404 rather
+    # than a silent no-op.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=True,
+            share_token=share_token,
+            shared_at=datetime.now(timezone.utc),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
@@ -2118,21 +2203,25 @@ async def disable_execution_sharing(
     # Remove shared file allowlist records
     await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
-    # Remove share info
-    await execution_db.update_graph_execution_share_status(
-        execution_id=graph_exec_id,
-        user_id=user_id,
-        is_shared=False,
-        share_token=None,
-        shared_at=None,
-    )
+    # Remove share info — owner-gated at the DB layer; TOCTOU delete
+    # after the pre-check surfaces as 404.
+    try:
+        await execution_db.update_graph_execution_share_status(
+            execution_id=graph_exec_id,
+            user_id=user_id,
+            is_shared=False,
+            share_token=None,
+            shared_at=None,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""
@@ -2152,11 +2241,11 @@ async def get_shared_execution(
 async def download_shared_file(
     share_token: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
     file_id: Annotated[
         str,
-        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=SHARE_TOKEN_PATTERN),
     ],
 ) -> Response:
     """Download a workspace file from a shared execution (no auth required).
@@ -2258,7 +2347,7 @@ async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(
+    return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
@@ -2273,7 +2362,37 @@ async def list_graph_execution_schedules(
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+
+
+@v1_router.get(
+    path="/schedules/followups",
+    summary="List copilot follow-up schedules for a user",
+    operation_id="listCopilotFollowupSchedules",
+    tags=["schedules"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_turn_schedules(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduler.CopilotTurnJobInfo]:
+    """Return only copilot-turn schedules for the current user.
+
+    Sibling of :func:`list_all_graphs_execution_schedules`; one route per kind
+    keeps the generated frontend client typed to a single concrete return type
+    instead of a discriminated union.
+    """
+    schedules = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn"
+    )
+    # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
+    # (executor.scheduler.Scheduler) — the scheduler is the source of truth
+    # for the ``kind`` filter, but we narrow the polymorphic
+    # ``list[GraphExecutionJobInfo | CopilotTurnJobInfo]`` to the typed
+    # subset before returning so the generated frontend client gets a single
+    # concrete schema. If a row ever slips through the discriminator (e.g.
+    # legacy untyped row, scheduler-side bug), we drop it rather than fail
+    # the response with a Pydantic validation error.
+    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
 @v1_router.delete(
@@ -2294,6 +2413,150 @@ async def delete_graph_execution_schedule(
             detail=f"Schedule #{schedule_id} not found",
         )
     return {"id": schedule_id}
+
+
+########################################################
+##################### COPILOT SKILLS #####################
+########################################################
+
+
+class CopilotSkillInfo(BaseModel):
+    """User-distilled copilot skill metadata for the library UI.
+
+    Defaults (built-in agent-building / MCP-tool guides) are intentionally
+    excluded — they cannot be edited or deleted, so surfacing them in the
+    user-facing list would add noise without affordances.
+    """
+
+    name: str
+    description: str
+    triggers: list[str] = []
+
+
+class CopilotSkillDetail(BaseModel):
+    """Full SKILL.md content surfaced to the library expand-to-view UI."""
+
+    name: str
+    description: str
+    triggers: list[str] = []
+    body: str
+    version: str | None = None
+    is_default: bool = False
+    # Sibling files in the same skill folder (references/, scripts/,
+    # assets/, etc.) — the workspace paths the model can reach via
+    # ``read_workspace_file``.  Empty for built-in defaults since they
+    # ship as on-disk markdown and have no sibling artefacts.
+    sibling_files: list[str] = []
+
+
+@v1_router.get(
+    path="/skills",
+    summary="List user-distilled copilot skills",
+    operation_id="listCopilotSkills",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def list_copilot_skills(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[CopilotSkillInfo]:
+    """Return user-stored skills for the current user.
+
+    Reuses :func:`backend.copilot.tools.skills.list_user_skills` so the
+    library UI sees the exact same set the copilot ``<available_skills>``
+    block surfaces, minus the built-in defaults (which are read-only and
+    handled separately by the copilot runtime).
+    """
+    skills = await list_user_skills(user_id)
+    return [
+        CopilotSkillInfo(
+            name=s.name,
+            description=s.description,
+            triggers=list(s.triggers),
+        )
+        for s in skills
+    ]
+
+
+@v1_router.get(
+    path="/skills/{name}",
+    summary="Read a single copilot skill with its full SKILL.md body",
+    operation_id="readCopilotSkill",
+    tags=["skills"],
+    responses={404: {"description": "Skill not found"}},
+    dependencies=[Security(requires_user)],
+)
+async def read_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to read"),
+) -> CopilotSkillDetail:
+    """Return full SKILL.md content (name, description, triggers, body)
+    for the library UI's expand-to-view dialog.
+
+    Built-in default skills are returned with ``is_default=True`` so the
+    UI can hide destructive affordances; missing user skills return 404.
+    """
+    slug = name.strip().lower()
+    try:
+        default = get_default_skill_with_body(slug)
+    except OSError:
+        # Don't leak the on-disk path; operators trace via server logs.
+        logger.exception("[skills] failed to load default skill body for %s", slug)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load default skill body",
+        )
+    if default is not None:
+        return CopilotSkillDetail(
+            name=default.name,
+            description=default.description,
+            triggers=list(default.triggers),
+            body=default.body,
+            is_default=True,
+        )
+
+    parsed = await read_user_skill_with_body(user_id, slug)
+    if parsed is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Skill '{slug}' not found"
+        )
+    sibling_files = await list_user_skill_sibling_paths(user_id, slug)
+    return CopilotSkillDetail(
+        name=parsed.name,
+        description=parsed.description,
+        triggers=list(parsed.triggers),
+        body=parsed.body,
+        version=parsed.version,
+        is_default=False,
+        sibling_files=sibling_files,
+    )
+
+
+@v1_router.delete(
+    path="/skills/{name}",
+    summary="Delete a user-distilled copilot skill",
+    operation_id="deleteCopilotSkill",
+    tags=["skills"],
+    dependencies=[Security(requires_user)],
+)
+async def delete_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    name: str = Path(..., description="Slug of the skill to delete"),
+) -> dict[str, str]:
+    """Delete a user-distilled skill by slug.
+
+    Built-in defaults are not user-deletable — attempting to delete one
+    returns 400.  Missing skills return 404 so the UI can reconcile a
+    stale list.
+    """
+    try:
+        slug = await delete_user_skill(user_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except BuiltInSkillError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"name": slug}
 
 
 ########################################################

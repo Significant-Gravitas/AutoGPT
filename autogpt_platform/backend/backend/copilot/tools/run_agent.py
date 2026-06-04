@@ -15,7 +15,7 @@ from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_database_manager_async_client, get_scheduler_client
 from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -50,9 +50,40 @@ from .utils import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
+
+async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
+    """Best-effort client-side wrapper around the chat-share auto-link hook.
+
+    The server-side function ``link_new_execution_to_chat_share`` has its
+    own try/except (db.py) so server-raised exceptions never bubble.  But
+    the call goes over the DatabaseManager RPC boundary, and transport-
+    layer failures (``ClientNotConnectedError``, RabbitMQ flap, retry
+    exhaustion) raise CLIENT-side — before the wrapped function runs.
+
+    Six callsites in this file dispatch the hook from inside ``run_agent``,
+    which must never crash because the wrapper SDK turns an orphan
+    ``tool_use`` into "The model returned an empty response."  So catch
+    everything here and log; the owner can recover by re-toggling share
+    (``_collect_execution_ids_from_messages`` backfills at re-enable time).
+    """
+    try:
+        await get_database_manager_async_client().link_new_execution_to_chat_share(
+            session_id=session_id, execution_id=execution_id
+        )
+    except Exception:
+        logger.warning(
+            "link_new_execution_to_chat_share RPC failed for session=%s "
+            "execution=%s; owner can re-share to recover",
+            session_id,
+            execution_id,
+            exc_info=True,
+        )
+
+
 # Constants for response messages
 MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
 MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
+SCHEDULED_STATUS = "SCHEDULED"
 MSG_ASK_USER_FOR_VALUES = (
     "Ask the user what values to use, or call again with use_defaults=true "
     "to run with default values."
@@ -713,6 +744,9 @@ class RunAgentTool(BaseTool):
                             execution.id,
                             exc_info=True,
                         )
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return AgentOutputResponse(
                     message=(
                         f"Agent '{library_agent.name}' completed successfully. "
@@ -734,25 +768,44 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share the failed run too — share-modal users may
+                # want public viewers to drill into the failure.  Without
+                # this hook, ``_collect_execution_ids_from_messages`` can't
+                # backfill failed runs either (ErrorResponse payload type
+                # isn't in the scanned set).
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution failed. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
                 error_detail = completed.stats.error if completed.stats else None
+                # Auto-share terminated runs (cancelled / killed) for the
+                # same reason as the FAILED branch — backfill at re-share
+                # time won't pick them up.
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ErrorResponse(
                     message=(
                         f"Agent '{library_agent.name}' execution was terminated. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
+                    execution_id=execution.id,
                     error=error_detail,
                 )
             elif completed and completed.status == ExecutionStatus.REVIEW:
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
@@ -770,6 +823,9 @@ class RunAgentTool(BaseTool):
                 )
             else:
                 status = completed.status.value if completed else "unknown"
+                await _safe_link_to_chat_share(
+                    session_id=session_id, execution_id=execution.id
+                )
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is still {status} after "
@@ -786,6 +842,7 @@ class RunAgentTool(BaseTool):
                     status=status,
                 )
 
+        await _safe_link_to_chat_share(session_id=session_id, execution_id=execution.id)
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "
@@ -908,4 +965,5 @@ class RunAgentTool(BaseTool):
             graph_name=library_agent.name,
             library_agent_id=library_agent.id,
             library_agent_link=library_agent_link,
+            status=SCHEDULED_STATUS,
         )

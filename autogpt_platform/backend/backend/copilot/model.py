@@ -70,6 +70,7 @@ class ChatSessionMetadata(BaseModel):
     # this graph and reject calls targeting a different agent.  Also used
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
+    source_platform: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -250,6 +251,15 @@ class ChatSession(ChatSessionInfo):
     # completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
+    # Optional argument capture for in-flight tool calls.  Some guards
+    # (e.g. ``require_guide_read``) discriminate by argument as well as
+    # by name — for ``read_skill(name="agent_building_guide")`` we need
+    # to know the *name* arg, not just that ``read_skill`` was called.
+    # Populated alongside the name set by
+    # :meth:`announce_inflight_tool_call`; mapping from tool name to a
+    # list of argument dicts (one entry per dispatched call).
+    _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
+
     @classmethod
     def new(
         cls,
@@ -257,6 +267,7 @@ class ChatSession(ChatSessionInfo):
         *,
         dry_run: bool,
         builder_graph_id: str | None = None,
+        source_platform: str | None = None,
     ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
@@ -270,6 +281,7 @@ class ChatSession(ChatSessionInfo):
             metadata=ChatSessionMetadata(
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
+                source_platform=source_platform,
             ),
         )
 
@@ -286,7 +298,9 @@ class ChatSession(ChatSessionInfo):
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
 
-    def announce_inflight_tool_call(self, tool_name: str) -> None:
+    def announce_inflight_tool_call(
+        self, tool_name: str, arguments: Any = None
+    ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
         Called by the baseline tool executor **before** the tool actually
@@ -305,12 +319,31 @@ class ChatSession(ChatSessionInfo):
         particular because its aggressive tool-call chaining exercises
         this path much more than Sonnet does).  The buffer is cleared by
         :meth:`clear_inflight_tool_calls` at turn end.
+
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
         """
         self._inflight_tool_calls.add(tool_name)
+        if isinstance(arguments, dict):
+            self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
 
     def clear_inflight_tool_calls(self) -> None:
         """Reset the in-flight tool-call announcement buffer."""
         self._inflight_tool_calls.clear()
+        self._inflight_tool_call_args.clear()
+
+    def get_inflight_tool_call_args(self, tool_name: str) -> list[dict]:
+        """Return arg snapshots captured for *tool_name* in this turn.
+
+        Returns an empty list when no in-flight call recorded args
+        (anonymous-tool-name announcements with ``arguments=None``).
+        """
+        return list(self._inflight_tool_call_args.get(tool_name, ()))
 
     def has_tool_been_called(self, tool_name: str) -> bool:
         """True when *tool_name* has been called in this session.
@@ -926,6 +959,7 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    source_platform: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -936,6 +970,7 @@ async def create_chat_session(
         builder_graph_id: When set, locks the session to the given graph.
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
+        source_platform: External chat platform that originated the session.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -946,6 +981,7 @@ async def create_chat_session(
         user_id,
         dry_run=dry_run,
         builder_graph_id=builder_graph_id,
+        source_platform=source_platform,
     )
 
     # Create in database first - fail fast if this fails
@@ -1026,15 +1062,25 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
+    sessions = await db.get_user_chat_sessions(
+        user_id, limit, offset, title_contains=title_contains
+    )
+    # Total count ignores the filter — it's the user's overall session
+    # count, used by paginated listings. The /search/global caller
+    # discards it.
     total_count = await db.get_user_session_count(user_id)
 
     return sessions, total_count
@@ -1065,6 +1111,20 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await async_redis.delete(redis_key)
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Best-effort embedding cleanup so deleted sessions stop appearing in
+    # /search/global hits. Only attempt when we have a user_id since the
+    # embedding row is user-scoped; without it the user-filter would miss
+    # and the orphan row (if any) gets cleaned up by the periodic embedder.
+    if user_id:
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                delete_chat_session_embedding,
+            )
+
+            await delete_chat_session_embedding(session_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
 
     # Shut down any local browser daemon for this session (best-effort).
     # Inline import required: all tool modules import ChatSession from this
@@ -1120,6 +1180,20 @@ async def update_session_title(
         except Exception as e:
             logger.warning(
                 f"Cache title update failed for session {session_id} (non-critical): {e}"
+            )
+
+        # Fire-and-forget: index the new title so /search/global can find
+        # this session. Local import keeps the heavy embedding deps
+        # (OpenAI client, prisma raw SQL) off the model import path.
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                schedule_chat_session_embedding,
+            )
+
+            schedule_chat_session_embedding(session_id, user_id, title)
+        except Exception as e:
+            logger.warning(
+                f"Failed to schedule session title embedding for {session_id}: {e}"
             )
 
         return True
