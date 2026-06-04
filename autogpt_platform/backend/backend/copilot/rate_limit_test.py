@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prisma.enums import SubscriptionTierSource
 from redis.exceptions import RedisClusterException, RedisError
 
 from .rate_limit import (
@@ -1350,10 +1349,7 @@ class TestSetUserTier:
 
         mock_prisma.update.assert_awaited_once_with(
             where={"id": _USER},
-            data={
-                "subscriptionTier": "PRO",
-                "subscriptionTierSource": "ADMIN",
-            },
+            data={"subscriptionTier": "PRO"},
         )
 
     @pytest.mark.asyncio
@@ -2751,12 +2747,13 @@ class TestBuildBudgetCtx:
 
 
 class TestMaybeReconcileStaleStripeTier:
-    """Lazy staleness re-check for STRIPE-sourced payers."""
+    """Lazy staleness re-check for reconcilable payers."""
 
     @pytest.mark.asyncio
-    async def test_admin_source_never_reconciled(self):
+    async def test_no_customer_never_reconciled(self):
         user = MagicMock()
-        user.subscription_tier_source = SubscriptionTierSource.ADMIN
+        user.stripe_customer_id = None
+        user.subscription_tier = SubscriptionTier.PRO
         user.last_stripe_reconciled_at = None
         with (
             patch(
@@ -2773,9 +2770,30 @@ class TestMaybeReconcileStaleStripeTier:
             inner.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fresh_stripe_row_skipped(self):
+    async def test_enterprise_never_reconciled(self):
         user = MagicMock()
-        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.stripe_customer_id = "cus_abc"
+        user.subscription_tier = SubscriptionTier.ENTERPRISE
+        user.last_stripe_reconciled_at = None
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch(
+                "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+                new_callable=AsyncMock,
+            ) as inner,
+        ):
+            assert await _maybe_reconcile_stale_stripe_tier(_USER) is False
+            inner.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fresh_reconcilable_row_skipped(self):
+        user = MagicMock()
+        user.stripe_customer_id = "cus_abc"
+        user.subscription_tier = SubscriptionTier.PRO
         user.last_stripe_reconciled_at = datetime.now(UTC) - timedelta(hours=1)
         with (
             patch(
@@ -2792,9 +2810,10 @@ class TestMaybeReconcileStaleStripeTier:
             inner.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_stale_stripe_row_reconciles(self):
+    async def test_stale_reconcilable_row_reconciles(self):
         user = MagicMock()
-        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.stripe_customer_id = "cus_abc"
+        user.subscription_tier = SubscriptionTier.PRO
         user.last_stripe_reconciled_at = datetime.now(UTC) - timedelta(days=2)
         with (
             patch(
@@ -2812,9 +2831,10 @@ class TestMaybeReconcileStaleStripeTier:
             inner.assert_awaited_once_with(_USER)
 
     @pytest.mark.asyncio
-    async def test_never_reconciled_stripe_row_reconciles(self):
+    async def test_never_reconciled_reconcilable_row_reconciles(self):
         user = MagicMock()
-        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.stripe_customer_id = "cus_abc"
+        user.subscription_tier = SubscriptionTier.PRO
         user.last_stripe_reconciled_at = None
         with (
             patch(
@@ -2836,7 +2856,8 @@ class TestMaybeReconcileStaleStripeTier:
         # Prisma can hand back the TIMESTAMP column tz-naive; a fresh naive value
         # must compare cleanly (no aware/naive TypeError) and skip the reconcile.
         user = MagicMock()
-        user.subscription_tier_source = SubscriptionTierSource.STRIPE
+        user.stripe_customer_id = "cus_abc"
+        user.subscription_tier = SubscriptionTier.PRO
         user.last_stripe_reconciled_at = datetime.now(UTC).replace(
             tzinfo=None
         ) - timedelta(hours=1)

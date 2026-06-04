@@ -25,7 +25,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier, SubscriptionTierSource
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -1099,14 +1099,10 @@ async def update_subscription_tier(
                 )
             if not had_subscription:
                 # No Stripe subscription drove this change (admin-granted or
-                # never-paid). Don't label it STRIPE-authored — that would make
-                # reconciliation treat the row as Stripe-authoritative.
-                await set_subscription_tier(
-                    user_id, tier, SubscriptionTierSource.SYSTEM
-                )
+                # never-paid).
+                await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
-        # Payments disabled — the flip is a local/system action, not Stripe.
-        await set_subscription_tier(user_id, tier, SubscriptionTierSource.SYSTEM)
+        await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
     if not payment_enabled:

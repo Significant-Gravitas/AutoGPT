@@ -25,7 +25,6 @@ from prisma.enums import (
     CreditTransactionType,
     OnboardingStep,
     SubscriptionTier,
-    SubscriptionTierSource,
 )
 from pydantic import (
     BaseModel,
@@ -78,10 +77,6 @@ class User(BaseModel):
     )
     subscription_tier: SubscriptionTier = Field(
         default=SubscriptionTier.NO_TIER, description="User subscription tier"
-    )
-    subscription_tier_source: SubscriptionTierSource = Field(
-        default=SubscriptionTierSource.SYSTEM,
-        description="Provenance of the subscription tier",
     )
     last_stripe_reconciled_at: Optional[datetime] = Field(
         None, description="When the tier was last reconciled against Stripe"
@@ -161,8 +156,6 @@ class User(BaseModel):
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
-            subscription_tier_source=prisma_user.subscriptionTierSource
-            or SubscriptionTierSource.SYSTEM,
             last_stripe_reconciled_at=prisma_user.lastStripeReconciledAt,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,

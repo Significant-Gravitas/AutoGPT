@@ -40,8 +40,7 @@ model User {
 
   timezone String @default("not-set")
 
-  subscriptionTier       SubscriptionTier       @default(NO_TIER)
-  subscriptionTierSource SubscriptionTierSource @default(SYSTEM)
+  subscriptionTier       SubscriptionTier @default(NO_TIER)
   lastStripeReconciledAt DateTime?
 
   // Relations
@@ -96,16 +95,6 @@ enum SubscriptionTier {
   MAX
   BUSINESS
   ENTERPRISE
-}
-
-// Provenance of a user's subscriptionTier. Determines which tier writers are
-// allowed to overwrite it: STRIPE rows are reconciled (and downgraded) against
-// Stripe; ADMIN/ENTERPRISE rows are immune to Stripe-driven downgrades.
-enum SubscriptionTierSource {
-  STRIPE
-  ADMIN
-  ENTERPRISE
-  SYSTEM
 }
 
 enum OnboardingStep {

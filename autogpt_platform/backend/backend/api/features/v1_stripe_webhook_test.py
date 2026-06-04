@@ -7,7 +7,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import stripe
-from prisma.enums import SubscriptionTier, SubscriptionTierSource
+from prisma.enums import SubscriptionTier
 
 from backend.data.credit import (
     _expire_open_subscription_sessions,
@@ -504,11 +504,10 @@ async def test_reconcile_stripe_tier_no_customer_returns_false(
 async def test_reconcile_stripe_tier_no_active_sub_already_no_tier_returns_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A STRIPE-sourced user already on NO_TIER stays put (no write, no sync)."""
+    """A reconcilable user already on NO_TIER stays put (no write, no sync)."""
     user = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.NO_TIER,
-        subscription_tier_source=SubscriptionTierSource.STRIPE,
     )
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
@@ -534,11 +533,10 @@ async def test_reconcile_stripe_tier_no_active_sub_already_no_tier_returns_false
 async def test_reconcile_stripe_tier_no_active_sub_downgrades_payer(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A STRIPE-sourced payer with no active sub is downgraded to NO_TIER."""
+    """A reconcilable payer with no active sub is downgraded to NO_TIER."""
     user = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.PRO,
-        subscription_tier_source=SubscriptionTierSource.STRIPE,
     )
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
@@ -557,9 +555,7 @@ async def test_reconcile_stripe_tier_no_active_sub_downgrades_payer(
     )
 
     assert await reconcile_stripe_tier_for_user("user_abc") is True
-    mock_set.assert_awaited_once_with(
-        "user_abc", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
-    )
+    mock_set.assert_awaited_once_with("user_abc", SubscriptionTier.NO_TIER)
     # A silently-missed cancellation webhook must alert ops, not be corrected quietly.
     mock_alert.assert_awaited_once()
     assert "DOWNGRADED" in mock_alert.await_args.args[0]
@@ -572,7 +568,6 @@ async def test_reconcile_stripe_tier_lazy_upgrade_alerts(
     user = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.NO_TIER,
-        subscription_tier_source=SubscriptionTierSource.STRIPE,
     )
     upgraded = MagicMock(subscription_tier=SubscriptionTier.PRO)
     mocker.patch(
@@ -598,14 +593,14 @@ async def test_reconcile_stripe_tier_lazy_upgrade_alerts(
     assert "upgrade" in mock_alert.await_args.args[0]
 
 
-async def test_reconcile_stripe_tier_admin_user_skipped(
+async def test_reconcile_stripe_tier_enterprise_user_skipped(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """An ADMIN-granted tier is never reconciled/downgraded against Stripe."""
+    """An ENTERPRISE tier is never reconciled/downgraded against Stripe, even
+    with a Stripe customer."""
     user = MagicMock(
         stripe_customer_id="cus_abc",
-        subscription_tier=SubscriptionTier.MAX,
-        subscription_tier_source=SubscriptionTierSource.ADMIN,
+        subscription_tier=SubscriptionTier.ENTERPRISE,
     )
     mocker.patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock, return_value=user
@@ -648,7 +643,6 @@ async def test_reconcile_stripe_tier_active_sub_syncs_and_returns_true(
     before = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.NO_TIER,
-        subscription_tier_source=SubscriptionTierSource.STRIPE,
     )
     after = MagicMock(subscription_tier=SubscriptionTier.PRO)
     fake_sub = MagicMock()
@@ -678,7 +672,6 @@ async def test_reconcile_stripe_tier_active_sub_unchanged_stamps_and_returns_fal
     user = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.PRO,
-        subscription_tier_source=SubscriptionTierSource.STRIPE,
     )
     after = MagicMock(subscription_tier=SubscriptionTier.PRO)
     mocker.patch(

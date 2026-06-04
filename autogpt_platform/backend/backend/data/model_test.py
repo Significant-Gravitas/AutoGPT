@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from prisma.enums import SubscriptionTier, SubscriptionTierSource
+from prisma.enums import SubscriptionTier
 from pydantic import SecretStr
 
 from backend.data.model import HostScopedCredentials, NodeExecutionStats, User
@@ -255,7 +255,7 @@ class TestNodeExecutionStatsIadd:
 
 def _fake_prisma_user(**overrides) -> SimpleNamespace:
     """Minimal stand-in for prisma's User row carrying the fields ``from_db``
-    reads. Overrides let each test pin the subscription-provenance fields."""
+    reads. Overrides let each test pin the subscription fields."""
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     base = dict(
         id="user-1",
@@ -269,7 +269,6 @@ def _fake_prisma_user(**overrides) -> SimpleNamespace:
         stripeCustomerId=None,
         topUpConfig=None,
         subscriptionTier=SubscriptionTier.PRO,
-        subscriptionTierSource=SubscriptionTierSource.STRIPE,
         lastStripeReconciledAt=now,
         maxEmailsPerDay=3,
         notifyOnAgentRun=True,
@@ -287,20 +286,11 @@ def _fake_prisma_user(**overrides) -> SimpleNamespace:
 
 
 class TestUserFromDb:
-    def test_maps_subscription_tier_source_and_reconciled_at(self):
+    def test_maps_reconciled_at(self):
         reconciled = datetime(2026, 2, 3, tzinfo=timezone.utc)
-        prisma_user = _fake_prisma_user(
-            subscriptionTierSource=SubscriptionTierSource.STRIPE,
-            lastStripeReconciledAt=reconciled,
-        )
+        prisma_user = _fake_prisma_user(lastStripeReconciledAt=reconciled)
         user = User.from_db(prisma_user)
-        assert user.subscription_tier_source == SubscriptionTierSource.STRIPE
         assert user.last_stripe_reconciled_at == reconciled
-
-    def test_subscription_tier_source_defaults_to_system_when_none(self):
-        prisma_user = _fake_prisma_user(subscriptionTierSource=None)
-        user = User.from_db(prisma_user)
-        assert user.subscription_tier_source == SubscriptionTierSource.SYSTEM
 
     def test_last_stripe_reconciled_at_defaults_to_none_when_null(self):
         prisma_user = _fake_prisma_user(lastStripeReconciledAt=None)

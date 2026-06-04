@@ -58,7 +58,6 @@ from enum import Enum
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from prisma.enums import SubscriptionTierSource
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
@@ -936,19 +935,22 @@ _STRIPE_STALE_AFTER = timedelta(hours=12)
 
 
 async def _maybe_reconcile_stale_stripe_tier(user_id: str) -> bool:
-    """Lazily re-check a STRIPE-sourced payer whose tier is stale.
+    """Lazily re-check a reconcilable payer whose tier is stale.
 
-    Only fires for users whose tier came from Stripe and whose last reconcile
-    is older than ``_STRIPE_STALE_AFTER``. Shares the same Redis gate +
-    authoritative bidirectional reconcile as the NO_TIER fallback, so a lost
-    cancel webhook can be caught between periodic sweeps. Returns True when the
-    tier was changed.
+    Only fires for reconcilable users (has a Stripe customer, not ENTERPRISE)
+    whose last reconcile is older than ``_STRIPE_STALE_AFTER``. Shares the same
+    Redis gate + authoritative bidirectional reconcile as the NO_TIER fallback,
+    so a lost cancel webhook can be caught between periodic sweeps. Returns True
+    when the tier was changed.
     """
     try:
         user = await get_user_by_id(user_id)
     except Exception:
         return False
-    if user.subscription_tier_source != SubscriptionTierSource.STRIPE:
+    if (
+        user.stripe_customer_id is None
+        or user.subscription_tier == SubscriptionTier.ENTERPRISE
+    ):
         return False
     last = user.last_stripe_reconciled_at
     if last is not None:
@@ -1092,11 +1094,7 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """
     await PrismaUser.prisma().update(
         where={"id": user_id},
-        data={
-            "subscriptionTier": tier.value,
-            # Admin overrides are immune to Stripe-driven reconciliation/downgrade.
-            "subscriptionTierSource": SubscriptionTierSource.ADMIN.value,
-        },
+        data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
     # Local import: backend.data.credit imports from this module.

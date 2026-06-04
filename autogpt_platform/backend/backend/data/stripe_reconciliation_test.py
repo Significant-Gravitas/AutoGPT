@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_mock
 import stripe
-from prisma.enums import SubscriptionTier, SubscriptionTierSource
+from prisma.enums import SubscriptionTier
 
 from backend.data.stripe_reconciliation import (
     ReconciliationSummary,
@@ -39,13 +39,11 @@ def _candidate(
     user_id: str,
     customer_id: str | None,
     tier: SubscriptionTier,
-    source: SubscriptionTierSource = SubscriptionTierSource.STRIPE,
 ) -> MagicMock:
     user = MagicMock()
     user.id = user_id
     user.stripeCustomerId = customer_id
     user.subscriptionTier = tier
-    user.subscriptionTierSource = source
     return user
 
 
@@ -122,12 +120,8 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert summary.downgrades == 1
     assert summary.unchanged == 1
     assert summary.errors == 0
-    set_tier.assert_any_await(
-        "u_up", SubscriptionTier.PRO, SubscriptionTierSource.STRIPE
-    )
-    set_tier.assert_any_await(
-        "u_down", SubscriptionTier.NO_TIER, SubscriptionTierSource.STRIPE
-    )
+    set_tier.assert_any_await("u_up", SubscriptionTier.PRO)
+    set_tier.assert_any_await("u_down", SubscriptionTier.NO_TIER)
     # Each correction is recorded, and the sweep alerts ops exactly once (not
     # per-user) with the discrepancy counts.
     assert {d.direction for d in summary.discrepancies} == {"upgrade", "downgrade"}
@@ -136,8 +130,8 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     alert_msg = mock_alert.await_args.args[0]
     assert "2 discrepancy" in alert_msg
     assert "1 downgrade" in alert_msg and "1 upgrade" in alert_msg
-    # The unchanged STRIPE payer gets its reconcile timestamp refreshed so the
-    # lazy staleness gate won't redundantly re-check it before the next sweep.
+    # The unchanged payer gets its reconcile timestamp refreshed so the lazy
+    # staleness gate won't redundantly re-check it before the next sweep.
     mock_stamp.assert_awaited_once_with("u_keep")
 
 
@@ -177,8 +171,8 @@ async def test_sweep_no_discrepancies_does_not_alert(
 async def test_sweep_queries_reconcilable_users(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Candidates mirror `_is_stripe_reconcilable`: STRIPE rows + SYSTEM rows
-    that have a Stripe customer; ADMIN/ENTERPRISE are excluded."""
+    """Candidates mirror `_is_stripe_reconcilable`: every user with a Stripe
+    customer that is not on ENTERPRISE."""
     mocker.patch(
         "backend.data.stripe_reconciliation.build_price_to_tier_map",
         new_callable=AsyncMock,
@@ -199,13 +193,8 @@ async def test_sweep_queries_reconcilable_users(
 
     find_many.assert_awaited_once_with(
         where={
-            "OR": [
-                {"subscriptionTierSource": SubscriptionTierSource.STRIPE},
-                {
-                    "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
-                    "stripeCustomerId": {"not": None},
-                },
-            ]
+            "stripeCustomerId": {"not": None},
+            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
         },
     )
 

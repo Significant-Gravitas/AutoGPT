@@ -3,8 +3,9 @@
 Webhooks give low-latency tier updates; this sweep is the safety net that makes
 Stripe the eventual source of truth. It pages through every active/trialing
 Stripe subscription once, builds an authoritative ``{customer_id -> tier}`` map,
-then for every STRIPE-sourced user sets the tier from the map (NO_TIER when the
-customer is absent). ADMIN/ENTERPRISE rows are never touched.
+then for every reconcilable user (has a Stripe customer, not ENTERPRISE) sets the
+tier from the map (NO_TIER when the customer is absent). Manual grants (no Stripe
+customer) and ENTERPRISE rows are never touched.
 
 Cost: one Stripe ``Subscription.list`` pass (not one call per user). The
 ``current_tier == tier`` idempotency skip in ``set_subscription_tier`` keeps
@@ -15,7 +16,7 @@ import logging
 
 import stripe
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier, SubscriptionTierSource
+from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel
 
@@ -65,25 +66,20 @@ class ReconciliationSummary(BaseModel):
 
 
 async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
-    """Reconcile every STRIPE-sourced user against live Stripe subscriptions."""
+    """Reconcile every reconcilable user against live Stripe subscriptions."""
     customer_to_tier = await _build_customer_tier_map()
     summary = ReconciliationSummary(
         stripe_active_subscriptions=len(customer_to_tier.tiers),
         pagination_capped=customer_to_tier.capped,
     )
-    # Match `_is_stripe_reconcilable`: STRIPE-sourced rows, plus SYSTEM rows that
-    # have a Stripe customer (a missed *upgrade* webhook leaves a paid-but-NO_TIER
-    # user as SYSTEM+customer — the sweep should recover them too, not only the
-    # lazy on-access path). ADMIN/ENTERPRISE stay excluded.
+    # Match `_is_stripe_reconcilable`: every user with a Stripe customer that is
+    # not on ENTERPRISE. This covers paid payers as well as paid-but-NO_TIER rows
+    # left by a missed upgrade webhook. Manual grants (no customer) and ENTERPRISE
+    # stay excluded.
     candidates = await User.prisma().find_many(
         where={
-            "OR": [
-                {"subscriptionTierSource": SubscriptionTierSource.STRIPE},
-                {
-                    "subscriptionTierSource": SubscriptionTierSource.SYSTEM,
-                    "stripeCustomerId": {"not": None},
-                },
-            ]
+            "stripeCustomerId": {"not": None},
+            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
         },
     )
     summary.candidate_users = len(candidates)
@@ -155,12 +151,10 @@ async def _reconcile_one(
         )
     if target_tier == current_tier:
         summary.unchanged += 1
-        # Refresh the reconcile timestamp for STRIPE-sourced rows so the lazy
-        # on-access staleness gate doesn't redundantly re-check them (another
-        # Stripe round-trip) before the next sweep. Only STRIPE rows are subject
-        # to that lazy gate, so SYSTEM candidates don't need it.
-        if user.subscriptionTierSource == SubscriptionTierSource.STRIPE:
-            await _stamp_stripe_reconciled(user.id)
+        # Every candidate is reconcilable, so refresh the reconcile timestamp to
+        # keep the lazy on-access staleness gate from redundantly re-checking
+        # them (another Stripe round-trip) before the next sweep.
+        await _stamp_stripe_reconciled(user.id)
         return
     # When the Stripe snapshot is incomplete (a failed list page or the
     # pagination cap), absence from the map is unreliable — the user may sit on
@@ -171,7 +165,7 @@ async def _reconcile_one(
         summary.skipped_incomplete += 1
         return
     try:
-        await set_subscription_tier(user.id, target_tier, SubscriptionTierSource.STRIPE)
+        await set_subscription_tier(user.id, target_tier)
     except Exception:
         summary.errors += 1
         logger.exception(
