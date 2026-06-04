@@ -116,9 +116,8 @@ async def add_graph_to_library(
             "isDeleted": False,
             "isArchived": False,
             "settings": settings_json,
+            "imageUrl": image_url,
         }
-        if image_url:
-            update_data["imageUrl"] = image_url
 
         added_agent = await prisma.models.LibraryAgent.prisma().update(
             where={

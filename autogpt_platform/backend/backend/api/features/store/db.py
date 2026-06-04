@@ -1300,8 +1300,12 @@ async def get_agent_with_marketplace_data(
     StoreAgentDetails contains the marketplace-published name, images,
     description, etc.
     """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            "isAvailable": True,
+            "isDeleted": False,
+        }
     )
 
     if not slv:

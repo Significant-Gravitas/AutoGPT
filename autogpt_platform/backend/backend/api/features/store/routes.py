@@ -275,20 +275,19 @@ async def download_agent_file(
 
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
-    # Build response with marketplace metadata alongside graph data
-    download_data = graph_data.model_dump()
-    download_data["marketplace"] = {
-        "name": marketplace_details.agent_name,
-        "description": marketplace_details.description,
-        "sub_heading": marketplace_details.sub_heading,
-        "image_urls": marketplace_details.agent_image,
-        "categories": marketplace_details.categories,
-        "instructions": marketplace_details.instructions,
-        "video_url": marketplace_details.agent_video,
-    }
+    # Build response matching DownloadedAgentData model
+    download_data = store_model.DownloadedAgentData(
+        marketplace_name=marketplace_details.agent_name,
+        marketplace_description=marketplace_details.description,
+        marketplace_sub_heading=marketplace_details.sub_heading,
+        marketplace_image_urls=marketplace_details.agent_image or [],
+        marketplace_categories=marketplace_details.categories or [],
+        marketplace_instructions=marketplace_details.instructions,
+        graph_data=graph_data.model_dump(),
+    )
 
     return fastapi.responses.Response(
-        content=backend.util.json.dumps(download_data),
+        content=backend.util.json.dumps(download_data.model_dump()),
         media_type="application/json",
         headers={
             "Content-Disposition": f'attachment; filename="{file_name}"',
