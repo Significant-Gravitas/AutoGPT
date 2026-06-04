@@ -844,6 +844,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/impersonation/notify": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "impersonation"],
+        "summary": "Notify Impersonation Start",
+        "description": "Emit a Discord audit alert when an admin starts impersonating a user.\n\nAdmin-only (router dependency). The alert gates impersonation: callers must\ntreat a non-2xx response as \"do not impersonate\".",
+        "operationId": "postV2Notify impersonation start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpersonationNotifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationNotifyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
@@ -13714,6 +13756,20 @@
         "type": "object",
         "required": ["image_url"],
         "title": "ImageURLResponse"
+      },
+      "ImpersonationNotifyRequest": {
+        "properties": {
+          "target_user_id": { "type": "string", "title": "Target User Id" }
+        },
+        "type": "object",
+        "required": ["target_user_id"],
+        "title": "ImpersonationNotifyRequest"
+      },
+      "ImpersonationNotifyResponse": {
+        "properties": { "alerted": { "type": "boolean", "title": "Alerted" } },
+        "type": "object",
+        "required": ["alerted"],
+        "title": "ImpersonationNotifyResponse"
       },
       "InputValidationErrorResponse": {
         "properties": {
