@@ -1,6 +1,9 @@
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
+import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
@@ -22,6 +25,9 @@ import { resolveCollisions } from "./helpers/resolve-collision";
 import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
 import { useFlowRealtime } from "./useFlowRealtime";
+
+import "@xyflow/react/dist/style.css";
+import "./flow.css";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -87,6 +93,8 @@ export const Flow = () => {
     useShallow((state) => state.isGraphRunning),
   );
 
+  const isBuilderChatEnabled = useGetFlag(Flag.BUILDER_CHAT_PANEL);
+
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -103,7 +111,7 @@ export const Flow = () => {
             event.preventDefault();
           }}
           maxZoom={2}
-          minZoom={0.1}
+          minZoom={0.05}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodesDraggable={!isLocked}
@@ -131,6 +139,11 @@ export const Flow = () => {
         executionId={flowExecutionID || undefined}
         graphId={flowID || undefined}
       />
+      {isBuilderChatEnabled && (
+        <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+          <BuilderChatPanel />
+        </ErrorBoundary>
+      )}
     </div>
   );
 };

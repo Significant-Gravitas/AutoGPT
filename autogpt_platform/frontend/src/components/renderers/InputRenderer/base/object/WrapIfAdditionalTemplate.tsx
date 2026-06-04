@@ -80,7 +80,7 @@ export default function WrapIfAdditionalTemplate(
           uiSchema={uiSchema}
         />
         {!isHandleConnected && (
-          <div className="flex flex-1 items-center gap-2">
+          <div className="nodrag flex flex-1 items-center gap-2">
             <Input
               label={""}
               hideLabel={true}

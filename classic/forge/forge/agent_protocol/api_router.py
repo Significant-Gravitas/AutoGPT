@@ -6,6 +6,7 @@ This module defines the API routes for the Agent service.
 Developers and contributors should be especially careful when making modifications
 to these routes to ensure consistency and correctness in the system's behavior.
 """
+
 import logging
 from typing import TYPE_CHECKING, Optional
 

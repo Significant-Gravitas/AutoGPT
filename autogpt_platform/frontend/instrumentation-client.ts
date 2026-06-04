@@ -22,6 +22,15 @@ Sentry.init({
 
   enabled: shouldEnable,
 
+  // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
+  // serializing DOM snapshots with cross-origin stylesheets
+  // (e.g., from browser extensions or CDN-loaded CSS)
+  ignoreErrors: [
+    /Not allowed to access cross-origin stylesheet/,
+    // Sentry SDK internal issue on some mobile browsers
+    /Error invoking postEvent: Method not found/,
+  ],
+
   // Add optional integrations for additional features
   integrations: [
     Sentry.captureConsoleIntegration(),

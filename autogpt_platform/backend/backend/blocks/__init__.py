@@ -3,22 +3,19 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import Sequence, Type, TypeVar
 
+from backend.blocks._base import AnyBlockSchema, BlockType
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
-
-
-if TYPE_CHECKING:
-    from backend.data.block import Block
 
 T = TypeVar("T")
 
 
 @cached(ttl_seconds=3600)
-def load_all_blocks() -> dict[str, type["Block"]]:
-    from backend.data.block import Block
+def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
+    from backend.blocks._base import Block
     from backend.util.settings import Config
 
     # Check if example blocks should be loaded from settings
@@ -50,8 +47,8 @@ def load_all_blocks() -> dict[str, type["Block"]]:
         importlib.import_module(f".{module}", package=__name__)
 
     # Load all Block instances from the available modules
-    available_blocks: dict[str, type["Block"]] = {}
-    for block_cls in all_subclasses(Block):
+    available_blocks: dict[str, type["AnyBlockSchema"]] = {}
+    for block_cls in _all_subclasses(Block):
         class_name = block_cls.__name__
 
         if class_name.endswith("Base"):
@@ -64,7 +61,7 @@ def load_all_blocks() -> dict[str, type["Block"]]:
                 "please name the class with 'Base' at the end"
             )
 
-        block = block_cls.create()
+        block = block_cls()  # pyright: ignore[reportAbstractUsage]
 
         if not isinstance(block.id, str) or len(block.id) != 36:
             raise ValueError(
@@ -105,7 +102,7 @@ def load_all_blocks() -> dict[str, type["Block"]]:
         available_blocks[block.id] = block_cls
 
     # Filter out blocks with incomplete auth configs, e.g. missing OAuth server secrets
-    from backend.data.block import is_block_auth_configured
+    from ._utils import is_block_auth_configured
 
     filtered_blocks = {}
     for block_id, block_cls in available_blocks.items():
@@ -115,11 +112,48 @@ def load_all_blocks() -> dict[str, type["Block"]]:
     return filtered_blocks
 
 
-__all__ = ["load_all_blocks"]
-
-
-def all_subclasses(cls: type[T]) -> list[type[T]]:
+def _all_subclasses(cls: type[T]) -> list[type[T]]:
     subclasses = cls.__subclasses__()
     for subclass in subclasses:
-        subclasses += all_subclasses(subclass)
+        subclasses += _all_subclasses(subclass)
     return subclasses
+
+
+# ============== Block access helper functions ============== #
+
+
+def get_blocks() -> dict[str, Type["AnyBlockSchema"]]:
+    return load_all_blocks()
+
+
+# Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
+def get_block(block_id: str) -> "AnyBlockSchema | None":
+    cls = get_blocks().get(block_id)
+    return cls() if cls else None
+
+
+@cached(ttl_seconds=3600)
+def get_webhook_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_io_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_human_in_the_loop_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
+    ]

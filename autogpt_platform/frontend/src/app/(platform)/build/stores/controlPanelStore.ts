@@ -3,11 +3,13 @@ import { create } from "zustand";
 type ControlPanelStore = {
   blockMenuOpen: boolean;
   saveControlOpen: boolean;
+  graphSearchOpen: boolean;
   forceOpenBlockMenu: boolean;
   forceOpenSave: boolean;
 
   setBlockMenuOpen: (open: boolean) => void;
   setSaveControlOpen: (open: boolean) => void;
+  setGraphSearchOpen: (open: boolean) => void;
   setForceOpenBlockMenu: (force: boolean) => void;
   setForceOpenSave: (force: boolean) => void;
 
@@ -17,6 +19,7 @@ type ControlPanelStore = {
 export const useControlPanelStore = create<ControlPanelStore>((set) => ({
   blockMenuOpen: false,
   saveControlOpen: false,
+  graphSearchOpen: false,
   forceOpenBlockMenu: false,
   forceOpenSave: false,
 
@@ -24,10 +27,12 @@ export const useControlPanelStore = create<ControlPanelStore>((set) => ({
   setForceOpenSave: (force) => set({ forceOpenSave: force }),
   setBlockMenuOpen: (open) => set({ blockMenuOpen: open }),
   setSaveControlOpen: (open) => set({ saveControlOpen: open }),
+  setGraphSearchOpen: (open) => set({ graphSearchOpen: open }),
   reset: () =>
     set({
       blockMenuOpen: false,
       saveControlOpen: false,
+      graphSearchOpen: false,
       forceOpenBlockMenu: false,
       forceOpenSave: false,
     }),

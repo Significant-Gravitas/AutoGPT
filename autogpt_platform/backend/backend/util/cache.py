@@ -10,6 +10,8 @@ Provides decorators for caching function results with support for:
 """
 
 import asyncio
+import hashlib
+import hmac
 import inspect
 import logging
 import pickle
@@ -19,7 +21,7 @@ from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
-from redis import ConnectionPool, Redis
+from redis.cluster import ClusterNode, RedisCluster
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -32,6 +34,9 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Length of the HMAC-SHA256 signature prefix on cached values.
+_HMAC_SIG_LEN = 32
+
 # RECOMMENDED REDIS CONFIGURATION FOR PRODUCTION:
 # Configure Redis with the following settings for optimal caching performance:
 #   maxmemory-policy allkeys-lru    # Evict least recently used keys when memory limit reached
@@ -40,32 +45,51 @@ settings = Settings()
 
 
 @cache
-def _get_cache_pool() -> ConnectionPool:
-    """Get or create a connection pool for cache operations (lazy, thread-safe)."""
-    return ConnectionPool(
-        host=settings.config.redis_host,
-        port=settings.config.redis_port,
+@conn_retry("Redis", "Acquiring cache connection")
+def _get_redis() -> RedisCluster:
+    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
+    # Local import breaks the redis_client <-> cache module cycle.
+    from backend.data.redis_client import _address_remap
+
+    c = RedisCluster(
+        startup_nodes=[
+            ClusterNode(settings.config.redis_host, settings.config.redis_port)
+        ],
         password=settings.config.redis_password or None,
         decode_responses=False,  # Binary mode for pickle
         max_connections=50,
         socket_keepalive=True,
         socket_connect_timeout=5,
         retry_on_timeout=True,
+        address_remap=_address_remap,
     )
+    c.ping()
+    return c
 
 
-@cache
-@conn_retry("Redis", "Acquiring cache connection")
-def _get_redis() -> Redis:
+class _MissingType:
+    """Singleton sentinel type — distinct from ``None`` (a valid cached value).
+
+    Using a dedicated class (instead of ``Any = object()``) lets mypy prove
+    that comparisons ``result is _MISSING`` narrow the type correctly and
+    prevents accidental use of the sentinel where a real value is expected.
     """
-    Get the lazily-initialized Redis client for shared cache operations.
-    Uses @cache for thread-safe singleton behavior - connection is only
-    established when first accessed, allowing services that only use
-    in-memory caching to work without Redis configuration.
-    """
-    r = Redis(connection_pool=_get_cache_pool())
-    r.ping()  # Verify connection
-    return r
+
+    _instance: "_MissingType | None" = None
+
+    def __new__(cls) -> "_MissingType":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<MISSING>"
+
+
+# Sentinel returned by ``_get_from_memory`` / ``_get_from_redis`` to mean
+# "no entry exists" — distinct from a cached ``None`` value, which is a
+# valid result for callers that opt into caching it.
+_MISSING = _MissingType()
 
 
 @dataclass
@@ -116,10 +140,16 @@ def _make_hashable_key(
 
 
 def _make_redis_key(key: tuple[Any, ...], func_name: str) -> str:
-    """Convert a hashable key tuple to a Redis key string."""
-    # Ensure key is already hashable
-    hashable_key = key if isinstance(key, tuple) else (key,)
-    return f"cache:{func_name}:{hash(hashable_key)}"
+    """Convert a hashable key tuple to a Redis key string.
+
+    Uses SHA-256 instead of Python's built-in ``hash()`` because ``hash()``
+    is randomised per-process (``PYTHONHASHSEED``).  In a multi-pod
+    deployment every pod must derive the **same** Redis key for the same
+    arguments, otherwise cache lookups and invalidations silently miss.
+    """
+    key_bytes = repr(key).encode()
+    digest = hashlib.sha256(key_bytes).hexdigest()
+    return f"cache:{func_name}:{digest}"
 
 
 @runtime_checkable
@@ -149,6 +179,7 @@ def cached(
     ttl_seconds: int,
     shared_cache: bool = False,
     refresh_ttl_on_get: bool = False,
+    cache_none: bool = True,
 ) -> Callable[[Callable[P, R]], CachedFunction[P, R]]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
@@ -161,6 +192,10 @@ def cached(
         ttl_seconds: Time to live in seconds. Required - entries must expire.
         shared_cache: If True, use Redis for cross-process caching
         refresh_ttl_on_get: If True, refresh TTL when cache entry is accessed (LRU behavior)
+        cache_none: If True (default) ``None`` is cached like any other value.
+            Set to ``False`` for functions that return ``None`` to signal a
+            transient error and should be re-tried on the next call without
+            poisoning the cache (e.g. external API calls that may fail).
 
     Returns:
         Decorated function with caching capabilities
@@ -173,49 +208,75 @@ def cached(
         @cached(ttl_seconds=600, shared_cache=True, refresh_ttl_on_get=True)
         async def expensive_async_operation(param: str) -> dict:
             return {"result": param}
+
+        @cached(ttl_seconds=300, cache_none=False)
+        async def fetch_external(id: str) -> dict | None:
+            # Returns None on transient error — won't be stored,
+            # next call retries instead of returning the stale None.
+            ...
     """
 
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
+        func_name = target_func.__name__
         cache_storage: dict[tuple, CachedValue] = {}
         _event_loop_locks: dict[Any, asyncio.Lock] = {}
 
-        def _get_from_redis(redis_key: str) -> Any | None:
-            """Get value from Redis, optionally refreshing TTL."""
+        def _get_from_redis(redis_key: str) -> Any:
+            """Get value from Redis, optionally refreshing TTL.
+
+            Returns the cached value (which may be ``None``) on a hit, or the
+            module-level ``_MISSING`` sentinel on a miss / corrupt entry.
+            Callers must compare with ``is _MISSING`` so cached ``None`` values
+            are not mistaken for misses.
+
+            Values are expected to carry an HMAC-SHA256 prefix for integrity
+            verification.  Unsigned (legacy) or tampered entries are silently
+            discarded and treated as cache misses, so the caller recomputes and
+            re-stores them with a valid signature.
+            """
             try:
                 if refresh_ttl_on_get:
-                    # Use GETEX to get value and refresh expiry atomically
                     cached_bytes = _get_redis().getex(redis_key, ex=ttl_seconds)
                 else:
                     cached_bytes = _get_redis().get(redis_key)
 
                 if cached_bytes and isinstance(cached_bytes, bytes):
-                    return pickle.loads(cached_bytes)
+                    payload = _verify_and_strip(cached_bytes)
+                    if payload is None:
+                        logger.warning(
+                            "[SECURITY] Cache HMAC verification failed "
+                            f"for {func_name}, discarding entry: "
+                            "possible tampering or legacy unsigned value"
+                        )
+                        return _MISSING
+                    return pickle.loads(payload)
             except Exception as e:
-                logger.error(
-                    f"Redis error during cache check for {target_func.__name__}: {e}"
-                )
-            return None
+                logger.error(f"Redis error during cache check for {func_name}: {e}")
+            return _MISSING
 
         def _set_to_redis(redis_key: str, value: Any) -> None:
-            """Set value in Redis with TTL."""
+            """Set HMAC-signed pickled value in Redis with TTL."""
             try:
-                pickled_value = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-                _get_redis().setex(redis_key, ttl_seconds, pickled_value)
+                pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+                _get_redis().setex(redis_key, ttl_seconds, _sign_payload(pickled))
             except Exception as e:
-                logger.error(
-                    f"Redis error storing cache for {target_func.__name__}: {e}"
-                )
+                logger.error(f"Redis error storing cache for {func_name}: {e}")
 
-        def _get_from_memory(key: tuple) -> Any | None:
-            """Get value from in-memory cache, checking TTL."""
+        def _get_from_memory(key: tuple) -> Any:
+            """Get value from in-memory cache, checking TTL.
+
+            Returns the cached value (which may be ``None``) on a hit, or the
+            ``_MISSING`` sentinel on a miss / TTL expiry. See
+            ``_get_from_redis`` for the rationale.
+            """
             if key in cache_storage:
                 cached_data = cache_storage[key]
                 if time.time() - cached_data.timestamp < ttl_seconds:
                     logger.debug(
-                        f"Cache hit for {target_func.__name__} args: {key[0]} kwargs: {key[1]}"
+                        f"Cache hit for {func_name} args: {key[0]} kwargs: {key[1]}"
                     )
                     return cached_data.result
-            return None
+            return _MISSING
 
         def _set_to_memory(key: tuple, value: Any) -> None:
             """Set value in in-memory cache with timestamp."""
@@ -244,18 +305,16 @@ def cached(
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
-                redis_key = (
-                    _make_redis_key(key, target_func.__name__) if shared_cache else ""
-                )
+                redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
                 if shared_cache:
                     result = _get_from_redis(redis_key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
                 else:
                     result = _get_from_memory(key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
@@ -263,22 +322,24 @@ def cached(
                     # Double-check: another coroutine might have populated cache
                     if shared_cache:
                         result = _get_from_redis(redis_key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
                     else:
                         result = _get_from_memory(key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
 
                     # Cache miss - execute function
-                    logger.debug(f"Cache miss for {target_func.__name__}")
+                    logger.debug(f"Cache miss for {func_name}")
                     result = await target_func(*args, **kwargs)
 
-                    # Store result
-                    if shared_cache:
-                        _set_to_redis(redis_key, result)
-                    else:
-                        _set_to_memory(key, result)
+                    # Store result (skip ``None`` if the caller opted out of
+                    # caching it — used for transient-error sentinels).
+                    if cache_none or result is not None:
+                        if shared_cache:
+                            _set_to_redis(redis_key, result)
+                        else:
+                            _set_to_memory(key, result)
 
                     return result
 
@@ -291,18 +352,16 @@ def cached(
             @wraps(target_func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
-                redis_key = (
-                    _make_redis_key(key, target_func.__name__) if shared_cache else ""
-                )
+                redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
                 if shared_cache:
                     result = _get_from_redis(redis_key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
                 else:
                     result = _get_from_memory(key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
@@ -310,22 +369,24 @@ def cached(
                     # Double-check: another thread might have populated cache
                     if shared_cache:
                         result = _get_from_redis(redis_key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
                     else:
                         result = _get_from_memory(key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
 
                     # Cache miss - execute function
-                    logger.debug(f"Cache miss for {target_func.__name__}")
+                    logger.debug(f"Cache miss for {func_name}")
                     result = target_func(*args, **kwargs)
 
-                    # Store result
-                    if shared_cache:
-                        _set_to_redis(redis_key, result)
-                    else:
-                        _set_to_memory(key, result)
+                    # Store result (skip ``None`` if the caller opted out of
+                    # caching it — used for transient-error sentinels).
+                    if cache_none or result is not None:
+                        if shared_cache:
+                            _set_to_redis(redis_key, result)
+                        else:
+                            _set_to_memory(key, result)
 
                     return result
 
@@ -335,18 +396,19 @@ def cached(
         def cache_clear(pattern: str | None = None) -> None:
             """Clear cache entries. If pattern provided, clear matching entries."""
             if shared_cache:
-                if pattern:
-                    # Clear entries matching pattern
-                    keys = list(
-                        _get_redis().scan_iter(
-                            f"cache:{target_func.__name__}:{pattern}"
-                        )
+                # SCAN must fan out across every primary on a cluster — without
+                # target_nodes the scan only walks the shard the client is
+                # bound to, leaving stale keys on the other shards.
+                match_pattern = (
+                    f"cache:{func_name}:{pattern}"
+                    if pattern
+                    else f"cache:{func_name}:*"
+                )
+                keys = list(
+                    _get_redis().scan_iter(
+                        match_pattern, target_nodes=RedisCluster.PRIMARIES
                     )
-                else:
-                    # Clear all cache keys
-                    keys = list(
-                        _get_redis().scan_iter(f"cache:{target_func.__name__}:*")
-                    )
+                )
 
                 if keys:
                     pipeline = _get_redis().pipeline()
@@ -365,7 +427,10 @@ def cached(
         def cache_info() -> dict[str, int | None]:
             if shared_cache:
                 cache_keys = list(
-                    _get_redis().scan_iter(f"cache:{target_func.__name__}:*")
+                    _get_redis().scan_iter(
+                        f"cache:{func_name}:*",
+                        target_nodes=RedisCluster.PRIMARIES,
+                    )
                 )
                 return {
                     "size": len(cache_keys),
@@ -383,7 +448,7 @@ def cached(
             """Delete a specific cache entry. Returns True if entry existed."""
             key = _make_hashable_key(args, kwargs)
             if shared_cache:
-                redis_key = _make_redis_key(key, target_func.__name__)
+                redis_key = _make_redis_key(key, func_name)
                 deleted_count = cast(int, _get_redis().delete(redis_key))
                 return deleted_count > 0
             else:
@@ -399,6 +464,52 @@ def cached(
         return cast(CachedFunction[P, R], wrapper)
 
     return decorator
+
+
+def _sign_payload(data: bytes) -> bytes:
+    """Return *signature + data* (32-byte HMAC-SHA256 prefix)."""
+    sig = hmac.new(_get_hmac_key(), data, hashlib.sha256).digest()
+    return sig + data
+
+
+def _verify_and_strip(blob: bytes) -> bytes | None:
+    """Verify the HMAC prefix and return the payload, or `None`.
+
+    During deployment, the cache may still contain unsigned (legacy) entries.
+    These will fail verification and return `None`, causing callers to treat
+    them as cache misses.  The value is then recomputed and stored with a valid
+    HMAC signature.  This means the transition is fully automatic: no cache
+    flush is required, and all entries self-heal on next access within their
+    TTL window (max 1 hour for the longest-lived entries).
+    """
+    if len(blob) <= _HMAC_SIG_LEN:
+        return None
+    sig, data = blob[:_HMAC_SIG_LEN], blob[_HMAC_SIG_LEN:]
+    expected = hmac.new(_get_hmac_key(), data, hashlib.sha256).digest()
+    if hmac.compare_digest(sig, expected):
+        return data
+    return None
+
+
+@cache
+def _get_hmac_key() -> bytes:
+    """Derive a stable HMAC key for signing cached values in Redis.
+
+    Uses `encryption_key` — a backend-only secret that Redis never sees.
+    This ensures that even if an attacker compromises Redis, they cannot forge
+    valid HMAC signatures for cache entries.
+
+    Falls back to a hardcoded default with a loud warning so the decorator
+    never crashes in development/test environments without secrets configured.
+    """
+    secret = settings.secrets.encryption_key
+    if not secret:
+        logger.warning(
+            "[SECURITY] No encryption_key configured: cache HMAC signing will use a "
+            "weak default key. Set ENCRYPTION_KEY for production deployments."
+        )
+        secret = "autogpt-cache-default-hmac-key"
+    return hashlib.sha256(secret.encode()).digest()
 
 
 def thread_cached(func):
