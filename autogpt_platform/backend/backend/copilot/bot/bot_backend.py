@@ -25,6 +25,8 @@ from backend.copilot.response_model import (
 )
 from backend.platform_linking.models import (
     BotChatRequest,
+    BotEventInput,
+    BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     Platform,
@@ -84,11 +86,91 @@ class BotBackend:
 
     def __init__(self):
         self._client = get_platform_linking_manager_client()
+        self._analytics_tasks: set[asyncio.Task] = set()
 
     async def close(self) -> None:
         # The client's lifecycle is owned by the thread-cached factory; nothing
         # to close here. Kept for API compatibility with older bot code.
         pass
+
+    # ── Analytics (fire-and-forget) ──────────────────────────────────────
+    # Usage telemetry must never block or break a user's reply, so every
+    # write is scheduled as a background task that swallows its own errors.
+    # No message content is ever sent — only counts, enums and metrics.
+
+    def _fire_and_forget(self, coro: Awaitable[None]) -> None:
+        task = asyncio.ensure_future(coro)
+        self._analytics_tasks.add(task)
+        task.add_done_callback(self._on_analytics_done)
+
+    def _on_analytics_done(self, task: asyncio.Task) -> None:
+        self._analytics_tasks.discard(task)
+        exc = task.exception()
+        if exc is not None:
+            logger.warning("Bot analytics write failed: %s", exc)
+
+    def track_event(
+        self,
+        *,
+        platform: str,
+        event_type: str,
+        server_id: str | None = None,
+        channel_type: str | None = None,
+        command_name: str | None = None,
+        error_kind: str | None = None,
+        char_count: int | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        self._fire_and_forget(
+            self._client.record_bot_event(
+                event=BotEventInput(
+                    platform=Platform(platform.upper()),
+                    event_type=event_type,
+                    server_id=server_id,
+                    channel_type=channel_type,
+                    command_name=command_name,
+                    error_kind=error_kind,
+                    char_count=char_count,
+                    duration_ms=duration_ms,
+                )
+            )
+        )
+
+    def track_guild_joined(
+        self, platform: str, server_id: str, name: str | None = None
+    ) -> None:
+        self._fire_and_forget(
+            self._client.record_guild_joined(
+                guild=BotGuildInput(
+                    platform=Platform(platform.upper()),
+                    server_id=server_id,
+                    name=name,
+                )
+            )
+        )
+
+    def track_guild_left(self, platform: str, server_id: str) -> None:
+        self._fire_and_forget(
+            self._client.mark_guild_left(
+                platform=Platform(platform.upper()),
+                server_id=server_id,
+            )
+        )
+
+    def sync_guilds(self, platform: str, guilds: list[tuple[str, str | None]]) -> None:
+        self._fire_and_forget(
+            self._client.sync_guild_presence(
+                platform=Platform(platform.upper()),
+                guilds=[
+                    BotGuildInput(
+                        platform=Platform(platform.upper()),
+                        server_id=server_id,
+                        name=name,
+                    )
+                    for server_id, name in guilds
+                ],
+            )
+        )
 
     async def resolve_server(
         self, platform: str, platform_server_id: str
