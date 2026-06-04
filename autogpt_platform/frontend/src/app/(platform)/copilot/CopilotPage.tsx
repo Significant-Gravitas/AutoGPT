@@ -99,11 +99,11 @@ function MainArea({
     <div className="relative mr-5 mt-2.5 flex h-full w-full flex-row pb-1 lg:mr-[0.3rem]">
       <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa] p-2">
         <FileDropZone
-          className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#8080801a] bg-white px-0 shadow-sm"
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#80808033] bg-white px-0 shadow-sm"
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}
-          <LowCreditBanner className="m-4" />
+          <LowCreditBanner />
           <NotificationBanner />
           <CopilotChatHost
             key={`chat-host-${sessionId ?? "new"}`}
