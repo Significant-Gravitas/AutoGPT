@@ -71,22 +71,42 @@ describe("RateLimitDisplay", () => {
     expect(badge.className).toContain("bg-blue-100");
   });
 
-  it("defaults unknown tier to BASIC", () => {
+  it("defaults unknown tier to NO_TIER", () => {
     render(
       <RateLimitDisplay
         data={makeData({ tier: "UNKNOWN" as UserRateLimitResponse["tier"] })}
         onReset={vi.fn()}
       />,
     );
-    const badge = screen.getByText("BASIC");
+    const badge = screen.getByText("NO_TIER");
     expect(badge).toBeDefined();
+    expect(screen.queryByText("BASIC")).toBeNull();
+  });
+
+  it("displays NO_TIER as a first-class tier instead of masking as BASIC", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "NO_TIER" })}
+        onReset={vi.fn()}
+      />,
+    );
+    const badge = screen.getByText("NO_TIER");
+    expect(badge).toBeDefined();
+    expect(badge.className).toContain("bg-red-100");
+    expect(screen.queryByText("BASIC")).toBeNull();
+    expect(screen.getByText(/no access \(paywalled\)/)).toBeDefined();
+
+    const select = screen.getByLabelText(
+      "Subscription tier",
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("NO_TIER");
   });
 
   it("renders tier dropdown with all tiers", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");
     expect(select).toBeDefined();
-    expect(select.querySelectorAll("option").length).toBe(5);
+    expect(select.querySelectorAll("option").length).toBe(6);
   });
 
   it("disables tier dropdown when onTierChange is not provided", () => {
