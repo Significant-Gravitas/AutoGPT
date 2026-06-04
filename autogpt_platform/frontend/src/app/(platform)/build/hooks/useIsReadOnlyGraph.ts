@@ -7,7 +7,7 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 // boundary and already rejects mutations (save, etc.) from non-owners. This
 // hook just hides controls that would otherwise fail silently.
 export function useIsReadOnlyGraph() {
-  const { user } = useSupabase();
+  const { user, isUserLoading } = useSupabase();
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
@@ -28,9 +28,12 @@ export function useIsReadOnlyGraph() {
     },
   );
 
-  // Treat the loading state as not read-only to avoid flickering the banner
-  // during initial mount; the canvas already shows a loading box at that stage.
-  const isReadOnly = !!graph && !!user && graph.user_id !== user.id;
+  // Wait for both the graph and the auth state to resolve before deciding, so
+  // the banner doesn't flicker for owners during initial mount. Once resolved,
+  // anyone who isn't the confirmed owner (including a logged-out viewer) is
+  // read-only — failing safe toward read-only rather than toward editable.
+  const isReadOnly =
+    !!graph && !isUserLoading && (!user || graph.user_id !== user.id);
 
   return { isReadOnly };
 }
