@@ -1,6 +1,7 @@
 "use client";
 
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
+import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
@@ -57,10 +58,7 @@ export function CopilotPage() {
   }
 
   return (
-    <SidebarProvider
-      defaultOpen={true}
-      className="h-[calc(100vh-72px)] min-h-0"
-    >
+    <SidebarProvider defaultOpen={true} className="h-full min-h-0">
       {!isMobile && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
@@ -105,9 +103,18 @@ function MainArea({
           hasSession && "bg-[#fafafa] p-2",
         )}
       >
+        {hasSession && (
+          <DotDistortionShader
+            dotGap={14}
+            dotSize={1}
+            opacity={0.2}
+            isStatic
+            className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
+          />
+        )}
         <FileDropZone
           className={cn(
-            "relative flex min-w-0 flex-1 flex-col overflow-hidden px-0",
+            "relative mx-auto flex min-w-0 max-w-[53rem] flex-1 flex-col overflow-hidden px-0",
             hasSession &&
               "rounded-2xl border border-[#80808033] bg-white shadow-sm",
           )}

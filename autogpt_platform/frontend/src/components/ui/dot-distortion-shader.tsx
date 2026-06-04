@@ -16,6 +16,8 @@ interface DotDistortionShaderProps {
   enableMouseInteraction?: boolean;
   opacity?: number;
   returnSpeed?: number;
+  /** Render dots as a single static frame — no breathing, glow, or mouse-driven distortion. */
+  isStatic?: boolean;
 }
 
 interface Dot {
@@ -47,6 +49,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
   enableMouseInteraction = true,
   opacity = 1,
   returnSpeed = 0.08,
+  isStatic = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -132,11 +135,34 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       dotsRef.current = initDots(width, height);
       resolvedDotColor = resolveColor(dotColor);
+      if (isStatic) requestAnimationFrame(drawStatic);
+    };
+
+    const drawStatic = () => {
+      if (stopped) return;
+      const { width, height } = container.getBoundingClientRect();
+      ctx.clearRect(0, 0, width, height);
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = resolvedDotColor;
+      for (const dot of dotsRef.current) {
+        ctx.globalAlpha = dot.brightness * opacity;
+        ctx.beginPath();
+        ctx.arc(dot.baseX, dot.baseY, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
     };
 
     const ro = new ResizeObserver(resize);
     ro.observe(container);
     resize();
+    if (isStatic) {
+      drawStatic();
+      return () => {
+        stopped = true;
+        ro.disconnect();
+      };
+    }
 
     let isFirstMouseEntry = true;
 
@@ -323,6 +349,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
     enableMouseInteraction,
     opacity,
     returnSpeed,
+    isStatic,
     initDots,
   ]);
 

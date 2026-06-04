@@ -263,7 +263,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[50px] !h-[calc(100vh-50px)] px-0"
+        className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0"
       >
         {isCollapsed && (
           <SidebarHeader
