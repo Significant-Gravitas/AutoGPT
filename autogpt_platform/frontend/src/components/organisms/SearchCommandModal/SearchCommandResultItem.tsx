@@ -1,3 +1,4 @@
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject } from "react";
@@ -9,6 +10,8 @@ interface Props {
   idPrefix: string;
   query: string;
   isHighlighted: boolean;
+  /** Shows a trailing spinner while the row's action is in-flight. */
+  isLoading?: boolean;
   highlightedRef?: MutableRefObject<HTMLButtonElement | null>;
   onHighlight: () => void;
   onSelect: () => void;
@@ -28,6 +31,7 @@ export function SearchCommandResultItem({
   idPrefix,
   query,
   isHighlighted,
+  isLoading = false,
   highlightedRef,
   onHighlight,
   onSelect,
@@ -92,15 +96,23 @@ export function SearchCommandResultItem({
             </div>
           ) : null}
         </div>
-        <span
-          aria-hidden="true"
-          className={cn(
-            "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-600 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
-            isHighlighted ? "opacity-100" : "opacity-0",
-          )}
-        >
-          ↵
-        </span>
+        {isLoading ? (
+          <LoadingSpinner
+            size="small"
+            aria-label="Opening"
+            className="shrink-0 text-zinc-500"
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-1 font-sans text-[11px] text-zinc-600 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
+              isHighlighted ? "opacity-100" : "opacity-0",
+            )}
+          >
+            ↵
+          </span>
+        )}
       </div>
     </Button>
   );
