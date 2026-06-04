@@ -21,19 +21,20 @@ from backend.api.features.library.db import (
     update_graph_in_library,
     update_library_agent,
 )
+from backend.api.features.search.embeddings import (
+    cleanup_orphaned_embeddings,
+    get_embedding_stats,
+)
+from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
     get_store_agent_details,
     get_store_agents,
 )
-from backend.api.features.store.embeddings import (
-    backfill_missing_embeddings,
-    cleanup_orphaned_embeddings,
-    get_embedding_stats,
-)
-from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -104,6 +105,7 @@ from backend.data.push_subscription import (
     get_user_push_subscriptions,
     increment_fail_count,
 )
+from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -331,6 +333,13 @@ class DatabaseManager(AppService):
     # ============ Summary Data ============ #
     get_user_execution_summary_data = _(get_user_execution_summary_data)
 
+    # ============ Chat Sharing ============ #
+    # Exposed so the run_agent tool (running in the CoPilotExecutor
+    # worker, which doesn't keep its own connected Prisma client) can
+    # auto-link new executions into an already-shared chat without
+    # crashing when its local Prisma engine is unconnected.
+    link_new_execution_to_chat_share = _(link_new_execution_to_chat_share)
+
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
@@ -362,6 +371,9 @@ class DatabaseManager(AppService):
         cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
     )
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -375,6 +387,7 @@ class DatabaseManager(AppService):
     confirm_user_link = _(platform_linking_db.confirm_user_link)
     list_server_links = _(platform_linking_db.list_server_links)
     list_user_links = _(platform_linking_db.list_user_links)
+    refresh_server_link_name = _(platform_linking_db.refresh_server_link_name)
     delete_server_link = _(platform_linking_db.delete_server_link)
     delete_user_link = _(platform_linking_db.delete_user_link)
     cleanup_expired_platform_link_tokens = _(
@@ -573,6 +586,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Summary Data ============ #
     get_user_execution_summary_data = d.get_user_execution_summary_data
 
+    # ============ Chat Sharing ============ #
+    link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
+
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
@@ -603,6 +619,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     increment_push_fail_count = d.increment_push_fail_count
     cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     find_user_link_owner = d.find_user_link_owner
@@ -616,6 +635,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     confirm_user_link = d.confirm_user_link
     list_server_links = d.list_server_links
     list_user_links = d.list_user_links
+    refresh_server_link_name = d.refresh_server_link_name
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens

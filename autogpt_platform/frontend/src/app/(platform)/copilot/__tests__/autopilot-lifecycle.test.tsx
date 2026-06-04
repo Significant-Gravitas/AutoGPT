@@ -112,7 +112,7 @@ describe("AutoPilot streaming — submit / stop lifecycle", () => {
     await clickStop();
 
     expect(
-      await screen.findByText(/you manually stopped this chat/i, undefined, {
+      await screen.findByText(/task stopped/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();

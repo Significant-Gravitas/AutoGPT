@@ -464,6 +464,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -725,6 +735,17 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Discord bot token for the CoPilot chat bridge. When set, "
         "the bridge enables its Discord adapter.",
+    )
+    autopilot_bot_discord_client_id: str = Field(
+        default="",
+        description="Discord application client ID for the CoPilot bot. Used "
+        "to build the 'Add to server' invite URL on the Bots settings page; "
+        "the bot itself doesn't need it.",
+    )
+    autopilot_bot_discord_permissions: str = Field(
+        default="",
+        description="Discord permissions bitfield for the 'Add to server' "
+        "invite URL. Overrides the built-in default when non-empty.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

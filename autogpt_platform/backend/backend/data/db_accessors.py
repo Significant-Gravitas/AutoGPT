@@ -55,7 +55,7 @@ def store_db():
 
 def search():
     if db.is_connected():
-        from backend.api.features.store import hybrid_search as _search
+        from backend.api.features.search import hybrid_search as _search
 
         search = _search
     else:

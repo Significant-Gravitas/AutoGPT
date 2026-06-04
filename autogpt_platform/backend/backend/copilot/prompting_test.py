@@ -32,6 +32,27 @@ class TestGetSdkSupplementStaticPlaceholder:
         assert "<session-id>" not in result
 
 
+class TestCredentialsSurfacingGuardrails:
+    """The system prompt must instruct the model to (a) surface sign-in cards
+    eagerly via tool calls and (b) never claim a card has appeared unless one
+    was just emitted in the same turn. Both behaviours prevent the user from
+    being stranded waiting for a card that was never produced.
+    """
+
+    def test_local_prompt_contains_eager_surfacing_rule(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "Surface the sign-in card EAGERLY" in result
+
+    def test_e2b_prompt_contains_eager_surfacing_rule(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "Surface the sign-in card EAGERLY" in result
+
+    def test_prompt_contains_anti_hallucination_guardrail(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "NEVER claim a card has appeared" in result
+        assert "call the tool first" in result
+
+
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability
     gap without calling ``find_block`` first — this is the regression the

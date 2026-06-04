@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.llm import LlmModel
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -585,6 +586,9 @@ def test_prepare_dry_run_orchestrator_block():
     assert result is not None
     # Model is overridden to the simulation model (not the user's model).
     assert result["model"] != "gpt-4o"
+    # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+    # Pydantic input validation accepts it.
+    assert LlmModel(result["model"]) is not None
     # Capped to min(original, 10); user's 10 passes through unchanged.
     assert result["agent_mode_max_iterations"] == 10
     assert result["_dry_run_api_key"] == "sk-or-test-key"
