@@ -253,15 +253,27 @@ _bootstrap_ollama_macos() {
     # = headless server; cask = full .app), or (2) the official .dmg
     # from ollama.com. We prefer brew when present because it's
     # scriptable; otherwise we point the operator at the .dmg.
-    if ! command -v ollama &> /dev/null; then
-        if command -v brew &> /dev/null; then
-            print_color "BLUE" "Installing Ollama via Homebrew..."
-            brew install ollama || handle_error "brew install ollama failed"
-        else
-            handle_error "Ollama is not installed and Homebrew is not available. Install Homebrew (https://brew.sh) and re-run, or download Ollama from https://ollama.com/download/mac and re-run with --ollama-host=http://localhost:11434."
+    # Install the official Ollama via the Homebrew *cask* (ollama-app), NOT the
+    # ``ollama`` formula. The formula's darwin-arm64 bottle ships the server
+    # without the llama-server runner (libexec/lib/ollama holds only the MLX
+    # metal lib), so it pulls models fine but 500s on every GGUF inference with
+    # "llama-server binary not found". The cask is the full Ollama.app and
+    # bundles the runner at Contents/Resources/llama-server.
+    local runner="/Applications/Ollama.app/Contents/Resources/llama-server"
+    if [ -x "$runner" ]; then
+        print_color "GREEN" "✓ Ollama already installed with runner ($(ollama --version 2>&1 | head -1))"
+    elif command -v brew &> /dev/null; then
+        # A runner-less formula install leaves an ``ollama`` on PATH that can't
+        # run models — replace it with the cask rather than skipping on
+        # ``command -v``.
+        if brew list --formula ollama &> /dev/null; then
+            print_color "YELLOW" "Replacing runner-less Ollama formula with the official cask..."
+            brew uninstall ollama &> /dev/null || true
         fi
+        print_color "BLUE" "Installing Ollama (official app) via Homebrew cask..."
+        brew install --cask ollama-app || handle_error "brew install --cask ollama-app failed"
     else
-        print_color "GREEN" "✓ Ollama already installed ($(ollama --version 2>&1 | head -1))"
+        handle_error "Ollama is not installed and Homebrew is not available. Install Homebrew (https://brew.sh) and re-run, or download Ollama from https://ollama.com/download/mac and re-run with --ollama-host=http://localhost:11434."
     fi
     # Set Ollama env globally for launchd-spawned processes. On macOS,
     # ``launchctl setenv`` is the only knob that survives Ollama.app
@@ -291,14 +303,15 @@ _bootstrap_ollama_macos() {
         if ! lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; then break; fi
         sleep 1
     done
-    # Restart Ollama. Prefer the brew service when present; otherwise
-    # launch the headless server directly. ``disown`` so the background
-    # job survives this script's exit even in shells with
-    # ``shopt -s huponexit`` (login shells, some CI envs).
-    if brew services list 2>/dev/null | grep -q '^ollama'; then
-        brew services start ollama >/dev/null 2>&1 || true
-    fi
-    nohup ollama serve >/dev/null 2>&1 &
+    # Restart Ollama headlessly. ``launchctl setenv`` above only reaches
+    # launchd-spawned GUI launches of Ollama.app — a shell-spawned
+    # ``ollama serve`` inherits THIS shell's env, not launchd's, so it would
+    # otherwise bind 127.0.0.1 and truncate context at Ollama's 4k default.
+    # Export the same vars on the serve invocation so the headless server
+    # honors them too. ``disown`` so the background job survives this script's
+    # exit even in shells with ``shopt -s huponexit`` (login shells, some CI).
+    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="32768" \
+        nohup ollama serve >/dev/null 2>&1 &
     disown 2>/dev/null || true
     for _ in $(seq 1 20); do
         curl -sf http://localhost:11434/api/version >/dev/null && break
