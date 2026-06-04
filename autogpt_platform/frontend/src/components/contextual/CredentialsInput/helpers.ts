@@ -20,6 +20,7 @@ export const providerIcons: Partial<
   apollo: fallbackIcon,
   database: fallbackIcon,
   e2b: fallbackIcon,
+  e2b_desktop: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
   groq: fallbackIcon,

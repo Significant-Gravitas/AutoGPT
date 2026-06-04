@@ -195,6 +195,205 @@ This block uses the Reddit API via PRAW to delete a post you previously created.
 
 ---
 
+## E2B Desktop Control
+
+### What it is
+Control the mouse and keyboard of a running E2B Desktop sandbox: click, move, scroll, type text, or press keys. Pair with the Screenshot block to build a see-then-act computer-use loop.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| sandbox_id | Sandbox ID from the Create Desktop Sandbox block. | str | Yes |
+| action | Which input action to perform: click variants, move the mouse, scroll, type text, or press a key/combo. | "left_click" \| "double_click" \| "right_click" \| "middle_click" \| "move_mouse" \| "scroll" \| "type" \| "press" | No |
+| x | X coordinate for click/move actions. Leave empty for clicks to use the current cursor position. Required for move_mouse. | int | No |
+| y | Y coordinate for click/move actions. Leave empty for clicks to use the current cursor position. Required for move_mouse. | int | No |
+| text | Text to type (used by the 'type' action). | str | No |
+| keys | Key or key combo to press (used by the 'press' action), e.g. 'enter', 'backspace', or 'ctrl+c' for a combination. | str | No |
+| scroll_direction | Scroll direction (used by the 'scroll' action). | "up" \| "down" | No |
+| scroll_amount | Number of scroll steps (used by the 'scroll' action). | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the action failed. | str |
+| success | True if the action was performed. | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## E2B Desktop Create
+
+### What it is
+Create an E2B Desktop sandbox (a full Linux GUI desktop) and start a live browser stream. Returns a stream_url you can embed to watch the desktop in real time.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| template_id | E2B desktop template ID. Use a pre-baked template with your dependencies already installed to skip setup on every run. Leave empty for the default desktop template. | str | No |
+| setup_commands | Shell commands to run after the desktop starts, e.g. ['git clone https://github.com/you/app /home/user/app']. Prefer baking these into a template_id for faster cold starts. | List[str] | No |
+| timeout | Sandbox lifetime in seconds. Max 3600 (1 hr) on Hobby, 86400 (24 hr) on Pro. The sandbox auto-kills after this — use the Kill Desktop Sandbox block to stop early and save cost. | int | No |
+| stream_require_auth | Require an auth key to view the live stream. Leave True in production — disabling exposes the desktop to anyone with the URL. | bool | No |
+| width | Desktop screen width in pixels. Lower resolutions stream more smoothly (fewer pixels per frame); higher ones are sharper. | int | No |
+| height | Desktop screen height in pixels. | int | No |
+| dpi | Desktop DPI (dots per inch). Raise it to scale up UI on high-resolution screens; 96 is the standard default. | int | No |
+| smooth_stream | Re-tune the VNC server for high-motion content. The default stream only refreshes ~20 FPS, which makes animations look laggy; this raises the poll/update rate for a much smoother stream at the cost of more sandbox CPU and bandwidth. Disable if the desktop feels overloaded. | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if creation failed. | str |
+| stream_url | Live stream URL for the desktop. Embed as an iframe to watch and control the desktop (mouse + keyboard) in real time. | str |
+| auth_key | Auth key required to view the stream (when stream_require_auth=True). Already included in the stream_url. | str |
+| sandbox_id | ID of the running desktop sandbox. Pass this to the other E2B Desktop blocks to control or capture it. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## E2B Desktop Kill
+
+### What it is
+Destroy a running E2B Desktop sandbox and stop billing immediately. Always call this when the desktop is no longer needed.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| sandbox_id | Sandbox ID from the Create Desktop Sandbox block to destroy. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the kill failed. | str |
+| success | True if the sandbox was destroyed successfully. | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## E2B Desktop List
+
+### What it is
+List the running and/or paused E2B Desktop sandboxes on your account. Use it to reconnect to an existing desktop or audit sandboxes that are still alive.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| state | Which sandboxes to list: running only, paused only, or all. Paused sandboxes keep their state but stop compute billing. | "all" \| "running" \| "paused" | No |
+| limit | Maximum number of sandboxes to return. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the listing failed. | str |
+| sandboxes | All matching sandboxes with their ID, state and metadata. | List[DesktopSandboxInfo] |
+| sandbox | Each matching sandbox, yielded one at a time. | DesktopSandboxInfo |
+| count | Number of sandboxes returned. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## E2B Desktop Pause
+
+### What it is
+Pause a running E2B Desktop sandbox to stop compute billing while keeping its full state. Resume later by passing the sandbox_id to any other E2B Desktop block.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| sandbox_id | Sandbox ID from the Create Desktop Sandbox block to pause. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the pause failed. | str |
+| sandbox_id | ID of the paused sandbox. Pass it to any E2B Desktop block later to resume the sandbox automatically. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## E2B Desktop Screenshot
+
+### What it is
+Capture a PNG screenshot of the current E2B Desktop sandbox screen and store it in the AutoGPT workspace. Use for visual QA or as the 'see' step of a computer-use loop.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| sandbox_id | Sandbox ID from the Create Desktop Sandbox block. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the screenshot failed. | str |
+| image | The captured screenshot. A workspace reference in CoPilot, or a data URI in graphs — feed it directly into downstream blocks. | str (file) |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Edit Reddit Post
 
 ### What it is

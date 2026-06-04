@@ -766,6 +766,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
+    e2b_desktop_api_key: str = Field(
+        default="", description="E2B API key for the Desktop sandbox blocks"
+    )
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")

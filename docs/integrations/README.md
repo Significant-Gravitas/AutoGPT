@@ -476,6 +476,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [E2B Desktop Control](block-integrations/misc.md#e2b-desktop-control) | Control the mouse and keyboard of a running E2B Desktop sandbox: click, move, scroll, type text, or press keys |
+| [E2B Desktop Create](block-integrations/misc.md#e2b-desktop-create) | Create an E2B Desktop sandbox (a full Linux GUI desktop) and start a live browser stream |
+| [E2B Desktop Kill](block-integrations/misc.md#e2b-desktop-kill) | Destroy a running E2B Desktop sandbox and stop billing immediately |
+| [E2B Desktop List](block-integrations/misc.md#e2b-desktop-list) | List the running and/or paused E2B Desktop sandboxes on your account |
+| [E2B Desktop Pause](block-integrations/misc.md#e2b-desktop-pause) | Pause a running E2B Desktop sandbox to stop compute billing while keeping its full state |
+| [E2B Desktop Screenshot](block-integrations/misc.md#e2b-desktop-screenshot) | Capture a PNG screenshot of the current E2B Desktop sandbox screen and store it in the AutoGPT workspace |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |

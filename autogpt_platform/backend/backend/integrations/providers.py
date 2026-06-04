@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
+    E2B_DESKTOP = "e2b_desktop"
     ELEVENLABS = "elevenlabs"
     FAL = "fal"
     GITHUB = "github"
