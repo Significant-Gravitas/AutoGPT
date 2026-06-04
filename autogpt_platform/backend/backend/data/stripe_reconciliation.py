@@ -7,9 +7,9 @@ then for every reconcilable user (has a Stripe customer, not ENTERPRISE) sets th
 tier from the map (NO_TIER when the customer is absent). Manual grants (no Stripe
 customer) and ENTERPRISE rows are never touched.
 
-Cost: one Stripe ``Subscription.list`` pass (not one call per user). The
-``current_tier == tier`` idempotency skip in ``set_subscription_tier`` keeps
-steady-state writes cheap.
+Cost: one Stripe ``Subscription.list`` pass (not one call per user). The sweep
+skips users whose tier already matches the map (``target_tier == current_tier``
+in ``_reconcile_one``), so a steady-state run does no DB writes.
 """
 
 import logging
