@@ -480,10 +480,10 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-6 pb-8 pt-0"
+        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-0"
         style={
           bottomContentPadding
-            ? { paddingBottom: bottomContentPadding + 32 }
+            ? { paddingBottom: bottomContentPadding + 24 }
             : undefined
         }
       >
