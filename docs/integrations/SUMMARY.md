@@ -45,7 +45,6 @@
 * [Dataforseo Related Keywords](block-integrations/dataforseo/related_keywords.md)
 * [Discord Bot Blocks](block-integrations/discord/bot_blocks.md)
 * [Discord OAuth Blocks](block-integrations/discord/oauth_blocks.md)
-* [E2B Desktop Sandbox Blocks](block-integrations/e2b_desktop.md)
 * [Enrichlayer LinkedIn](block-integrations/enrichlayer/linkedin.md)
 * [Exa Answers](block-integrations/exa/answers.md)
 * [Exa Code Context](block-integrations/exa/code_context.md)

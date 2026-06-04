@@ -12,6 +12,7 @@ creation, command execution and teardown for the non-visual case.
 
 Blocks:
   - E2BDesktopCreateBlock     : Create a desktop sandbox + start a live stream
+  - E2BDesktopListBlock        : List your desktop sandboxes (running and/or paused)
   - E2BDesktopControlBlock    : Drive mouse + keyboard (click / type / press / scroll)
   - E2BDesktopScreenshotBlock : Capture the desktop screen as an image
   - E2BDesktopPauseBlock       : Pause the sandbox (keep state, stop compute billing)
@@ -27,8 +28,8 @@ import base64
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional, Protocol, cast
 
-from e2b_desktop import Sandbox
-from pydantic import SecretStr
+from e2b_desktop import Sandbox, SandboxQuery, SandboxState
+from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
     Block,
@@ -359,6 +360,167 @@ class E2BDesktopCreateBlock(Block):
             yield "stream_url", stream_url
             yield "auth_key", auth_key
             yield "sandbox_id", sandbox_id
+        except Exception as e:
+            yield "error", str(e)
+
+
+class SandboxStateFilter(Enum):
+    ALL = "all"
+    RUNNING = "running"
+    PAUSED = "paused"
+
+
+class DesktopSandboxInfo(BaseModel):
+    sandbox_id: str
+    template_id: str
+    state: str
+    started_at: str
+    end_at: str
+    metadata: dict[str, str]
+
+
+class E2BDesktopListBlock(Block):
+    """
+    List the E2B Desktop sandboxes on your account.
+
+    Returns every running and/or paused desktop sandbox tied to the API key,
+    so an agent can reconnect to an existing desktop (pass a returned
+    ``sandbox_id`` to any other E2B Desktop block) instead of creating a new one,
+    or audit what is still alive and racking up cost.
+    """
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
+        ] = CredentialsField(
+            description="E2B API key — lists the sandboxes owned by this key.",
+        )
+        state: SandboxStateFilter = SchemaField(
+            description=(
+                "Which sandboxes to list: running only, paused only, or all. "
+                "Paused sandboxes keep their state but stop compute billing."
+            ),
+            default=SandboxStateFilter.ALL,
+        )
+        limit: int = SchemaField(
+            description="Maximum number of sandboxes to return.",
+            default=100,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        sandboxes: list[DesktopSandboxInfo] = SchemaField(
+            description="All matching sandboxes with their ID, state and metadata."
+        )
+        sandbox: DesktopSandboxInfo = SchemaField(
+            description="Each matching sandbox, yielded one at a time."
+        )
+        count: int = SchemaField(description="Number of sandboxes returned.")
+        error: str = SchemaField(description="Error message if the listing failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="b2c3d4e5-f6a7-8901-bcde-f01234567890",
+            description=(
+                "List the running and/or paused E2B Desktop sandboxes on your "
+                "account. Use it to reconnect to an existing desktop or audit "
+                "sandboxes that are still alive."
+            ),
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=E2BDesktopListBlock.Input,
+            output_schema=E2BDesktopListBlock.Output,
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "state": SandboxStateFilter.ALL.value,
+                "limit": 100,
+            },
+            test_output=[
+                (
+                    "sandboxes",
+                    [
+                        DesktopSandboxInfo(
+                            sandbox_id="mock-sandbox-id",
+                            template_id="mock-template-id",
+                            state="running",
+                            started_at="2024-01-01T00:00:00+00:00",
+                            end_at="2024-01-01T01:00:00+00:00",
+                            metadata={},
+                        )
+                    ],
+                ),
+                ("sandbox", DesktopSandboxInfo),
+                ("count", 1),
+            ],
+            test_mock={
+                "list_sandboxes": lambda *args, **kwargs: [
+                    DesktopSandboxInfo(
+                        sandbox_id="mock-sandbox-id",
+                        template_id="mock-template-id",
+                        state="running",
+                        started_at="2024-01-01T00:00:00+00:00",
+                        end_at="2024-01-01T01:00:00+00:00",
+                        metadata={},
+                    )
+                ]
+            },
+        )
+
+    @staticmethod
+    def _list_sandboxes(
+        api_key: str,
+        state: SandboxStateFilter,
+        limit: int,
+    ) -> list[DesktopSandboxInfo]:
+        states = {
+            SandboxStateFilter.RUNNING: [SandboxState.RUNNING],
+            SandboxStateFilter.PAUSED: [SandboxState.PAUSED],
+        }.get(state)
+        query = SandboxQuery(state=states) if states else None
+        paginator = Sandbox.list(query=query, api_key=api_key)
+
+        sandboxes: list[DesktopSandboxInfo] = []
+        while paginator.has_next and len(sandboxes) < limit:
+            for info in paginator.next_items():
+                sandboxes.append(
+                    DesktopSandboxInfo(
+                        sandbox_id=info.sandbox_id,
+                        template_id=info.template_id,
+                        state=str(info.state),
+                        started_at=info.started_at.isoformat(),
+                        end_at=info.end_at.isoformat(),
+                        metadata=info.metadata,
+                    )
+                )
+                if len(sandboxes) >= limit:
+                    break
+        return sandboxes
+
+    async def list_sandboxes(
+        self,
+        api_key: str,
+        state: SandboxStateFilter,
+        limit: int,
+    ) -> list[DesktopSandboxInfo]:
+        return await asyncio.to_thread(self._list_sandboxes, api_key, state, limit)
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        try:
+            sandboxes = await self.list_sandboxes(
+                api_key=credentials.api_key.get_secret_value(),
+                state=input_data.state,
+                limit=input_data.limit,
+            )
+            yield "sandboxes", sandboxes
+            for sandbox in sandboxes:
+                yield "sandbox", sandbox
+            yield "count", len(sandboxes)
         except Exception as e:
             yield "error", str(e)
 
