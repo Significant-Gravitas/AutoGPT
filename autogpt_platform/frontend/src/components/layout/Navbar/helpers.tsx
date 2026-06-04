@@ -1,5 +1,4 @@
 import {
-  IconBuilder,
   IconEdit,
   IconLibrary,
   IconLogOut,
@@ -13,6 +12,7 @@ import {
 import {
   ChatsIcon,
   CreditCardIcon,
+  CubeIcon,
   QuestionIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
@@ -46,48 +46,6 @@ export type MenuItemGroup = {
     onClick?: () => void;
   }[];
 };
-
-export const accountMenuItems: MenuItemGroup[] = [
-  {
-    items: [
-      {
-        icon: IconType.Edit,
-        text: "Account",
-        href: "/settings/account",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.LayoutDashboard,
-        text: "Creator Dashboard",
-        href: "/settings/creator-dashboard",
-      },
-      {
-        icon: IconType.UploadCloud,
-        text: "Publish an agent",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.Settings,
-        text: "Settings",
-        href: "/settings",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.LogOut,
-        text: "Log out",
-      },
-    ],
-  },
-];
 
 export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
   const baseMenuItems: MenuItemGroup[] = [
@@ -170,7 +128,7 @@ export function getAccountMenuOptionIcon(icon: IconType) {
     case IconType.Library:
       return <IconLibrary className={iconClass} />;
     case IconType.Builder:
-      return <IconBuilder className={iconClass} />;
+      return <CubeIcon className={iconClass} />;
     case IconType.Sliders:
       return <IconSliders className={iconClass} />;
     case IconType.Chat:

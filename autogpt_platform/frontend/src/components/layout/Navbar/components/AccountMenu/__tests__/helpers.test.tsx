@@ -1,4 +1,5 @@
 import { IconType } from "@/components/__legacy__/ui/icons";
+import { CubeIcon } from "@phosphor-icons/react";
 import { describe, expect, test } from "vitest";
 import { getAccountMenuPhosphorIcon } from "../helpers";
 
@@ -16,6 +17,11 @@ describe("getAccountMenuPhosphorIcon", () => {
   ])("returns a Phosphor icon element for %s", (icon) => {
     const result = getAccountMenuPhosphorIcon(icon);
     expect(result).not.toBeNull();
+  });
+
+  test("maps the Builder icon to CubeIcon", () => {
+    const result = getAccountMenuPhosphorIcon(IconType.Builder);
+    expect(result?.type).toBe(CubeIcon);
   });
 
   test("returns null for unmapped icon types", () => {

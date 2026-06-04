@@ -23,7 +23,6 @@ import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 
 const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
   "/marketplace": IconType.Marketplace,
-  "/build": IconType.Builder,
   "/copilot": IconType.Chat,
   "/library": IconType.Library,
   "/artifacts": IconType.UploadCloud,
