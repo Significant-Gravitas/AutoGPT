@@ -390,7 +390,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   openContextPanelForFiles: () => {
     if (_autoOpenUserClosed) return;
-    if (get().artifactPanel.isOpen) return;
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "files");

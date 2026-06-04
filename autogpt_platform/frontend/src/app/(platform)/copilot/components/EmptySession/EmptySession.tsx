@@ -81,7 +81,7 @@ export function EmptySession({
         distortionStrength={1.2}
         returnSpeed={0.06}
         opacity={0.2}
-        className="pointer-events-none absolute inset-0 !bg-transparent"
+        className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
       />
       <motion.div
         className="relative z-10 w-full max-w-[52rem] text-center"
