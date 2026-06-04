@@ -186,7 +186,10 @@ def resolve_tracking(
 
     # E2B (code + desktop sandboxes): billed per second of sandbox time
     if provider in (ProviderName.E2B.value, ProviderName.E2B_DESKTOP.value):
-        return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
+        return (
+            "sandbox_seconds",
+            max(0.0, round(stats.walltime, 3)) if stats.walltime else 0.0,
+        )
 
     # Video/image gen: walltime includes queue + generation + polling
     if provider in _WALLTIME_BILLED_PROVIDERS:
