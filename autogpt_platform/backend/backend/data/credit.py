@@ -51,6 +51,7 @@ from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.blocks._base import Block, BlockCost
+    from backend.data.onboarding import OnboardingStep
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
@@ -218,7 +219,9 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def onboarding_reward(self, user_id: str, credits: int, step: str) -> bool:
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: "OnboardingStep"
+    ) -> bool:
         """
         Reward the user with credits for completing an onboarding step.
         Won't reward if the user has already received credits for the step.
@@ -226,9 +229,9 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             credits (int): The amount to reward.
-            step (str): The onboarding step identifier (``OnboardingStep`` StrEnum
-                values are accepted directly; typed as ``str`` to avoid a circular
-                import with ``backend.data.onboarding``).
+            step (OnboardingStep): The onboarding step identifier. Imported under
+                ``TYPE_CHECKING`` only, to avoid a circular import with
+                ``backend.data.onboarding``.
 
         Returns:
             bool: True if rewarded, False if already rewarded.
@@ -756,7 +759,9 @@ class UserCredit(UserCreditBase):
             balance, _ = await self._get_credits(user_id)
         return balance
 
-    async def onboarding_reward(self, user_id: str, credits: int, step: str):
+    async def onboarding_reward(
+        self, user_id: str, credits: int, step: "OnboardingStep"
+    ):
         try:
             await self._add_transaction(
                 user_id=user_id,

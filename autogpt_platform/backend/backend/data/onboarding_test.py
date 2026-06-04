@@ -94,6 +94,27 @@ async def test_reward_user_skips_if_already_rewarded(
     credit_model.onboarding_reward.assert_not_called()
 
 
+@pytest.mark.asyncio(loop_scope="function")
+async def test_reward_user_noop_for_zero_reward_step(
+    mocker: pytest_mock.MockFixture,
+):
+    # Steps without a configured reward (e.g. WELCOME) must never touch the
+    # credit model — they are pure progress markers.
+    onboarding = Mock()
+    onboarding.rewardedFor = []
+
+    credit_model = Mock()
+    credit_model.onboarding_reward = AsyncMock()
+    mocker.patch(
+        "backend.data.onboarding.get_user_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+
+    await _reward_user("user-1", onboarding, OnboardingStep.WELCOME)
+
+    credit_model.onboarding_reward.assert_not_called()
+
+
 def test_onboarding_step_values_are_plain_strings():
     # StrEnum members must round-trip through ``str`` unchanged so they can be
     # written directly into the ``String[]`` columns on UserOnboarding.
