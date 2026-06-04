@@ -102,7 +102,7 @@ export function EmptySession({
             <motion.div
               layoutId={inputLayoutId}
               transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2 [&_[data-slot=input-group-control]::placeholder]:!text-slate-500 [&_[data-slot=input-group]]:!border-[#bfdbfe6b] [&_[data-slot=input-group]]:!bg-[#6b91d012]"
+              className="w-full px-2 [&_[data-slot=input-group-control]::placeholder]:!text-slate-500 [&_[data-slot=input-group]]:!border-[#bfdbfe6b] [&_[data-slot=input-group]]:!bg-[#f5f7fc]"
             >
               <ChatInput
                 inputId="chat-input-empty"
