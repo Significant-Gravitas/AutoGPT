@@ -36,6 +36,11 @@ const baseGroups: MenuItemGroup[] = [
         href: "/settings/profile",
       },
       {
+        icon: IconType.Builder,
+        text: "Builder",
+        href: "/build",
+      },
+      {
         icon: IconType.Settings,
         text: "Settings",
         href: "/settings/account",
@@ -114,10 +119,25 @@ describe("AccountMenu", () => {
     );
 
     expect(screen.getByText("Profile")).toBeDefined();
+    expect(screen.getByText("Builder")).toBeDefined();
     expect(screen.getByText("Settings")).toBeDefined();
     expect(screen.getByText("Help & Docs")).toBeDefined();
     expect(screen.getByText("Publish an agent")).toBeDefined();
     expect(screen.getByText("Log out")).toBeDefined();
+  });
+
+  test("renders the Builder item linking to the build page", () => {
+    render(
+      <AccountMenu
+        userName="Ada"
+        userEmail="ada@example.com"
+        menuItemGroups={baseGroups}
+      />,
+    );
+
+    expect(screen.getByText("Builder").closest("a")?.getAttribute("href")).toBe(
+      "/build",
+    );
   });
 
   test("renders external link with target=_blank", () => {
