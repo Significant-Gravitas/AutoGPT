@@ -583,3 +583,48 @@ class TestOnThreadRemove:
         ):
             # Must not raise — cleanup is never critical-path.
             await handlers["on_thread_remove"](_thread(555))
+
+
+# ── on_message: locked threads ──────────────────────────────────────────
+
+
+class TestLockedThread:
+    @pytest.mark.asyncio
+    async def test_locked_thread_message_is_skipped(self):
+        # A locked thread rejects bot sends, so processing the message would
+        # just burn a turn and error on every reply. Bail before the handler.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        thread = _thread(555)
+        thread.locked = True
+        msg = MagicMock()
+        msg.author = MagicMock(id=2000, bot=False)
+        msg.channel = thread
+
+        await handlers["on_message"](msg)
+
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unlocked_thread_message_is_processed(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        thread = _thread(555)
+        thread.locked = False
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = MagicMock(id=111)
+        msg.channel = thread
+        msg.content = "hi"
+        msg.mentions = []
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
