@@ -650,8 +650,12 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp,
     user_id: Annotated[str, Security(get_user_id)],
-    x_datafast_visitor_id: Annotated[str | None, Header()] = None,
-    x_datafast_session_id: Annotated[str | None, Header()] = None,
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ):
     user_credit_model = await get_user_credit_model(user_id)
     checkout_url = await user_credit_model.top_up_intent(
@@ -1024,8 +1028,12 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
-    x_datafast_visitor_id: Annotated[str | None, Header()] = None,
-    x_datafast_session_id: Annotated[str | None, Header()] = None,
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)

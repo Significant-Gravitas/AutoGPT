@@ -38,7 +38,9 @@ async function submitTopUp() {
   const continueButton = await screen.findByRole("button", {
     name: /continue to checkout/i,
   });
-  await waitFor(() => expect(continueButton.hasAttribute("disabled")).toBe(false));
+  await waitFor(() =>
+    expect(continueButton.hasAttribute("disabled")).toBe(false),
+  );
   fireEvent.click(continueButton);
 }
 
@@ -48,11 +50,11 @@ describe("DataFast attribution on credit top-up", () => {
   it("attaches the DataFast headers when the attribution cookies are present", async () => {
     stubCookies("datafast_visitor_id=vis_1; datafast_session_id=ses_1");
 
-    let capturedHeaders: Headers | null = null;
+    const captured: { headers: Headers | null } = { headers: null };
     server.use(
       http.get("*/api/credits", () => HttpResponse.json({ credits: 1000 })),
       http.post("*/api/credits", async ({ request }) => {
-        capturedHeaders = request.headers;
+        captured.headers = request.headers;
         return HttpResponse.json({ checkout_url: null });
       }),
     );
@@ -60,19 +62,19 @@ describe("DataFast attribution on credit top-up", () => {
     render(<BalanceCard />);
     await submitTopUp();
 
-    await waitFor(() => expect(capturedHeaders).not.toBeNull());
-    expect(capturedHeaders?.get("X-Datafast-Visitor-Id")).toBe("vis_1");
-    expect(capturedHeaders?.get("X-Datafast-Session-Id")).toBe("ses_1");
+    await waitFor(() => expect(captured.headers).not.toBeNull());
+    expect(captured.headers?.get("X-Datafast-Visitor-Id")).toBe("vis_1");
+    expect(captured.headers?.get("X-Datafast-Session-Id")).toBe("ses_1");
   });
 
   it("omits the DataFast headers when no attribution cookies exist", async () => {
     stubCookies("");
 
-    let capturedHeaders: Headers | null = null;
+    const captured: { headers: Headers | null } = { headers: null };
     server.use(
       http.get("*/api/credits", () => HttpResponse.json({ credits: 1000 })),
       http.post("*/api/credits", async ({ request }) => {
-        capturedHeaders = request.headers;
+        captured.headers = request.headers;
         return HttpResponse.json({ checkout_url: null });
       }),
     );
@@ -80,8 +82,8 @@ describe("DataFast attribution on credit top-up", () => {
     render(<BalanceCard />);
     await submitTopUp();
 
-    await waitFor(() => expect(capturedHeaders).not.toBeNull());
-    expect(capturedHeaders?.get("X-Datafast-Visitor-Id")).toBeNull();
-    expect(capturedHeaders?.get("X-Datafast-Session-Id")).toBeNull();
+    await waitFor(() => expect(captured.headers).not.toBeNull());
+    expect(captured.headers?.get("X-Datafast-Visitor-Id")).toBeNull();
+    expect(captured.headers?.get("X-Datafast-Session-Id")).toBeNull();
   });
 });

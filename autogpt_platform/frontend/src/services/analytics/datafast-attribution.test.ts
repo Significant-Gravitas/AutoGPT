@@ -27,4 +27,20 @@ describe("getDatafastAttribution", () => {
     setCookie("other=1");
     expect(getDatafastAttribution()).toEqual({});
   });
+
+  it("does not throw on a malformed percent-encoded unrelated cookie", () => {
+    setCookie("other=%E0%A4%A; datafast_visitor_id=vis_1");
+    expect(() => getDatafastAttribution()).not.toThrow();
+    expect(getDatafastAttribution()).toEqual({
+      "X-Datafast-Visitor-Id": "vis_1",
+    });
+  });
+
+  it("skips a DataFast cookie whose own value is malformed", () => {
+    setCookie("datafast_visitor_id=%E0%A4%A; datafast_session_id=ses_1");
+    expect(() => getDatafastAttribution()).not.toThrow();
+    expect(getDatafastAttribution()).toEqual({
+      "X-Datafast-Session-Id": "ses_1",
+    });
+  });
 });

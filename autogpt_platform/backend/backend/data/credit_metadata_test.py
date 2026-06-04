@@ -158,6 +158,18 @@ def test_datafast_metadata_drops_none_values():
     assert _datafast_metadata(None, None) == {}
 
 
+def test_datafast_metadata_bounds_and_sanitizes_values():
+    # Oversized values are truncated to Stripe's 500-char metadata limit.
+    long_id = "v" * 600
+    assert _datafast_metadata(long_id, None) == {"datafast_visitor_id": "v" * 500}
+    # Whitespace is stripped; values that are blank or contain control
+    # characters are dropped so they can never break Checkout.
+    assert _datafast_metadata("  vis_1  ", "\x00bad") == {
+        "datafast_visitor_id": "vis_1"
+    }
+    assert _datafast_metadata("   ", "ses_1") == {"datafast_session_id": "ses_1"}
+
+
 @pytest.mark.asyncio
 async def test_top_up_intent_attaches_datafast_metadata():
     """top_up_intent threads DataFast IDs into the Checkout session metadata."""

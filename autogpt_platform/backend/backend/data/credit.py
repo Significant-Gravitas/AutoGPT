@@ -103,20 +103,36 @@ class InvoiceListItem(BaseModel):
     invoice_pdf_url: str | None = None
 
 
+# Stripe rejects metadata values longer than 500 chars with an
+# invalid_request_error. DataFast IDs are short, but the values arrive from a
+# client-controlled header, so we bound them defensively to keep attribution
+# strictly best-effort: a malformed ID must never break Checkout.
+_STRIPE_METADATA_VALUE_MAX_LEN = 500
+
+
+def _sanitize_datafast_id(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized or any(ord(ch) < 0x20 for ch in normalized):
+        return None
+    return normalized[:_STRIPE_METADATA_VALUE_MAX_LEN]
+
+
 def _datafast_metadata(
     visitor_id: str | None, session_id: str | None
 ) -> dict[str, str]:
     """Build Stripe metadata for DataFast revenue attribution.
 
-    Only includes IDs that are actually present so we never send the literal
-    string "None" to Stripe. Returns an empty dict when neither is set, which
-    Stripe accepts as "no metadata".
+    Only includes IDs that are actually present (and valid) so we never send the
+    literal string "None" or a value Stripe would reject. Returns an empty dict
+    when neither is set, which Stripe accepts as "no metadata".
     """
     metadata: dict[str, str] = {}
-    if visitor_id:
-        metadata["datafast_visitor_id"] = visitor_id
-    if session_id:
-        metadata["datafast_session_id"] = session_id
+    if visitor := _sanitize_datafast_id(visitor_id):
+        metadata["datafast_visitor_id"] = visitor
+    if session := _sanitize_datafast_id(session_id):
+        metadata["datafast_session_id"] = session
     return metadata
 
 

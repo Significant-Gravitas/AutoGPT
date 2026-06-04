@@ -12,16 +12,19 @@ export function getDatafastAttribution(): Record<string, string> {
   const jar = new Map(
     document.cookie.split("; ").map((part) => {
       const eq = part.indexOf("=");
-      return eq === -1
-        ? [part, ""]
-        : [part.slice(0, eq), decodeURIComponent(part.slice(eq + 1))];
+      return eq === -1 ? [part, ""] : [part.slice(0, eq), part.slice(eq + 1)];
     }) as [string, string][],
   );
 
   const headers: Record<string, string> = {};
   for (const [cookie, header] of Object.entries(COOKIE_TO_HEADER)) {
-    const value = jar.get(cookie);
-    if (value) headers[header] = value;
+    const rawValue = jar.get(cookie);
+    if (!rawValue) continue;
+    try {
+      headers[header] = decodeURIComponent(rawValue);
+    } catch {
+      // Best-effort: ignore a malformed percent-encoded value rather than throw.
+    }
   }
   return headers;
 }
