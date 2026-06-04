@@ -9,14 +9,14 @@ import asyncio
 import random
 from uuid import uuid4
 
+import prisma.enums
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
-
-from backend.data.onboarding import OnboardingStep
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
+from backend.data.onboarding import OnboardingStep
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer

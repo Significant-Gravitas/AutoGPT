@@ -26,8 +26,6 @@ import pytest
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
-
-from backend.data.onboarding import OnboardingStep
 from prisma.types import (
     AgentBlockCreateInput,
     AgentGraphCreateInput,
@@ -41,6 +39,8 @@ from prisma.types import (
     StoreListingReviewCreateInput,
     UserCreateInput,
 )
+
+from backend.data.onboarding import OnboardingStep
 
 faker = Faker()
 

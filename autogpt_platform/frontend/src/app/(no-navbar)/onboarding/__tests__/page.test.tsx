@@ -194,7 +194,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("skips SubscriptionStep when the user is already on a paid tier", async () => {
     // Regression for paying users (admin-granted Pro, or accounts that
-    // pre-date VISIT_COPILOT) being kicked through onboarding and asked to
+    // pre-date ONBOARDING_COMPLETE) being kicked through onboarding and asked to
     // pay again to escape. With ENABLE_PLATFORM_PAYMENT on and tier=PRO,
     // step 4 must render Preparing — not SubscriptionStep.
     mockFlagValue = true;

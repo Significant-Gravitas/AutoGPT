@@ -218,9 +218,7 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def onboarding_reward(
-        self, user_id: str, credits: int, step: str
-    ) -> bool:
+    async def onboarding_reward(self, user_id: str, credits: int, step: str) -> bool:
         """
         Reward the user with credits for completing an onboarding step.
         Won't reward if the user has already received credits for the step.
