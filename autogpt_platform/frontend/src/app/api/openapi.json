@@ -15170,34 +15170,6 @@
         "title": "OnboardingStatusResponse",
         "description": "Response for onboarding completion check."
       },
-      "OnboardingStep": {
-        "type": "string",
-        "enum": [
-          "WELCOME",
-          "USAGE_REASON",
-          "INTEGRATIONS",
-          "AGENT_CHOICE",
-          "AGENT_NEW_RUN",
-          "AGENT_INPUT",
-          "CONGRATS",
-          "ONBOARDING_COMPLETE",
-          "GET_RESULTS",
-          "MARKETPLACE_VISIT",
-          "MARKETPLACE_ADD_AGENT",
-          "MARKETPLACE_RUN_AGENT",
-          "BUILDER_SAVE_AGENT",
-          "RE_RUN_AGENT",
-          "SCHEDULE_AGENT",
-          "RUN_AGENTS",
-          "RUN_3_DAYS",
-          "TRIGGER_WEBHOOK",
-          "RUN_14_DAYS",
-          "RUN_AGENTS_100",
-          "BUILDER_OPEN",
-          "BUILDER_RUN_AGENT"
-        ],
-        "title": "OnboardingStep"
-      },
       "OrphanedScheduleDetail": {
         "properties": {
           "schedule_id": { "type": "string", "title": "Schedule Id" },
