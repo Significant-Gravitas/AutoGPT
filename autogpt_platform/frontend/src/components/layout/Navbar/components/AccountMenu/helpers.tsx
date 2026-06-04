@@ -2,6 +2,7 @@ import { IconType } from "@/components/__legacy__/ui/icons";
 import {
   ChartLineUpIcon,
   CreditCardIcon,
+  CubeIcon,
   GearIcon,
   QuestionIcon,
   SignOutIcon,
@@ -16,6 +17,8 @@ export function getAccountMenuPhosphorIcon(icon: IconType) {
   switch (icon) {
     case IconType.Edit:
       return <UserIcon className={className} weight={weight} />;
+    case IconType.Builder:
+      return <CubeIcon className={className} weight={weight} />;
     case IconType.LayoutDashboard:
       return <ChartLineUpIcon className={className} weight={weight} />;
     case IconType.UploadCloud:

@@ -5,6 +5,7 @@ import { getAccountMenuPhosphorIcon } from "../helpers";
 describe("getAccountMenuPhosphorIcon", () => {
   test.each([
     IconType.Edit,
+    IconType.Builder,
     IconType.LayoutDashboard,
     IconType.UploadCloud,
     IconType.Sliders,

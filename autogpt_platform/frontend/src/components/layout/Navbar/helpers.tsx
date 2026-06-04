@@ -27,10 +27,6 @@ export const loggedInLinks: Link[] = [
     name: "Marketplace",
     href: "/marketplace",
   },
-  {
-    name: "Build",
-    href: "/build",
-  },
 ];
 
 export const loggedOutLinks: Link[] = [
@@ -101,6 +97,11 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
           icon: IconType.Edit,
           text: "Profile",
           href: "/settings/profile",
+        },
+        {
+          icon: IconType.Builder,
+          text: "Builder",
+          href: "/build",
         },
         {
           icon: IconType.Settings,

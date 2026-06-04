@@ -22,6 +22,11 @@ const userGroups = [
         href: "/settings/profile",
       },
       {
+        icon: IconType.Builder,
+        text: "Builder",
+        href: "/build",
+      },
+      {
         icon: IconType.Settings,
         text: "Settings",
         href: "/settings/account",
