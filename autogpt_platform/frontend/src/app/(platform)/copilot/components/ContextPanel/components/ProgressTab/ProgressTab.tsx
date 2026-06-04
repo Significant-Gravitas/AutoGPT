@@ -7,11 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
-import {
-  countCompleted,
-  getLatestTaskList,
-  type TodoItem,
-} from "./helpers";
+import { countCompleted, getLatestTaskList, type TodoItem } from "./helpers";
 
 interface Props {
   sessionId: string | null;
@@ -51,7 +47,9 @@ export function ProgressTab({ sessionId }: Props) {
   // isn't actually progressing.
   const isIdle = !isStreaming;
   const displayTodos: TodoItem[] = isIdle
-    ? todos.map((t) => (t.status === "in_progress" ? { ...t, status: "pending" } : t))
+    ? todos.map((t) =>
+        t.status === "in_progress" ? { ...t, status: "pending" } : t,
+      )
     : todos;
 
   return (

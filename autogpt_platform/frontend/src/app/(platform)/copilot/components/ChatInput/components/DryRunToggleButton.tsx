@@ -27,9 +27,7 @@ export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
           onClick={onToggle}
           className={cn(
             "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-            isDryRun
-              ? "text-amber-900"
-              : "text-zinc-950 hover:text-zinc-950",
+            isDryRun ? "text-amber-900" : "text-zinc-950 hover:text-zinc-950",
           )}
           aria-label={isDryRun ? "Test mode active" : "Enable Test mode"}
         >

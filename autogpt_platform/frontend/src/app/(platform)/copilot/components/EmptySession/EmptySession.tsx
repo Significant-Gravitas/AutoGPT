@@ -74,7 +74,7 @@ export function EmptySession({
   return (
     <AuroraBackground
       showRadialGradient={false}
-      className="h-full flex-1 overflow-y-auto bg-white px-0 py-5 [&>[aria-hidden]>div]:!opacity-10 md:px-6 md:py-10"
+      className="h-full flex-1 overflow-y-auto bg-white px-0 py-5 md:px-6 md:py-10 [&>[aria-hidden]>div]:!opacity-10"
     >
       <motion.div
         className="relative z-10 w-full max-w-[52rem] text-center"
@@ -90,10 +90,7 @@ export function EmptySession({
             Hey, {greetingName}
             <EditNameDialog currentName={greetingName} />
           </Text>
-          <Text
-            variant="h3"
-            className="mb-8 !font-medium !text-neutral-800"
-          >
+          <Text variant="h3" className="mb-8 !font-medium !text-neutral-800">
             Tell me about your work, I&apos;ll find what to automate.
           </Text>
 

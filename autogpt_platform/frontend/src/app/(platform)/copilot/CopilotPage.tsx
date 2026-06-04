@@ -71,7 +71,9 @@ export function CopilotPage() {
       {isMobile && isContextPanelEnabled && (
         <ContextPanel sessionId={sessionId} mobile />
       )}
-      {isArtifactsEnabled && <ArtifactPanel mobile={isMobile} />}
+      {isArtifactsEnabled && !isContextPanelEnabled && (
+        <ArtifactPanel mobile={isMobile} />
+      )}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>
@@ -121,7 +123,9 @@ function MainArea({
       {!isMobile && isContextPanelEnabled && (
         <ContextPanel sessionId={sessionId} />
       )}
-      {!isMobile && isContextPanelEnabled && sessionId && <ContextPanelToggle />}
+      {!isMobile && isContextPanelEnabled && sessionId && (
+        <ContextPanelToggle />
+      )}
     </div>
   );
 }
