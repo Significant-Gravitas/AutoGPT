@@ -1701,7 +1701,7 @@ def test_update_subscription_tier_no_tier_no_stripe_subscription(
     assert response.status_code == 200
     assert response.json()["url"] == ""
     cancel_mock.assert_awaited_once_with(TEST_USER_ID)
-    # DB tier must be updated immediately — no webhook will fire for a missing sub
+    # DB tier must be updated immediately — no webhook will fire for a missing sub.
     set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.NO_TIER)
 
 
