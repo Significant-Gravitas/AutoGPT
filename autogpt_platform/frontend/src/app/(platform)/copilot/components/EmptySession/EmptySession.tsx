@@ -4,6 +4,7 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { AuroraBackground } from "@/components/ui/aurora-background";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -71,20 +72,29 @@ export function EmptySession({
   }, []);
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-white px-0 py-5 md:px-6 md:py-10">
+    <AuroraBackground
+      showRadialGradient={false}
+      className="h-full flex-1 overflow-y-auto bg-white px-0 py-5 [&>[aria-hidden]>div]:!opacity-10 md:px-6 md:py-10"
+    >
       <motion.div
-        className="w-full max-w-[52rem] text-center"
+        className="relative z-10 w-full max-w-[52rem] text-center"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
         <div className="mx-auto max-w-[52rem]">
-          <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
-            Hey, <span className="text-violet-600">{greetingName}</span>
+          <Text
+            variant="h3"
+            className="mb-1 !text-[1.375rem] !font-medium !text-neutral-800"
+          >
+            Hey, {greetingName}
             <EditNameDialog currentName={greetingName} />
           </Text>
-          <Text variant="h3" className="mb-8 !font-normal">
-            Tell me about your work — I&apos;ll find what to automate.
+          <Text
+            variant="h3"
+            className="mb-8 !font-medium !text-neutral-800"
+          >
+            Tell me about your work, I&apos;ll find what to automate.
           </Text>
 
           {isAgentBriefingEnabled && (
@@ -95,7 +105,7 @@ export function EmptySession({
             <motion.div
               layoutId={inputLayoutId}
               transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
-              className="w-full px-2"
+              className="w-full px-2 [&_[data-slot=input-group-control]::placeholder]:!text-slate-500 [&_[data-slot=input-group]]:!border-[#bfdbfe6b] [&_[data-slot=input-group]]:!bg-[#6b91d012]"
             >
               <ChatInput
                 inputId="chat-input-empty"
@@ -125,6 +135,6 @@ export function EmptySession({
           />
         )}
       </motion.div>
-    </div>
+    </AuroraBackground>
   );
 }

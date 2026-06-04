@@ -3,23 +3,23 @@ import type { ContextPanelTab } from "../../../store";
 
 interface Props {
   activeTab: ContextPanelTab;
+  filesCount: number;
   onChange: (tab: ContextPanelTab) => void;
 }
 
-const TABS: { id: ContextPanelTab; label: string }[] = [
-  { id: "progress", label: "Progress" },
-  { id: "files", label: "Files" },
-  { id: "artifacts", label: "Artifacts" },
-];
+export function TabSwitcher({ activeTab, filesCount, onChange }: Props) {
+  const tabs: { id: ContextPanelTab; label: string }[] = [
+    { id: "progress", label: "Progress" },
+    { id: "files", label: `Files (${filesCount})` },
+  ];
 
-export function TabSwitcher({ activeTab, onChange }: Props) {
   return (
     <div
       role="tablist"
       aria-label="Context panel sections"
       className="flex items-center gap-1 rounded-full bg-zinc-100 p-1"
     >
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab.id}
           role="tab"

@@ -10,9 +10,9 @@ import {
 import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArtifactDragHandle } from "../ArtifactPanel/components/ArtifactDragHandle";
-import { ArtifactsTab } from "./components/ArtifactsTab";
 import { FilesTab } from "./components/FilesTab/FilesTab";
-import { ProgressTab } from "./components/ProgressTab";
+import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { ProgressTab } from "./components/ProgressTab/ProgressTab";
 import { TabSwitcher } from "./components/TabSwitcher";
 import { useContextPanel } from "./useContextPanel";
 
@@ -30,6 +30,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     setArtifactPanelWidth,
     closeArtifactPanel,
   } = useContextPanel();
+  const { uploaded, generated } = useSessionFiles(sessionId);
+  const filesCount = uploaded.length + generated.length;
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -47,11 +49,14 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         </div>
       )}
       <div className="p-2">
-        <TabSwitcher activeTab={activeTab} onChange={setActiveTab} />
+        <TabSwitcher
+          activeTab={activeTab}
+          filesCount={filesCount}
+          onChange={setActiveTab}
+        />
       </div>
-      {activeTab === "progress" && <ProgressTab />}
+      {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
       {activeTab === "files" && <FilesTab sessionId={sessionId} />}
-      {activeTab === "artifacts" && <ArtifactsTab />}
     </div>
   );
 

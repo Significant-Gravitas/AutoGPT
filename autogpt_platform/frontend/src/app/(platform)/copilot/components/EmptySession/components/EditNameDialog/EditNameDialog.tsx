@@ -72,7 +72,7 @@ export function EditNameDialog({ currentName }: Props) {
       <Dialog.Trigger>
         <button
           type="button"
-          className="ml-1 inline-flex items-center text-violet-500 transition-colors hover:text-violet-700"
+          className="ml-1 inline-flex items-center text-indigo-500 transition-colors hover:text-indigo-700"
         >
           <PencilSimpleIcon size={16} />
         </button>

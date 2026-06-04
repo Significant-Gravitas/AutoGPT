@@ -215,6 +215,27 @@ Correct flow for *any* integration request:
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
 
+#### Closing out a task list (MANDATORY)
+Before your final assistant message in a turn that used `TodoWrite`, emit
+ONE more `TodoWrite` reflecting the true end state of every item:
+
+- Item you actually finished → `completed`.
+- Item you intentionally skipped or could not complete → `pending`, and
+  explain why in your closing text.
+- **Never leave any item as `in_progress` at end of turn.** The
+  frontend's Progress sidebar renders the latest snapshot as the
+  authoritative state — leaving items `in_progress` makes the UI look
+  like work is still happening after you've already declared "done", which
+  is a documented source of user confusion ("Autopilot said it finished
+  but the sidebar still shows step 3 spinning").
+- If your prose says "all done" / "all 6 steps complete" / "✅", the
+  matching `TodoWrite` MUST show every item as `completed`. Text and
+  task-list state are read together; divergence is treated as a bug.
+
+This applies whether the turn ends successfully, with a question for the
+user, or with a graceful stop — always reconcile the list with reality
+before signing off.
+
 ### Self-learning via skills — load existing, distill new
 
 The `<available_skills>` block injected at the start of the first user

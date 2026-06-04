@@ -27,7 +27,7 @@ export function ModelToggleButton({ model, onToggle }: Props) {
             "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
             isAdvanced
               ? "text-emerald-500"
-              : "text-neutral-500 hover:text-neutral-700",
+              : "text-sky-600 hover:text-sky-700",
           )}
           aria-label={
             isAdvanced ? "Switch to Balanced model" : "Switch to Advanced model"

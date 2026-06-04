@@ -27,7 +27,7 @@ describe("ContextPanel", () => {
   test("renders the tab switcher and active tab when open with no artifact", async () => {
     render(<ContextPanel sessionId="session-1" />);
     expect(await screen.findByRole("tablist")).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Files" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: /^Files \(\d+\)$/ })).toBeDefined();
     expect(await screen.findByText(/No files yet/i)).toBeDefined();
   });
 

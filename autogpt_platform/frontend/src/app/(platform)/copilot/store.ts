@@ -58,7 +58,7 @@ export type CopilotMode = "extended_thinking" | "fast";
 export type CopilotLlmModel = "standard" | "advanced";
 
 /** Context panel tab. */
-export type ContextPanelTab = "progress" | "files" | "artifacts";
+export type ContextPanelTab = "progress" | "files";
 
 const isClient = typeof window !== "undefined";
 
@@ -84,7 +84,7 @@ function getPersistedOpen(): boolean {
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
-  return saved === "progress" || saved === "artifacts" ? saved : "files";
+  return saved === "progress" ? saved : "files";
 }
 
 let panelWidthPersistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -152,6 +152,7 @@ interface CopilotUIState {
   setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
   openContextPanelForFiles: () => void;
+  openContextPanelForProgress: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
   // decides whether to auto-open. Much simpler than message-scanning.
@@ -400,6 +401,22 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         isOpen: true,
         isMinimized: false,
         activeTab: "files",
+        activeArtifact: null,
+        history: [],
+      },
+    }));
+  },
+  openContextPanelForProgress: () => {
+    if (isClient) {
+      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
+    }
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        isMinimized: false,
+        activeTab: "progress",
         activeArtifact: null,
         history: [],
       },

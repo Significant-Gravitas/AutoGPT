@@ -36,7 +36,9 @@ import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { StepsCollapse } from "./components/StepsCollapse";
+import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getLatestTaskList } from "../ContextPanel/components/ProgressTab/helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -310,6 +312,13 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  const latestTaskList = getLatestTaskList(messages);
+  const isChatStreaming = status === "streaming" || status === "submitted";
+  const hasActiveTaskList =
+    isChatStreaming &&
+    !!latestTaskList &&
+    latestTaskList.some((t) => t.status !== "completed");
+
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -471,10 +480,10 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-0"
+        className="flex min-h-full flex-1 flex-col gap-6 px-6 pb-8 pt-0"
         style={
           bottomContentPadding
-            ? { paddingBottom: bottomContentPadding + 24 }
+            ? { paddingBottom: bottomContentPadding + 32 }
             : undefined
         }
       >
@@ -667,6 +676,11 @@ export function ChatMessagesContainer({
             </Message>
           );
         })}
+        {!readOnly && hasActiveTaskList && (
+          <div className="px-1">
+            <TaskListNotice />
+          </div>
+        )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">

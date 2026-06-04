@@ -422,6 +422,14 @@ export function useCopilotStream({
     }
   }, [sessionId, hydratedMessages, status, isReconnectScheduled]);
 
+  // Mirror the live stream status onto the shared store so out-of-tree views
+  // (workspace sidebar's Progress tab) can react to "agent is actively
+  // working" without prop-drilling status through the layout.
+  useEffect(() => {
+    const isLive = status === "streaming" || status === "submitted";
+    useCopilotStreamStore.getState().setStreaming(isLive);
+  }, [status]);
+
   // Invalidate session + usage caches when the stream completes.
   // Reconnect counter/timer reset on the same transition is owned by
   // `useCopilotReconnect`, which watches `status` internally.
