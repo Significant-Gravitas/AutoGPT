@@ -1430,16 +1430,9 @@ async def set_subscription_tier(
     user_id: str,
     tier: SubscriptionTier,
 ) -> None:
-    """Set the user's subscription tier.
-
-    Every authoritative tier write refreshes ``lastStripeReconciledAt`` so the
-    lazy on-access reconcile treats the row as fresh. This is a pure efficiency
-    throttle: for non-reconcilable users (no Stripe customer, or ENTERPRISE) the
-    field is never read, so stamping it is harmless.
-    """
+    """Set the user's subscription tier."""
     data: UserUpdateInput = {
         "subscriptionTier": tier,
-        "lastStripeReconciledAt": datetime.now(timezone.utc),
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     get_user_by_id.cache_delete(user_id)
@@ -2430,9 +2423,6 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
             await get_user_by_id(user_id)
         ).subscription_tier or SubscriptionTier.NO_TIER
         if new_tier == current_tier:
-            # Active sub matches the DB tier — stamp so the lazy staleness gate
-            # doesn't re-check this steady-state payer against Stripe every cycle.
-            await _stamp_stripe_reconciled(user_id)
             return False
         direction = log_tier_reconciliation_discrepancy(
             user_id=user_id,
@@ -2449,7 +2439,6 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         return True
     # No active/trialing sub — downgrade a reconcilable row to NO_TIER.
     if current_tier == SubscriptionTier.NO_TIER:
-        await _stamp_stripe_reconciled(user_id)
         return False
     await set_subscription_tier(user_id, SubscriptionTier.NO_TIER)
     log_tier_reconciliation_discrepancy(
@@ -2466,19 +2455,6 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         f"investigate the webhook pipeline."
     )
     return True
-
-
-async def _stamp_stripe_reconciled(user_id: str) -> None:
-    """Record a successful Stripe reconcile without changing the tier.
-
-    Keeps ``lastStripeReconciledAt`` fresh for reconcilable rows that are
-    already correct so the lazy staleness check doesn't re-fire every request.
-    """
-    await User.prisma().update(
-        where={"id": user_id},
-        data={"lastStripeReconciledAt": datetime.now(timezone.utc)},
-    )
-    get_user_by_id.cache_delete(user_id)
 
 
 async def sync_tier_from_checkout_session(data_object: dict) -> None:

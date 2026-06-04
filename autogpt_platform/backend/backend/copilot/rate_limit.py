@@ -927,41 +927,6 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
 
 _STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
 _STRIPE_RECONCILE_TTL = 300  # seconds — matches the tier cache TTL
-# A STRIPE-sourced payer's tier is considered stale (eligible for a lazy
-# re-check) once this long has passed since its last Stripe reconcile. Kept
-# longer than the periodic sweep cadence so the sweep normally refreshes the
-# stamp first; the lazy check only fires when the sweep has lagged.
-_STRIPE_STALE_AFTER = timedelta(hours=12)
-
-
-async def _maybe_reconcile_stale_stripe_tier(user_id: str) -> bool:
-    """Lazily re-check a reconcilable payer whose tier is stale.
-
-    Only fires for reconcilable users (has a Stripe customer, not ENTERPRISE)
-    whose last reconcile is older than ``_STRIPE_STALE_AFTER``. Shares the same
-    Redis gate + authoritative bidirectional reconcile as the NO_TIER fallback,
-    so a lost cancel webhook can be caught between periodic sweeps. Returns True
-    when the tier was changed.
-    """
-    try:
-        user = await get_user_by_id(user_id)
-    except Exception:
-        return False
-    if (
-        user.stripe_customer_id is None
-        or user.subscription_tier == SubscriptionTier.ENTERPRISE
-    ):
-        return False
-    last = user.last_stripe_reconciled_at
-    if last is not None:
-        # The column is TIMESTAMP (no tz); Prisma may hand it back tz-naive.
-        # Coerce to UTC before comparing against the aware now() to avoid a
-        # "can't subtract offset-naive and offset-aware datetimes" TypeError.
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=UTC)
-        if datetime.now(UTC) - last < _STRIPE_STALE_AFTER:
-            return False
-    return await _maybe_reconcile_stripe_tier(user_id)
 
 
 async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
@@ -1027,26 +992,6 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         tier_from_db = False
 
     if tier != SubscriptionTier.NO_TIER:
-        # A STRIPE-sourced payer whose last reconcile is stale gets a lazy
-        # re-check (gated) so a lost cancel webhook can't keep them on a paid
-        # tier indefinitely between periodic sweeps.
-        if tier_from_db and await _maybe_reconcile_stale_stripe_tier(user_id):
-            try:
-                return await _fetch_user_tier(user_id)
-            except _UserNotFoundError:
-                return SubscriptionTier.NO_TIER
-            except Exception as exc:
-                logger.warning(
-                    "get_user_tier: tier re-read failed after stale reconcile"
-                    " for %s: %s — returning NO_TIER to avoid serving the stale"
-                    " pre-reconcile tier",
-                    user_id[:8],
-                    exc,
-                )
-                # The reconcile just changed the tier (possibly a downgrade). If
-                # we can't read the new value, fail safe rather than grant the
-                # old, higher tier for this request.
-                return SubscriptionTier.NO_TIER
         return tier
 
     if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):

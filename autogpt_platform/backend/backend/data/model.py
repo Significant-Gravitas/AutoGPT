@@ -74,9 +74,6 @@ class User(BaseModel):
     subscription_tier: SubscriptionTier = Field(
         default=SubscriptionTier.NO_TIER, description="User subscription tier"
     )
-    last_stripe_reconciled_at: Optional[datetime] = Field(
-        None, description="When the tier was last reconciled against Stripe"
-    )
 
     # Notification preferences
     max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
@@ -152,7 +149,6 @@ class User(BaseModel):
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
-            last_stripe_reconciled_at=prisma_user.lastStripeReconciledAt,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,

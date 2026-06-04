@@ -60,26 +60,6 @@ async def test_set_subscription_tier_updates_db():
 
 
 @pytest.mark.asyncio
-async def test_set_subscription_tier_always_stamps_reconciled_at():
-    """Every authoritative tier write stamps ``lastStripeReconciledAt`` (non-null
-    datetime) so the lazy on-access staleness gate treats the row as fresh."""
-    from datetime import datetime
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(update=AsyncMock()),
-        ) as mock_prisma,
-        patch("backend.data.credit.get_user_by_id"),
-    ):
-        await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        update_call = mock_prisma.return_value.update.await_args
-        data = update_call.kwargs["data"]
-        assert data["subscriptionTier"] == SubscriptionTier.PRO
-        assert isinstance(data["lastStripeReconciledAt"], datetime)
-
-
-@pytest.mark.asyncio
 async def test_set_subscription_tier_downgrade():
     with (
         patch(

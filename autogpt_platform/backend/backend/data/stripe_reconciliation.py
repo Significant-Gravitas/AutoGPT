@@ -21,7 +21,6 @@ from prisma.models import User
 from pydantic import BaseModel
 
 from backend.data.credit import (
-    _stamp_stripe_reconciled,
     alert_tier_reconciliation_discrepancy,
     build_price_to_tier_map,
     log_tier_reconciliation_discrepancy,
@@ -151,10 +150,6 @@ async def _reconcile_one(
         )
     if target_tier == current_tier:
         summary.unchanged += 1
-        # Every candidate is reconcilable, so refresh the reconcile timestamp to
-        # keep the lazy on-access staleness gate from redundantly re-checking
-        # them (another Stripe round-trip) before the next sweep.
-        await _stamp_stripe_reconciled(user.id)
         return
     # When the Stripe snapshot is incomplete (a failed list page or the
     # pagination cap), absence from the map is unreliable — the user may sit on
