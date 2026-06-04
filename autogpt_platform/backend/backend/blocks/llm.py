@@ -6,6 +6,7 @@ import math
 import re
 import secrets
 from abc import ABC
+from collections.abc import Mapping
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
@@ -120,8 +121,25 @@ class LlmModelMeta(EnumMeta):
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
-        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
-        if isinstance(value, str) and "/" in value:
+        """Resolve provider-prefixed model names.
+
+        Handles two shapes:
+
+        1. OpenRouter aliases for Anthropic models whose direct-API
+           identifier carries a snapshot suffix that the OpenRouter slug
+           drops — e.g. ``anthropic/claude-haiku-4-5`` ↔ enum value
+           ``claude-haiku-4-5-20251001``.  Looked up via
+           ``_OPENROUTER_ALIASES`` (defined below the class so it can hold
+           ``LlmModel`` members directly).
+        2. Generic provider prefix strip — e.g.
+           ``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
+        """
+        if not isinstance(value, str):
+            return None
+        alias = _OPENROUTER_ALIASES.get(value)
+        if alias is not None:
+            return alias
+        if "/" in value:
             stripped = value.split("/", 1)[1]
             try:
                 return cls(stripped)
@@ -132,8 +150,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
-    O1 = "o1"
-    O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5_2 = "gpt-5.2-2025-12-11"
     GPT5_1 = "gpt-5.1-2025-11-13"
@@ -145,24 +161,15 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
-    GPT4_TURBO = "gpt-4-turbo"
     # Anthropic models
-    CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
-    CLAUDE_4_OPUS = "claude-opus-4-20250514"
-    CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
     CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
-    CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
-    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
-    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
@@ -175,22 +182,18 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro"
     GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
     GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
-    GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
+    GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
-    MISTRAL_NEMO = "mistralai/mistral-nemo"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
     CODESTRAL = "mistralai/codestral-2508"
-    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
-    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
     COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
     COHERE_COMMAND_A_REASONING_08_2025 = "cohere/command-a-reasoning-08-2025"
@@ -206,7 +209,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
-    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
@@ -218,19 +220,12 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4_20 = "x-ai/grok-4.20"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
-    KIMI_K2 = "moonshotai/kimi-k2"
-    KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
-    ZAI_GLM_4_32B = "z-ai/glm-4-32b"
-    ZAI_GLM_4_5 = "z-ai/glm-4.5"
-    ZAI_GLM_4_5_AIR = "z-ai/glm-4.5-air"
-    ZAI_GLM_4_5_AIR_FREE = "z-ai/glm-4.5-air:free"
-    ZAI_GLM_4_5V = "z-ai/glm-4.5v"
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
     ZAI_GLM_4_7 = "z-ai/glm-4.7"
@@ -290,18 +285,30 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         return self.metadata.max_output_tokens
 
 
+# OpenRouter exposes Anthropic models under canonical ``anthropic/<model>``
+# slugs that drop the snapshot-date suffix Anthropic's own API uses
+# (``claude-haiku-4-5-20251001`` → ``anthropic/claude-haiku-4-5``). The
+# generic provider-prefix strip in ``_missing_`` can't reverse the date
+# truncation, so map the OpenRouter slugs to ``LlmModel`` members here.
+# Only models whose canonical enum value carries a ``-YYYYMMDD`` snapshot
+# suffix need entries; values without a snapshot (4.6/4.7+) are already
+# covered by the prefix-strip path alone. Stored as ``LlmModel`` instances
+# (not strings) so a rename or snapshot rotation on the enum follows the
+# alias automatically — a stale entry becomes a load-time ``AttributeError``
+# rather than a silent ``_missing_`` miss at runtime.
+_OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
+    "anthropic/claude-haiku-4-5": LlmModel.CLAUDE_4_5_HAIKU,
+    "anthropic/claude-opus-4-5": LlmModel.CLAUDE_4_5_OPUS,
+    "anthropic/claude-sonnet-4-5": LlmModel.CLAUDE_4_5_SONNET,
+}
+
+
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
     LlmModel.O3_MINI: ModelMetadata(
         "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
     ),  # o3-mini-2025-01-31
-    LlmModel.O1: ModelMetadata(
-        "openai", 200000, 100000, "O1", "OpenAI", "OpenAI", 3
-    ),  # o1-2024-12-17
-    LlmModel.O1_MINI: ModelMetadata(
-        "openai", 128000, 65536, "O1 Mini", "OpenAI", "OpenAI", 2
-    ),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5_2: ModelMetadata(
         "openai", 400000, 128000, "GPT-5.2", "OpenAI", "OpenAI", 3
@@ -333,19 +340,7 @@ MODEL_METADATA = {
     LlmModel.GPT4O: ModelMetadata(
         "openai", 128000, 16384, "GPT-4o", "OpenAI", "OpenAI", 2
     ),  # gpt-4o-2024-08-06
-    LlmModel.GPT4_TURBO: ModelMetadata(
-        "openai", 128000, 4096, "GPT-4 Turbo", "OpenAI", "OpenAI", 3
-    ),  # gpt-4-turbo-2024-04-09
     # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000, "Claude Opus 4.1", "Anthropic", "Anthropic", 3
-    ),  # claude-opus-4-1-20250805
-    LlmModel.CLAUDE_4_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000, "Claude Opus 4", "Anthropic", "Anthropic", 3
-    ),  # claude-4-opus-20250514
-    LlmModel.CLAUDE_4_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000, "Claude Sonnet 4", "Anthropic", "Anthropic", 2
-    ),  # claude-4-sonnet-20250514
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
@@ -364,30 +359,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_5_HAIKU: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Haiku 4.5", "Anthropic", "Anthropic", 2
     ),  # claude-haiku-4-5-20251001
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
-        "anthropic", 200000, 4096, "Claude 3 Haiku", "Anthropic", "Anthropic", 1
-    ),  # claude-3-haiku-20240307
     # https://docs.aimlapi.com/api-overview/model-database/text-models
-    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata(
-        "aiml_api", 32000, 8000, "Qwen 2.5 72B Instruct Turbo", "AI/ML", "Qwen", 1
-    ),
-    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata(
-        "aiml_api",
-        128000,
-        40000,
-        "Llama 3.1 Nemotron 70B Instruct",
-        "AI/ML",
-        "Nvidia",
-        1,
-    ),
     LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata(
         "aiml_api", 128000, None, "Llama 3.3 70B Instruct Turbo", "AI/ML", "Meta", 1
-    ),
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata(
-        "aiml_api", 131000, 2000, "Llama 3.1 70B Instruct Turbo", "AI/ML", "Meta", 1
-    ),
-    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata(
-        "aiml_api", 128000, None, "Llama 3.2 3B Instruct Turbo", "AI/ML", "Meta", 1
     ),
     # https://console.groq.com/docs/models
     LlmModel.LLAMA3_3_70B: ModelMetadata(
@@ -413,15 +387,6 @@ MODEL_METADATA = {
         "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
     ),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO_PREVIEW: ModelMetadata(
-        "open_router",
-        1048576,
-        65536,
-        "Gemini 2.5 Pro Preview 03.25",
-        "OpenRouter",
-        "Google",
-        2,
-    ),
     LlmModel.GEMINI_2_5_PRO: ModelMetadata(
         "open_router",
         1048576,
@@ -464,11 +429,11 @@ MODEL_METADATA = {
         "Google",
         1,
     ),
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
+    LlmModel.GEMINI_2_5_FLASH_LITE: ModelMetadata(
         "open_router",
         1048576,
         65535,
-        "Gemini 2.5 Flash Lite Preview 06.17",
+        "Gemini 2.5 Flash Lite",
         "OpenRouter",
         "Google",
         1,
@@ -481,9 +446,6 @@ MODEL_METADATA = {
         "OpenRouter",
         "Google",
         1,
-    ),
-    LlmModel.MISTRAL_NEMO: ModelMetadata(
-        "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
     ),
     LlmModel.MISTRAL_LARGE_3: ModelMetadata(
         "open_router",
@@ -520,12 +482,6 @@ MODEL_METADATA = {
         "OpenRouter",
         "Mistral AI",
         1,
-    ),
-    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
-        "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
-    ),
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata(
-        "open_router", 128000, 4096, "Command R Plus 08.2024", "OpenRouter", "Cohere", 2
     ),
     LlmModel.COHERE_COMMAND_A_03_2025: ModelMetadata(
         "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
@@ -620,9 +576,6 @@ MODEL_METADATA = {
     LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata(
         "open_router", 300000, 5120, "Nova Pro V1", "OpenRouter", "Amazon", 1
     ),
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
-        "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
-    ),
     LlmModel.MICROSOFT_PHI_4: ModelMetadata(
         "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
     ),
@@ -668,12 +621,6 @@ MODEL_METADATA = {
     LlmModel.GROK_CODE_FAST_1: ModelMetadata(
         "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
     ),
-    LlmModel.KIMI_K2: ModelMetadata(
-        "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
-    ),
-    LlmModel.KIMI_K2_0905: ModelMetadata(
-        "open_router", 262144, 262144, "Kimi K2 0905", "OpenRouter", "Moonshot AI", 1
-    ),
     LlmModel.KIMI_K2_5: ModelMetadata(
         "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
     ),
@@ -702,21 +649,6 @@ MODEL_METADATA = {
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
     ),
     # https://openrouter.ai/models?q=z-ai
-    LlmModel.ZAI_GLM_4_32B: ModelMetadata(
-        "open_router", 128000, 128000, "GLM 4 32B", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5: ModelMetadata(
-        "open_router", 131072, 98304, "GLM 4.5", "OpenRouter", "Z.ai", 2
-    ),
-    LlmModel.ZAI_GLM_4_5_AIR: ModelMetadata(
-        "open_router", 131072, 98304, "GLM 4.5 Air", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5_AIR_FREE: ModelMetadata(
-        "open_router", 131072, 96000, "GLM 4.5 Air (Free)", "OpenRouter", "Z.ai", 1
-    ),
-    LlmModel.ZAI_GLM_4_5V: ModelMetadata(
-        "open_router", 65536, 16384, "GLM 4.5V", "OpenRouter", "Z.ai", 2
-    ),
     LlmModel.ZAI_GLM_4_6: ModelMetadata(
         "open_router", 204800, 204800, "GLM 4.6", "OpenRouter", "Z.ai", 1
     ),
@@ -783,6 +715,42 @@ MODEL_METADATA = {
 }
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
+
+# Family-aware mapping for legacy model values that have been retired from the
+# `LlmModel` enum. Used by both the Prisma migration that rewrites stored graph
+# definitions and by the boot-time safety net (`migrate_llm_models` in
+# backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
+# the global GPT default. Keep this in sync with
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+LEGACY_MODEL_MAPPINGS: dict[str, LlmModel] = {
+    "claude-3-haiku-20240307": LlmModel.CLAUDE_4_5_HAIKU,
+    "claude-opus-4-20250514": LlmModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-20250514": LlmModel.CLAUDE_4_6_SONNET,
+    "claude-opus-4-1-20250805": LlmModel.CLAUDE_4_7_OPUS,
+    "gpt-4-turbo": LlmModel.GPT41,
+    "o1": LlmModel.O3,
+    "o1-mini": LlmModel.O3_MINI,
+    "google/gemini-2.5-pro-preview-03-25": LlmModel.GEMINI_2_5_PRO,
+    "google/gemini-2.5-flash-lite-preview-06-17": LlmModel.GEMINI_2_5_FLASH,
+    "cohere/command-r-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
+    "cohere/command-r-plus-08-2024": LlmModel.COHERE_COMMAND_A_03_2025,
+    "mistralai/mistral-nemo": LlmModel.MISTRAL_SMALL_3_2,
+    "microsoft/wizardlm-2-8x22b": LlmModel.MICROSOFT_PHI_4,
+    "moonshotai/kimi-k2": LlmModel.KIMI_K2_6,
+    "moonshotai/kimi-k2-0905": LlmModel.KIMI_K2_6,
+    "z-ai/glm-4-32b": LlmModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5": LlmModel.ZAI_GLM_4_6,
+    "z-ai/glm-4.5-air": LlmModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5-air:free": LlmModel.ZAI_GLM_4_7_FLASH,
+    "z-ai/glm-4.5v": LlmModel.ZAI_GLM_4_6V,
+    # AI/ML API stragglers — no direct same-family successor on AI/ML's current
+    # catalogue, so they all map to the closest open-weight Meta/Llama option
+    # that AI/ML still serves.
+    "Qwen/Qwen2.5-72B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+    "nvidia/llama-3.1-nemotron-70b-instruct": LlmModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+    "meta-llama/Llama-3.2-3B-Instruct-Turbo": LlmModel.AIML_API_LLAMA3_3_70B,
+}
 
 for model in LlmModel:
     if model not in MODEL_METADATA:

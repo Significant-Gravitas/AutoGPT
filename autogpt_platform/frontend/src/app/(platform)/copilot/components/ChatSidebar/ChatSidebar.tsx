@@ -1,13 +1,12 @@
 "use client";
 import {
-  getGetV2ListSessionsQueryKey,
   getV2GetSession,
-  useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,44 +22,56 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  CheckCircle,
   CircleNotch,
-  DownloadSimpleIcon,
   DotsThree,
-  HourglassIcon,
+  DownloadSimpleIcon,
+  MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
   PlusIcon,
+  ShareNetworkIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
+import { ShareChatDialog } from "../../sharing/ShareChatDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
+import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
-import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
-import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
+import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
+import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
+import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
+import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const { completedSessionIDs, clearCompletedSession, setSearchOpen } =
+    useCopilotUIStore();
+  const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
   );
 
   const queryClient = useQueryClient();
 
-  const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
+  const {
+    sessions,
+    isLoading: isLoadingSessions,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  } = useSessionList();
 
   const {
     sessionToDelete,
@@ -75,14 +86,16 @@ export function ChatSidebar() {
   const [exportingSessionIds, setExportingSessionIds] = useState<Set<string>>(
     new Set(),
   );
+  const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
+  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: getGetV2ListSessionsQueryKey(),
+          queryKey: SESSION_LIST_QUERY_KEY,
         });
         setEditingSessionId(null);
       },
@@ -109,7 +122,7 @@ export function ChatSidebar() {
   // Refetch session list when active session changes
   useEffect(() => {
     queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey(),
+      queryKey: SESSION_LIST_QUERY_KEY,
     });
   }, [sessionId, queryClient]);
 
@@ -121,8 +134,19 @@ export function ChatSidebar() {
     document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+  useEffect(() => {
+    if (!isChatSearchEnabled) return;
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if (event.repeat) return;
+      if (event.key.toLocaleLowerCase() !== "k") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      setSearchOpen(!useCopilotUIStore.getState().isSearchOpen);
+    }
+
+    document.addEventListener("keydown", handleSearchShortcut);
+    return () => document.removeEventListener("keydown", handleSearchShortcut);
+  }, [isChatSearchEnabled, setSearchOpen]);
 
   function handleNewChat() {
     setSessionId(null);
@@ -130,6 +154,7 @@ export function ChatSidebar() {
 
   function handleSelectSession(id: string) {
     setSessionId(id);
+    setSearchOpen(false);
   }
 
   function handleRenameClick(
@@ -191,31 +216,6 @@ export function ChatSidebar() {
     }
   }
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-
-    const day = date.getDate();
-    const ordinal =
-      day % 10 === 1 && day !== 11
-        ? "st"
-        : day % 10 === 2 && day !== 12
-          ? "nd"
-          : day % 10 === 3 && day !== 13
-            ? "rd"
-            : "th";
-    const month = date.toLocaleDateString("en-US", { month: "short" });
-    const year = date.getFullYear();
-
-    return `${day}${ordinal} ${month} ${year}`;
-  }
-
   return (
     <>
       <Sidebar
@@ -251,6 +251,18 @@ export function ChatSidebar() {
                     <span className="sr-only">New Chat</span>
                   </Button>
                 ) : null}
+                {isChatSearchEnabled ? (
+                  <ShadcnButton
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Search chats"
+                    onClick={() => setSearchOpen(true)}
+                    className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                  >
+                    <MagnifyingGlassIcon className="!size-5" />
+                  </ShadcnButton>
+                ) : null}
               </div>
             </motion.div>
           </SidebarHeader>
@@ -268,6 +280,18 @@ export function ChatSidebar() {
                   Your chats
                 </Text>
                 <div className="flex items-center">
+                  {isChatSearchEnabled ? (
+                    <ShadcnButton
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Search chats"
+                      onClick={() => setSearchOpen(true)}
+                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    >
+                      <MagnifyingGlassIcon className="!size-5" />
+                    </ShadcnButton>
+                  ) : null}
                   <UsagePopover />
                   <NotificationToggle />
                   <SidebarTrigger />
@@ -351,59 +375,28 @@ export function ChatSidebar() {
                             : "pr-10",
                         )}
                       >
-                        <div className="flex min-w-0 max-w-full items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <Text
-                              variant="body"
-                              className={cn(
-                                "truncate font-normal",
-                                session.id === sessionId
-                                  ? "text-zinc-600"
-                                  : "text-zinc-800",
-                              )}
-                            >
-                              <AnimatePresence mode="wait" initial={false}>
-                                <motion.span
-                                  key={session.title || "untitled"}
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: -4 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="block truncate"
-                                >
-                                  {session.title || "Untitled chat"}
-                                </motion.span>
-                              </AnimatePresence>
-                            </Text>
-                            <Text variant="small" className="text-neutral-400">
-                              {formatDate(session.updated_at)}
-                            </Text>
-                          </div>
-                          {session.chat_status === "running" && (
-                            <span
-                              aria-label="Session running"
-                              title="Running"
-                              data-testid="session-status-running"
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center"
-                            >
-                              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                            </span>
-                          )}
-                          {session.chat_status === "queued" && (
-                            <span
-                              aria-label="Session queued"
-                              title="Queued"
-                              data-testid="session-status-queued"
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-purple-600"
-                            >
-                              <HourglassIcon
-                                className="h-3.5 w-3.5"
-                                weight="bold"
-                              />
-                            </span>
-                          )}
-                          {session.chat_status !== "running" &&
-                            session.is_processing &&
+                        <ChatSessionBlock
+                          title={session.title}
+                          titleContent={
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.span
+                                key={session.title || "untitled"}
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                transition={{ duration: 0.2 }}
+                                className="block truncate"
+                              >
+                                {session.title || "Untitled chat"}
+                              </motion.span>
+                            </AnimatePresence>
+                          }
+                          updatedAt={session.updated_at}
+                          sourcePlatform={session.source_platform}
+                          isActive={session.id === sessionId}
+                          chatStatus={session.chat_status}
+                          showProcessing={
+                            !!session.is_processing &&
                             shouldShowSessionProcessingIndicator({
                               sessionId: session.id,
                               currentSessionId: sessionId,
@@ -412,20 +405,13 @@ export function ChatSidebar() {
                                 session.id,
                               ),
                               needsReload: !!sessionNeedsReload[session.id],
-                            }) && (
-                              <CircleNotch
-                                className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-                                weight="bold"
-                              />
-                            )}
-                          {completedSessionIDs.has(session.id) &&
-                            session.id !== sessionId && (
-                              <CheckCircle
-                                className="h-4 w-4 shrink-0 text-green-500"
-                                weight="fill"
-                              />
-                            )}
-                        </div>
+                            })
+                          }
+                          showCompleted={
+                            completedSessionIDs.has(session.id) &&
+                            session.id !== sessionId
+                          }
+                        />
                       </button>
                     )}
                     {exportingSessionIds.has(session.id) && (
@@ -482,6 +468,17 @@ export function ChatSidebar() {
                               ? "Exporting…"
                               : "Export chat"}
                           </DropdownMenuItem>
+                          {chatSharingEnabled && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSharingSessionId(session.id);
+                              }}
+                            >
+                              <ShareNetworkIcon className="mr-2 h-4 w-4" />
+                              Share chat
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={(e) =>
                               handleDeleteClick(e, session.id, session.title)
@@ -498,6 +495,18 @@ export function ChatSidebar() {
                   </div>
                 ))
               )}
+              {hasMore && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={() => loadMore()}
+                  loading={isLoadingMore}
+                  disabled={isLoadingMore}
+                  className="mt-2 w-full"
+                >
+                  {isLoadingMore ? "Loading…" : "Load older chats"}
+                </Button>
+              )}
             </motion.div>
           )}
         </SidebarContent>
@@ -509,6 +518,24 @@ export function ChatSidebar() {
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />
+
+      {sharingSessionId && (
+        <ShareChatDialog
+          sessionId={sharingSessionId}
+          open={true}
+          onOpenChange={(next) => {
+            if (!next) setSharingSessionId(null);
+          }}
+        />
+      )}
+
+      {isChatSearchEnabled ? (
+        <ChatSearchModal
+          sessions={sessions}
+          currentSessionId={sessionId}
+          onSelectSession={handleSelectSession}
+        />
+      ) : null}
     </>
   );
 }
