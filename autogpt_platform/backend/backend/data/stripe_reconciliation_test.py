@@ -8,11 +8,34 @@ import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data.stripe_reconciliation import (
+    _DISCORD_MAX_CHARS,
     ReconciliationSummary,
+    _chunk_alert,
     _collect_status_page,
     _record_subscription,
     reconcile_all_stripe_tiers,
 )
+
+
+def test_chunk_alert_delivers_full_list_without_truncation() -> None:
+    """A large reconcile must deliver EVERY affected user across as many Discord
+    messages as needed — never truncate — staying within the message-size cap."""
+    lines = [f"- `user_{i:04d}`  PRO → NO_TIER (downgrade)" for i in range(300)]
+    chunks = _chunk_alert("HEADER", lines)
+    assert len(chunks) > 1  # 300 lines exceed a single Discord message
+    joined = "\n".join(chunks)
+    for i in range(300):
+        assert f"user_{i:04d}" in joined  # no user dropped
+    # +40 char allowance for the appended "(part i/N)" marker
+    assert all(len(c) <= _DISCORD_MAX_CHARS + 40 for c in chunks)
+    assert "(part 1/" in chunks[0]
+    assert chunks[0].startswith("HEADER")
+
+
+def test_chunk_alert_single_message_has_no_part_marker() -> None:
+    chunks = _chunk_alert("HEADER", ["- `u1` PRO → NO_TIER (downgrade)"])
+    assert len(chunks) == 1
+    assert "part" not in chunks[0]
 
 
 class _SubDict(dict):
@@ -118,11 +141,14 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert len(summary.discrepancies) == 2
     mock_alert.assert_awaited_once()
     alert_msg = mock_alert.await_args.args[0]
+    # Count header up front.
     assert "reconciled 2 account" in alert_msg
     assert "1 upgraded" in alert_msg and "1 downgraded" in alert_msg
-    # The single system alert lists the affected user IDs.
-    assert "User IDs:" in alert_msg
+    # Full affected-user list at the end, each with its tier change.
+    assert "Affected users:" in alert_msg
     assert "u_up" in alert_msg and "u_down" in alert_msg
+    assert "NO_TIER → PRO (upgrade)" in alert_msg
+    assert "PRO → NO_TIER (downgrade)" in alert_msg
 
 
 @pytest.mark.asyncio
