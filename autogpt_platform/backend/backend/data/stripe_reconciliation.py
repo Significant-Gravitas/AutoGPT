@@ -29,11 +29,6 @@ from backend.data.credit import (
 
 logger = logging.getLogger(__name__)
 
-# Discord caps a message at 2000 chars; leave headroom for the chunk marker so
-# the FULL affected-user list is delivered (split across messages if needed)
-# rather than truncated.
-_DISCORD_MAX_CHARS = 1800
-
 # Bound the Stripe pagination so a runaway/unexpected dataset can't loop forever.
 # At 100 subs/page this caps a single sweep at 500k subscriptions; if it's ever
 # hit the sweep logs and stops rather than silently truncating without notice.
@@ -108,10 +103,11 @@ async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
 
     A non-empty sweep means Stripe webhooks were dropped or missed — a payments-
     integrity signal, not a routine correction. ONE aggregate ops notification:
-    a count header up front (how many reconciled, up vs down), then the FULL
-    affected-user list at the end — each line ``user_id  from_tier → to_tier
-    (direction)`` — chunked to respect Discord's message-size limit. Discord is
-    the alert surface; this path logs at WARNING and never raises to Sentry.
+    a count header (how many reconciled, up vs down) followed by the FULL
+    affected-user list — each line ``user_id  from_tier → to_tier (direction)``.
+    Sent as a single message; ``SendDiscordMessageBlock`` splits anything over
+    Discord's 2000-char limit on its own. Discord is the alert surface; this path
+    logs at WARNING and never raises to Sentry.
     """
     n = len(summary.discrepancies)
     logger.warning(
@@ -122,41 +118,16 @@ async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
         summary.upgrades,
         summary.downgrades,
     )
-    header = (
+    user_lines = "\n".join(
+        f"- `{d.user_id}`  {d.previous_tier.value} → {d.new_tier.value} ({d.direction})"
+        for d in summary.discrepancies
+    )
+    await alert_tier_reconciliation_discrepancy(
         f"🔁 **Stripe tier reconciliation: reconciled {n} account(s)** — "
         f"{summary.upgrades} upgraded, {summary.downgrades} downgraded.\n"
         f"Each means a Stripe webhook was likely missed — investigate the webhook "
-        f"pipeline; steady state should be ZERO.\nAffected users:"
+        f"pipeline; steady state should be ZERO.\nAffected users:\n{user_lines}"
     )
-    user_lines = [
-        f"- `{d.user_id}`  {d.previous_tier.value} → {d.new_tier.value} ({d.direction})"
-        for d in summary.discrepancies
-    ]
-    for message in _chunk_alert(header, user_lines):
-        await alert_tier_reconciliation_discrepancy(message)
-
-
-def _chunk_alert(header: str, lines: list[str]) -> list[str]:
-    """Pack ``header`` + the full ``lines`` list into Discord-sized messages.
-
-    The header leads the first message; lines are appended until the next would
-    exceed :data:`_DISCORD_MAX_CHARS`, then a new message starts. The full list
-    is always delivered (no truncation); multi-message runs are tagged
-    ``(part i/N)``.
-    """
-    chunks: list[str] = []
-    current = header
-    for line in lines:
-        if len(current) + 1 + len(line) > _DISCORD_MAX_CHARS:
-            chunks.append(current)
-            current = line
-        else:
-            current = f"{current}\n{line}"
-    chunks.append(current)
-    if len(chunks) == 1:
-        return chunks
-    total = len(chunks)
-    return [f"{c}\n_(part {i}/{total})_" for i, c in enumerate(chunks, 1)]
 
 
 async def _reconcile_one(
