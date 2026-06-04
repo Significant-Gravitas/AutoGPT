@@ -70,6 +70,21 @@ class _SearchCacheEntry:
     total_items: dict[FilterType, int]
 
 
+@dataclass(frozen=True)
+class _BlockIndexEntry:
+    block_info: BlockInfo
+    normalized_name: str  # split_camelcase(name).lower(); query-path sort_key
+    name_sort_key: str  # block_info.name.lower(); no-query-path sort_key
+    searchable_text: str
+    is_integration: bool
+    has_llm_model: bool
+
+
+@dataclass(frozen=True)
+class _BlockSearchIndex:
+    entries: list[_BlockIndexEntry]
+
+
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
     categories: dict[BlockCategory, BlockCategoryResponse] = {}
 
@@ -375,46 +390,21 @@ def _collect_block_results(
 
     All blocks get BLOCK_SCORE_BOOST to prioritize them over marketplace agents.
     """
-    results: list[_ScoredItem] = []
-    block_count = 0
-    integration_count = 0
-
     if not include_blocks and not include_integrations:
-        return results, block_count, integration_count
+        return [], 0, 0
 
-    for block_type in load_all_blocks().values():
-        block: AnyBlockSchema = block_type()
-        if block.disabled:
-            continue
-
-        # Skip excluded blocks
-        if block.id in EXCLUDED_BLOCK_IDS:
-            continue
-
-        block_info = block.get_info()
-        credentials = list(block.input_schema.get_credentials_fields().values())
-        is_integration = len(credentials) > 0
-
-        if is_integration and not include_integrations:
-            continue
-        if not is_integration and not include_blocks:
-            continue
-
-        filter_type: FilterType = "integrations" if is_integration else "blocks"
-        if is_integration:
-            integration_count += 1
-        else:
-            block_count += 1
-
-        results.append(
-            _ScoredItem(
-                item=block_info,
-                filter_type=filter_type,
-                score=BLOCK_SCORE_BOOST,
-                sort_key=block_info.name.lower(),
-            )
+    results = [
+        _ScoredItem(
+            item=entry.block_info,
+            filter_type="integrations" if entry.is_integration else "blocks",
+            score=BLOCK_SCORE_BOOST,
+            sort_key=entry.name_sort_key,
         )
-
+        for entry in _get_block_search_index().entries
+        if _entry_included(entry, include_blocks, include_integrations)
+    ]
+    block_count = sum(1 for r in results if r.filter_type == "blocks")
+    integration_count = sum(1 for r in results if r.filter_type == "integrations")
     return results, block_count, integration_count
 
 
@@ -425,59 +415,85 @@ def _text_search_blocks(
     include_integrations: bool,
 ) -> tuple[list[_ScoredItem], int, int]:
     """
-    Search blocks using in-memory text matching over the block registry.
-
-    All blocks are already loaded in memory, so this is fast and reliable
-    regardless of whether OpenAI embeddings are available.
+    Search blocks using in-memory text matching over the cached block index.
 
     Scoring:
         - Base: text relevance via _score_primary_fields, plus BLOCK_SCORE_BOOST
           to prioritize blocks over marketplace agents in combined results
         - +20 if the block has an LlmModel field and the query matches an LLM model name
     """
-    results: list[_ScoredItem] = []
-
     if not include_blocks and not include_integrations:
-        return results, 0, 0
+        return [], 0, 0
 
     normalized_query = query.strip().lower()
-
-    for block_type in load_all_blocks().values():
-        # Instantiate each block once and reuse it for filtering, scoring, and
-        # (only when it matches) building its BlockInfo.
-        block: AnyBlockSchema = block_type()
-        if block.disabled or block.id in EXCLUDED_BLOCK_IDS:
-            continue
-
-        is_integration = bool(block.input_schema.get_credentials_fields())
-        if is_integration and not include_integrations:
-            continue
-        if not is_integration and not include_blocks:
-            continue
-
-        name = split_camelcase(block.name).lower()
-        score = _score_primary_fields(
-            name, _block_searchable_text(block), normalized_query
-        )
-        # Add LLM model match bonus
-        if _matches_llm_model(block.input_schema, normalized_query):
-            score += 20
-
-        if score < MIN_SCORE_FOR_FILTERED_RESULTS:
-            continue
-
-        results.append(
-            _ScoredItem(
-                item=block.get_info(),
-                filter_type="integrations" if is_integration else "blocks",
-                score=score + BLOCK_SCORE_BOOST,
-                sort_key=name,
-            )
-        )
-
+    results = [
+        scored
+        for entry in _get_block_search_index().entries
+        if _entry_included(entry, include_blocks, include_integrations)
+        if (scored := _score_block_entry(entry, normalized_query)) is not None
+    ]
     block_count = sum(1 for r in results if r.filter_type == "blocks")
     integration_count = sum(1 for r in results if r.filter_type == "integrations")
     return results, block_count, integration_count
+
+
+def _score_block_entry(
+    entry: _BlockIndexEntry, normalized_query: str
+) -> _ScoredItem | None:
+    score = _score_primary_fields(
+        entry.normalized_name, entry.searchable_text, normalized_query
+    )
+    # Add LLM model match bonus
+    if entry.has_llm_model and _query_matches_llm_model(normalized_query):
+        score += 20
+
+    if score < MIN_SCORE_FOR_FILTERED_RESULTS:
+        return None
+
+    return _ScoredItem(
+        item=entry.block_info,
+        filter_type="integrations" if entry.is_integration else "blocks",
+        score=score + BLOCK_SCORE_BOOST,
+        sort_key=entry.normalized_name,
+    )
+
+
+@cached(ttl_seconds=3600)
+def _get_block_search_index() -> _BlockSearchIndex:
+    """
+    Build a lightweight, in-memory index of all searchable blocks once per hour.
+
+    Each block is instantiated a single time here; search requests then score
+    against the precomputed fields without re-instantiating blocks or rebuilding
+    BlockInfo per request.
+    """
+    blocks = (block_type() for block_type in load_all_blocks().values())
+    entries = [
+        _build_block_index_entry(block)
+        for block in blocks
+        if not block.disabled and block.id not in EXCLUDED_BLOCK_IDS
+    ]
+    return _BlockSearchIndex(entries=entries)
+
+
+def _build_block_index_entry(block: AnyBlockSchema) -> _BlockIndexEntry:
+    block_info = block.get_info()
+    return _BlockIndexEntry(
+        block_info=block_info,
+        normalized_name=split_camelcase(block_info.name).lower(),
+        name_sort_key=block_info.name.lower(),
+        searchable_text=_block_searchable_text(block),
+        is_integration=bool(block.input_schema.get_credentials_fields()),
+        has_llm_model=_schema_has_llm_model(block.input_schema),
+    )
+
+
+def _entry_included(
+    entry: _BlockIndexEntry, include_blocks: bool, include_integrations: bool
+) -> bool:
+    if entry.is_integration:
+        return include_integrations
+    return include_blocks
 
 
 def _block_searchable_text(block: AnyBlockSchema) -> str:
@@ -650,13 +666,15 @@ def _contains_type(annotation: Any, target: type) -> bool:
     return any(_contains_type(arg, target) for arg in get_args(annotation))
 
 
-def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
-    for field in schema_cls.model_fields.values():
-        if _contains_type(field.annotation, LlmModel):
-            # Check if query matches any value in llm_models
-            if any(query in name for name in llm_models):
-                return True
-    return False
+def _schema_has_llm_model(schema_cls: type[BlockSchema]) -> bool:
+    return any(
+        _contains_type(field.annotation, LlmModel)
+        for field in schema_cls.model_fields.values()
+    )
+
+
+def _query_matches_llm_model(query: str) -> bool:
+    return any(query in name for name in llm_models)
 
 
 def _score_library_agent(
