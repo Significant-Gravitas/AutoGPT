@@ -234,12 +234,6 @@ class E2BDesktopCreateBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        sandbox_id: str = SchemaField(
-            description=(
-                "ID of the running desktop sandbox. Pass this to the other "
-                "E2B Desktop blocks to control or capture it."
-            )
-        )
         stream_url: str = SchemaField(
             description=(
                 "Live stream URL for the desktop. Embed as an iframe to watch and "
@@ -250,6 +244,12 @@ class E2BDesktopCreateBlock(Block):
             description=(
                 "Auth key required to view the stream (when "
                 "stream_require_auth=True). Already included in the stream_url."
+            )
+        )
+        sandbox_id: str = SchemaField(
+            description=(
+                "ID of the running desktop sandbox. Pass this to the other "
+                "E2B Desktop blocks to control or capture it."
             )
         )
         error: str = SchemaField(description="Error message if creation failed.")
@@ -278,9 +278,9 @@ class E2BDesktopCreateBlock(Block):
                 "smooth_stream": True,
             },
             test_output=[
-                ("sandbox_id", "mock-sandbox-id"),
                 ("stream_url", "https://mock-stream.e2b.dev/stream?auth=mock-key"),
                 ("auth_key", "mock-auth-key"),
+                ("sandbox_id", "mock-sandbox-id"),
             ],
             test_mock={
                 "create_desktop": lambda *args, **kwargs: (
@@ -356,9 +356,9 @@ class E2BDesktopCreateBlock(Block):
                 dpi=input_data.dpi,
                 smooth_stream=input_data.smooth_stream,
             )
-            yield "sandbox_id", sandbox_id
             yield "stream_url", stream_url
             yield "auth_key", auth_key
+            yield "sandbox_id", sandbox_id
         except Exception as e:
             yield "error", str(e)
 

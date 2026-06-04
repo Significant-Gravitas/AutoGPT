@@ -50,9 +50,9 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 #### Outputs
 | Output | Description |
 |--------|-------------|
-| sandbox\_id | Unique ID of the running sandbox — pass to all other blocks |
-| stream\_url | Live stream URL — embed as an iframe to watch and control the desktop (mouse + keyboard) in real time |
+| stream\_url | Live stream URL — rendered inline as an interactive iframe with a full-screen button (press Esc to exit); embed it to watch and control the desktop (mouse + keyboard) in real time |
 | auth\_key | Authentication key required to view the stream (already included in the stream\_url) |
+| sandbox\_id | Unique ID of the running sandbox — pass to all other blocks |
 | error | Error message if sandbox creation failed |
 
 ---

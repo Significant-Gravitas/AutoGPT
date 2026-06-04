@@ -37,6 +37,7 @@ export const ContentRenderer: React.FC<{
     renderer?.name === "WorkspaceFileRenderer" ||
     renderer?.name === "AudioRenderer" ||
     renderer?.name === "LinkRenderer" ||
+    renderer?.name === "StreamRenderer" ||
     !shortContent
   ) {
     return (
