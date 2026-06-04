@@ -16331,6 +16331,8 @@
           "schedule_deleted",
           "schedule_created",
           "agent_trigger_list",
+          "trigger_setup",
+          "trigger_credentials_required",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",

@@ -52,6 +52,8 @@ class ResponseType(str, Enum):
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
+    TRIGGER_SETUP = "trigger_setup"
+    TRIGGER_CREDENTIALS_REQUIRED = "trigger_credentials_required"
 
     # MCP
     MCP_GUIDE = "mcp_guide"

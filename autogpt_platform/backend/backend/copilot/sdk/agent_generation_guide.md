@@ -361,6 +361,41 @@ A minimal agent with input, processing, and output:
   input_default: {"name": "summary", "title": "Summary"},
   input: "value" linked from Node 2's output)
 
+### Setting Up Webhook Triggers
+
+A **webhook trigger** runs an agent automatically when an external HTTP event
+arrives. The agent must contain a webhook trigger block (surfaced by
+`find_block(..., for_agent_generation=true)`); such an agent can only be
+triggered, not run manually.
+
+**To set up a webhook trigger:** call `setup_agent_webhook_trigger` with the
+agent's `library_agent_id` and the trigger block's `trigger_config` (the trigger
+block's configuration inputs, from the agent's `trigger_setup_info.config_schema`;
+usually empty for a generic webhook). It creates a triggered preset.
+
+**Credentials must be chosen explicitly.** For provider webhooks (e.g. GitHub)
+the webhook is registered under a specific account, so always ask the user which
+connected account to use — never assume or auto-pick, even if only one exists.
+Call `setup_agent_webhook_trigger` without `credentials` first: it returns the
+available accounts per credential field. Ask the user, then call again with
+`credentials={<field_name>: <credential_id>}`. If a field has no accounts, have
+the user connect one via `connect_integration` first.
+
+**Two kinds of webhook:**
+
+- **Manual-setup (generic) webhooks:** `setup_agent_webhook_trigger` returns a `webhook_url`.
+  Give the user this **exact** URL to paste into their external service (e.g.
+  Typeform, Zapier). Never guess, modify, or reconstruct the URL or its host.
+- **Provider webhooks (e.g. GitHub):** registered automatically once the account
+  is chosen — no URL handoff is needed.
+
+To retrieve a webhook URL later, use `list_agent_triggers` — it returns the
+`webhook_url` for each webhook trigger.
+
+**Manual UI fallback** (if the user prefers to do it themselves): Library → open
+the agent → "+ New Task" → enter config → "Set up Trigger" → "Triggers" tab →
+copy the webhook URL. The URL is **not** shown in the Builder.
+
 ### Building Trigger Agents
 
 A **trigger agent** is a scheduled agent that watches for changes in an
@@ -411,7 +446,9 @@ triggers. No explicit linking is needed.
   all triggers configured for that agent — both trigger agents
   (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
   before adding a new trigger (to avoid duplicates) or before deleting
-  one (to find the right ID).
+  one (to find the right ID). For `kind="webhook"` triggers it also
+  returns the `webhook_url` — give that to the user verbatim if they need
+  to (re)configure their external service.
 
 **Managing schedules:**
 

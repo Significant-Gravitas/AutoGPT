@@ -44,6 +44,11 @@ class AgentTriggerInfo(BaseModel):
     # Webhook-trigger only.
     is_active: bool | None = None
     webhook_id: str | None = None
+    # Ingress URL for manual-setup webhooks — give this to the user verbatim
+    # so they can wire it up in their external service. None for trigger agents
+    # and for webhooks without an attached URL.
+    webhook_url: str | None = None
+    provider: str | None = None
 
 
 class AgentTriggerListResponse(ToolResponseBase):
@@ -161,6 +166,8 @@ class ListAgentTriggersTool(BaseTool):
                 description=p.description or "",
                 is_active=p.is_active,
                 webhook_id=p.webhook_id,
+                webhook_url=p.webhook.url if p.webhook else None,
+                provider=p.webhook.provider if p.webhook else None,
             )
             for p in webhook_presets
         ]

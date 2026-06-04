@@ -70,7 +70,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the require_approval gate, and the "STOP before building" caveat the
 # model needs to halt for user approval instead of rushing into
 # create_agent.
-_CHAR_BUDGET = 40_500
+# Bumped 40500 -> 42000 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+_CHAR_BUDGET = 42_000
 
 
 @pytest.fixture(scope="module")

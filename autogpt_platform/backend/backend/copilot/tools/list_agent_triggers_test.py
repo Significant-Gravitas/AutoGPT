@@ -1,0 +1,75 @@
+"""Tests for ListAgentTriggersTool — focuses on webhook URL exposure."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.tools.list_agent_triggers import (
+    AgentTriggerListResponse,
+    ListAgentTriggersTool,
+)
+from backend.copilot.tools.models import ErrorResponse
+
+from ._test_data import make_session
+
+_USER = "test-user-triggers-list"
+_PATH = "backend.copilot.tools.list_agent_triggers"
+
+
+@pytest.fixture
+def tool():
+    return ListAgentTriggersTool()
+
+
+@pytest.fixture
+def session():
+    return make_session(_USER)
+
+
+def _make_webhook_preset():
+    preset = MagicMock()
+    preset.id = "preset-1"
+    preset.name = "Incoming webhook"
+    preset.description = "fires on HTTP event"
+    preset.is_active = True
+    preset.webhook_id = "wh-1"
+    preset.webhook.url = (
+        "https://backend.agpt.co/api/integrations/generic_webhook"
+        "/webhooks/wh-1/ingress"
+    )
+    preset.webhook.provider = "generic_webhook"
+    return preset
+
+
+@pytest.mark.asyncio
+async def test_list_triggers_no_auth(tool, session):
+    result = await tool._execute(user_id=None, session=session)
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "auth_required"
+
+
+@pytest.mark.asyncio
+async def test_list_triggers_exposes_webhook_url(tool, session):
+    preset_response = MagicMock()
+    preset_response.presets = [_make_webhook_preset()]
+
+    with (
+        patch(
+            f"{_PATH}.get_library_agent",
+            new=AsyncMock(return_value=MagicMock(graph_id="graph-1")),
+        ),
+        patch(f"{_PATH}.list_trigger_agents", new=AsyncMock(return_value=[])),
+        patch(f"{_PATH}.list_presets", new=AsyncMock(return_value=preset_response)),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, library_agent_id="lib-1"
+        )
+
+    assert isinstance(result, AgentTriggerListResponse)
+    assert len(result.triggers) == 1
+    trigger = result.triggers[0]
+    assert trigger.kind == "webhook"
+    assert trigger.webhook_id == "wh-1"
+    assert trigger.webhook_url and trigger.webhook_url.endswith("/ingress")
+    assert "backend.agpt.co" in trigger.webhook_url
+    assert trigger.provider == "generic_webhook"

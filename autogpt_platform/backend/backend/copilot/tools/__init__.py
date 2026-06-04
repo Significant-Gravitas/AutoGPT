@@ -48,6 +48,7 @@ from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
 from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
+from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
@@ -93,8 +94,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
     "schedule_followup": ScheduleFollowupTool(),
-    # Trigger discovery (parent agent → its triggers)
+    # Trigger management (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
+    # Webhook-trigger setup (create triggered preset + return ingress URL)
+    "setup_agent_webhook_trigger": SetupAgentWebhookTriggerTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
