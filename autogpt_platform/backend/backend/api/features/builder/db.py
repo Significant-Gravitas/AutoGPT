@@ -46,6 +46,9 @@ MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
 # Boost blocks over marketplace agents in search results
 BLOCK_SCORE_BOOST = 50.0
 
+# Bonus when a block exposes an LlmModel field and the query names an LLM model
+LLM_MODEL_MATCH_BONUS = 20.0
+
 # Block IDs to exclude from search results
 EXCLUDED_BLOCK_IDS = frozenset(
     {
@@ -80,9 +83,8 @@ class _BlockIndexEntry:
     has_llm_model: bool
 
 
-@dataclass(frozen=True)
-class _BlockSearchIndex:
-    entries: list[_BlockIndexEntry]
+# (scored items, per-filter result counts) returned by a single search branch.
+_SearchBranchResult = tuple[list[_ScoredItem], dict[FilterType, int]]
 
 
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
@@ -286,7 +288,7 @@ async def _build_cached_search_results(
     # Run the independent sub-searches concurrently: block scoring is CPU-bound
     # (offloaded to a thread so it doesn't block the event loop), while library
     # and marketplace are independent DB queries.
-    branches: list[Awaitable[tuple[list[_ScoredItem], dict[FilterType, int]]]] = []
+    branches: list[Awaitable[_SearchBranchResult]] = []
     if include_blocks or include_integrations:
         branches.append(
             asyncio.to_thread(
@@ -325,8 +327,12 @@ def _search_blocks(
     normalized_query: str,
     include_blocks: bool,
     include_integrations: bool,
-) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
-    # Use text search when a query is present, otherwise list all blocks.
+) -> _SearchBranchResult:
+    """
+    Block/integration sub-search: text search when a query is present,
+    otherwise the full block listing. Returns the scored items and the
+    per-filter ("blocks"/"integrations") result counts.
+    """
     if normalized_query:
         results, block_total, integration_total = _text_search_blocks(
             query=search_query,
@@ -345,7 +351,7 @@ async def _search_library(
     user_id: str,
     search_query: str,
     normalized_query: str,
-) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
+) -> _SearchBranchResult:
     library_response = await library_db.list_library_agents(
         user_id=user_id,
         search_term=search_query or None,
@@ -366,7 +372,7 @@ async def _search_marketplace(
     by_creator: list[str],
     search_query: str,
     normalized_query: str,
-) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
+) -> _SearchBranchResult:
     marketplace_response = await store_db.get_store_agents(
         creators=by_creator or None,
         search_query=search_query or None,
@@ -400,7 +406,7 @@ def _collect_block_results(
             score=BLOCK_SCORE_BOOST,
             sort_key=entry.name_sort_key,
         )
-        for entry in _get_block_search_index().entries
+        for entry in _get_block_search_index()
         if _entry_included(entry, include_blocks, include_integrations)
     ]
     block_count = sum(1 for r in results if r.filter_type == "blocks")
@@ -428,7 +434,7 @@ def _text_search_blocks(
     normalized_query = query.strip().lower()
     results = [
         scored
-        for entry in _get_block_search_index().entries
+        for entry in _get_block_search_index()
         if _entry_included(entry, include_blocks, include_integrations)
         if (scored := _score_block_entry(entry, normalized_query)) is not None
     ]
@@ -445,7 +451,7 @@ def _score_block_entry(
     )
     # Add LLM model match bonus
     if entry.has_llm_model and _query_matches_llm_model(normalized_query):
-        score += 20
+        score += LLM_MODEL_MATCH_BONUS
 
     if score < MIN_SCORE_FOR_FILTERED_RESULTS:
         return None
@@ -459,7 +465,7 @@ def _score_block_entry(
 
 
 @cached(ttl_seconds=3600)
-def _get_block_search_index() -> _BlockSearchIndex:
+def _get_block_search_index() -> tuple[_BlockIndexEntry, ...]:
     """
     Build a lightweight, in-memory index of all searchable blocks once per hour.
 
@@ -473,7 +479,7 @@ def _get_block_search_index() -> _BlockSearchIndex:
         for block in blocks
         if not block.disabled and block.id not in EXCLUDED_BLOCK_IDS
     ]
-    return _BlockSearchIndex(entries=entries)
+    return tuple(entries)
 
 
 def _build_block_index_entry(block: AnyBlockSchema) -> _BlockIndexEntry:

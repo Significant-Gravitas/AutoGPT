@@ -6,6 +6,9 @@ small set of fake entries so they're deterministic and don't depend on the
 real ~400-block registry; one test exercises the real index builder.
 """
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
 import backend.api.features.builder.db as db
@@ -35,7 +38,7 @@ def _patch_index(mocker, entries: list[db._BlockIndexEntry]) -> None:
     mocker.patch.object(
         db,
         "_get_block_search_index",
-        return_value=db._BlockSearchIndex(entries=entries),
+        return_value=tuple(entries),
     )
 
 
@@ -45,7 +48,7 @@ def _patch_index(mocker, entries: list[db._BlockIndexEntry]) -> None:
 
 
 def test_score_primary_fields_regression():
-    # name == query -> +120, plus SequenceMatcher(name, query) contribution
+    # name.startswith(query) -> +90, plus SequenceMatcher(name, query) contribution
     assert (
         db._score_primary_fields("youtube transcript", "get the transcript", "youtube")
         == 120.0
@@ -177,14 +180,14 @@ def test_llm_model_bonus_adds_twenty():
 
 def test_index_excludes_disabled_and_excluded_blocks():
     db._get_block_search_index.cache_clear()
-    index = db._get_block_search_index()
+    entries = db._get_block_search_index()
     db._get_block_search_index.cache_clear()
 
-    assert len(index.entries) > 0
-    entry_ids = {entry.block_info.id for entry in index.entries}
+    assert len(entries) > 0
+    entry_ids = {entry.block_info.id for entry in entries}
     assert entry_ids.isdisjoint(db.EXCLUDED_BLOCK_IDS)
 
-    sample = index.entries[0]
+    sample = entries[0]
     assert sample.normalized_name
     assert sample.block_info.name
     assert sample.normalized_name == split_camelcase(sample.block_info.name).lower()
@@ -229,13 +232,51 @@ async def test_build_cached_search_results_merges_all_branches(mocker):
         (),
     )
 
-    names = {item.name for item in result.items}
-    assert names == {"YoutubeTranscript", "LibAgent", "StoreAgent"}
+    # Items are merged and ordered by descending score (170 > 100 > 80).
+    assert [item.name for item in result.items] == [
+        "YoutubeTranscript",
+        "LibAgent",
+        "StoreAgent",
+    ]
     assert result.total_items == {
         "blocks": 1,
         "integrations": 0,
         "marketplace_agents": 9,
         "my_agents": 3,
     }
-    assert mock_library.await_count == 1
-    assert mock_marketplace.await_count == 1
+    # Each branch is awaited exactly once with the expected arguments.
+    mock_library.assert_awaited_once_with("user-1", "youtube", "youtube")
+    mock_marketplace.assert_awaited_once_with([], "youtube", "youtube")
+
+
+def test_search_blocks_routes_query_vs_listing(mocker):
+    _patch_index(
+        mocker,
+        [
+            _entry("YoutubeTranscript", "youtube transcript", "get the transcript"),
+            _entry("WeatherForecast", "weather forecast", "current weather"),
+        ],
+    )
+
+    # Query present -> text search returns only matching blocks.
+    items, totals = db._search_blocks("youtube", "youtube", True, True)
+    assert [i.item.name for i in items] == ["YoutubeTranscript"]
+    assert totals == {"blocks": 1, "integrations": 0}
+
+    # No query -> full block listing.
+    items, totals = db._search_blocks("", "", True, True)
+    assert {i.item.name for i in items} == {"YoutubeTranscript", "WeatherForecast"}
+    assert totals == {"blocks": 2, "integrations": 0}
+
+
+def test_block_searchable_text_includes_field_descriptions():
+    block: Any = SimpleNamespace(
+        description="My Block",
+        input_schema=SimpleNamespace(
+            model_fields={
+                "keyword": SimpleNamespace(description="A searchable keyword"),
+                "plain": SimpleNamespace(description=""),  # no description -> skipped
+            }
+        ),
+    )
+    assert db._block_searchable_text(block) == "my block keyword: a searchable keyword"
