@@ -442,52 +442,56 @@ def _text_search_blocks(
 
     normalized_query = query.strip().lower()
 
-    all_results, _, _ = _collect_block_results(
-        include_blocks=include_blocks,
-        include_integrations=include_integrations,
-    )
+    for block_type in load_all_blocks().values():
+        # Instantiate each block once and reuse it for filtering, scoring, and
+        # (only when it matches) building its BlockInfo.
+        block: AnyBlockSchema = block_type()
+        if block.disabled or block.id in EXCLUDED_BLOCK_IDS:
+            continue
 
-    all_blocks = load_all_blocks()
+        is_integration = bool(block.input_schema.get_credentials_fields())
+        if is_integration and not include_integrations:
+            continue
+        if not is_integration and not include_blocks:
+            continue
 
-    for item in all_results:
-        block_info = item.item
-        assert isinstance(block_info, BlockInfo)
-        name = split_camelcase(block_info.name).lower()
-
-        # Build rich description including input field descriptions,
-        # matching the searchable text that the embedding pipeline uses
-        desc_parts = [block_info.description or ""]
-        block_cls = all_blocks.get(block_info.id)
-        if block_cls is not None:
-            block: AnyBlockSchema = block_cls()
-            desc_parts += [
-                f"{f}: {info.description}"
-                for f, info in block.input_schema.model_fields.items()
-                if info.description
-            ]
-        description = " ".join(desc_parts).lower()
-
-        score = _score_primary_fields(name, description, normalized_query)
-
+        name = split_camelcase(block.name).lower()
+        score = _score_primary_fields(
+            name, _block_searchable_text(block), normalized_query
+        )
         # Add LLM model match bonus
-        if block_cls is not None and _matches_llm_model(
-            block_cls().input_schema, normalized_query
-        ):
+        if _matches_llm_model(block.input_schema, normalized_query):
             score += 20
 
-        if score >= MIN_SCORE_FOR_FILTERED_RESULTS:
-            results.append(
-                _ScoredItem(
-                    item=block_info,
-                    filter_type=item.filter_type,
-                    score=score + BLOCK_SCORE_BOOST,
-                    sort_key=name,
-                )
+        if score < MIN_SCORE_FOR_FILTERED_RESULTS:
+            continue
+
+        results.append(
+            _ScoredItem(
+                item=block.get_info(),
+                filter_type="integrations" if is_integration else "blocks",
+                score=score + BLOCK_SCORE_BOOST,
+                sort_key=name,
             )
+        )
 
     block_count = sum(1 for r in results if r.filter_type == "blocks")
     integration_count = sum(1 for r in results if r.filter_type == "integrations")
     return results, block_count, integration_count
+
+
+def _block_searchable_text(block: AnyBlockSchema) -> str:
+    """
+    Build searchable text for a block: its description plus the descriptions of
+    its input fields, matching the text the embedding pipeline indexes.
+    """
+    parts = [block.description or ""]
+    parts += [
+        f"{field}: {info.description}"
+        for field, info in block.input_schema.model_fields.items()
+        if info.description
+    ]
+    return " ".join(parts).lower()
 
 
 def _build_library_items(
