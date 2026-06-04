@@ -1,14 +1,16 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { CopyIcon } from "@phosphor-icons/react";
-import { useIsReadOnlyGraph } from "../../hooks/useIsReadOnlyGraph";
+import { useDuplicateGraph } from "../../hooks/useDuplicateGraph";
 
 export function ReadOnlyBanner() {
-  const { duplicate, isDuplicating, canDuplicate } = useIsReadOnlyGraph();
+  const { duplicate, isDuplicating, canDuplicate } = useDuplicateGraph();
 
   return (
     <div
       data-id="read-only-banner"
+      role="status"
+      aria-live="polite"
       className="absolute left-1/2 top-4 z-20 flex -translate-x-1/2 select-none items-center gap-3 rounded-full bg-white px-4 py-2 shadow-lg"
     >
       <Text variant="body" className="text-zinc-700">

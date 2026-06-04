@@ -306,10 +306,13 @@ export const useFlow = () => {
   // When the graph is read-only, force the canvas locked and ignore unlock
   // attempts so non-owners cannot edit nodes.
   const isLocked = isReadOnly || isLockedState;
-  const setIsLocked = (locked: boolean) => {
-    if (isReadOnly) return;
-    setIsLockedState(locked);
-  };
+  const setIsLocked = useCallback(
+    (locked: boolean) => {
+      if (isReadOnly) return;
+      setIsLockedState(locked);
+    },
+    [isReadOnly],
+  );
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
