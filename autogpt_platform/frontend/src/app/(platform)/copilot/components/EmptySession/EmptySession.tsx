@@ -71,7 +71,7 @@ export function EmptySession({
   }, []);
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-white px-0 py-5 md:px-6 md:py-10">
+    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
       <motion.div
         className="w-full max-w-[52rem] text-center"
         initial={{ opacity: 0 }}

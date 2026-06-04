@@ -150,7 +150,12 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div className="flex h-full min-h-0 flex-col bg-white">
+        <div
+          className={cn(
+            "flex h-full min-h-0 flex-col",
+            sessionId && "bg-white",
+          )}
+        >
           {sessionId ? (
             <>
               <div className="flex min-h-0 flex-1 flex-col px-2 pt-[15px] lg:px-0">
