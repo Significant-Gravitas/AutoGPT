@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ContentType
 
-from backend.api.features.store import embeddings
-from backend.api.features.store.embeddings import EMBEDDING_DIM
+from backend.api.features.search import embeddings
+from backend.api.features.search.embeddings import EMBEDDING_DIM
 
 # Schema prefix tests removed - functionality moved to db.raw_with_schema() helper
 
@@ -138,7 +138,7 @@ async def test_get_embedding_stats_with_schema():
     )
 
     with patch(
-        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        "backend.api.features.search.embeddings.CONTENT_HANDLERS",
         {ContentType.STORE_AGENT: mock_handler},
     ):
         result = await embeddings.get_embedding_stats()
@@ -157,11 +157,10 @@ async def test_get_embedding_stats_with_schema():
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
-async def test_backfill_missing_embeddings_with_schema():
-    """Test backfilling embeddings via content handlers."""
-    from backend.api.features.store.content_handlers import ContentItem
+async def test_backfill_all_content_types_with_schema():
+    """Backfill loops over CONTENT_HANDLERS and aggregates per-type stats."""
+    from backend.api.features.search.content_handlers import ContentItem
 
-    # Create mock content item
     mock_item = ContentItem(
         content_id="version-1",
         content_type=ContentType.STORE_AGENT,
@@ -169,31 +168,30 @@ async def test_backfill_missing_embeddings_with_schema():
         metadata={"name": "Test Agent"},
     )
 
-    # Mock handler
     mock_handler = MagicMock()
     mock_handler.get_missing_items = AsyncMock(return_value=[mock_item])
 
     with patch(
-        "backend.api.features.store.embeddings.CONTENT_HANDLERS",
+        "backend.api.features.search.embeddings.CONTENT_HANDLERS",
         {ContentType.STORE_AGENT: mock_handler},
     ):
         with patch(
-            "backend.api.features.store.embeddings.generate_embedding",
-            return_value=[0.1] * EMBEDDING_DIM,
+            "backend.api.features.search.embeddings.ensure_content_embedding",
+            new=AsyncMock(return_value=True),
         ):
-            with patch(
-                "backend.api.features.store.embeddings.store_content_embedding",
-                return_value=True,
-            ):
-                result = await embeddings.backfill_missing_embeddings(batch_size=10)
+            result = await embeddings.backfill_all_content_types(batch_size=10)
 
-                # Verify handler was called
-                mock_handler.get_missing_items.assert_called_once_with(10)
+    mock_handler.get_missing_items.assert_called_once_with(10)
 
-                # Verify results
-                assert result["processed"] == 1
-                assert result["success"] == 1
-                assert result["failed"] == 0
+    by_type = result["by_type"]
+    assert by_type[ContentType.STORE_AGENT.value]["processed"] == 1
+    assert by_type[ContentType.STORE_AGENT.value]["success"] == 1
+    assert by_type[ContentType.STORE_AGENT.value]["failed"] == 0
+
+    totals = result["totals"]
+    assert totals["processed"] == 1
+    assert totals["success"] == 1
+    assert totals["failed"] == 0
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -204,18 +202,18 @@ async def test_ensure_content_embedding_with_schema():
         mock_schema.return_value = "platform"
 
         with patch(
-            "backend.api.features.store.embeddings.get_content_embedding"
+            "backend.api.features.search.embeddings.get_content_embedding"
         ) as mock_get:
             # Simulate no existing embedding
             mock_get.return_value = None
 
             with patch(
-                "backend.api.features.store.embeddings.generate_embedding"
+                "backend.api.features.search.embeddings.generate_embedding"
             ) as mock_generate:
                 mock_generate.return_value = [0.1] * EMBEDDING_DIM
 
                 with patch(
-                    "backend.api.features.store.embeddings.store_content_embedding"
+                    "backend.api.features.search.embeddings.store_content_embedding"
                 ) as mock_store:
                     mock_store.return_value = True
 
@@ -233,57 +231,6 @@ async def test_ensure_content_embedding_with_schema():
                     assert mock_generate.called
                     assert mock_store.called
                     assert result is True
-
-
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.integration
-async def test_backward_compatibility_store_embedding():
-    """Test backward compatibility wrapper for store_embedding."""
-    with patch(
-        "backend.api.features.store.embeddings.store_content_embedding"
-    ) as mock_store:
-        mock_store.return_value = True
-
-        result = await embeddings.store_embedding(
-            version_id="test-version-id",
-            embedding=[0.1] * EMBEDDING_DIM,
-            tx=None,
-        )
-
-        # Verify it calls the new function with correct parameters
-        assert mock_store.called
-        call_args = mock_store.call_args
-
-        assert call_args[1]["content_type"] == ContentType.STORE_AGENT
-        assert call_args[1]["content_id"] == "test-version-id"
-        assert call_args[1]["user_id"] is None
-        assert result is True
-
-
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.integration
-async def test_backward_compatibility_get_embedding():
-    """Test backward compatibility wrapper for get_embedding."""
-    with patch(
-        "backend.api.features.store.embeddings.get_content_embedding"
-    ) as mock_get:
-        mock_get.return_value = {
-            "contentType": "STORE_AGENT",
-            "contentId": "test-version-id",
-            "embedding": "[0.1, 0.2]",
-            "createdAt": "2024-01-01",
-            "updatedAt": "2024-01-01",
-        }
-
-        result = await embeddings.get_embedding("test-version-id")
-
-        # Verify it calls the new function
-        assert mock_get.called
-
-        # Verify it transforms to old format
-        assert result is not None
-        assert result["storeListingVersionId"] == "test-version-id"
-        assert "embedding" in result
 
 
 @pytest.mark.asyncio(loop_scope="session")
