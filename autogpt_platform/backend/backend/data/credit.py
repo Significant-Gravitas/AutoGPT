@@ -2472,17 +2472,14 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         ).subscription_tier or SubscriptionTier.NO_TIER
         if new_tier == current_tier:
             return False
-        direction = log_tier_reconciliation_discrepancy(
+        # Recorded (info + PostHog) only; ops alerting is aggregated by the
+        # sweep's Discord system alert, not pinged per-user here.
+        log_tier_reconciliation_discrepancy(
             user_id=user_id,
             stripe_customer_id=user.stripe_customer_id,
             previous_tier=current_tier,
             new_tier=new_tier,
             via="lazy-reconcile",
-        )
-        await alert_tier_reconciliation_discrepancy(
-            f"⚠️ Payments integrity: on-access reconcile {direction} user "
-            f"`{user_id}` {current_tier.value} → {new_tier.value} — Stripe "
-            f"disagreed with our DB, a subscription webhook was likely missed."
         )
         return True
     # No active/trialing sub — downgrade a reconcilable row to NO_TIER.
@@ -2495,12 +2492,6 @@ async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
         previous_tier=current_tier,
         new_tier=SubscriptionTier.NO_TIER,
         via="lazy-reconcile",
-    )
-    await alert_tier_reconciliation_discrepancy(
-        f"🚨 Payments integrity: on-access reconcile DOWNGRADED user `{user_id}` "
-        f"{current_tier.value} → NO_TIER — no active Stripe subscription, but our "
-        f"DB had them on a paid tier. A cancellation webhook was likely missed; "
-        f"investigate the webhook pipeline."
     )
     return True
 
@@ -2852,18 +2843,16 @@ def log_tier_reconciliation_discrepancy(
     new_tier: SubscriptionTier,
     via: str,
 ) -> str:
-    """Record a Stripe<->DB tier discrepancy that reconciliation had to correct.
+    """Record a Stripe<->DB tier discrepancy that reconciliation corrected.
 
-    A correction means a Stripe webhook was missed or dropped — a payments-
-    integrity signal to investigate, NOT a routine fix. Emits an ERROR log
-    (captured by Sentry via the logging integration) plus a PostHog event so the
-    rate of discrepancies is trended. Returns the direction ("downgrade"/"upgrade").
+    Emits an INFO log + a PostHog event so the rate of discrepancies is trended.
+    Ops alerting is handled in aggregate by the sweep's Discord system alert
+    (:func:`_alert_sweep_discrepancies`) — one ping with the affected user-id
+    list + counts, rather than a per-user Sentry event. Returns the direction.
     """
     direction = "upgrade" if is_tier_upgrade(previous_tier, new_tier) else "downgrade"
-    logger.error(
-        "Stripe tier reconciliation %s for user %s (%s -> %s, via %s): a Stripe "
-        "webhook was likely missed. Investigate the webhook pipeline — payments-"
-        "integrity signal, not a routine correction.",
+    logger.info(
+        "Stripe tier reconciliation %s for user %s (%s -> %s, via %s)",
         direction,
         user_id[:8],
         previous_tier.value,
@@ -2886,12 +2875,20 @@ def log_tier_reconciliation_discrepancy(
 
 async def alert_tier_reconciliation_discrepancy(message: str) -> None:
     """Best-effort ops alert to the platform Discord channel. Never raises so a
-    Discord outage can't break reconciliation."""
+    Discord outage can't break reconciliation — but a delivery failure is logged
+    at ERROR (→ Sentry) so a broken bot token surfaces loudly instead of leaving
+    ops blind. Discord is the primary alert surface; this is the fallback."""
     try:
         await discord_send_alert(message, DiscordChannel.PLATFORM)
     except Exception:
-        logger.warning(
-            "failed to send tier-reconciliation Discord alert", exc_info=True
+        # Discord delivery failed (bad token / channel / gateway timeout) — log
+        # the FULL alert content at ERROR so Sentry carries the same payload the
+        # Discord message would have, and ops isn't left blind.
+        logger.error(
+            "Discord reconciliation alert delivery FAILED — ops NOT notified via "
+            "Discord; full alert content follows:\n%s",
+            message,
+            exc_info=True,
         )
 
 

@@ -9987,6 +9987,64 @@
         }
       }
     },
+    "/api/workspace/files/{file_id}/preview": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Preview file by ID",
+        "description": "Return a cheap preview of a file.\n\nImages/PDFs/Office docs are returned as a small WebP thumbnail; text-like\nfiles return only their first ``bytes`` bytes. Used by the Artifacts page so\na grid of files no longer downloads every file in full.",
+        "operationId": "getWorkspaceFilePreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          },
+          {
+            "name": "w",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1024,
+              "minimum": 16,
+              "default": 400,
+              "title": "W"
+            }
+          },
+          {
+            "name": "bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 131072,
+              "minimum": 256,
+              "default": 4096,
+              "title": "Bytes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/storage/usage": {
       "get": {
         "tags": ["workspace"],
@@ -20161,7 +20219,13 @@
             "type": "integer",
             "title": "Weekly Cost Used Microdollars"
           },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "default": {}
+          }
         },
         "type": "object",
         "required": [
