@@ -93,7 +93,9 @@ export const CustomControls = memo(
         ) : (
           <LockIcon className="size-3.5 text-zinc-600" />
         ),
-        label: "Toggle Lock",
+        label: isReadOnly
+          ? "Canvas is locked because this is a read-only graph"
+          : "Toggle Lock",
         onClick: () => setIsLocked(!isLocked),
         className: `h-10 w-10 border-none ${isLocked ? "bg-zinc-100" : "bg-white"}`,
         disabled: isReadOnly,

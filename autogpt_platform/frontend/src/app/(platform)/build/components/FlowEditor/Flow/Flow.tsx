@@ -89,7 +89,7 @@ export const Flow = () => {
   useFlowRealtime();
 
   // Copy/paste functionality
-  useCopyPaste();
+  useCopyPaste(isReadOnly);
 
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),

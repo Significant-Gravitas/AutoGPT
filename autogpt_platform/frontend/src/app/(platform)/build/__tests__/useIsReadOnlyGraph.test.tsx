@@ -8,7 +8,11 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 
 vi.mock("nuqs", () => ({
   parseAsString: {},
-  useQueryStates: vi.fn(() => [{ flowID: "graph-1" }, vi.fn()]),
+  parseAsInteger: {},
+  useQueryStates: vi.fn(() => [
+    { flowID: "graph-1", flowVersion: null },
+    vi.fn(),
+  ]),
 }));
 
 let mockGraph: { id: string; user_id: string } | undefined;

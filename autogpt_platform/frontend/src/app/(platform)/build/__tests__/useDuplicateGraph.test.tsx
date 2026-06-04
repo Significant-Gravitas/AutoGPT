@@ -111,4 +111,23 @@ describe("useDuplicateGraph", () => {
       expect.objectContaining({ variant: "destructive" }),
     );
   });
+
+  it("falls back to a generic message for non-Error exceptions", async () => {
+    mockLibraryAgent = { id: "lib-1", graph_id: "graph-1" };
+    mockForkAgent.mockRejectedValue("string error");
+
+    const { result } = renderHook(() => useDuplicateGraph());
+
+    await act(async () => {
+      await result.current.duplicate();
+    });
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: "destructive",
+        description: "An unexpected error occurred.",
+      }),
+    );
+  });
 });
