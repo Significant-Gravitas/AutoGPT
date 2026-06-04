@@ -184,8 +184,8 @@ def resolve_tracking(
         )
         return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
-    # E2B: billed per second of sandbox time
-    if provider == ProviderName.E2B.value:
+    # E2B (code + desktop sandboxes): billed per second of sandbox time
+    if provider in (ProviderName.E2B.value, ProviderName.E2B_DESKTOP.value):
         return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
 
     # Video/image gen: walltime includes queue + generation + polling

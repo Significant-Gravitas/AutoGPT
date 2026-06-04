@@ -6,6 +6,7 @@ export function toDisplayName(provider: string): string {
     aiml_api: "AI/ML",
     d_id: "D-ID",
     e2b: "E2B",
+    e2b_desktop: "E2B Desktop",
     llama_api: "Llama API",
     open_router: "Open Router",
     smtp: "SMTP",

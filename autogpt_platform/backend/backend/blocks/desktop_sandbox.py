@@ -50,12 +50,14 @@ from backend.util.type import MediaFileType
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
 
-# Shared test credentials (same pattern as code_executor.py)
+# Shared test credentials (same pattern as code_executor.py). Desktop sandboxes
+# run on their own E2B provider (`e2b_desktop`) so their compute is billed to a
+# dedicated key, separate from the general-purpose E2B code-executor blocks.
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcde0",
-    provider="e2b",
+    provider="e2b_desktop",
     api_key=SecretStr("mock-e2b-api-key"),
-    title="Mock E2B API key",
+    title="Mock E2B Desktop API key",
     expires_at=None,
 )
 TEST_CREDENTIALS_INPUT = {
@@ -72,9 +74,7 @@ TEST_CREDENTIALS_INPUT = {
 class _StreamHandle(Protocol):
     def start(self, *, require_auth: bool = ...) -> None: ...
     def get_auth_key(self) -> str: ...
-    def get_url(
-        self, *, auth_key: Optional[str] = ..., view_only: bool = ...
-    ) -> str: ...
+    def get_url(self, *, auth_key: Optional[str] = ...) -> str: ...
 
 
 class _CommandsHandle(Protocol):
@@ -162,7 +162,7 @@ class E2BDesktopCreateBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.E2B], Literal["api_key"]
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
         ] = CredentialsField(
             description="E2B API key. Get yours at https://e2b.dev/docs",
         )
@@ -242,20 +242,14 @@ class E2BDesktopCreateBlock(Block):
         )
         stream_url: str = SchemaField(
             description=(
-                "Interactive stream URL — the viewer can control the desktop "
-                "(mouse + keyboard). Embed as an iframe for the active operator."
-            )
-        )
-        view_only_url: str = SchemaField(
-            description=(
-                "View-only stream URL — same live desktop, but input is disabled. "
-                "Share this to let others watch without being able to interact."
+                "Live stream URL for the desktop. Embed as an iframe to watch and "
+                "control the desktop (mouse + keyboard) in real time."
             )
         )
         auth_key: str = SchemaField(
             description=(
                 "Auth key required to view the stream (when "
-                "stream_require_auth=True). Already included in both URLs."
+                "stream_require_auth=True). Already included in the stream_url."
             )
         )
         error: str = SchemaField(description="Error message if creation failed.")
@@ -286,17 +280,12 @@ class E2BDesktopCreateBlock(Block):
             test_output=[
                 ("sandbox_id", "mock-sandbox-id"),
                 ("stream_url", "https://mock-stream.e2b.dev/stream?auth=mock-key"),
-                (
-                    "view_only_url",
-                    "https://mock-stream.e2b.dev/stream?auth=mock-key&view_only=true",
-                ),
                 ("auth_key", "mock-auth-key"),
             ],
             test_mock={
                 "create_desktop": lambda *args, **kwargs: (
                     "mock-sandbox-id",
                     "https://mock-stream.e2b.dev/stream?auth=mock-key",
-                    "https://mock-stream.e2b.dev/stream?auth=mock-key&view_only=true",
                     "mock-auth-key",
                 )
             },
@@ -312,7 +301,7 @@ class E2BDesktopCreateBlock(Block):
         resolution: tuple[int, int],
         dpi: int,
         smooth_stream: bool,
-    ) -> tuple[str, str, str, str]:
+    ) -> tuple[str, str, str]:
         desktop = _create_sandbox(
             api_key, template_id or None, timeout, resolution, dpi
         )
@@ -324,10 +313,7 @@ class E2BDesktopCreateBlock(Block):
             _retune_stream_for_smoothness(desktop, stream_require_auth)
         auth_key = desktop.stream.get_auth_key() if stream_require_auth else ""
         stream_url = desktop.stream.get_url(auth_key=auth_key or None)
-        view_only_url = desktop.stream.get_url(
-            auth_key=auth_key or None, view_only=True
-        )
-        return desktop.sandbox_id, stream_url, view_only_url, auth_key
+        return desktop.sandbox_id, stream_url, auth_key
 
     async def create_desktop(
         self,
@@ -339,7 +325,7 @@ class E2BDesktopCreateBlock(Block):
         resolution: tuple[int, int],
         dpi: int,
         smooth_stream: bool,
-    ) -> tuple[str, str, str, str]:
+    ) -> tuple[str, str, str]:
         return await asyncio.to_thread(
             self._create_desktop,
             api_key,
@@ -360,7 +346,7 @@ class E2BDesktopCreateBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            sandbox_id, stream_url, view_only_url, auth_key = await self.create_desktop(
+            sandbox_id, stream_url, auth_key = await self.create_desktop(
                 api_key=credentials.api_key.get_secret_value(),
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
@@ -372,7 +358,6 @@ class E2BDesktopCreateBlock(Block):
             )
             yield "sandbox_id", sandbox_id
             yield "stream_url", stream_url
-            yield "view_only_url", view_only_url
             yield "auth_key", auth_key
         except Exception as e:
             yield "error", str(e)
@@ -404,7 +389,7 @@ class E2BDesktopControlBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.E2B], Literal["api_key"]
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
         ] = CredentialsField(
             description="E2B API key — must match the key used to create the sandbox.",
         )
@@ -583,7 +568,7 @@ class E2BDesktopScreenshotBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.E2B], Literal["api_key"]
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
         ] = CredentialsField(
             description="E2B API key — must match the key used to create the sandbox.",
         )
@@ -676,7 +661,7 @@ class E2BDesktopPauseBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.E2B], Literal["api_key"]
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
         ] = CredentialsField(
             description="E2B API key — must match the key used to create the sandbox.",
         )
@@ -751,7 +736,7 @@ class E2BDesktopKillBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.E2B], Literal["api_key"]
+            Literal[ProviderName.E2B_DESKTOP], Literal["api_key"]
         ] = CredentialsField(
             description="E2B API key — must match the key used to create the sandbox.",
         )

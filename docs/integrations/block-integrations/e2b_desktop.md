@@ -3,7 +3,7 @@
 ## What it is
 The E2B Desktop Sandbox blocks give AI agents a secure, isolated virtual **graphical** Linux desktop (Ubuntu + Xfce). Built on [E2B's Desktop Sandbox](https://e2b.dev), they let an agent spin up a full desktop, watch it over a live stream, drive the mouse and keyboard, and capture screenshots — the "computer use" workflow.
 
-For running code or shell commands in a **headless** sandbox (no GUI), use the Code Executor blocks (`Execute Code`, `Instantiate Code Sandbox`, `Execute Code Step`) instead. Both stacks share the same E2B API key.
+For running code or shell commands in a **headless** sandbox (no GUI), use the Code Executor blocks (`Execute Code`, `Instantiate Code Sandbox`, `Execute Code Step`) instead. The Desktop blocks use their own **E2B Desktop** credential (separate from the Code Executor's E2B credential), so desktop compute is billed to a dedicated key — but you can paste the same key from your E2B account into both.
 
 ## What it does
 These blocks enable agents to:
@@ -24,7 +24,7 @@ The typical "computer use" loop:
 5. **Kill** the sandbox to stop billing
 
 ## Prerequisites
-- An [E2B account](https://e2b.dev) and API key (same key as the Code Executor blocks)
+- An [E2B account](https://e2b.dev) and API key, added as an **E2B Desktop** credential (you can reuse the same key as the Code Executor blocks)
 - E2B Pro plan recommended for sessions longer than 1 hour and custom CPU/RAM
 
 ## Blocks
@@ -51,9 +51,8 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 | Output | Description |
 |--------|-------------|
 | sandbox\_id | Unique ID of the running sandbox — pass to all other blocks |
-| stream\_url | Interactive stream URL — the viewer can control the desktop (mouse + keyboard) |
-| view\_only\_url | View-only stream URL — same live desktop with input disabled; share to let others just watch |
-| auth\_key | Authentication key required to view the stream (already included in both URLs) |
+| stream\_url | Live stream URL — embed as an iframe to watch and control the desktop (mouse + keyboard) in real time |
+| auth\_key | Authentication key required to view the stream (already included in the stream\_url) |
 | error | Error message if sandbox creation failed |
 
 ---

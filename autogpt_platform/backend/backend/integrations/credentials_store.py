@@ -153,6 +153,13 @@ e2b_credentials = APIKeyCredentials(
     title="Use Credits for E2B",
     expires_at=None,
 )
+e2b_desktop_credentials = APIKeyCredentials(
+    id="fdcfb953-de9e-43bf-922f-7392fe52ea49",
+    provider="e2b_desktop",
+    api_key=SecretStr(settings.secrets.e2b_desktop_api_key),
+    title="Use Credits for E2B Desktop",
+    expires_at=None,
+)
 nvidia_credentials = APIKeyCredentials(
     id="96b83908-2789-4dec-9968-18f0ece4ceb3",
     provider="nvidia",
@@ -273,6 +280,7 @@ DEFAULT_CREDENTIALS = [
     fal_credentials,
     exa_credentials,
     e2b_credentials,
+    e2b_desktop_credentials,
     mem0_credentials,
     nvidia_credentials,
     screenshotone_credentials,
@@ -397,6 +405,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(exa_credentials)
         if settings.secrets.e2b_api_key:
             all_credentials.append(e2b_credentials)
+        if settings.secrets.e2b_desktop_api_key:
+            all_credentials.append(e2b_desktop_credentials)
         if settings.secrets.nvidia_api_key:
             all_credentials.append(nvidia_credentials)
         if settings.secrets.screenshotone_api_key:
