@@ -15,6 +15,8 @@ interface Props {
   highlightedRef: MutableRefObject<HTMLButtonElement | null>;
   onHighlight: (index: number) => void;
   onSelect: (item: SearchCommandItem, bucketKey: string) => void;
+  /** Id of the row whose action is in-flight (renders a spinner). */
+  loadingItemId?: string;
 }
 
 export function SearchCommandResults({
@@ -25,6 +27,7 @@ export function SearchCommandResults({
   highlightedRef,
   onHighlight,
   onSelect,
+  loadingItemId,
 }: Props) {
   const flat = flattenBuckets(buckets);
   // Group the flat list back by bucket so the absolute ``index`` survives
@@ -56,6 +59,7 @@ export function SearchCommandResults({
                   idPrefix={idPrefix}
                   query={query}
                   isHighlighted={entry.index === highlightedIndex}
+                  isLoading={entry.item.id === loadingItemId}
                   highlightedRef={
                     entry.index === highlightedIndex
                       ? highlightedRef
