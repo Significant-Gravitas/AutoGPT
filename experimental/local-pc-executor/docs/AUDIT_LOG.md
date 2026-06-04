@@ -78,8 +78,8 @@ single JSON object with this shape:
 | `FILE_LIST` | `{path, glob, recursive, include_hidden, max_entries, entries_returned}` |
 | `FILE_DELETE` | `{path, recursive, missing_ok}` |
 | `FILE_MOVE` | `{src, dst, overwrite}` |
-| `SCREENSHOT_REQUEST` | `{monitor, quality, image_bytes_returned}` — no image content |
-| `INPUT_ACTION` | `{action, coordinate, key, direction, clicks}` — `text` payload is redacted to length |
+| `SCREENSHOT_REQUEST` | `{monitor, quality, image_bytes_returned, width?, height?}` — no image content; `width`/`height` only present on success |
+| `INPUT_ACTION` | `{action, coordinate, key, direction, clicks, text_length}` — the `text` payload is replaced by its byte length (`text_length`); `null` when the action has no text |
 | `HELLO` | `{platform, arch, capabilities, allowed_root}` |
 | `HELLO_ACK` | `{granted_capabilities, max_concurrent, max_file_size_bytes, command_timeout_seconds}` |
 | Shim-internal | See below |
@@ -97,7 +97,7 @@ didn't trigger:
 | `WS_DISCONNECTED` | WebSocket loop ended (carries `details.reason`) |
 | `TOKEN_REFRESHED` | OAuth refresh token used |
 | `CONFIG_RELOADED` | `HELLO_ACK` rewrote runtime config |
-| `JAIL_VIOLATION` | Path-jail rejected an op before exec (carries `details.code`) |
+| `JAIL_VIOLATION` | Path-jail rejected an op before exec. `details` = `{code, path, attempted_op}` — the ErrorCode value, the rejected raw path, and the wire-protocol op that triggered it (e.g. `FILE_READ`) |
 
 ### What's NEVER logged
 
@@ -140,6 +140,15 @@ record              = {**record_without_hmac, "hmac": hmac.hex()}
 sorted keys, no whitespace, normalized numbers. JCS guarantees byte-
 identical output across Python / Go / Rust verifiers.
 
+The shim ships a hand-rolled JCS subset over the input shapes used in
+this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`) so
+the wheel doesn't carry an extra dependency. Third-party verifiers MUST
+use a full RFC 8785 implementation (e.g. the `rfc8785` PyPI package) —
+the shim's subset is sufficient for the record shape it writes, but
+embedding it elsewhere is not safe. `NaN` and `±Infinity` are rejected:
+the canonicalizer raises on them rather than silently producing
+non-JSON.
+
 ### Verification
 
 A consumer (the user via `autogpt-shim audit verify`, or the platform-
@@ -175,6 +184,12 @@ Each new file starts with `seq=1` and `prev_hmac=null`. The first
 record (`SHIM_START` for restarts, or just the first op) carries
 `prev_hmac=null` to mark the chain origin.
 
+If two rotations land within the same wall-clock second (rare, but
+possible under burst writes or explicit `rotate` after a recent
+size-triggered rotation), the second rotated file gets a `-N` counter
+suffix: `audit.log.YYYYMMDD-HHMMSS-1`, `-2`, etc. The writer never
+clobbers an existing rotated file.
+
 Rotated files are kept indefinitely by default. `autogpt-shim audit
 prune --older-than 90d` deletes files where the newest record is older
 than the threshold. The shim never auto-prunes — log loss is the
@@ -190,10 +205,14 @@ autogpt-shim audit verify-all  # verify every rotated file
 autogpt-shim audit export      # zip + sign for support upload
 ```
 
-Export bundles all current+rotated files into a `.zip` with a
-detached signature (the user's audit key signs the manifest). The
-platform-side viewer accepts these uploads, verifies the signature
-against the user's machine_id, and shows the operator a parsed feed.
+Export bundles all current+rotated files into a `.zip` with an
+embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
+`manifest.sig` containing HMAC-SHA256 over the manifest using the
+local audit key. The signature is symmetric (not RSA): the user
+shares the audit key out-of-band with support / a platform-side
+viewer when they upload the bundle. This is intentional — there is no
+public PKI for the per-machine audit key, and adding one would
+require shipping a CA flow we don't need for v0.
 
 ## What this catches
 
