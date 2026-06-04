@@ -16,15 +16,6 @@ const TIERS = [
 ] as const;
 type Tier = (typeof TIERS)[number];
 
-const TIER_MULTIPLIERS: Record<Tier, string> = {
-  NO_TIER: "no access (paywalled)",
-  BASIC: "1x base limits",
-  PRO: "5x base limits",
-  MAX: "20x base limits",
-  BUSINESS: "60x base limits",
-  ENTERPRISE: "60x base limits",
-};
-
 const TIER_COLORS: Record<Tier, string> = {
   NO_TIER: "bg-red-100 text-red-700",
   BASIC: "bg-gray-100 text-gray-700",
@@ -34,10 +25,29 @@ const TIER_COLORS: Record<Tier, string> = {
   ENTERPRISE: "bg-amber-100 text-amber-700",
 };
 
+// Derives the per-tier label from the live, LaunchDarkly-driven multiplier map.
+// NO_TIER is paywalled (0 / absent), and tiers missing from the map (not
+// priceable) fall back to a generic label rather than a fabricated number.
+function tierLabel(
+  tier: Tier,
+  tierMultipliers?: Record<string, number>,
+): string {
+  if (tier === "NO_TIER") return "no access (paywalled)";
+
+  const multiplier = tierMultipliers?.[tier];
+  if (multiplier === undefined || multiplier <= 0) return "tier limits";
+
+  // Round to at most 2 decimals (5 → "5", 42.664 → "42.66").
+  const rounded = Math.round(multiplier * 100) / 100;
+  return `${rounded}× base limits`;
+}
+
 interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
   onTierChange?: (newTier: string) => Promise<void>;
+  /** Live LaunchDarkly-driven tier → multiplier map from the subscription status endpoint. */
+  tierMultipliers?: Record<string, number>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;
 }
@@ -46,6 +56,7 @@ export function RateLimitDisplay({
   data,
   onReset,
   onTierChange,
+  tierMultipliers,
   className,
 }: Props) {
   const [isResetting, setIsResetting] = useState(false);
@@ -85,7 +96,7 @@ export function RateLimitDisplay({
       await onTierChange(newTier);
       toast({
         title: "Tier updated",
-        description: `Changed to ${newTier} (${TIER_MULTIPLIERS[newTier as Tier]}).`,
+        description: `Changed to ${newTier} (${tierLabel(newTier as Tier, tierMultipliers)}).`,
       });
     } catch {
       toast({
@@ -134,7 +145,7 @@ export function RateLimitDisplay({
         >
           {TIERS.map((tier) => (
             <option key={tier} value={tier}>
-              {tier} — {TIER_MULTIPLIERS[tier]}
+              {tier} — {tierLabel(tier, tierMultipliers)}
             </option>
           ))}
         </select>

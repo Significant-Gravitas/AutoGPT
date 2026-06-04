@@ -2822,12 +2822,20 @@ def log_tier_reconciliation_discrepancy(
 
 async def alert_tier_reconciliation_discrepancy(message: str) -> None:
     """Best-effort ops alert to the platform Discord channel. Never raises so a
-    Discord outage can't break reconciliation."""
+    Discord outage can't break reconciliation — but a delivery failure is logged
+    at ERROR (→ Sentry) so a broken bot token surfaces loudly instead of leaving
+    ops blind. Discord is the primary alert surface; this is the fallback."""
     try:
         await discord_send_alert(message, DiscordChannel.PLATFORM)
     except Exception:
-        logger.warning(
-            "failed to send tier-reconciliation Discord alert", exc_info=True
+        # Discord delivery failed (bad token / channel / gateway timeout) — log
+        # the FULL alert content at ERROR so Sentry carries the same payload the
+        # Discord message would have, and ops isn't left blind.
+        logger.error(
+            "Discord reconciliation alert delivery FAILED — ops NOT notified via "
+            "Discord; full alert content follows:\n%s",
+            message,
+            exc_info=True,
         )
 
 

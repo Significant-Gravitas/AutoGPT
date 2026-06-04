@@ -288,6 +288,66 @@ describe("RateLimitDisplay", () => {
     });
   });
 
+  it("shows live multiplier label for PRO from the tierMultipliers map", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "PRO" })}
+        onReset={vi.fn()}
+        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
+      />,
+    );
+    const select = screen.getByLabelText("Subscription tier");
+    expect(select.textContent).toContain("PRO — 5× base limits");
+  });
+
+  it("renders a non-default fractional multiplier (MAX 42.66) from the map", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData()}
+        onReset={vi.fn()}
+        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
+      />,
+    );
+    const select = screen.getByLabelText("Subscription tier");
+    expect(select.textContent).toContain("MAX — 42.66× base limits");
+    // The old hardcoded "20x" value must not appear.
+    expect(select.textContent).not.toContain("20x");
+  });
+
+  it("keeps NO_TIER paywalled label even with a multipliers map present", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "NO_TIER" })}
+        onReset={vi.fn()}
+        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
+      />,
+    );
+    expect(screen.getByText(/no access \(paywalled\)/)).toBeDefined();
+    const select = screen.getByLabelText("Subscription tier");
+    expect(select.textContent).not.toContain("NO_TIER — 0");
+  });
+
+  it("does not fabricate a number for a tier missing from the map", () => {
+    render(
+      <RateLimitDisplay
+        data={makeData()}
+        onReset={vi.fn()}
+        tierMultipliers={{ BASIC: 1, PRO: 5, MAX: 42.66 }}
+      />,
+    );
+    const select = screen.getByLabelText("Subscription tier");
+    // ENTERPRISE has no entry -> generic label, never a hardcoded multiplier.
+    expect(select.textContent).toContain("ENTERPRISE — tier limits");
+    expect(select.textContent).not.toContain("ENTERPRISE — 60");
+  });
+
+  it("falls back to generic labels when no multipliers map is provided", () => {
+    render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
+    const select = screen.getByLabelText("Subscription tier");
+    expect(select.textContent).toContain("PRO — tier limits");
+    expect(select.textContent).not.toContain("5x");
+  });
+
   it("applies custom className when provided", () => {
     const { container } = render(
       <RateLimitDisplay
