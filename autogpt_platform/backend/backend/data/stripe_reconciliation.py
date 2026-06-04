@@ -103,35 +103,34 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
 
 
 async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
-    """Loudly surface that the sweep had to correct tiers.
+    """Post ONE Discord system alert summarizing the sweep's corrections.
 
     A non-empty sweep means Stripe webhooks were dropped or missed — a payments-
-    integrity incident, not a routine correction. Steady state must be ZERO, so
-    any correction pages the ops channel and logs at ERROR (→ Sentry).
+    integrity signal, not a routine correction. One aggregate ops ping (with the
+    affected user-id list + counts) replaces per-user Sentry noise. Steady state
+    must be ZERO.
     """
+    n = len(summary.discrepancies)
     lines = "\n".join(
-        f"- {d.direction}: {d.previous_tier.value} → {d.new_tier.value} "
-        f"user={d.user_id} customer={d.stripe_customer_id}"
+        f"- {d.direction} {d.previous_tier.value}→{d.new_tier.value} `{d.user_id}`"
         for d in summary.discrepancies[:_ALERT_DETAIL_CAP]
     )
-    overflow = len(summary.discrepancies) - _ALERT_DETAIL_CAP
+    overflow = n - _ALERT_DETAIL_CAP
     if overflow > 0:
         lines += f"\n…and {overflow} more"
-    logger.error(
-        "Stripe tier reconciliation sweep corrected %d discrepancy(ies) "
-        "(%d downgrade, %d upgrade) — Stripe webhooks are likely dropping events; "
-        "steady state must be ZERO.",
-        len(summary.discrepancies),
-        summary.downgrades,
+    logger.warning(
+        "Stripe tier reconciliation sweep reconciled %d account(s) "
+        "(%d upgraded, %d downgraded); webhooks likely dropping events — "
+        "steady state should be ZERO.",
+        n,
         summary.upgrades,
+        summary.downgrades,
     )
     await alert_tier_reconciliation_discrepancy(
-        f"🚨 **Stripe tier reconciliation sweep corrected "
-        f"{len(summary.discrepancies)} discrepancy(ies)** "
-        f"({summary.downgrades} downgrade, {summary.upgrades} upgrade).\n"
-        f"Each means a Stripe webhook was likely missed — **investigate the "
-        f"webhook pipeline**; this is a payments-integrity signal, not a routine "
-        f"correction. Steady state must be ZERO.\n{lines}"
+        f"🔁 **Stripe tier reconciliation reconciled {n} account(s)** "
+        f"({summary.upgrades} upgraded, {summary.downgrades} downgraded).\n"
+        f"Each means a Stripe webhook was likely missed — investigate the webhook "
+        f"pipeline; steady state should be ZERO.\nUser IDs:\n{lines}"
     )
 
 
