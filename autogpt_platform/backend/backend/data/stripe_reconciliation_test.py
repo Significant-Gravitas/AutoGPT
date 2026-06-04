@@ -136,6 +136,38 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
 
 
 @pytest.mark.asyncio
+async def test_sweep_counts_paid_to_paid_downgrade_as_downgrade(
+    mocker: pytest_mock.MockFixture,
+    mock_alert: AsyncMock,
+) -> None:
+    """MAX -> PRO is a downgrade even though the target isn't NO_TIER."""
+    mocker.patch(
+        "backend.data.stripe_reconciliation.build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={"price_pro": SubscriptionTier.PRO},
+    )
+    _patch_stripe_pages(mocker, {"active": [_sub("cus_x", "price_pro")]})
+    mocker.patch(
+        "backend.data.stripe_reconciliation.User.prisma",
+        return_value=MagicMock(
+            find_many=AsyncMock(
+                return_value=[_candidate("u_x", "cus_x", SubscriptionTier.MAX)]
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.data.stripe_reconciliation.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    assert summary.downgrades == 1
+    assert summary.upgrades == 0
+    assert summary.discrepancies[0].direction == "downgrade"
+
+
+@pytest.mark.asyncio
 async def test_sweep_no_discrepancies_does_not_alert(
     mocker: pytest_mock.MockFixture,
     mock_alert: AsyncMock,

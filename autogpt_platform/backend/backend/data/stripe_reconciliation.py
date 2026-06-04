@@ -189,7 +189,9 @@ async def _reconcile_one(
             direction=direction,
         )
     )
-    if target_tier == SubscriptionTier.NO_TIER:
+    # Reuse the rank-based direction (not a NO_TIER check) so a paid->paid
+    # downgrade (e.g. MAX->PRO) is counted as a downgrade, not an upgrade.
+    if direction == "downgrade":
         summary.downgrades += 1
     else:
         summary.upgrades += 1
