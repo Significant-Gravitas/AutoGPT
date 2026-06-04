@@ -114,8 +114,16 @@ prices from Amazon and email me daily").
 
 ### REQUIRED: AgentInputBlock and AgentOutputBlock
 
-Every agent MUST include at least one AgentInputBlock and one AgentOutputBlock.
-These define the agent's interface — what it accepts and what it produces.
+Every agent MUST include one AgentOutputBlock and a way to be started: EITHER
+at least one AgentInputBlock OR a webhook trigger block (never both). These
+define the agent's interface — what it accepts and what it produces.
+
+- **Regular agent**: include at least one AgentInputBlock for the values the
+  user provides at runtime.
+- **Triggered agent**: include a webhook trigger block instead — it is started
+  by an external event, so it needs NO AgentInputBlock. Do NOT add a throwaway
+  AgentInputBlock alongside a trigger; the trigger block already provides the
+  agent's entry point and event payload. See "Setting Up Webhook Triggers".
 
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
@@ -139,8 +147,9 @@ These define the agent's interface — what it accepts and what it produces.
 - Optional: `title`, `description`, `format` (Jinja2 template)
 - Create one AgentOutputBlock per distinct result to show the user
 
-Without these blocks, the agent has no interface and the user cannot provide
-inputs or see outputs. NEVER skip them.
+Without an output block the user cannot see results, and without an input or
+trigger block the agent cannot be started. NEVER skip the output block, and
+always include either an input block or a trigger block.
 
 Specialized input subclasses (`AgentDropdownInputBlock`,
 `AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
