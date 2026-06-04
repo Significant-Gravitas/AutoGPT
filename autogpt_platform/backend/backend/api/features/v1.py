@@ -1098,6 +1098,8 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
+                # No Stripe subscription drove this change (admin-granted or
+                # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
