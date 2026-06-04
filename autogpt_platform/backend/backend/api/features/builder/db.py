@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Sequence, get_args, get_origin
+from typing import Any, Awaitable, Sequence, get_args, get_origin
 
 import prisma
 from prisma.models import mv_suggested_blocks
@@ -260,7 +261,6 @@ async def _build_cached_search_results(
     include_library_agents = "my_agents" in filters
     include_marketplace_agents = "marketplace_agents" in filters
 
-    scored_items: list[_ScoredItem] = []
     total_items: dict[FilterType, int] = {
         "blocks": 0,
         "integrations": 0,
@@ -268,58 +268,31 @@ async def _build_cached_search_results(
         "my_agents": 0,
     }
 
-    # Use hybrid search when query is present, otherwise list all blocks
-    if (include_blocks or include_integrations) and normalized_query:
-        block_results, block_total, integration_total = await _text_search_blocks(
-            query=search_query,
-            include_blocks=include_blocks,
-            include_integrations=include_integrations,
+    # Run the independent sub-searches concurrently: block scoring is CPU-bound
+    # (offloaded to a thread so it doesn't block the event loop), while library
+    # and marketplace are independent DB queries.
+    branches: list[Awaitable[tuple[list[_ScoredItem], dict[FilterType, int]]]] = []
+    if include_blocks or include_integrations:
+        branches.append(
+            asyncio.to_thread(
+                _search_blocks,
+                search_query,
+                normalized_query,
+                include_blocks,
+                include_integrations,
+            )
         )
-        scored_items.extend(block_results)
-        total_items["blocks"] = block_total
-        total_items["integrations"] = integration_total
-    elif include_blocks or include_integrations:
-        # No query - list all blocks using in-memory approach
-        block_results, block_total, integration_total = _collect_block_results(
-            include_blocks=include_blocks,
-            include_integrations=include_integrations,
-        )
-        scored_items.extend(block_results)
-        total_items["blocks"] = block_total
-        total_items["integrations"] = integration_total
-
     if include_library_agents:
-        library_response = await library_db.list_library_agents(
-            user_id=user_id,
-            search_term=search_query or None,
-            page=1,
-            page_size=MAX_LIBRARY_AGENT_RESULTS,
-            # Hide trigger agents — they're parent-coupled, not
-            # generally reusable as a sub-agent block.
-            is_hidden=False,
-        )
-        total_items["my_agents"] = library_response.pagination.total_items
-        scored_items.extend(
-            _build_library_items(
-                agents=library_response.agents,
-                normalized_query=normalized_query,
-            )
+        branches.append(_search_library(user_id, search_query, normalized_query))
+    if include_marketplace_agents:
+        branches.append(
+            _search_marketplace(list(by_creator), search_query, normalized_query)
         )
 
-    if include_marketplace_agents:
-        marketplace_response = await store_db.get_store_agents(
-            creators=list(by_creator) or None,
-            search_query=search_query or None,
-            page=1,
-            page_size=MAX_MARKETPLACE_AGENT_RESULTS,
-        )
-        total_items["marketplace_agents"] = marketplace_response.pagination.total_items
-        scored_items.extend(
-            _build_marketplace_items(
-                agents=marketplace_response.agents,
-                normalized_query=normalized_query,
-            )
-        )
+    scored_items: list[_ScoredItem] = []
+    for items, totals in await asyncio.gather(*branches):
+        scored_items.extend(items)
+        total_items.update(totals)
 
     sorted_items = sorted(
         scored_items,
@@ -330,6 +303,66 @@ async def _build_cached_search_results(
         items=[entry.item for entry in sorted_items],
         total_items=total_items,
     )
+
+
+def _search_blocks(
+    search_query: str,
+    normalized_query: str,
+    include_blocks: bool,
+    include_integrations: bool,
+) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
+    # Use text search when a query is present, otherwise list all blocks.
+    if normalized_query:
+        results, block_total, integration_total = _text_search_blocks(
+            query=search_query,
+            include_blocks=include_blocks,
+            include_integrations=include_integrations,
+        )
+    else:
+        results, block_total, integration_total = _collect_block_results(
+            include_blocks=include_blocks,
+            include_integrations=include_integrations,
+        )
+    return results, {"blocks": block_total, "integrations": integration_total}
+
+
+async def _search_library(
+    user_id: str,
+    search_query: str,
+    normalized_query: str,
+) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
+    library_response = await library_db.list_library_agents(
+        user_id=user_id,
+        search_term=search_query or None,
+        page=1,
+        page_size=MAX_LIBRARY_AGENT_RESULTS,
+        # Hide trigger agents — they're parent-coupled, not
+        # generally reusable as a sub-agent block.
+        is_hidden=False,
+    )
+    items = _build_library_items(
+        agents=library_response.agents,
+        normalized_query=normalized_query,
+    )
+    return items, {"my_agents": library_response.pagination.total_items}
+
+
+async def _search_marketplace(
+    by_creator: list[str],
+    search_query: str,
+    normalized_query: str,
+) -> tuple[list[_ScoredItem], dict[FilterType, int]]:
+    marketplace_response = await store_db.get_store_agents(
+        creators=by_creator or None,
+        search_query=search_query or None,
+        page=1,
+        page_size=MAX_MARKETPLACE_AGENT_RESULTS,
+    )
+    items = _build_marketplace_items(
+        agents=marketplace_response.agents,
+        normalized_query=normalized_query,
+    )
+    return items, {"marketplace_agents": marketplace_response.pagination.total_items}
 
 
 def _collect_block_results(
@@ -385,7 +418,7 @@ def _collect_block_results(
     return results, block_count, integration_count
 
 
-async def _text_search_blocks(
+def _text_search_blocks(
     *,
     query: str,
     include_blocks: bool,
