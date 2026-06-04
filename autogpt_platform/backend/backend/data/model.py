@@ -21,11 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import (
-    CreditTransactionType,
-    OnboardingStep,
-    SubscriptionTier,
-)
+from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
