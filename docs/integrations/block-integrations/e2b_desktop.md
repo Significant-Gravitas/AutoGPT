@@ -8,6 +8,7 @@ For running code or shell commands in a **headless** sandbox (no GUI), use the C
 ## What it does
 These blocks enable agents to:
 - Spin up a virtual desktop with a live, browser-embeddable stream URL
+- List the desktop sandboxes on your account to reconnect or audit them
 - Control the mouse and keyboard (click, move, scroll, type, press keys)
 - Take screenshots of the current desktop state
 - Pause a sandbox to stop compute billing while keeping its full state
@@ -35,6 +36,7 @@ The typical "computer use" loop:
 Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live stream, and returns the sandbox ID and stream URL.
 
 #### Inputs
+
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key. Get one at [e2b.dev](https://e2b.dev/docs) |
@@ -48,6 +50,7 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 | Smooth Stream | Re-tune the VNC server for high-motion content (default: true). The stock stream refreshes only ~20 FPS, making animations look laggy; this raises the poll/update rate for a much smoother stream at the cost of more sandbox CPU and bandwidth |
 
 #### Outputs
+
 | Output | Description |
 |--------|-------------|
 | stream\_url | Live stream URL — rendered inline as an interactive iframe with a full-screen button (press Esc to exit); embed it to watch and control the desktop (mouse + keyboard) in real time |
@@ -57,12 +60,37 @@ Creates a new E2B Desktop sandbox, optionally runs setup commands, starts a live
 
 ---
 
+### E2B Desktop List Block
+
+#### What it does
+Lists the desktop sandboxes tied to your API key — running, paused, or both. Use it to reconnect to an existing desktop (pass a returned `sandbox_id` to any other block) instead of creating a new one, or to audit what is still alive and billing.
+
+#### Inputs
+
+| Input | Description |
+|-------|-------------|
+| Credentials | E2B API key — lists the sandboxes owned by this key |
+| State | Which sandboxes to list: `all`, `running`, or `paused` (default: `all`) |
+| Limit | Maximum number of sandboxes to return (default: 100) |
+
+#### Outputs
+
+| Output | Description |
+|--------|-------------|
+| sandboxes | All matching sandboxes, each with its ID, template ID, state, start/end time, and metadata |
+| sandbox | Each matching sandbox, yielded one at a time for downstream iteration |
+| count | Number of sandboxes returned |
+| error | Error message if the listing failed |
+
+---
+
 ### E2B Desktop Control Block
 
 #### What it does
 Drives the mouse and keyboard of a running desktop sandbox. This is the "act" half of a computer-use loop — pair it with the Screenshot block to see, then act, then see again.
 
 #### Inputs
+
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key |
@@ -75,6 +103,7 @@ Drives the mouse and keyboard of a running desktop sandbox. This is the "act" ha
 | Scroll Amount | Number of scroll steps (used by the `scroll` action) |
 
 #### Outputs
+
 | Output | Description |
 |--------|-------------|
 | success | True if the action was performed |
@@ -88,12 +117,14 @@ Drives the mouse and keyboard of a running desktop sandbox. This is the "act" ha
 Takes a screenshot of the current desktop state and stores it in the AutoGPT workspace, ready to feed into a vision model, post to a PR comment, or use for visual QA.
 
 #### Inputs
+
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key |
 | Sandbox ID | ID from `E2B Desktop Create Block` |
 
 #### Outputs
+
 | Output | Description |
 |--------|-------------|
 | image | The captured screenshot (a workspace reference in CoPilot, a data URI in graphs) — feed directly into downstream blocks |
@@ -109,12 +140,14 @@ Pauses a running sandbox, preserving its filesystem and memory so it can be resu
 > Note: the live stream drops while a sandbox is paused — restart it after the sandbox resumes.
 
 #### Inputs
+
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key |
 | Sandbox ID | ID from `E2B Desktop Create Block` to pause |
 
 #### Outputs
+
 | Output | Description |
 |--------|-------------|
 | sandbox\_id | ID of the paused sandbox — pass to any block later to resume it |
@@ -128,12 +161,14 @@ Pauses a running sandbox, preserving its filesystem and memory so it can be resu
 Destroys a sandbox immediately. Billing stops within seconds. Always call this when done to avoid runaway costs.
 
 #### Inputs
+
 | Input | Description |
 |-------|-------------|
 | Credentials | E2B API key |
 | Sandbox ID | ID of sandbox to kill |
 
 #### Outputs
+
 | Output | Description |
 |--------|-------------|
 | success | True if the sandbox was destroyed successfully |
