@@ -21,6 +21,7 @@ export enum Key {
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
+  COPILOT_LOCAL_PC_WARNING_ACKED = "copilot-local-pc-warning-acked",
 }
 
 function get(key: Key) {

@@ -9,6 +9,8 @@ import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
+import { LocalPCBadge } from "./components/LocalPCBadge/LocalPCBadge";
+import { LocalPCWarning } from "./components/LocalPCWarning/LocalPCWarning";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
@@ -28,6 +30,7 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -56,6 +59,11 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader />}
           <NotificationBanner />
+          {isLocalPCEnabled && (
+            <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50/40 px-4 py-1.5">
+              <LocalPCBadge />
+            </div>
+          )}
           <CopilotChatHost
             key={sessionId ?? "new"}
             droppedFiles={droppedFiles}
@@ -67,6 +75,7 @@ export function CopilotPage() {
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
+      {isLocalPCEnabled && <LocalPCWarning />}
     </SidebarProvider>
   );
 }
