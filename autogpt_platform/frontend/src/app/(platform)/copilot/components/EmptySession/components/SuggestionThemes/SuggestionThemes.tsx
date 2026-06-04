@@ -60,7 +60,7 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                 variant="secondary"
                 size="small"
                 disabled={disabled || loadingPrompt !== null}
-                className="shrink-0 gap-2 !bg-white px-3 py-2 text-[.9rem]"
+                className="shrink-0 gap-2 !border-neutral-200 !bg-white px-3 py-2 text-[.9rem]"
               >
                 {Icon && <Icon size={16} weight="regular" />}
                 {theme.name}

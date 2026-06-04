@@ -157,7 +157,7 @@ export function BlockCaret({ textareaId }: Props) {
       className="pointer-events-none absolute z-10 bg-blue-500"
       style={{
         left: pos.left,
-        top: pos.top,
+        top: 12,
         height: pos.height,
         width: CARET_WIDTH,
         opacity: visible ? 1 : 0,

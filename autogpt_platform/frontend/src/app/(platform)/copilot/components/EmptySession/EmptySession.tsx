@@ -4,6 +4,8 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
+import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -71,9 +73,18 @@ export function EmptySession({
   }, []);
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
+    <div className="relative flex h-full flex-1 items-center justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
+      <DotDistortionShader
+        dotGap={14}
+        dotSize={1}
+        mouseRadius={100}
+        distortionStrength={1.2}
+        returnSpeed={0.06}
+        opacity={0.2}
+        className="pointer-events-none absolute inset-0 !bg-transparent"
+      />
       <motion.div
-        className="w-full max-w-[52rem] text-center"
+        className="relative z-10 w-full max-w-[52rem] text-center"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -83,9 +94,11 @@ export function EmptySession({
             Hey, <span className="text-violet-600">{greetingName}</span>
             <EditNameDialog currentName={greetingName} />
           </Text>
-          <Text variant="h3" className="mb-8 !font-normal">
-            Tell me about your work — I&apos;ll find what to automate.
-          </Text>
+          <TextGenerateEffect
+            className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-[1.375rem] [&_div]:!leading-normal [&_div]:!tracking-normal"
+            duration={0.6}
+            words="Tell me about your work — I'll find what to automate."
+          />
 
           {isAgentBriefingEnabled && (
             <PulseChips chips={pulseChips} onChipClick={onSend} />

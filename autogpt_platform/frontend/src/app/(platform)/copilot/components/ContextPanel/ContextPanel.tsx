@@ -55,8 +55,10 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           onChange={setActiveTab}
         />
       </div>
-      {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
-      {activeTab === "files" && <FilesTab sessionId={sessionId} />}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
+        {activeTab === "files" && <FilesTab sessionId={sessionId} />}
+      </div>
     </div>
   );
 

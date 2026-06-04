@@ -122,9 +122,11 @@ export function FilesTab({ sessionId }: Props) {
 
   if (isEmpty || (uploaded.length === 0 && generated.length === 0)) {
     return (
-      <p className="p-6 text-center text-sm text-zinc-400">
-        No files yet. Upload files or ask Autopilot to create something.
-      </p>
+      <div className="flex h-full flex-1 items-center justify-center p-6">
+        <p className="text-center text-sm text-zinc-400">
+          No files yet. Upload files or ask Autopilot to create something.
+        </p>
+      </div>
     );
   }
 
