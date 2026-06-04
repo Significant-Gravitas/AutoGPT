@@ -42,7 +42,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.util.clients import get_openai_client
+from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,11 @@ async def _call_llm_for_simulation(
                 usage=usage,
                 user_id=user_id,
                 model=model,
-                provider=chat_cfg.transport.cost_log_provider,
+                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
+                # non-local call physically hits OpenRouter regardless of the chat
+                # transport identity — label it accordingly (not ``cost_log_provider``,
+                # which would mislabel subscription / direct_anthropic as ``anthropic``).
+                provider=openrouter_helper_cost_provider(),
             )
             return parsed
 

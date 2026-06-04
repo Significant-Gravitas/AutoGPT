@@ -264,6 +264,26 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     return None
 
 
+def openrouter_helper_cost_provider() -> str:
+    """Cost-log provider for a client from ``get_openai_client(prefer_openrouter=True)``.
+
+    Mirrors that function's routing so the ``PlatformCostLog`` row names the
+    endpoint the call physically hit, not the chat transport identity:
+
+    - **Local transport** → ``"ollama"`` — the self-hosted endpoint
+      ``get_openai_client`` returns unconditionally under ``CHAT_USE_LOCAL``.
+    - **Every other transport** → ``"open_router"``. ``prefer_openrouter=True``
+      only ever returns an OpenRouter client or ``None`` — it never falls back
+      to direct Anthropic — so any call that actually billed went through
+      OpenRouter, even under ``subscription`` / ``direct_anthropic`` transport
+      with an ``OPEN_ROUTER_API_KEY`` present. Keying off
+      ``transport.cost_log_provider`` here would mislabel those as ``"anthropic"``.
+    """
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    return "ollama" if chat_cfg.transport.name == "local" else "open_router"
+
+
 # ============ Notification Queue Helpers ============ #
 
 
