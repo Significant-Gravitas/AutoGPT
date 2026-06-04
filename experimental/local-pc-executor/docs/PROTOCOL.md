@@ -422,6 +422,8 @@ copy+delete in that case. Responds with `ACK`.
 
 ### Computer Use
 
+**For the full v1 computer-use feature spec and per-OS capability matrix, see [COMPUTER_USE.md](COMPUTER_USE.md).**
+
 #### `SCREENSHOT_REQUEST` (platform → shim)
 ```json
 {
