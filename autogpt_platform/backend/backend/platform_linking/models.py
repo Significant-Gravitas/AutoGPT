@@ -208,3 +208,19 @@ class ChatSessionSummary(BaseModel):
 class ListUserChatsResponse(BaseModel):
     sessions: list[ChatSessionSummary]
     total: int
+
+
+class WorkspaceArtifact(BaseModel):
+    """A user-owned workspace file resolved to bytes for bot attachment.
+
+    Returned by ``fetch_workspace_artifact`` when the file exists, belongs to
+    the session's owning user, and fits under the requested ``max_bytes``.
+    The bot uses ``content`` to attach the file inline; over-the-limit or
+    missing files come back as ``None`` and trigger the link-to-chat fallback.
+    """
+
+    file_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    content: bytes

@@ -7,6 +7,7 @@ persistent typing indicator.
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
@@ -20,7 +21,7 @@ from backend.util.exceptions import (
 from backend.util.settings import Settings
 
 from . import sessions, threads
-from .adapters.base import MessageContext, PlatformAdapter
+from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
 from .bot_backend import BotBackend
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
@@ -31,6 +32,20 @@ THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
+
+# Matches the workspace artifact markdown the LLM emits: `[name](workspace://uuid#mime)`.
+# Both the display name and the trailing `#mime` fragment are optional from
+# our side — we only rely on the file ID (group 2) for the actual fetch.
+_WORKSPACE_ARTIFACT_RE = re.compile(
+    r"\[([^\]]+)\]\(workspace://([A-Za-z0-9_-]+)(?:#([^)]*))?\)"
+)
+
+
+@dataclass(frozen=True)
+class _ParsedArtifact:
+    display_name: str
+    file_id: str
+    mime_hint: str | None
 
 
 @dataclass
@@ -153,6 +168,98 @@ class MessageHandler:
             if not state.pending:
                 self._targets.pop(target_id, None)
 
+    async def _send_text_and_artifacts(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        text: str,
+        ctx: MessageContext,
+        session_id: str | None,
+    ) -> bool:
+        """Send a finished chunk of text, then any workspace artifacts it
+        referenced. Returns True if anything was sent to the channel.
+
+        Each artifact gets its own platform message — files attach inline
+        when small enough, otherwise we drop a link button pointing at the
+        chat on the platform so the user can grab it from there.
+        """
+        stripped, artifacts = _extract_artifacts(text)
+        sent_any = False
+        if stripped:
+            await adapter.send_message(
+                target_id, stripped, mentionable_users=ctx.mentionable_users
+            )
+            sent_any = True
+        for artifact in artifacts:
+            sent = await self._deliver_artifact(
+                adapter, target_id, artifact, session_id
+            )
+            sent_any = sent_any or sent
+        return sent_any
+
+    async def _deliver_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: _ParsedArtifact,
+        session_id: str | None,
+    ) -> bool:
+        """Attach the file inline when possible; otherwise drop a link to
+        the chat on the platform. Returns whether anything was sent."""
+        if session_id is None:
+            # Can't fetch or build a link button without a session id. Surface
+            # the artifact name as plain text so the user knows something was
+            # produced, even if they can't grab it from here.
+            logger.warning(
+                "Workspace artifact %s referenced before session id known",
+                artifact.file_id,
+            )
+            await adapter.send_message(
+                target_id,
+                f"_(produced `{artifact.display_name}` — open the chat to download)_",
+            )
+            return True
+        max_bytes = adapter.max_attachment_bytes
+        fetched = None
+        try:
+            fetched = await self._api.fetch_workspace_artifact(
+                session_id=session_id,
+                file_id=artifact.file_id,
+                max_bytes=max_bytes,
+            )
+        except Exception:
+            logger.exception("Failed to fetch workspace artifact %s", artifact.file_id)
+        if fetched is not None:
+            await adapter.send_file(
+                target_id,
+                text="",
+                file=FileAttachment(
+                    filename=artifact.display_name or fetched.filename,
+                    mime_type=fetched.mime_type,
+                    content=fetched.content,
+                ),
+            )
+            return True
+        # Too large, not found, or fetch errored → link the user to the chat.
+        session_url = _copilot_session_url(session_id)
+        if session_url is None:
+            logger.warning(
+                "No base URL configured; can't render fallback link for %s",
+                artifact.file_id,
+            )
+            await adapter.send_message(
+                target_id,
+                f"_(produced `{artifact.display_name}` — open the chat to download)_",
+            )
+            return True
+        await adapter.send_link(
+            target_id,
+            f"`{artifact.display_name}` is too large to attach here.",
+            link_label="Open in AutoGPT",
+            link_url=session_url,
+        )
+        return True
+
     async def _stream_batch(
         self,
         batch: list[tuple[str, str, str]],
@@ -196,9 +303,10 @@ class MessageHandler:
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
-                await adapter.send_message(
-                    target_id, buffer, mentionable_users=ctx.mentionable_users
-                )
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, active_session_id
+                ):
+                    sent_any_content = True
                 buffer = ""
             sent_any_content = True
             session_url = _copilot_session_url(session_id)
@@ -235,13 +343,10 @@ class MessageHandler:
                 buffer += chunk
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
-                    if post:
-                        await adapter.send_message(
-                            target_id,
-                            post,
-                            mentionable_users=ctx.mentionable_users,
-                        )
-                        if post.strip():
+                    if post and post.strip():
+                        if await self._send_text_and_artifacts(
+                            adapter, target_id, post, ctx, active_session_id
+                        ):
                             sent_any_content = True
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
@@ -272,10 +377,10 @@ class MessageHandler:
             await adapter.stop_typing(target_id)
 
         if buffer.strip():
-            await adapter.send_message(
-                target_id, buffer, mentionable_users=ctx.mentionable_users
-            )
-            sent_any_content = True
+            if await self._send_text_and_artifacts(
+                adapter, target_id, buffer, ctx, active_session_id
+            ):
+                sent_any_content = True
 
         if not sent_any_content:
             await adapter.send_message(
@@ -396,6 +501,34 @@ class MessageHandler:
                 ctx.channel_id,
                 "Something went wrong setting up the link. Try again later.",
             )
+
+
+def _extract_artifacts(text: str) -> tuple[str, list[_ParsedArtifact]]:
+    """Strip workspace artifact markdown links out of ``text`` and return
+    them separately.
+
+    Raw ``workspace://`` URIs are useless to a chat-platform user, so the
+    handler peels them out of the streamed text and either inline-attaches
+    the file or replaces them with a link-to-chat button instead.
+    """
+    artifacts: list[_ParsedArtifact] = []
+
+    def _capture(match: re.Match[str]) -> str:
+        artifacts.append(
+            _ParsedArtifact(
+                display_name=match.group(1).strip(),
+                file_id=match.group(2),
+                mime_hint=match.group(3) or None,
+            )
+        )
+        return ""
+
+    stripped = _WORKSPACE_ARTIFACT_RE.sub(_capture, text)
+    # Clean up the gaps the removed URIs left behind so the surrounding
+    # prose still reads naturally.
+    stripped = re.sub(r"[ \t]+\n", "\n", stripped)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip(), artifacts
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:

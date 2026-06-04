@@ -389,6 +389,7 @@ class DatabaseManager(AppService):
     cleanup_expired_platform_link_tokens = _(
         platform_linking_db.cleanup_expired_platform_link_tokens
     )
+    fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -632,6 +633,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
+    fetch_workspace_artifact = d.fetch_workspace_artifact
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

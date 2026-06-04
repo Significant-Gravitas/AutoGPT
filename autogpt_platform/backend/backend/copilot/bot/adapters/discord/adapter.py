@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import io
 import logging
 import re
 from typing import Optional
@@ -16,6 +17,7 @@ from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import (
     ChannelType,
+    FileAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
@@ -57,6 +59,10 @@ class DiscordAdapter(PlatformAdapter):
     @property
     def chunk_flush_at(self) -> int:
         return config.CHUNK_FLUSH_AT
+
+    @property
+    def max_attachment_bytes(self) -> int:
+        return config.MAX_ATTACHMENT_BYTES
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
@@ -112,6 +118,20 @@ class DiscordAdapter(PlatformAdapter):
             )
         )
         await channel.send(text, view=view, tts=False)
+
+    async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return
+        # spoiler=False — AutoPilot output is untrusted but spoilering every
+        # generated file would be noisy; the workspace fetcher already
+        # validated user ownership before we got bytes.
+        attachment = discord.File(
+            io.BytesIO(file.content),
+            filename=file.filename or "file",
+            spoiler=False,
+        )
+        await channel.send(text or None, file=attachment, tts=False)
 
     async def send_reply(
         self,

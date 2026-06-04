@@ -293,6 +293,53 @@ class TestSendMethods:
         )
 
     @pytest.mark.asyncio
+    async def test_send_file_attaches_bytes_with_display_name(self):
+        from backend.copilot.bot.adapters.base import FileAttachment
+
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        await adapter.send_file(
+            "123",
+            "here's your result",
+            FileAttachment(
+                filename="chart.png", mime_type="image/png", content=b"\x89PNG"
+            ),
+        )
+
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("here's your result",)
+        attached = kwargs["file"]
+        assert isinstance(attached, discord.File)
+        assert attached.filename == "chart.png"
+        assert kwargs["tts"] is False
+
+    @pytest.mark.asyncio
+    async def test_send_file_drops_empty_caption_to_none(self):
+        # discord.py rejects empty-string content alongside a file; we
+        # collapse `text=""` to None so the upload still succeeds.
+        from backend.copilot.bot.adapters.base import FileAttachment
+
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        await adapter.send_file(
+            "123",
+            "",
+            FileAttachment(
+                filename="x.bin", mime_type="application/octet-stream", content=b"x"
+            ),
+        )
+
+        args, _ = channel.send.await_args
+        assert args == (None,)
+
+    @pytest.mark.asyncio
     async def test_send_reply_falls_back_to_send_when_message_missing(self):
         adapter, client = _bare_adapter()
         channel = MagicMock(spec=discord.TextChannel)

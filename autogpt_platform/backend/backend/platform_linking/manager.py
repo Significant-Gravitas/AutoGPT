@@ -17,6 +17,7 @@ from .models import (
     ListUserChatsResponse,
     Platform,
     ResolveResponse,
+    WorkspaceArtifact,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,14 @@ class PlatformLinkingManager(AppService):
     ) -> ListUserChatsResponse:
         return await list_user_chats(platform, platform_user_id, limit, offset)
 
+    @expose
+    async def fetch_workspace_artifact(
+        self, session_id: str, file_id: str, max_bytes: int
+    ) -> WorkspaceArtifact | None:
+        return await platform_linking_db().fetch_workspace_artifact(
+            session_id, file_id, max_bytes
+        )
+
 
 class PlatformLinkingManagerClient(AppServiceClient):
     @classmethod
@@ -103,3 +112,6 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.refresh_server_link_name
     )
     list_user_chats = endpoint_to_async(PlatformLinkingManager.list_user_chats)
+    fetch_workspace_artifact = endpoint_to_async(
+        PlatformLinkingManager.fetch_workspace_artifact
+    )

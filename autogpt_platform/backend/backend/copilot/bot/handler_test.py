@@ -6,11 +6,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.platform_linking.models import WorkspaceArtifact
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
+from .handler import (
+    MessageHandler,
+    TargetState,
+    _extract_artifacts,
+    build_thread_name,
+    clamp_thread_name,
+)
 
 
 def _ctx(
@@ -42,9 +49,11 @@ def _ctx(
 def _adapter() -> MagicMock:
     adapter = MagicMock()
     adapter.chunk_flush_at = 1900
+    adapter.max_attachment_bytes = 25 * 1024 * 1024
     adapter.send_message = AsyncMock()
     adapter.send_reply = AsyncMock()
     adapter.send_link = AsyncMock()
+    adapter.send_file = AsyncMock()
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
     adapter.create_thread = AsyncMock(return_value="thread-new")
@@ -63,6 +72,7 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
             expires_at="2099-01-01T00:00:00Z",
         )
     )
+    api.fetch_workspace_artifact = AsyncMock(return_value=None)
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -662,3 +672,140 @@ class TestThreadNames:
 
     def test_clamp_thread_name_falls_back_when_blank(self):
         assert clamp_thread_name("   ") == "AutoPilot Chat"
+
+
+# ── Workspace artifact extraction & delivery ────────────────────────────
+
+
+class TestExtractArtifacts:
+    def test_no_artifacts_returns_text_unchanged(self):
+        text, artifacts = _extract_artifacts("hello world")
+        assert text == "hello world"
+        assert artifacts == []
+
+    def test_strips_artifact_markdown(self):
+        text, artifacts = _extract_artifacts(
+            "Here's your result: [chart.png](workspace://abc-123#image/png)"
+        )
+        assert text == "Here's your result:"
+        assert len(artifacts) == 1
+        assert artifacts[0].file_id == "abc-123"
+        assert artifacts[0].display_name == "chart.png"
+        assert artifacts[0].mime_hint == "image/png"
+
+    def test_handles_artifact_with_no_mime_fragment(self):
+        text, artifacts = _extract_artifacts("[doc.pdf](workspace://xyz)")
+        assert text == ""
+        assert artifacts[0].file_id == "xyz"
+        assert artifacts[0].mime_hint is None
+
+    def test_handles_multiple_artifacts(self):
+        text, artifacts = _extract_artifacts(
+            "First [a.png](workspace://1#image/png) "
+            "then [b.csv](workspace://2#text/csv)"
+        )
+        assert "workspace://" not in text
+        assert [a.file_id for a in artifacts] == ["1", "2"]
+
+    def test_collapses_blank_lines_left_behind(self):
+        # The URI lives alone on its line — once stripped we shouldn't leave
+        # a triple-newline scar in the surrounding prose.
+        text, _ = _extract_artifacts(
+            "Above paragraph.\n\n[file.png](workspace://abc)\n\nBelow paragraph."
+        )
+        assert "\n\n\n" not in text
+        assert "Above paragraph." in text
+        assert "Below paragraph." in text
+
+
+class TestDeliverArtifact:
+    @pytest.mark.asyncio
+    async def test_small_file_attaches_inline(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(
+            return_value=WorkspaceArtifact(
+                file_id="abc",
+                filename="server.name",
+                mime_type="image/png",
+                size_bytes=10,
+                content=b"\x89PNG\r\n",
+            )
+        )
+        text = "Here is your result: [chart.png](workspace://abc#image/png)"
+
+        await handler._send_text_and_artifacts(
+            adapter, "target-1", text, _ctx(), "sess-1"
+        )
+
+        adapter.send_message.assert_awaited_once()
+        adapter.send_file.assert_awaited_once()
+        sent_file = adapter.send_file.await_args.kwargs["file"]
+        # The bot uses the LLM's display name as the filename, not the
+        # backend's storage name — that's what the user expects to see.
+        assert sent_file.filename == "chart.png"
+        assert sent_file.content == b"\x89PNG\r\n"
+        adapter.send_link.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_too_large_falls_back_to_link_button(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(return_value=None)
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
+            await handler._send_text_and_artifacts(
+                adapter,
+                "target-1",
+                "[big.zip](workspace://big)",
+                _ctx(),
+                "sess-42",
+            )
+
+        adapter.send_file.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+        # send_link(target_id, text, link_label=..., link_url=...) — text is
+        # positional arg[1], the URL is a kwarg.
+        assert "big.zip" in adapter.send_link.await_args.args[1]
+        assert "sess-42" in adapter.send_link.await_args.kwargs["link_url"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_failure_falls_back_to_link_button(self):
+        # The backend call could raise (network blip, RPC timeout) — that
+        # must not crash the stream; we still surface the artifact via a
+        # link so the user has a way to grab it.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(
+            side_effect=RuntimeError("rpc down")
+        )
+        fake_settings = MagicMock()
+        fake_settings.config.frontend_base_url = "https://app.example.com"
+        fake_settings.config.platform_base_url = ""
+
+        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
+            await handler._send_text_and_artifacts(
+                adapter, "target-1", "[x.png](workspace://x)", _ctx(), "sess-1"
+            )
+
+        adapter.send_file.assert_not_awaited()
+        adapter.send_link.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_session_id_drops_inline_note(self):
+        # If artifacts somehow arrive before we have a session id, we can't
+        # fetch or build a fallback URL — just tell the user.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+
+        await handler._send_text_and_artifacts(
+            adapter, "target-1", "[x.png](workspace://x)", _ctx(), None
+        )
+
+        handler._api.fetch_workspace_artifact.assert_not_awaited()
+        adapter.send_file.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert "x.png" in adapter.send_message.await_args.args[1]
