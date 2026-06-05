@@ -3943,13 +3943,42 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
-        mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
+        # Compute the computer-use gate once — reused for both the MCP-tool
+        # registration (below) and the CLI beta env var (further down).
+        # Conditions: deploy flag + per-session allow + the active executor
+        # is a LocalPCShim that advertised the ``computer_use`` capability
+        # in HELLO. If any check fails, the LLM still sees no local_pc_*
+        # tools registered, and the CLI subprocess gets the OpenRouter-safe
+        # default env (CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1).
+        use_local_pc_computer = bool(
+            config.use_local_pc_executor
+            and config.allow_computer_use
+            and isinstance(e2b_sandbox, LocalPCShim)
+            and "computer_use" in (e2b_sandbox.capabilities or [])
+        )
+
+        mcp_server = create_copilot_mcp_server(
+            use_e2b=use_e2b,
+            use_local_pc_computer=use_local_pc_computer,
+        )
 
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
         sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
         fallback_model = _resolve_fallback_model()
+
+        # Opt the CLI subprocess into the Anthropic ``computer-use-2025-11-24``
+        # beta (via ANTHROPIC_BETAS) under the same gate that exposes the
+        # local_pc_* MCP tools. build_sdk_env applies the final
+        # OpenRouter-compatibility guard internally — OpenRouter rejects
+        # Anthropic beta headers, so OpenRouter mode keeps the strip flag
+        # regardless of what we pass here.
+        if use_local_pc_computer:
+            logger.info(
+                "[LocalPC] [%s] computer-use beta enabled for CLI subprocess",
+                session_id[:12],
+            )
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -3958,6 +3987,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            enable_computer_use_beta=use_local_pc_computer,
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -3978,9 +4008,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             allowed, disallowed = apply_tool_permissions(
                 permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
             )
+            # apply_tool_permissions doesn't know about local_pc_* tools yet
+            # (capability-permission model TBD); append them here so the
+            # tools registered in create_copilot_mcp_server are also on the
+            # CLI's allow-list. Otherwise the CLI silently rejects them.
+            if use_local_pc_computer:
+                from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+                from .tool_adapter import MCP_TOOL_PREFIX
+
+                allowed = [
+                    *allowed,
+                    *[
+                        f"{MCP_TOOL_PREFIX}{name}"
+                        for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+                    ],
+                ]
         else:
             allowed = get_copilot_tool_names(
-                use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                use_local_pc_computer=use_local_pc_computer,
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 

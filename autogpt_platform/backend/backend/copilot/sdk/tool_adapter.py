@@ -658,7 +658,9 @@ def _make_truncating_wrapper(
     return wrapper
 
 
-def create_copilot_mcp_server(*, use_e2b: bool = False):
+def create_copilot_mcp_server(
+    *, use_e2b: bool = False, use_local_pc_computer: bool = False
+):
     """Create an in-process MCP server configuration for CoPilot tools.
 
     All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
@@ -672,6 +674,14 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     that route directly to the E2B sandbox filesystem, and the caller should
     disable the corresponding SDK built-in tools via
     :func:`get_sdk_disallowed_tools`.
+
+    When *use_local_pc_computer* is True, the ``local_pc_*`` MCP tools
+    (screenshot, click, type, list_windows, launch_app, clipboard,
+    permissions, etc.) are registered. The caller should set this only
+    when the active executor is a connected ``LocalPCShim`` AND that
+    shim advertised the ``computer_use`` capability in HELLO — gating
+    happens at the handler level too so a misconfigured caller still
+    fails closed.
     """
 
     sdk_tools = []
@@ -706,6 +716,36 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                 schema,
                 annotations=ann,
             )(_make_truncating_wrapper(handler, name))
+            sdk_tools.append(decorated)
+
+    # LocalPC computer-use tools — only when the connected shim advertised
+    # the ``computer_use`` capability. Mutating-input ops (click/type/key/
+    # scroll/drag/focus/launch/clipboard_write) carry the
+    # ``readOnlyHint=False`` annotation so the CLI serialises them — back-
+    # to-back clicks to the same coordinate must NOT race. Read-only
+    # observability ops (screenshot, cursor_position, list_*, permissions,
+    # clipboard_read) keep the parallel annotation.
+    if use_local_pc_computer:
+        from .computer_use_tools import LOCAL_PC_COMPUTER_TOOLS
+
+        _LOCAL_PC_MUTATING_TOOLS = {
+            "local_pc_click",
+            "local_pc_type",
+            "local_pc_key",
+            "local_pc_scroll",
+            "local_pc_focus_window",
+            "local_pc_launch_app",
+            "local_pc_clipboard_write",
+        }
+        for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS:
+            ann = (
+                _MUTATING_ANNOTATION
+                if name in _LOCAL_PC_MUTATING_TOOLS
+                else _PARALLEL_ANNOTATION
+            )
+            decorated = tool(name, desc, schema, annotations=ann)(
+                _make_truncating_wrapper(handler, name)
+            )
             sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
@@ -889,6 +929,7 @@ def get_copilot_tool_names(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    use_local_pc_computer: bool = False,
 ) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
@@ -896,14 +937,31 @@ def get_copilot_tool_names(
     equivalents that route to the E2B sandbox.  Tools belonging to any of
     *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
     in ``backend.copilot.tools`` for the full list.
+
+    When *use_local_pc_computer* is True the ``local_pc_*`` MCP tool names
+    are appended so the CLI's ``allowed_tools`` whitelist includes them —
+    otherwise the CLI silently rejects tool calls registered in the MCP
+    server but missing from the allow-list. Caller must pass the same
+    boolean to :func:`create_copilot_mcp_server`.
     """
     hidden_short_names = tool_names_in_groups(disabled_groups)
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
+    local_pc_names: list[str] = []
+    if use_local_pc_computer:
+        from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+
+        local_pc_names = [
+            f"{MCP_TOOL_PREFIX}{name}" for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+        ]
+
     if not use_e2b:
-        if not hidden_mcp_names:
-            return list(COPILOT_TOOL_NAMES)
-        return [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
+        base = (
+            list(COPILOT_TOOL_NAMES)
+            if not hidden_mcp_names
+            else [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
+        )
+        return [*base, *local_pc_names]
 
     # In E2B mode, Write/Edit are NOT registered (E2B uses write_file/edit_file
     # from E2B_FILE_TOOLS instead), so don't include them here.
@@ -912,6 +970,7 @@ def get_copilot_tool_names(
         *_registry_mcp_tools(hidden=hidden_short_names),
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
         *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
+        *local_pc_names,
         *_SDK_BUILTIN_ALWAYS,
     ]
 

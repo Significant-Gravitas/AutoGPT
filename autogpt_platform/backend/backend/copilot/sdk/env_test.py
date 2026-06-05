@@ -472,3 +472,70 @@ class TestAutocompactPctOverrideConfigurable:
             result = build_sdk_env(model=None)
 
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+
+# ---------------------------------------------------------------------------
+# enable_computer_use_beta — LocalPC computer-use CLI opt-in
+# ---------------------------------------------------------------------------
+
+
+class TestComputerUseBetaEnablement:
+    """``enable_computer_use_beta=True`` opts the CLI into
+    ``computer-use-2025-11-24`` via ``ANTHROPIC_BETAS`` and drops the strip
+    flag — but ONLY when the transport isn't OpenRouter, which always
+    rejects Anthropic beta headers."""
+
+    def test_default_keeps_strip_and_omits_betas(self):
+        """No opt-in => the existing OpenRouter-safe behaviour persists."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert "ANTHROPIC_BETAS" not in result
+
+    def test_anthropic_direct_enables_beta_when_opted_in(self):
+        """Direct-Anthropic + opt-in => strip dropped, ANTHROPIC_BETAS set."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_subscription_enables_beta_when_opted_in(self, _mock):
+        """Subscription auth path still gets the beta via ANTHROPIC_BETAS,
+        which the docs confirm works under all auth methods (not just
+        ``--betas`` which is API-key-only)."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+
+    def test_openrouter_strips_betas_even_when_opted_in(self):
+        """OpenRouter rejects Anthropic-beta headers — the strip flag must
+        win regardless of caller intent, otherwise every OpenRouter request
+        4xxs once the platform turns the feature on for a user."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        # Strip stays on — OpenRouter rejects the beta header.
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        # And the beta env var is NOT set on the OpenRouter path.
+        assert "ANTHROPIC_BETAS" not in result
