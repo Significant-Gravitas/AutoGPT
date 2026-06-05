@@ -24,7 +24,8 @@ const VIEWER_STYLING = {
 };
 
 export function FileViewerModal({ file, onClose }: Props) {
-  // Unmounts between opens (file === null), so per-file view state resets.
+  // Parent conditionally renders this and keys it by file id, so each open
+  // mounts a fresh instance and per-file view state starts at preview.
   const [isSourceView, setIsSourceView] = useState(false);
 
   if (!file) return null;

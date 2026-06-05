@@ -102,7 +102,13 @@ export function ArtifactsList({
         isLoading={isLoadingMore}
         onLoadMore={onLoadMore}
       />
-      <FileViewerModal file={openFile} onClose={() => setOpenFile(null)} />
+      {openFile ? (
+        <FileViewerModal
+          key={openFile.id}
+          file={openFile}
+          onClose={() => setOpenFile(null)}
+        />
+      ) : null}
     </>
   );
 }
