@@ -848,7 +848,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "impersonation"],
         "summary": "Notify Impersonation Start",
-        "description": "Emit a Discord audit alert when an admin starts impersonating a user.\n\nAdmin-only (router dependency). The alert gates impersonation: callers must\ntreat a non-2xx response as \"do not impersonate\".",
+        "description": "Emit a Discord audit alert when an admin starts impersonating a user.\n\nAdmin-only. The alert gates impersonation: callers must treat a non-2xx\nresponse as \"do not impersonate\".",
         "operationId": "postV2Notify impersonation start",
         "requestBody": {
           "content": {

@@ -23,7 +23,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from autogpt_libs.auth import get_user_id, requires_admin_user
+from autogpt_libs.auth import User, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
 from pydantic import BaseModel
 
@@ -67,14 +67,19 @@ class ImpersonationNotifyResponse(BaseModel):
 )
 async def notify_impersonation_start(
     body: ImpersonationNotifyRequest = Body(...),
-    admin_user_id: str = Security(get_user_id),
+    admin: User = Security(requires_admin_user),
 ) -> ImpersonationNotifyResponse:
     """Emit a Discord audit alert when an admin starts impersonating a user.
 
-    Admin-only (router dependency). The alert gates impersonation: callers must
-    treat a non-2xx response as "do not impersonate".
+    Admin-only. The alert gates impersonation: callers must treat a non-2xx
+    response as "do not impersonate".
     """
     target_user_id = body.target_user_id
+    # Derive the actor from the JWT (requires_admin_user), NOT get_user_id, which
+    # honors the X-Act-As-User-Id header. A lingering impersonation cookie (a
+    # prior session or another tab) would otherwise make the audit name the
+    # impersonated user instead of the real acting admin.
+    admin_user_id = admin.user_id
 
     # Always record a server-side trail, independent of Discord and of outcome.
     logger.info(
@@ -87,7 +92,7 @@ async def notify_impersonation_start(
         return ImpersonationNotifyResponse(alerted=False)
 
     try:
-        await _send_impersonation_alert(admin_user_id, target_user_id)
+        await _send_impersonation_alert(admin, target_user_id)
     except Exception:
         logger.warning(
             f"Failed to deliver impersonation Discord alert "
@@ -102,14 +107,15 @@ async def notify_impersonation_start(
     return ImpersonationNotifyResponse(alerted=True)
 
 
-async def _send_impersonation_alert(admin_user_id: str, target_user_id: str) -> None:
+async def _send_impersonation_alert(admin: User, target_user_id: str) -> None:
     """Send the Discord alert. Raises if it was not actually delivered."""
-    admin_email = await _resolve_email(admin_user_id)
+    # Prefer the email carried in the JWT; fall back to a DB lookup if absent.
+    admin_email = admin.email or await _resolve_email(admin.user_id)
     target_email = await _resolve_email(target_user_id)
 
     content = (
         "🕵️ **Admin impersonation started**\n"
-        f"Admin: {admin_email or 'unknown'} (`{admin_user_id}`)\n"
+        f"Admin: {admin_email or 'unknown'} (`{admin.user_id}`)\n"
         f"Now viewing as: {target_email or 'unknown'} (`{target_user_id}`)\n"
         "Source: admin dashboard"
     )

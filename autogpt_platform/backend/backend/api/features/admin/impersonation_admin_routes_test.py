@@ -125,3 +125,26 @@ def test_notify_requires_admin_role(mock_jwt_user) -> None:
     )
 
     assert response.status_code == 403
+
+
+def test_notify_actor_is_jwt_admin_not_impersonation_header(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The audit actor comes from the JWT, never the X-Act-As-User-Id header.
+
+    Regression: using get_user_id (impersonation-aware) here would let a lingering
+    impersonation header name the impersonated user as the actor.
+    """
+    _set_token(mocker, "fake-token")
+    _patch_emails(mocker)
+    mock_alert = _patch_alert(mocker, return_value="Message sent")
+
+    response = client.post(
+        "/admin/impersonation/notify",
+        json={"target_user_id": _TARGET_USER_ID},
+        headers={"X-Act-As-User-Id": "spoofed-impersonated-id"},
+    )
+
+    assert response.status_code == 200
+    content = mock_alert.await_args.args[0]
+    assert "spoofed-impersonated-id" not in content
