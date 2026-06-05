@@ -604,4 +604,115 @@ Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
 
 Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
 On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
-Any in-flight requests at disconnect time are considered failed; platform retries if safe.
+Any in-flight requests at disconnect time are considered failed; recovery is
+governed by the per-op idempotency table in
+[In-flight semantics on disconnect](#in-flight-semantics-on-disconnect).
+
+---
+
+## In-flight semantics on disconnect
+
+When the WebSocket drops (or the platform-side `_rpc` timeout fires) while
+one or more requests are in flight, the platform MUST decide on a per-op
+basis whether to auto-retry on reconnect or surface a clean error to the
+LLM. Auto-retry is only safe for **idempotent** ops — repeating a
+non-idempotent op risks duplicated side effects (a second write, a second
+`rm`, a second `Cmd+S` keystroke) which is strictly worse than reporting
+that the outcome is unknown and letting the LLM probe state with an
+idempotent op (e.g. `FILE_STAT`).
+
+### Per-op idempotency table
+
+| Op | Idempotent? | Disconnect recovery |
+|---|---|---|
+| `FILE_READ` | yes | platform MAY auto-retry on reconnect |
+| `FILE_STAT` | yes | platform MAY auto-retry on reconnect |
+| `FILE_LIST` | yes | platform MAY auto-retry on reconnect |
+| `CURSOR_POSITION_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `DISPLAY_INFO_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `WINDOW_LIST_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `APP_LIST_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `CLIPBOARD_READ` | yes | platform MAY auto-retry on reconnect |
+| `PERMISSIONS_CHECK_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `SCREENSHOT_REQUEST` | yes | platform MAY auto-retry on reconnect |
+| `EXECUTE_COMMAND` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `FILE_WRITE` | **no** | platform MUST NOT auto-retry; surface `WRITE_UNCONFIRMED` |
+| `FILE_DELETE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `FILE_MOVE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `WINDOW_FOCUS` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `APP_LAUNCH` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `CLIPBOARD_WRITE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+| `INPUT_ACTION` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+
+Idempotency here means *repeat-safe at the protocol level*: the same wire op
+issued twice produces the same observable state on the user's machine. Read
+ops trivially qualify. `SCREENSHOT_REQUEST` qualifies because each capture
+is a fresh sample — a duplicate sample is wasted work but not incorrect.
+`EXECUTE_COMMAND` is non-idempotent because the shell may have side effects
+(`rm`, `git push`, network calls) the platform can't introspect.
+
+### Recovery semantics
+
+For each in-flight wire op when the platform-side `_rpc` times out OR the
+WS disconnects before a response arrives:
+
+- **Idempotent ops** — the platform MAY auto-retry exactly once after the
+  shim reconnects. The retry MUST use a fresh wire `id` (the old one will
+  be dropped from the shim's correlation table) but otherwise repeats the
+  exact same payload. The platform-side adapter SHOULD hide the retry from
+  the caller — they get the eventual result or, if the retry also fails,
+  a single final error. The retry budget is per-call, not per-session, so
+  a pathological "drop every other frame" link doesn't snowball.
+- **Non-idempotent ops** — the platform MUST raise immediately. The error
+  surfaces to the LLM as a clean, structured failure that tells the model
+  to verify state (e.g. with `FILE_STAT`) rather than blindly retry. The
+  LLM, not the adapter, owns the retry decision because it can observe
+  whether the side effect happened.
+
+### `WRITE_UNCONFIRMED`
+
+A dedicated error code for `FILE_WRITE` whose ack never arrives. The wire
+op was sent — bytes may or may not have hit disk on the shim host — but
+the platform-side `_rpc` either timed out waiting for `ACK` or the WS
+dropped first. The platform converts that platform-side condition into a
+synthetic `WRITE_UNCONFIRMED` `ERROR` envelope so:
+
+1. The LLM sees the same translator-rendered English message regardless of
+   whether the shim explicitly sent `ERROR { code: WRITE_UNCONFIRMED }` or
+   whether the platform synthesized one from a timeout/disconnect.
+2. The recommended recovery — `FILE_STAT` the target path to check actual
+   on-disk state, then re-issue `FILE_WRITE` if needed — is consistent
+   across both branches.
+
+Wire shape of the synthetic envelope the platform adapter raises:
+
+```json
+{
+  "type": "ERROR",
+  "id": "req-uuid",
+  "ts": 1234567890.0,
+  "payload": {
+    "code": "WRITE_UNCONFIRMED",
+    "message": "FILE_WRITE was sent but the shim did not ACK before the connection dropped.",
+    "fatal": false,
+    "details": {
+      "path": "/Users/alice/autogpt-workspace/output.txt",
+      "op": "FILE_WRITE"
+    }
+  }
+}
+```
+
+The shim itself MAY also originate this code if it detects the same race
+on its side (write started but the response could not be flushed before
+the socket closed) — the two paths are wire-indistinguishable by design.
+
+### Other non-idempotent ops on disconnect
+
+For non-`FILE_WRITE` non-idempotent ops, the platform raises a typed
+`OpUnconfirmedError` carrying the op name + the original wire `id`. The
+translator surfaces this with the same shape as `WRITE_UNCONFIRMED` but
+with op-appropriate wording (e.g. for `EXECUTE_COMMAND`: "the command was
+sent but the shim did not return a result before the connection dropped —
+verify state before retrying"). No new wire ERROR code is minted; the
+platform-side error type carries the structured signal.

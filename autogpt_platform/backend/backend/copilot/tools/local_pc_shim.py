@@ -20,6 +20,76 @@ from .local_pc_errors import translate_shim_error
 logger = logging.getLogger(__name__)
 
 
+# In-flight-on-disconnect semantics — see PROTOCOL.md
+# "In-flight semantics on disconnect". Ops in this set are repeat-safe at the
+# protocol level: re-issuing the same wire op produces the same observable
+# state on the user's machine, so the platform adapter MAY auto-retry once
+# after reconnect when a timeout/disconnect races a response.
+_IDEMPOTENT_OPS: frozenset[str] = frozenset(
+    {
+        "FILE_READ",
+        "FILE_STAT",
+        "FILE_LIST",
+        "CURSOR_POSITION_REQUEST",
+        "DISPLAY_INFO_REQUEST",
+        "WINDOW_LIST_REQUEST",
+        "APP_LIST_REQUEST",
+        "CLIPBOARD_READ",
+        "PERMISSIONS_CHECK_REQUEST",
+        "SCREENSHOT_REQUEST",
+    }
+)
+
+
+class OpUnconfirmedError(RuntimeError):
+    """Raised when a non-idempotent wire op was sent but never acknowledged.
+
+    The wire op left the platform but the platform-side `_rpc` either timed
+    out waiting for a response or the WS dropped before the shim flushed
+    one. The side effect may or may not have happened on the user's
+    machine, so the platform MUST NOT auto-retry — the LLM owns the
+    recovery decision (typically: probe state with an idempotent op like
+    `FILE_STAT`, then re-issue if needed).
+
+    Attributes:
+        code: synthetic shim error code surfaced to the translator
+            (``"WRITE_UNCONFIRMED"`` for FILE_WRITE, ``"OP_UNCONFIRMED"``
+            for everything else).
+        op: the wire op name (``"FILE_WRITE"``, ``"EXECUTE_COMMAND"``, ...).
+        wire_id: the original wire-correlation `id` so callers can correlate
+            audit-log entries on both sides.
+    """
+
+    def __init__(
+        self,
+        op: str,
+        wire_id: str,
+        *,
+        code: str = "OP_UNCONFIRMED",
+        message: str | None = None,
+    ) -> None:
+        super().__init__(message or f"[LocalPC] {op} unconfirmed (wire id={wire_id})")
+        self.code = code
+        self.op = op
+        self.wire_id = wire_id
+
+
+class WriteUnconfirmedError(OpUnconfirmedError):
+    """Specialization of OpUnconfirmedError for FILE_WRITE.
+
+    The bytes may or may not have hit disk on the shim host. Caller should
+    `FILE_STAT` the target path to check actual state.
+    """
+
+    def __init__(self, wire_id: str, message: str | None = None) -> None:
+        super().__init__(
+            op="FILE_WRITE",
+            wire_id=wire_id,
+            code="WRITE_UNCONFIRMED",
+            message=message,
+        )
+
+
 def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
     """Translate a wire ERROR payload into an actionable English message."""
     if not isinstance(payload, dict):
@@ -143,15 +213,30 @@ class _FilesProxy:
         else:
             wire_content = content
             wire_encoding = "utf-8"
-        resp = await self._shim._rpc(
-            "FILE_WRITE",
-            {
-                "path": path,
-                "content": wire_content,
-                "encoding": wire_encoding,
-                "create_parents": True,
-            },
-        )
+        try:
+            resp = await self._shim._rpc(
+                "FILE_WRITE",
+                {
+                    "path": path,
+                    "content": wire_content,
+                    "encoding": wire_encoding,
+                    "create_parents": True,
+                },
+            )
+        except WriteUnconfirmedError as exc:
+            # Synthesize an ERROR envelope so the LLM sees the translator's
+            # WRITE_UNCONFIRMED hint, not the raw Python exception text.
+            raise OSError(
+                _friendly(
+                    {
+                        "code": "WRITE_UNCONFIRMED",
+                        "message": str(exc),
+                        "details": {"path": path, "op": "FILE_WRITE"},
+                    },
+                    self._shim,
+                    "FILE_WRITE unconfirmed",
+                )
+            ) from exc
         if resp.get("type") == "ERROR":
             raise OSError(
                 _friendly(resp.get("payload", {}), self._shim, "FILE_WRITE failed")
@@ -563,6 +648,21 @@ class _CommandResult:
         self.timed_out = payload.get("timed_out", False)
 
 
+class _RpcAttemptFailed(Exception):
+    """Internal: one `_send_and_wait` attempt failed (timeout or WS error).
+
+    Carries the wire `id` so the outer `_rpc` can convert a non-retryable
+    attempt into an :class:`OpUnconfirmedError` / :class:`WriteUnconfirmedError`
+    with the original correlation id intact.
+    """
+
+    def __init__(self, wire_id: str, msg_type: str, *, timed_out: bool) -> None:
+        super().__init__(f"{msg_type} attempt failed (wire id={wire_id})")
+        self.wire_id = wire_id
+        self.msg_type = msg_type
+        self.timed_out = timed_out
+
+
 class LocalPCShim:
     """
     Drop-in replacement for E2B AsyncSandbox that routes execution to the
@@ -587,9 +687,12 @@ class LocalPCShim:
         session_id: str,
         ws: WebSocket,
         hello: ShimHello | None = None,
+        *,
+        manager: "ShimConnectionManager | None" = None,
     ) -> None:
         self.sandbox_id = session_id
         self._ws = ws
+        self._manager = manager
         hello = hello or ShimHello()
         self.machine_id = hello.machine_id
         self.platform = hello.platform
@@ -617,11 +720,20 @@ class LocalPCShim:
     ) -> "LocalPCShim":
         ws = await manager.wait_for(session_id, timeout=connect_timeout)
         hello = manager.get_hello(session_id)
-        return cls(session_id, ws, hello)
+        return cls(session_id, ws, hello, manager=manager)
 
-    async def _rpc(
-        self, msg_type: str, payload: dict, *, timeout: float = 30.0
+    async def _send_and_wait(
+        self,
+        msg_type: str,
+        payload: dict,
+        *,
+        timeout: float,
     ) -> dict:
+        """One attempt at sending a wire op and awaiting its response.
+
+        Raises ``TimeoutError`` if the response doesn't arrive within
+        ``timeout`` or the underlying WS send fails before the response.
+        """
         msg_id = str(uuid.uuid4())
         msg = {"type": msg_type, "id": msg_id, "ts": time.time(), "payload": payload}
         loop = asyncio.get_event_loop()
@@ -630,9 +742,99 @@ class LocalPCShim:
         try:
             await self._ws.send_text(json.dumps(msg))
             return await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             self._pending.pop(msg_id, None)
-            raise TimeoutError(f"[LocalPC] RPC {msg_type} timed out after {timeout}s")
+            # Tag the timeout with the wire id so the caller can convert it
+            # into a typed OpUnconfirmedError (non-idempotent ops) or trigger
+            # a single auto-retry (idempotent ops).
+            raise _RpcAttemptFailed(msg_id, msg_type, timed_out=True) from exc
+        except Exception as exc:
+            # WS disconnect / send error / recv loop closure — the response
+            # cannot arrive on this connection. Surface as unconfirmed so the
+            # caller decides retry vs. raise based on idempotency.
+            self._pending.pop(msg_id, None)
+            raise _RpcAttemptFailed(msg_id, msg_type, timed_out=False) from exc
+
+    async def _rpc(
+        self, msg_type: str, payload: dict, *, timeout: float = 30.0
+    ) -> dict:
+        """Send a wire op and await its response.
+
+        Disconnect/timeout semantics follow the per-op idempotency table in
+        ``experimental/local-pc-executor/docs/PROTOCOL.md``:
+
+        - Idempotent ops (FILE_READ, FILE_STAT, ...): on
+          timeout/disconnect, schedule one automatic retry once the WS is
+          back up. The retry is invisible to the caller — they get the
+          eventual result or one final error.
+        - Non-idempotent ops (FILE_WRITE, EXECUTE_COMMAND, ...): raise
+          :class:`WriteUnconfirmedError` / :class:`OpUnconfirmedError`
+          immediately so the LLM can probe state instead of double-applying
+          a side effect.
+        """
+        try:
+            return await self._send_and_wait(msg_type, payload, timeout=timeout)
+        except _RpcAttemptFailed as first:
+            if msg_type in _IDEMPOTENT_OPS:
+                # One retry, after the WS is back. wait_for_reconnect is a
+                # best-effort no-op if the manager isn't wired in (tests).
+                try:
+                    await self._await_reconnect_for_retry()
+                except Exception:
+                    pass
+                try:
+                    return await self._send_and_wait(msg_type, payload, timeout=timeout)
+                except _RpcAttemptFailed as second:
+                    if second.timed_out:
+                        raise TimeoutError(
+                            f"[LocalPC] RPC {msg_type} timed out after {timeout}s "
+                            "(retry also failed)"
+                        ) from second
+                    raise OpUnconfirmedError(
+                        op=msg_type,
+                        wire_id=second.wire_id,
+                        message=(
+                            f"[LocalPC] RPC {msg_type} disconnected mid-call "
+                            "(retry also failed)"
+                        ),
+                    ) from second
+            # Non-idempotent: bubble up as a typed unconfirmed error so the
+            # caller's translator can surface actionable English.
+            if msg_type == "FILE_WRITE":
+                raise WriteUnconfirmedError(
+                    wire_id=first.wire_id,
+                    message=(
+                        f"[LocalPC] FILE_WRITE (id={first.wire_id}) was sent but "
+                        "the shim did not ACK before the connection dropped"
+                    ),
+                ) from first
+            raise OpUnconfirmedError(
+                op=msg_type,
+                wire_id=first.wire_id,
+                message=(
+                    f"[LocalPC] {msg_type} (id={first.wire_id}) was sent but no "
+                    "response arrived before the connection dropped"
+                ),
+            ) from first
+
+    async def _await_reconnect_for_retry(self, *, timeout: float = 30.0) -> None:
+        """Wait for the shim to be reachable again before an idempotent retry.
+
+        Best-effort: if a connection manager isn't attached (unit tests
+        stub `_rpc` directly), this returns immediately. The retry then
+        re-uses ``self._ws`` and will fail fast if the WS is still dead.
+        """
+        manager = getattr(self, "_manager", None)
+        if manager is None:
+            return
+        try:
+            ws = await manager.wait_for(self.sandbox_id, timeout=timeout)
+        except Exception:
+            return
+        # If the manager produced a fresh WS, swap it in so the retry rides
+        # the new connection.
+        if ws is not self._ws:
+            self._ws = ws
 
     async def _recv_loop(self) -> None:
         try:

@@ -129,9 +129,7 @@ def build_sdk_env(
     # ``claude login`` OAuth flow. The OpenRouter path keeps the strip
     # unconditionally because OpenRouter cannot proxy computer-use anyway
     # (the upstream provider has to be Anthropic for the beta tool family).
-    computer_use_via_cli = (
-        enable_computer_use_beta and not config.openrouter_active
-    )
+    computer_use_via_cli = enable_computer_use_beta and not config.openrouter_active
     if computer_use_via_cli:
         existing_betas = (env.get("ANTHROPIC_BETAS") or "").strip()
         if "computer-use-2025-11-24" not in existing_betas:

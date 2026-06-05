@@ -35,10 +35,7 @@ import logging
 from typing import Any, Callable
 
 from backend.copilot.context import get_current_sandbox
-from backend.copilot.tools.local_pc_shim import (
-    LocalPCShim,
-    ShimComputerUseError,
-)
+from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimComputerUseError
 
 logger = logging.getLogger(__name__)
 
