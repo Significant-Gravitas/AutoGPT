@@ -158,10 +158,10 @@ def test_datafast_metadata_drops_none_values():
     assert _datafast_metadata(None, None) == {}
 
 
-def test_datafast_metadata_bounds_and_sanitizes_values():
-    # Oversized values are truncated to Stripe's 500-char metadata limit.
-    long_id = "v" * 600
-    assert _datafast_metadata(long_id, None) == {"datafast_visitor_id": "v" * 500}
+def test_datafast_metadata_drops_invalid_values():
+    # Oversized values are dropped entirely (a truncated ID is useless for
+    # attribution), not truncated.
+    assert _datafast_metadata("v" * 600, None) == {}
     # Whitespace is stripped; values that are blank or contain control
     # characters are dropped so they can never break Checkout.
     assert _datafast_metadata("  vis_1  ", "\x00bad") == {

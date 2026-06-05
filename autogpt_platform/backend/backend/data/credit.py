@@ -105,18 +105,27 @@ class InvoiceListItem(BaseModel):
 
 # Stripe rejects metadata values longer than 500 chars with an
 # invalid_request_error. DataFast IDs are short, but the values arrive from a
-# client-controlled header, so we bound them defensively to keep attribution
-# strictly best-effort: a malformed ID must never break Checkout.
+# client-controlled header, so we validate them to keep attribution strictly
+# best-effort: a malformed ID must never break Checkout.
 _STRIPE_METADATA_VALUE_MAX_LEN = 500
 
 
 def _sanitize_datafast_id(value: str | None) -> str | None:
+    """Validate a client-supplied DataFast ID for use as Stripe metadata.
+
+    Returns the trimmed value, or None when it is blank, contains control
+    characters, or exceeds Stripe's metadata limit. An invalid ID is dropped
+    rather than truncated — a partial ID is useless for attribution and would
+    only pollute the Checkout metadata.
+    """
     if not value:
         return None
     normalized = value.strip()
-    if not normalized or any(ord(ch) < 0x20 for ch in normalized):
+    if not normalized or len(normalized) > _STRIPE_METADATA_VALUE_MAX_LEN:
         return None
-    return normalized[:_STRIPE_METADATA_VALUE_MAX_LEN]
+    if any(ord(ch) < 0x20 for ch in normalized):
+        return None
+    return normalized
 
 
 def _datafast_metadata(
