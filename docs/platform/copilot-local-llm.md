@@ -346,3 +346,87 @@ just want to validate the install end-to-end, tail the Ollama server
 log (see the per-platform commands in "Verifying the wiring" above)
 and watch for the `POST /v1/chat/completions` line — once it appears
 with a 200, prefill finished and the model is generating.
+
+## Dream pass + memory under local transport
+
+The graphiti memory layer and the nightly dream pass both ride the
+same self-hosted backend `CHAT_USE_LOCAL=true` points at. Three
+things you should know:
+
+### Dream pass runs sync-baseline only
+
+The dream pass's batch path (Anthropic batch, OpenAI batch) is
+provider-locked and unavailable on local backends. `CHAT_USE_LOCAL=true`
+forces `execution_path="sync_baseline"` regardless of which API keys
+might be set elsewhere on the box — your local LLM handles all three
+phases (consolidate / recombine / sanitize) on the same endpoint as
+chat. Cost-log rows label `provider="ollama"` so the admin
+platform-costs dashboard distinguishes them from cloud spend.
+
+### Memory uses the chat models by default
+
+When `CHAT_USE_LOCAL=true`, `GraphitiConfig._apply_local_graphiti_models`
+rewrites the cloud OpenAI defaults to local Ollama equivalents:
+
+| Setting | Cloud default | Local default |
+|---|---|---|
+| `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` |
+| `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
+
+The LLM + reranker reuse the same Qwen 3.5 4B model the `--with-ollama`
+installer already pulls for chat, so no extra `ollama pull` is needed
+unless you've overridden them. The embedder is a separate model — see
+the next section.
+
+You can pin your own slugs at any time by setting the matching
+`GRAPHITI_*_MODEL` env var; the validator only touches slots still at
+their cloud default. A custom slug (`qwen3:8b`, `hf.co/...`,
+`my-registry.io/model:tag`) passes through untouched.
+
+### Embeddings require an embedding model pulled into Ollama
+
+Ollama doesn't ship an embedding model in its default model set, so
+graphiti's per-turn entity extraction will 404 on `/v1/embeddings`
+until you pull one:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Without it, chat still works, but `graphiti.add_episode(...)` fails
+silently per turn — the agent loses memory of the conversation
+between sessions. With it pulled, graphiti round-trips
+embeddings against the same Ollama endpoint as the LLM, and
+warm-context retrieval works end-to-end on the local stack.
+
+If you'd rather use a different embedding model (e.g.
+`mxbai-embed-large` for higher recall at higher disk cost), pull
+that and set `GRAPHITI_EMBEDDER_MODEL=<slug>` to override the
+local default.
+
+### Community rebuild stays on sync tier
+
+`graphiti_config.community_rebuild_use_flex_tier=True` (the default)
+is treated as a *request*, not a guarantee. OpenAI's flex tier only
+delivers the ~50% discount through OpenRouter's pass-through to
+OpenAI / Google upstreams, so on local + Anthropic transports the
+flex client is silently swapped for the regular `OpenAIClient`
+(logged at INFO). The weekly community rebuild still runs — at full
+sync price, which on local Ollama is `$0`.
+
+### Subscription mode caveat
+
+If you also use Claude Code subscription (`CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`)
+for the chat path, the dream pass needs a separate `ANTHROPIC_API_KEY`
+set in the environment. The Claude Code OAuth token authenticates the
+chat CLI only; per Anthropic's Feb-2026 ToS update, OAuth tokens
+**cannot** call the Messages API directly. Without `ANTHROPIC_API_KEY`,
+the dream pass writes an `errored` JobStatus with a friendly hint
+pointing you at this section.
+
+A separate Anthropic Agent-SDK credit pool launches **2026-06-15**
+($20 Pro / $100 Max-5x / $200 Max-20x at standard API rates,
+one-time opt-in). Once that lands, subscription users will have
+the option of routing the dream pass through the Agent SDK instead
+of the Messages API — coverage tracked as a post-Jun-15 follow-up.

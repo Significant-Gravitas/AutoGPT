@@ -1,8 +1,13 @@
 """Tests for Graphiti client management — derive_group_id and evict_client."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from .client import derive_group_id, evict_client
+from backend.copilot.config import ChatConfig
+
+from . import client as client_mod
+from .client import derive_group_id, evict_client, make_flex_graphiti_client
 
 
 class TestDeriveGroupId:
@@ -93,3 +98,112 @@ class TestHyphenInGroupIdRegression:
             "Hyphenated group_id is interpolated raw into the Redisearch tag "
             "filter — Redisearch treats `-` as NOT, causing silent search misses."
         )
+
+
+def _patch_chat_cfg(monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig) -> None:
+    """Swap the ``copilot.sdk.env.config`` singleton for a per-test
+    transport. Mirrors the pattern used by ``transport_routing_test``
+    and ``graphiti.config_test``."""
+    from backend.copilot.sdk import env
+
+    monkeypatch.setattr(env, "config", cfg)
+
+
+class TestMakeFlexGraphitiClient:
+    """The flex client is the seam where transport identity actually
+    matters at runtime — the OpenAI ``service_tier="flex"`` parameter
+    delivers a ~50% discount via OpenRouter's pass-through but blows
+    up against Ollama (no Responses API). Pin the transport gate so a
+    local install doesn't 404 on its weekly community rebuild."""
+
+    @pytest.mark.asyncio
+    async def test_returns_regular_openaiclient_when_flex_unsupported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``CHAT_USE_LOCAL=true`` → ``transport.supports_flex_tier``
+        is False → fall back to the cached non-flex client so the
+        rebuild runs at sync price instead of 404-ing."""
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(
+                use_local=True,
+                api_key="ollama-placeholder",
+                base_url="http://localhost:11434/v1",
+            ),
+        )
+        captured: dict = {}
+
+        def _fake_build_graphiti(group_id: str, llm_client):
+            captured["llm_client"] = llm_client
+            captured["group_id"] = group_id
+            return MagicMock(name="fake-graphiti")
+
+        # Both clients have heavy constructor side effects (network
+        # connection, validator runs); patch them to lightweight
+        # sentinels so we can inspect which one was instantiated.
+        flex_sentinel = MagicMock(name="FlexOpenAIClient")
+        regular_sentinel = MagicMock(name="OpenAIClient")
+        monkeypatch.setattr(client_mod, "_build_graphiti", _fake_build_graphiti)
+        monkeypatch.setattr(
+            client_mod, "_build_llm_config", lambda: MagicMock(name="LLMConfig")
+        )
+
+        # ``make_flex_graphiti_client`` imports both classes lazily;
+        # patch them on their actual modules so the import inside the
+        # function picks up the sentinel.
+        import graphiti_core.llm_client
+
+        from . import flex_client as flex_module
+
+        monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
+        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+
+        await make_flex_graphiti_client("user_abc")
+
+        # The regular (non-flex) client was constructed.
+        assert regular_sentinel.called, "expected fallback to regular OpenAIClient"
+        assert (
+            not flex_sentinel.called
+        ), "flex client must not be constructed under local transport"
+        # And the constructed instance was passed into _build_graphiti.
+        assert captured["llm_client"] is regular_sentinel.return_value
+
+    @pytest.mark.asyncio
+    async def test_returns_flex_client_when_transport_supports_flex(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OpenRouter transport keeps the flex tier — the gate only
+        kicks in for non-flex-capable transports."""
+        _patch_chat_cfg(
+            monkeypatch,
+            ChatConfig(
+                use_openrouter=True,
+                api_key="or-key",
+                base_url="https://openrouter.ai/api/v1",
+            ),
+        )
+        captured: dict = {}
+
+        def _fake_build_graphiti(group_id: str, llm_client):
+            captured["llm_client"] = llm_client
+            return MagicMock(name="fake-graphiti")
+
+        flex_sentinel = MagicMock(name="FlexOpenAIClient")
+        regular_sentinel = MagicMock(name="OpenAIClient")
+        monkeypatch.setattr(client_mod, "_build_graphiti", _fake_build_graphiti)
+        monkeypatch.setattr(
+            client_mod, "_build_llm_config", lambda: MagicMock(name="LLMConfig")
+        )
+
+        import graphiti_core.llm_client
+
+        from . import flex_client as flex_module
+
+        monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
+        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+
+        await make_flex_graphiti_client("user_abc")
+
+        assert flex_sentinel.called, "expected FlexOpenAIClient under openrouter"
+        assert not regular_sentinel.called
+        assert captured["llm_client"] is flex_sentinel.return_value

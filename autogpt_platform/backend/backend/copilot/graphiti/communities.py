@@ -264,7 +264,17 @@ async def rebuild_communities_for_user(
     # latency). The cached interactive client stays on sync tier so
     # live ingest dedup remains responsive. The flex client owns its
     # own FalkorDB driver — close it in finally to avoid leaks.
-    use_flex = graphiti_config.community_rebuild_use_flex_tier
+    #
+    # Transport veto: ``make_flex_graphiti_client`` silently falls
+    # back to the regular ``OpenAIClient`` when the active transport
+    # can't honour ``service_tier="flex"`` (local Ollama et al.). To
+    # keep the cost-log audit trail honest we record ``execution_path``
+    # against what *actually* dispatched, not what the operator asked
+    # for. Read the same gate the helper reads so the two stay in sync.
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    flex_requested = graphiti_config.community_rebuild_use_flex_tier
+    use_flex = flex_requested and chat_cfg.transport.supports_flex_tier
     flex_client = None
     try:
         if use_flex:

@@ -39,6 +39,7 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 
 from .routing import ExecutionPath
 from .schemas import PhaseUsage
@@ -46,15 +47,33 @@ from .schemas import PhaseUsage
 logger = logging.getLogger(__name__)
 
 
-# Which LLM provider actually ran each phase. Used as the ``provider``
-# tag on every ``PlatformCostLog`` row so the admin cost dashboard can
-# break dream spend down by who we paid (OpenRouter vs Anthropic vs
-# OpenAI) without having to read execution_path out of metadata.
-_PROVIDER_BY_PATH: dict[ExecutionPath, str] = {
-    "sync_baseline": "open_router",
+# Provider-locked batch paths — these dispatch through a specific
+# provider's batch API regardless of which chat transport is active,
+# so the cost-log label is fixed at the table level. The
+# ``sync_baseline`` path is NOT in this table because its provider
+# follows the active ``ChatConfig.transport`` (see
+# :func:`_provider_for_execution_path` below).
+_PROVIDER_BY_BATCH_PATH: dict[ExecutionPath, str] = {
     "anthropic_batch": "anthropic",
     "openai_batch": "openai",
 }
+
+
+def _provider_for_execution_path(execution_path: ExecutionPath) -> str:
+    """Resolve the ``PlatformCostLog.provider`` label for a phase row.
+
+    Batch paths are pinned to their provider (Anthropic / OpenAI). The
+    sync_baseline path follows the active chat transport — so a
+    local-Ollama install logs ``provider="ollama"``, a subscription
+    or direct-Anthropic install logs ``"anthropic"``, and the cloud
+    OpenRouter default logs ``"open_router"``. Centralizes what was
+    a static ``"sync_baseline" → "open_router"`` mapping that
+    misattributed local + subscription dream rows as OR spend on the
+    admin dashboard.
+    """
+    if execution_path in _PROVIDER_BY_BATCH_PATH:
+        return _PROVIDER_BY_BATCH_PATH[execution_path]
+    return routing_kwargs_for_chat_transport().cost_log_provider
 
 
 DreamBudgetSkipReason = Literal[
@@ -161,7 +180,7 @@ async def record_phase_cost(
     ):
         return
 
-    provider = _PROVIDER_BY_PATH.get(execution_path, "open_router")
+    provider = _provider_for_execution_path(execution_path)
 
     await persist_and_record_usage(
         session=None,

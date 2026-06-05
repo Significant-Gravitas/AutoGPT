@@ -409,26 +409,34 @@ async def _finalize_complete(
             elif isinstance(raw_snapshot, dict):
                 snapshot = DreamOperationsSnapshot.model_validate(raw_snapshot)
 
+            # ``apply_stats`` values are typed as a union that includes
+            # ``DreamOperationsSnapshot``; narrow each count to a plain
+            # ``int`` (with a 0 default) before threading it into the
+            # Pydantic result so pyright doesn't flag the int() cast.
+            def _count(key: str) -> int:
+                value = apply_stats.get(key)
+                if isinstance(value, (int, str)):
+                    try:
+                        return int(value)
+                    except (TypeError, ValueError):
+                        return 0
+                return 0
+
+            raw_session_id = apply_stats.get("session_id")
+            session_id = raw_session_id if isinstance(raw_session_id, str) else None
+
             pass_result = DreamPassResult(
                 user_id=user_id,
                 pass_id=pass_id,
                 execution_path="anthropic_batch",
-                consolidated_count=int(apply_stats.get("consolidated_count", 0) or 0),
-                proposal_count=int(apply_stats.get("proposal_count", 0) or 0),
-                demotion_count=int(apply_stats.get("demotion_count", 0) or 0),
-                entity_invalidation_count=int(
-                    apply_stats.get("entity_invalidation_count", 0) or 0
-                ),
-                dream_session_id=(
-                    apply_stats.get("session_id")
-                    if isinstance(apply_stats.get("session_id"), str)
-                    else None
-                ),
+                consolidated_count=_count("consolidated_count"),
+                proposal_count=_count("proposal_count"),
+                demotion_count=_count("demotion_count"),
+                entity_invalidation_count=_count("entity_invalidation_count"),
+                dream_session_id=session_id,
                 operations=snapshot,
             )
-            await mark_complete(
-                kind="dream_pass", job_id=job_id, result=pass_result
-            )
+            await mark_complete(kind="dream_pass", job_id=job_id, result=pass_result)
         except Exception:
             logger.exception("Failed to mark dream pass job %s complete", job_id)
 

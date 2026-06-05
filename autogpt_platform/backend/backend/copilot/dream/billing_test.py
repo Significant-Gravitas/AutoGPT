@@ -101,10 +101,32 @@ async def test_check_dream_budget_fails_closed_when_paywall_lookup_raises():
 # ---------------------------------------------------------------------------
 
 
+def _routing_kwargs(cost_log_provider: str):
+    """Build a ``ProviderRoutingKwargs`` whose ``cost_log_provider``
+    is the only field ``_provider_for_execution_path`` reads on the
+    sync_baseline path. The other fields are placeholders."""
+    from backend.copilot.transport_routing import ProviderRoutingKwargs
+
+    return ProviderRoutingKwargs(
+        provider="open_router",
+        api_key="",
+        base_url=None,
+        supports_flex=False,
+        cost_log_provider=cost_log_provider,
+    )
+
+
 @pytest.mark.asyncio
-async def test_record_phase_cost_tags_provider_by_execution_path_sync_baseline():
+async def test_record_phase_cost_tags_sync_baseline_provider_from_transport():
+    """sync_baseline ``provider`` follows the active chat transport's
+    ``cost_log_provider`` — the cloud OpenRouter case still labels
+    rows as ``open_router`` so existing dashboards stay correct."""
     spy = AsyncMock()
-    with patch.object(billing_mod, "persist_and_record_usage", new=spy):
+    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
+        billing_mod,
+        "routing_kwargs_for_chat_transport",
+        return_value=_routing_kwargs("open_router"),
+    ):
         await billing_mod.record_phase_cost(
             user_id="u1",
             pass_id="pass-uuid",
@@ -119,6 +141,50 @@ async def test_record_phase_cost_tags_provider_by_execution_path_sync_baseline()
         )
     kwargs = spy.await_args.kwargs
     assert kwargs["provider"] == "open_router"
+
+
+@pytest.mark.asyncio
+async def test_record_phase_cost_tags_sync_baseline_provider_ollama_under_local():
+    """Local-transport dream rows must label as ``ollama`` so the
+    admin platform-costs dashboard distinguishes them from OR cloud
+    spend. Previously hard-coded to ``open_router``."""
+    spy = AsyncMock()
+    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
+        billing_mod,
+        "routing_kwargs_for_chat_transport",
+        return_value=_routing_kwargs("ollama"),
+    ):
+        await billing_mod.record_phase_cost(
+            user_id="u1",
+            pass_id="p",
+            phase_usage=PhaseUsage(phase="recombine", model="qwen3.5:8b", cost_usd=0.0),
+            execution_path="sync_baseline",
+        )
+    assert spy.await_args.kwargs["provider"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_record_phase_cost_tags_sync_baseline_provider_anthropic_under_subscription():
+    """Subscription / direct_anthropic transports label sync_baseline
+    rows as ``anthropic`` so dream + chat spend roll up together
+    under one provider on the admin dashboard."""
+    spy = AsyncMock()
+    with patch.object(billing_mod, "persist_and_record_usage", new=spy), patch.object(
+        billing_mod,
+        "routing_kwargs_for_chat_transport",
+        return_value=_routing_kwargs("anthropic"),
+    ):
+        await billing_mod.record_phase_cost(
+            user_id="u1",
+            pass_id="p",
+            phase_usage=PhaseUsage(
+                phase="sanitize",
+                model="anthropic/claude-sonnet-4-6",
+                cost_usd=0.0025,
+            ),
+            execution_path="sync_baseline",
+        )
+    assert spy.await_args.kwargs["provider"] == "anthropic"
 
 
 @pytest.mark.asyncio

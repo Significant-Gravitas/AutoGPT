@@ -225,9 +225,15 @@ async def _execute_dream_pass_async(
     # "batch"); the BatchExecutor polls and dream's batch_callbacks
     # chain phases 2 → 3 + apply when results land. The discount is
     # ~50% off the rate card (see model_pricing.execution_path_discount).
+    #
+    # ``transport_name`` short-circuits to sync_baseline for transports
+    # that can't honour a batch path (local backends have no batch API;
+    # subscription mode shouldn't dual-bill an unrelated
+    # ANTHROPIC_API_KEY when the chat layer is on Claude Code OAuth).
     execution_path: ExecutionPath = resolve_dream_execution_path(
         has_anthropic_key=has_anthropic_key,
         batch_processing_enabled=has_anthropic_key,
+        transport_name=config.transport.name,
     )
 
     ttl = _resolve_lock_ttl(transport_is_local)

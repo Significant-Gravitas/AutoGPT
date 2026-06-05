@@ -17,15 +17,18 @@ doesn't own:
   * **CompletionUsage** carrier — the orchestrator rolls these per
     phase into a ``DreamPassUsage`` for the cost ledger.
 
-Why OpenRouter and not direct Anthropic here:
-  * One credential covers every model the dream config might want.
+Why route through ``routing_kwargs_for_chat_transport()`` instead of
+pinning a provider:
+  * One control surface for every transport — local Ollama,
+    subscription Anthropic, direct Anthropic, and OpenRouter all
+    land at the same call site without per-transport branches here.
   * ``response_format={"type":"json_object"}`` is supported across
-    OpenAI and OpenRouter, so the same code path covers cloud + local
-    OpenAI-compat LLMs.
-  * Step 4 of the rollout (see ``plans/idempotent-launching-moth.md``
-    component E) plugs the Anthropic batch path in *below* this layer
-    via ``call_provider(execution_mode="batch")``. This wrapper stays
-    sync-only; the batch path lands on the orchestrator's branch.
+    OpenAI, OpenRouter, and Ollama (forced JSON works on every
+    transport this dispatcher accepts).
+  * The Anthropic batch path in the orchestrator (see
+    ``plans/idempotent-launching-moth.md`` component E) layers in
+    *below* this wrapper via ``call_provider(execution_mode="batch")``
+    when the transport supports it; this wrapper stays sync-only.
 """
 
 from __future__ import annotations
@@ -36,15 +39,15 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    ProviderLiteral,
     ProviderResponse,
     call_provider,
 )
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-_settings = Settings()
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -96,20 +99,27 @@ async def structured_completion(
     phase failed" — the orchestrator either skips downstream phases
     or returns a partial result.
     """
-    api_key = _settings.secrets.open_router_api_key
-    if not api_key:
-        raise DreamLLMError("OpenRouter client unavailable — set OPEN_ROUTER_API_KEY")
+    routing = routing_kwargs_for_chat_transport()
+    if not routing.api_key and routing.provider != "ollama":
+        raise DreamLLMError(_missing_api_key_message(routing.provider))
 
     try:
         response = await call_provider(
-            provider="open_router",
+            provider=routing.provider,
             model=model,
-            api_key=api_key,
+            api_key=routing.api_key,
             messages=messages,
             max_tokens=max_output_tokens,
             temperature=temperature,
             force_json_output=True,
             timeout_seconds=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            # ``call_provider`` only honors ``ollama_host`` when
+            # ``provider="ollama"``; passing it on cloud transports is
+            # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``
+            # for local installs (e.g. ``http://localhost:11434/v1``);
+            # strip the OpenAI-compat ``/v1`` suffix because
+            # ``ollama.AsyncClient`` wants the raw host:port.
+            ollama_host=_normalize_ollama_host(routing.base_url),
         )
     except DreamLLMError:
         raise
@@ -255,3 +265,54 @@ def _strip_json_code_fence(content: str) -> str:
     if body.endswith("```"):
         body = body[:-3]
     return body.strip()
+
+
+def _missing_api_key_message(provider: ProviderLiteral) -> str:
+    """Per-provider friendly error string for the no-API-key case.
+
+    Calls out the env var the operator needs to set + (for subscription)
+    the reason their OAuth token isn't sufficient. Surfaced to the user
+    via the JobStatus ``error`` field in the admin viz so they can
+    self-serve the fix without needing a logs dive.
+    """
+    if provider == "anthropic":
+        return (
+            "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
+            "enable the dream pass under subscription / direct-Anthropic "
+            "mode. The Claude Code OAuth token cannot be used for direct "
+            "Messages API calls (see "
+            "docs/platform/copilot-local-llm.md#dream-pass-and-memory)."
+        )
+    if provider == "open_router":
+        return "OpenRouter API key not configured — set OPEN_ROUTER_API_KEY."
+    return f"No API key configured for dream pass provider={provider!r}."
+
+
+def _normalize_ollama_host(base_url: str | None) -> str:
+    """Turn ``CHAT_BASE_URL`` into the host string ollama.AsyncClient wants.
+
+    ``CHAT_BASE_URL`` for local installs points at the OpenAI-compat
+    surface — e.g. ``http://localhost:11434/v1``. Ollama's native
+    Python client takes the raw host (no ``/v1`` suffix); pass the
+    trailing path through and the client tries to POST to
+    ``/v1/api/generate`` and 404s. Strip path/query/fragment so the
+    client sees ``http://localhost:11434``.
+
+    Returns the platform default (``localhost:11434``) when no
+    ``base_url`` is provided so non-local callers get a sane fallback
+    even though ``call_provider`` ignores ``ollama_host`` outside the
+    ollama branch.
+    """
+    if not base_url:
+        return "localhost:11434"
+    from urllib.parse import urlparse, urlunparse
+
+    parsed = urlparse(base_url)
+    # ``urlparse("localhost:11434")`` mis-reports ``scheme="localhost"``
+    # because the parser treats the colon as a scheme separator when no
+    # ``//`` follows. Only ``http`` / ``https`` are real URL schemes
+    # this caller would emit; anything else means the input was a bare
+    # ``host:port`` — pass it through unchanged.
+    if parsed.scheme not in ("http", "https"):
+        return base_url
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))

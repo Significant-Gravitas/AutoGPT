@@ -9,9 +9,21 @@ the fence-stripper that prevents the regression.
 
 from __future__ import annotations
 
-import pytest
+from unittest.mock import AsyncMock, patch
 
-from .llm import _extract_first_json_object, _strip_json_code_fence
+import pytest
+from pydantic import BaseModel
+
+from backend.copilot.transport_routing import ProviderRoutingKwargs
+from backend.util.llm.providers import ProviderResponse
+
+from .llm import (
+    DreamLLMError,
+    _extract_first_json_object,
+    _normalize_ollama_host,
+    _strip_json_code_fence,
+    structured_completion,
+)
 
 
 @pytest.mark.parametrize(
@@ -97,17 +109,33 @@ def test_extract_first_json_object_returns_none_when_unbalanced():
 
 
 # ---------------------------------------------------------------------------
-# structured_completion delegation contract
+# _normalize_ollama_host
 # ---------------------------------------------------------------------------
 
 
-from unittest.mock import AsyncMock, patch
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        # OpenAI-compat ``/v1`` suffix is stripped — ollama's native
+        # client wants the raw host.
+        ("http://localhost:11434/v1", "http://localhost:11434"),
+        ("https://ollama.lan:11434/v1/", "https://ollama.lan:11434"),
+        # No path → preserved.
+        ("http://localhost:11434", "http://localhost:11434"),
+        # Bare host:port (no scheme) — pass through unchanged.
+        ("localhost:11434", "localhost:11434"),
+        # Empty/None → fall back to default.
+        ("", "localhost:11434"),
+        (None, "localhost:11434"),
+    ],
+)
+def test_normalize_ollama_host(base_url: str | None, expected: str):
+    assert _normalize_ollama_host(base_url) == expected
 
-from pydantic import BaseModel
 
-from backend.util.llm.providers import ProviderResponse
-
-from .llm import DreamLLMError, structured_completion
+# ---------------------------------------------------------------------------
+# structured_completion delegation contract
+# ---------------------------------------------------------------------------
 
 
 class _SampleFact(BaseModel):
@@ -119,10 +147,43 @@ class _SampleOutput(BaseModel):
     facts: list[_SampleFact]
 
 
+def _openrouter_routing(api_key: str = "sk-or-test") -> ProviderRoutingKwargs:
+    return ProviderRoutingKwargs(
+        provider="open_router",
+        api_key=api_key,
+        base_url=None,
+        supports_flex=True,
+        cost_log_provider="open_router",
+    )
+
+
+def _ollama_routing(
+    base_url: str = "http://localhost:11434/v1",
+) -> ProviderRoutingKwargs:
+    return ProviderRoutingKwargs(
+        provider="ollama",
+        api_key="ollama-placeholder",
+        base_url=base_url,
+        supports_flex=False,
+        cost_log_provider="ollama",
+    )
+
+
+def _anthropic_routing(api_key: str = "") -> ProviderRoutingKwargs:
+    return ProviderRoutingKwargs(
+        provider="anthropic",
+        api_key=api_key,
+        base_url=None,
+        supports_flex=False,
+        cost_log_provider="anthropic",
+    )
+
+
 class TestStructuredCompletionDelegation:
     """Confirms ``structured_completion`` delegates to ``call_provider``
-    with the right OpenRouter args and converts ProviderResponse → the
-    dream's typed Pydantic + CompletionUsage shape."""
+    with kwargs derived from ``routing_kwargs_for_chat_transport()`` and
+    converts ``ProviderResponse`` → the dream's typed Pydantic +
+    ``CompletionUsage`` shape, regardless of which transport is active."""
 
     @pytest.mark.asyncio
     async def test_delegates_to_call_provider_with_openrouter_args(self):
@@ -134,10 +195,9 @@ class TestStructuredCompletionDelegation:
         )
         call_provider_mock = AsyncMock(return_value=fake_response)
 
-        # Settings is module-cached, so patch ``_settings`` directly.
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "sk-or-test",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
         ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
             result = await structured_completion(
                 model="anthropic/claude-sonnet-4-6",
@@ -172,12 +232,63 @@ class TestStructuredCompletionDelegation:
         assert kwargs["force_json_output"] is True
 
     @pytest.mark.asyncio
+    async def test_routes_to_ollama_under_local_transport(self):
+        """Local transport: dispatch becomes ``provider="ollama"`` with
+        ``ollama_host`` derived from ``CHAT_BASE_URL`` (sans the
+        OpenAI-compat ``/v1`` suffix). Closes the dream-pass-on-local
+        hole identified in the local-AI memory integration."""
+        fake_response = ProviderResponse(
+            content='{"facts": [{"content": "y", "confidence": 0.5}]}',
+            prompt_tokens=8,
+            completion_tokens=3,
+        )
+        call_provider_mock = AsyncMock(return_value=fake_response)
+
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_ollama_routing("http://localhost:11434/v1"),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            result = await structured_completion(
+                model="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M",
+                messages=[{"role": "user", "content": "hi"}],
+                response_model=_SampleOutput,
+            )
+
+        assert isinstance(result.value, _SampleOutput)
+        kwargs = call_provider_mock.call_args.kwargs
+        assert kwargs["provider"] == "ollama"
+        # Empty api_key is fine for ollama; the placeholder ChatConfig
+        # would have set is passed through verbatim.
+        assert kwargs["api_key"] == "ollama-placeholder"
+        # ``/v1`` is the OpenAI-compat suffix; ollama's native client
+        # wants the raw host, so the wrapper strips it.
+        assert kwargs["ollama_host"] == "http://localhost:11434"
+
+    @pytest.mark.asyncio
     async def test_raises_when_no_openrouter_key(self):
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(api_key=""),
         ):
             with pytest.raises(DreamLLMError, match="OPEN_ROUTER_API_KEY"):
+                await structured_completion(
+                    model="anthropic/claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_with_subscription_hint_when_no_anthropic_key(self):
+        """Subscription mode lands on ``provider="anthropic"`` with an
+        empty api_key (the Claude Code OAuth token can't authenticate
+        against the Messages API per the Feb-2026 Anthropic ToS). The
+        wrapper must surface a friendly error pointing operators at
+        the ``ANTHROPIC_API_KEY`` env var instead of leaking a 401."""
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key=""),
+        ):
+            with pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY"):
                 await structured_completion(
                     model="anthropic/claude-sonnet-4-6",
                     messages=[{"role": "user", "content": "hi"}],
@@ -188,8 +299,8 @@ class TestStructuredCompletionDelegation:
     async def test_empty_content_raises_dream_llm_error(self):
         fake = ProviderResponse(content="", prompt_tokens=1, completion_tokens=0)
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "sk-or-test",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(return_value=fake),
@@ -212,8 +323,8 @@ class TestStructuredCompletionDelegation:
             completion_tokens=1,
         )
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "sk-or-test",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(return_value=fake),
@@ -231,8 +342,8 @@ class TestStructuredCompletionDelegation:
         the orchestrator's per-phase failure handler triggers — not as a
         raw RuntimeError that crashes the pass."""
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "sk-or-test",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(side_effect=RuntimeError("upstream 502")),
@@ -259,8 +370,8 @@ class TestStructuredCompletionDelegation:
             completion_tokens=20,
         )
         with patch(
-            "backend.copilot.dream.llm._settings.secrets.open_router_api_key",
-            "sk-or-test",
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_openrouter_routing(),
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(return_value=fake),

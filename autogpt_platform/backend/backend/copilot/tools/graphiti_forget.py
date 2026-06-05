@@ -13,6 +13,14 @@ from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import ChatSession
 
+from .base import BaseTool
+from .models import (
+    ErrorResponse,
+    MemoryForgetCandidatesResponse,
+    MemoryForgetConfirmResponse,
+    ToolResponseBase,
+)
+
 
 def _now_iso() -> str:
     """Current UTC time as an ISO-8601 string for Cypher parameter binding.
@@ -26,14 +34,6 @@ def _now_iso() -> str:
     """
     return datetime.now(timezone.utc).isoformat()
 
-
-from .base import BaseTool
-from .models import (
-    ErrorResponse,
-    MemoryForgetCandidatesResponse,
-    MemoryForgetConfirmResponse,
-    ToolResponseBase,
-)
 
 logger = logging.getLogger(__name__)
 

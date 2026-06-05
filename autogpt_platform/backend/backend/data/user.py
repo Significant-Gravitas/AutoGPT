@@ -529,9 +529,7 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         try:
             import asyncio
 
-            from backend.copilot.dream.scheduling import (
-                ensure_dream_system_scheduled,
-            )
+            from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
 
             asyncio.create_task(
                 ensure_dream_system_scheduled(user_id, force_refresh=True),

@@ -214,10 +214,33 @@ async def make_flex_graphiti_client(group_id: str):
     FalkorDB driver — the caller is responsible for closing it via
     ``close_graphiti_client(...)`` when the rebuild finishes, otherwise
     the connection lingers until the process exits.
+
+    Transport veto: the OpenAI ``service_tier="flex"`` parameter only
+    delivers the ~50% discount through OpenRouter's pass-through to
+    OpenAI / Google upstreams. Other transports (Anthropic direct,
+    Claude Code subscription, local Ollama / vLLM) either ignore the
+    extra_body kwarg silently or — in the local case — would dispatch
+    via the OpenAI Responses API endpoint (`responses.parse`) which
+    the backend doesn't speak, returning a 404 mid-rebuild. When the
+    active ``TransportProfile.supports_flex_tier`` is ``False`` we
+    swap in the regular cached ``OpenAIClient`` so the rebuild still
+    runs — at full sync price, but it runs.
     """
+    from backend.copilot.sdk.env import config as chat_cfg
+
     from .flex_client import FlexOpenAIClient
 
-    llm_client = FlexOpenAIClient(config=_build_llm_config())
+    if not chat_cfg.transport.supports_flex_tier:
+        from graphiti_core.llm_client import OpenAIClient
+
+        logger.info(
+            "Graphiti community rebuild: flex tier not available on "
+            "transport=%s; falling back to sync OpenAIClient.",
+            chat_cfg.transport.name,
+        )
+        llm_client = OpenAIClient(config=_build_llm_config())
+    else:
+        llm_client = FlexOpenAIClient(config=_build_llm_config())
     return _build_graphiti(group_id, llm_client)
 
 
