@@ -17,15 +17,20 @@ interface PreviewProps {
 const preClass =
   "h-full w-full overflow-hidden whitespace-pre-wrap break-words bg-white p-3 font-mono text-[10px] leading-[1.35] text-zinc-700";
 
+// Fetch a larger slice and show more rows than the default so the card table
+// fills the preview area; the container clips overflow under the bottom fade.
+const CSV_PREVIEW_BYTES = 16384;
+const CSV_PREVIEW_MAX_ROWS = 20;
+
 export function CsvPreview({ file, onError }: PreviewProps) {
   const text = useFileText(
-    getFilePreviewUrl(file.id, { bytes: 4096 }),
+    getFilePreviewUrl(file.id, { bytes: CSV_PREVIEW_BYTES }),
     onError,
   );
 
   if (text === null) return <LoadingPlaceholder file={file} />;
 
-  const parsed = parseCsv(text);
+  const parsed = parseCsv(text, { maxRows: CSV_PREVIEW_MAX_ROWS });
   if (!parsed) {
     return <pre className={preClass}>{text.slice(0, TEXT_SNIPPET_CHARS)}</pre>;
   }

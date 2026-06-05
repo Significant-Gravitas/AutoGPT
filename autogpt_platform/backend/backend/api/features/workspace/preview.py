@@ -61,71 +61,12 @@ _TEXT_HINTS = (
     "markdown",
     "svg",
 )
-# Extension fallback for text-like files whose stored MIME is unreliable.
-# ``mimetypes.guess_type`` returns ``None``/``application/octet-stream`` for
-# ``.md`` and most source extensions on many systems, which would 415 a file
-# the frontend already classified as previewable by extension. Mirrors the
-# frontend's extension-first detection (artifacts ArtifactsList/helpers.ts).
-_TEXT_EXTENSIONS = frozenset(
-    {
-        "md",
-        "markdown",
-        "mdx",
-        "txt",
-        "text",
-        "log",
-        "rst",
-        "json",
-        "jsonl",
-        "yaml",
-        "yml",
-        "toml",
-        "ini",
-        "csv",
-        "tsv",
-        "xml",
-        "html",
-        "htm",
-        "svg",
-        "ts",
-        "tsx",
-        "js",
-        "jsx",
-        "mjs",
-        "cjs",
-        "mts",
-        "cts",
-        "py",
-        "rb",
-        "go",
-        "rs",
-        "java",
-        "kt",
-        "kts",
-        "c",
-        "h",
-        "cpp",
-        "cc",
-        "hpp",
-        "cs",
-        "php",
-        "swift",
-        "scala",
-        "sh",
-        "bash",
-        "zsh",
-        "css",
-        "scss",
-        "sass",
-        "less",
-        "sql",
-        "vue",
-        "svelte",
-        "dart",
-        "lua",
-        "r",
-    }
-)
+# Extension fallback for Markdown only. ``mimetypes.guess_type`` returns
+# ``None``/``application/octet-stream`` for ``.md`` on many systems, which would
+# 415 a file the Artifacts card renders as a content preview. Other text/code
+# types fall back to a static illustration on the frontend and never request a
+# preview, so they don't need an extension fallback here.
+_TEXT_EXTENSIONS = frozenset({"md", "markdown", "mdx"})
 _EMBEDDED_THUMBNAILS = (
     "docprops/thumbnail.jpeg",
     "docprops/thumbnail.jpg",
