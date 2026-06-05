@@ -1153,11 +1153,34 @@ class TestRegressionStore:
         assert len(result.agents) == 0
 
     @pytest.mark.asyncio
-    async def test_regression_my_submissions_returns_only_own(self):
+    async def test_regression_my_submissions_returns_only_own(self, mocker):
         """get_store_submissions() must include user_id in the where clause
         so only the caller's submissions are returned."""
         self.mock_submission_view_actions.find_many = AsyncMock(return_value=[])
         self.mock_submission_view_actions.count = AsyncMock(return_value=0)
+
+        # _get_submission_stats uses query_raw_with_schema, which bypasses
+        # the model-level prisma mocks above and would otherwise issue a
+        # real DB query — opening prisma's lazy httpx pool on whatever
+        # event loop is current (a function loop here), then leaving it
+        # bound to a dead loop after the test, breaking every later
+        # session-scoped integration test with "Event loop is closed".
+        from backend.api.features.store import model as store_model
+
+        mocker.patch(
+            "backend.api.features.store.db.query_raw_with_schema",
+            new=AsyncMock(
+                return_value=[
+                    store_model.SubmissionStats(
+                        total=0,
+                        approved=0,
+                        pending=0,
+                        total_runs=0,
+                        average_rating=None,
+                    )
+                ]
+            ),
+        )
 
         from backend.api.features.store.db import get_store_submissions
 
