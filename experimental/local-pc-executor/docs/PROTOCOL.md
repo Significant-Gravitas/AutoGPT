@@ -431,11 +431,20 @@ copy+delete in that case. Responds with `ACK`.
   "id": "req-uuid",
   "ts": 1234567890.0,
   "payload": {
-    "monitor": 0,           // 0 = primary, -1 = all monitors stitched
-    "quality": 75           // JPEG quality 1-100
+    "monitor": 0,                       // 0 = primary, -1 = all monitors stitched
+    "quality": 75,                      // JPEG quality 1-100
+    "region": null,                     // optional [x1, y1, x2, y2]
+    "window_id": null,                  // optional opaque ID from WINDOW_LIST_RESPONSE
+    "format": "jpeg",                   // "jpeg" | "png"
+    "include_cursor": true              // overlay the OS cursor in the capture
   }
 }
 ```
+
+`region` and `window_id` are mutually exclusive. Coordinates in `region`
+are display-global, unscaled, top-left-origin pixels — same as
+`INPUT_ACTION.coordinate`. See
+[COMPUTER_USE.md](COMPUTER_USE.md) for the full feature spec.
 
 #### `SCREENSHOT_RESPONSE` (shim → platform)
 ```json
@@ -448,7 +457,14 @@ copy+delete in that case. Responds with `ACK`.
     "mime_type": "image/jpeg",
     "width": 2560,
     "height": 1440,
-    "monitor": 0
+    "monitor": 0,
+    "region": null,                     // echoed when request had one
+    "display_scale": 1.0,
+    "logical_size": [2560, 1440],
+    "meta": {                           // see COMPUTER_USE.md Q1
+      "origin": [0, 0],
+      "display_id": 0
+    }
   }
 }
 ```
@@ -461,15 +477,48 @@ copy+delete in that case. Responds with `ACK`.
   "ts": 1234567890.0,
   "payload": {
     "action": "left_click",     // "left_click" | "right_click" | "double_click"
-                                // | "mouse_move" | "type" | "key" | "scroll"
+                                // | "middle_click" | "triple_click"
+                                // | "mouse_move" | "mouse_down" | "mouse_up"
+                                // | "drag" | "type" | "key" | "hold_key"
+                                // | "scroll" | "wait"
     "coordinate": [500, 300],   // for click/move/scroll
     "text": null,               // for "type"
     "key": null,                // for "key" e.g. "ctrl+s"
     "direction": null,          // for "scroll": "up" | "down"
-    "clicks": null              // for "scroll": number of clicks
+    "clicks": null,             // for "scroll": number of clicks
+    "button": null,             // "left" | "middle" | "right" — for mouse_down/up/drag
+    "modifiers": null,          // subset of "shift"|"ctrl"|"alt"|"super" — for click/scroll
+    "scroll_amount": null,      // alternative to clicks for "scroll"
+    "scroll_direction": null,   // alternative to direction for "scroll"
+    "duration_ms": null,        // for "hold_key" and "wait"
+    "path": null,               // [[x,y], ...] for "drag"
+    "paste": false,             // for "type" — see Q4
+    "preserve_clipboard": false // for "type" with paste — see Q4
   }
 }
 ```
+
+Coordinates are always **display-global, unscaled, top-left-origin
+virtual-display pixels** regardless of any prior region screenshot.
+Out-of-bounds coordinates return `INPUT_OUT_OF_BOUNDS`. See
+[COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
+
+#### Other computer-use ops (xref)
+
+The following message types are specified in full in
+[COMPUTER_USE.md](COMPUTER_USE.md). Brief signatures:
+
+| Type | Direction | Returns |
+|---|---|---|
+| `CURSOR_POSITION_REQUEST` | platform → shim | `CURSOR_POSITION_RESPONSE` with `{x, y, monitor}` |
+| `DISPLAY_INFO_REQUEST` | platform → shim | `DISPLAY_INFO_RESPONSE` with per-monitor `index`, `primary`, `physical_size`, `logical_size`, `scale`, `origin` |
+| `WINDOW_LIST_REQUEST` | platform → shim | `WINDOW_LIST_RESPONSE` with `windows[].window_id` (shim-minted `win_<uuid>`, see Q2) |
+| `WINDOW_FOCUS` | platform → shim | `ACK` (or `WINDOW_STALE`) |
+| `APP_LIST_REQUEST` | platform → shim | `APP_LIST_RESPONSE` |
+| `APP_LAUNCH` | platform → shim | `ACK` with `pid` |
+| `CLIPBOARD_READ` | platform → shim | `CLIPBOARD_READ_RESPONSE` or `CLIPBOARD_CONCEALED` |
+| `CLIPBOARD_WRITE` | platform → shim | `ACK` |
+| `PERMISSIONS_CHECK_REQUEST` | platform → shim | `PERMISSIONS_CHECK_RESPONSE` |
 
 ---
 
@@ -506,6 +555,30 @@ Error codes:
 - `AUTH_FAILED` — token invalid or expired
 - `SHIM_OVERLOADED` — too many concurrent requests (exceeded `max_concurrent`)
 - `INTERNAL_ERROR` — unexpected shim error
+- `FILE_TOO_LARGE` — FILE_READ / FILE_WRITE exceeded
+  `HELLO_ACK.max_file_size_bytes`
+- `DEPENDENCY_MISSING` — a runtime dep needed for the op (pyautogui,
+  Pillow, xclip, etc.) isn't installed on the shim host
+- `WINDOW_STALE` — computer-use `window_id` no longer maps to a live
+  window. Caller must re-issue `WINDOW_LIST_REQUEST`. See
+  [COMPUTER_USE.md §Q2](COMPUTER_USE.md#q2--window_id-lifetime-locked).
+- `PERMISSION_PENDING` — an OS-level permission required for the op
+  (macOS Accessibility / Screen Recording) wasn't granted, or was
+  revoked mid-session. Distinct from `CAPABILITY_NOT_GRANTED`. See
+  [COMPUTER_USE.md §Q5](COMPUTER_USE.md#q5--macos-tcc-first-prompt-ux-locked).
+- `FEATURE_NOT_SUPPORTED` — requested computer-use op is not in
+  `HELLO.computer_use_features`, or attempted on an unsupported OS /
+  session (e.g. Wayland input). See [COMPUTER_USE.md](COMPUTER_USE.md).
+- `CLIPBOARD_CONCEALED` — clipboard contents are not readable under the
+  active sandbox policy. See [COMPUTER_USE.md §Q3](COMPUTER_USE.md#q3--clipboard-sandbox-model-locked).
+- `INPUT_OUT_OF_BOUNDS` — `INPUT_ACTION.coordinate` is outside the
+  union of connected display rects. Error payload includes the valid
+  display rects so the caller can correct. See
+  [COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
+
+Error `ERROR.payload` MAY carry an optional `details` object whose shape
+depends on `code` — see the per-code examples in
+[COMPUTER_USE.md](COMPUTER_USE.md).
 
 ---
 

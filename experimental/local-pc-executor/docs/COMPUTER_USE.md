@@ -35,7 +35,16 @@ unchanged — only the message types and fields below are new or extended.
 
 The `computer_use` capability stays a single flag (shim either advertises
 it or doesn't, per Wayland / TCC rules in [CROSS_PLATFORM.md](CROSS_PLATFORM.md)).
-Inside `HELLO.payload`, add a new field:
+Inside `HELLO.payload`, add a new field. Two granularities are supported
+side by side, both populated by the shim from a live capability probe:
+
+- `computer_use_features` (legacy, fine-grained): the per-op feature flags
+  the platform consults before sending a wire op. Each entry corresponds to
+  one v1 op or one extension to an existing op.
+- `computer_use_features_coarse`: a small fixed set of broad buckets
+  (`screenshot`, `input`, `windows`, `apps`, `clipboard`, `permissions`)
+  that the platform can use for at-a-glance UX ("clipboard not available"
+  vs enumerating eight clipboard sub-features).
 
 ```json
 {
@@ -58,9 +67,31 @@ Inside `HELLO.payload`, add a new field:
     "clipboard.read",
     "clipboard.write",
     "permissions.check"
+  ],
+  "computer_use_features_coarse": [
+    "screenshot",
+    "input",
+    "windows",
+    "apps",
+    "clipboard",
+    "permissions"
   ]
 }
 ```
+
+The coarse buckets per OS (when computer-use is available at all):
+
+| OS / session | Coarse buckets advertised |
+|---|---|
+| macOS (AX + Screen Recording granted) | `["screenshot", "input", "windows", "apps", "clipboard", "permissions"]` |
+| Windows | `["screenshot", "input", "windows", "apps", "clipboard", "permissions"]` |
+| Linux X11 | `["screenshot", "input", "apps", "clipboard", "permissions"]` (windows omitted unless `wmctrl` or AT-SPI is present) |
+| Linux Wayland | `["screenshot"]` (input + window listing blocked; clipboard via portal is deferred) |
+| WSL2 | `[]` (no display server reachable to the Windows host) |
+
+`clipboard` only appears when the shim was started with
+`--enable-clipboard` (per Q3 below); without the flag, clipboard sub-ops
+return `FEATURE_NOT_SUPPORTED` even on capable OSes.
 
 Rationale: cua-driver's PARITY.md shows per-OS gaps even for VERIFIED tools
 (e.g. Windows has `drag`, macOS doesn't yet). The platform needs to know
@@ -93,10 +124,11 @@ Backwards-compatible additions to `payload`:
 }
 ```
 
-`SCREENSHOT_RESPONSE` gains a `region` echo and a `display_scale` field so
+`SCREENSHOT_RESPONSE` gains a `region` echo, a `display_scale` field so
 the platform can map model-space coordinates back to physical pixels on
 HiDPI displays (this is the same trap that bit the cua-driver Linux build —
-hardcoded `scale_factor: 1.0`):
+hardcoded `scale_factor: 1.0`), and a `meta` block carrying the crop's
+`origin` and `display_id` (see Q1 below):
 
 ```json
 {
@@ -108,7 +140,11 @@ hardcoded `scale_factor: 1.0`):
     "monitor": 0,
     "region": [100, 200, 900, 700],
     "display_scale": 2.0,
-    "logical_size": [1440, 900]
+    "logical_size": [1440, 900],
+    "meta": {
+      "origin": [100, 200],
+      "display_id": 0
+    }
   }
 }
 ```
@@ -122,6 +158,53 @@ Semantics:
   window's bounds anyway (the OS reports cached bitmap on macOS/Windows;
   on Linux X11 we surface `WINDOW_NOT_VISIBLE` because XComposite isn't
   guaranteed).
+
+#### Q1 — Coordinate space (locked)
+
+**Coordinates on the wire are always display-global, unscaled,
+top-left-origin virtual-display pixels.** Always. There is no
+region-local or window-local coordinate mode.
+
+- `region` on a screenshot request only crops the **image returned**;
+  it does not shift any subsequent `INPUT_ACTION.coordinate`. The shim
+  never owns coordinate state. If the platform asks for a 800×500 crop
+  starting at `(100, 200)` and then sends `INPUT_ACTION.coordinate =
+  [150, 250]`, the click lands at `(150, 250)` in display-global pixels —
+  i.e. 50 px right and 50 px down from the crop's top-left, but expressed
+  in the same coordinate space as a full-screen click.
+- `SCREENSHOT_RESPONSE.meta.origin` echoes the `[x, y]` top-left of the
+  returned crop (= `[region[0], region[1]]` when `region` was set, or
+  `[0, 0]` for a full display) so the platform can map model output back
+  if it needs to.
+- `SCREENSHOT_RESPONSE.meta.display_id` echoes which display the crop
+  came from (matches `DISPLAY_INFO_RESPONSE.monitors[i].index`). Same
+  display IDs used in `INPUT_ACTION` validation.
+- `INPUT_ACTION` rejects any `coordinate` outside the union of connected
+  display bounds with `INPUT_OUT_OF_BOUNDS` (new error code). The error
+  payload **echoes the valid display rects** so the platform can self-correct
+  on the next turn instead of guessing what happened.
+
+Example `INPUT_OUT_OF_BOUNDS` error for a `(10000, 10000)` click on a
+single-display 1920×1080 setup:
+
+```json
+{
+  "type": "ERROR",
+  "id": "req-uuid",
+  "ts": 1712345678.0,
+  "payload": {
+    "code": "INPUT_OUT_OF_BOUNDS",
+    "message": "coordinate (10000, 10000) is outside the union of connected display bounds",
+    "fatal": false,
+    "details": {
+      "requested_coordinate": [10000, 10000],
+      "displays": [
+        {"index": 0, "origin": [0, 0], "size": [1920, 1080]}
+      ]
+    }
+  }
+}
+```
 
 ### Extended: `INPUT_ACTION`
 
@@ -188,23 +271,53 @@ The existing `key` action accepts `ctrl+s`-style chords. Two clarifications:
   `right`, `pageup`, `pagedown`, `home`, `end`, `backspace`, `delete`,
   `f1`-`f24`. Lowercase ASCII letters and digits are accepted as-is.
 
-#### `type` action — input method
+#### `type` action — input method (Q4 locked)
 
 Today `_pyautogui.write` is character-by-character. We add an optional
 `paste: true` field on the `type` action that the shim implements by
-stashing the text on the OS clipboard, sending Cmd/Ctrl+V, and restoring
-the previous clipboard. Why: pasting a 4 KB form value char-by-char is
-~80 seconds at default 20 ms interval and trips IME/autocomplete on web
-forms. Trade-off: clipboard is observable to other apps for ~50 ms;
-documented limitation.
+stashing the text on the OS clipboard, sending Cmd/Ctrl+V, and (only when
+the platform asks) restoring the previous clipboard. Why: pasting a 4 KB
+form value char-by-char is ~80 seconds at default 20 ms interval and
+trips IME/autocomplete on web forms.
+
+**Behavior — locked:**
+
+1. **Threshold.** `paste: true` is **only honored when `len(text) >= 200`.**
+   Under that threshold the shim falls through to per-key typing, which
+   avoids the clipboard race for short strings that don't actually need
+   it.
+2. **Default = clobber-and-document.** `paste: true` overwrites the
+   clipboard, sends the OS paste hotkey, and **does not restore.** This
+   is the safe-by-default for password-manager + paste interactions: if
+   the agent intentionally pasted something, the user's clipboard now
+   contains it, period. No surprise reversal.
+3. **Opt-in restore via `preserve_clipboard: true`.** When the platform
+   explicitly asks, the shim snapshots the clipboard before pasting and
+   restores it afterwards — **but skips the restore if the OS
+   `changeCount` / clipboard-sequence-number advanced between snapshot
+   and restore.** A bumped sequence number means the user (or another
+   app) copied something during the paste, and clobbering that with the
+   pre-paste snapshot would lose their action.
+4. **Race window.** Snapshot → write → hotkey → wait-for-paste → restore
+   is 50–500 ms wall-time depending on OS and target app. During that
+   window other apps see the pasted text on the clipboard. This is **not
+   papered over**: it's a security-relevant trade-off and the user
+   accepts it by enabling `--enable-clipboard`. The `preserve_clipboard`
+   path adds a slim "user-action-during-paste cancels restore"
+   protection but does not close the snooping window itself.
 
 ```json
 {
   "action": "type",
   "text": "long form value...",
-  "paste": true
+  "paste": true,
+  "preserve_clipboard": false
 }
 ```
+
+`InputActionPayload.paste` and `InputActionPayload.preserve_clipboard`
+both default to `false`. With `paste: false` (default), `preserve_clipboard`
+is ignored.
 
 ---
 
@@ -327,8 +440,64 @@ the others — same posture for us.
 }
 ```
 
-`window_id` is an opaque string the shim issues; treat it like a session
-handle, not a global identifier. It MAY change across reconnects.
+#### Q2 — `window_id` lifetime (locked)
+
+`window_id` is a shim-minted opaque UUID with a `win_` prefix (e.g.
+`win_3f9a8c12-...`), never reused. The mapping table
+`{uuid: native_handle}` is wiped on every `HELLO` (process restart **and**
+reconnect both invalidate IDs).
+
+The shim maintains the mapping for its process lifetime. At USE time
+(`WINDOW_FOCUS`, `SCREENSHOT_REQUEST.window_id`, anything that takes a
+`window_id`), the shim re-verifies the native handle by checking the
+window's `(pid, class_name, creation_timestamp)` triple against what was
+captured at LIST time. If any of those changed, the window was destroyed
+and the OS reassigned the handle; the shim returns `WINDOW_STALE`
+**never silently re-binds**. The platform must re-issue `WINDOW_LIST_REQUEST`
+to get a fresh mapping.
+
+Example `WINDOW_LIST_RESPONSE`:
+
+```json
+{
+  "payload": {
+    "windows": [
+      {
+        "window_id": "win_3f9a8c12-4b1d-4e8a-9c2a-0f7b8e9d6c5f",
+        "pid": 12345,
+        "app_name": "Safari",
+        "app_bundle_id": "com.apple.Safari",
+        "title": "AutoGPT — Dashboard",
+        "bounds": [100, 100, 1820, 1080],
+        "monitor": 0,
+        "is_focused": true,
+        "is_minimized": false,
+        "is_fullscreen": false
+      }
+    ],
+    "truncated": false
+  }
+}
+```
+
+Example `WINDOW_STALE` error:
+
+```json
+{
+  "type": "ERROR",
+  "id": "req-uuid",
+  "ts": 1712345678.0,
+  "payload": {
+    "code": "WINDOW_STALE",
+    "message": "window_id win_3f9a8c12-... no longer maps to a live window",
+    "fatal": false,
+    "details": {
+      "window_id": "win_3f9a8c12-4b1d-4e8a-9c2a-0f7b8e9d6c5f",
+      "hint": "re-list windows"
+    }
+  }
+}
+```
 
 ### New: `WINDOW_FOCUS`
 
@@ -472,10 +641,67 @@ Responds with `ACK`.
 
 Security note: clipboard content is **redacted in the audit log** (size +
 SHA-256 prefix only, never the value — same rule as `INPUT_ACTION.text`
-per [AUDIT_LOG.md](AUDIT_LOG.md)). If the user has a password manager
-plugin that writes secrets to the clipboard, the agent could read them;
-this is a documented limitation, not a bug, and a `CLIPBOARD_READ` always
-emits a user-visible audit event regardless of redaction.
+per [AUDIT_LOG.md](AUDIT_LOG.md)). A `CLIPBOARD_READ` always emits a
+user-visible audit event regardless of redaction.
+
+#### Q3 — Clipboard sandbox model (locked)
+
+**Default-deny.** Clipboard ops are off unless the user opts in at install
+time. Two CLI flags on `autogpt-shim start`:
+
+| Flag | Default | Effect |
+|---|---|---|
+| `--enable-clipboard` | off | Enables `CLIPBOARD_WRITE` and a **writeback-only** flavor of `CLIPBOARD_READ`: `CLIPBOARD_READ` returns content **only if the shim itself wrote it within the last 30 seconds.** Anything the user (or any other app) put on the clipboard returns `CLIPBOARD_CONCEALED` with `reason: "writeback_only"`. |
+| `--enable-clipboard-read-foreign` | off (requires `--enable-clipboard`) | Lets `CLIPBOARD_READ` return any clipboard content **except** when the current pasteboard carries an `org.nspasteboard.ConcealedType` marker (macOS, the de-facto password-manager convention) or `CF_PRIVATE` clipboard format (Windows). Concealed contents → `CLIPBOARD_CONCEALED` error. |
+
+Without `--enable-clipboard`, all clipboard sub-ops return
+`FEATURE_NOT_SUPPORTED` and `clipboard` is omitted from
+`computer_use_features_coarse`. Without
+`--enable-clipboard-read-foreign`, `CLIPBOARD_READ` is the strict
+"only what we just wrote" variant.
+
+The 30-second writeback window is tracked by the shim by stashing the
+SHA-256 + `changeCount`/sequence-number at write time; a subsequent
+`CLIPBOARD_READ` checks that the stashed value still matches the live
+clipboard contents (defeats the "shim wrote X, password manager
+overwrote with Y" race) before returning. A mismatch returns
+`CLIPBOARD_CONCEALED` with `reason: "writeback_overwritten"`.
+
+Example `CLIPBOARD_CONCEALED` error (concealed-type case):
+
+```json
+{
+  "type": "ERROR",
+  "id": "req-uuid",
+  "ts": 1712345678.0,
+  "payload": {
+    "code": "CLIPBOARD_CONCEALED",
+    "message": "clipboard contents marked concealed by source application",
+    "fatal": false,
+    "details": {
+      "reason": "concealed_type",
+      "marker": "org.nspasteboard.ConcealedType"
+    }
+  }
+}
+```
+
+Example for the writeback-only case (default `--enable-clipboard`,
+agent tries to read user-copied text):
+
+```json
+{
+  "payload": {
+    "code": "CLIPBOARD_CONCEALED",
+    "message": "clipboard contents not written by the shim within the last 30s",
+    "fatal": false,
+    "details": {
+      "reason": "writeback_only",
+      "writeback_age_seconds": null
+    }
+  }
+}
+```
 
 ### Deliberately omitted from v1
 
@@ -530,6 +756,99 @@ permission prompts is a [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) install-time
 concern; mid-session prompts would interrupt the agent loop in a way the
 platform can't recover from.
 
+#### Q5 — macOS TCC first-prompt UX (locked)
+
+Layered, so the user only ever hits the prompt at a moment they're
+expecting to ("I just ran the installer") and not in the middle of an
+agent loop:
+
+1. **`autogpt-shim doctor` subcommand.** Run at install time, manually,
+   or by the install script. On macOS, calls
+   `AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True})`
+   to **proactively surface** the consent dialog the first time it runs;
+   subsequent runs are silent. Also probes
+   `CGPreflightScreenCaptureAccess()` and reports both states. On Linux,
+   detects X11 vs Wayland. On Windows, reports UAC elevation level.
+
+   Example output (macOS, first run, AX not yet granted):
+
+   ```
+   $ autogpt-shim doctor
+   ✓ allowed_root: ~/Documents/autogpt-workspace exists, writable
+   ✓ keychain: keyring available (macOS Keychain Services)
+   ⚠ Accessibility: not granted — System Settings → Privacy & Security → Accessibility, enable autogpt-shim
+   ✓ Screen Recording: granted
+   ✓ display: 2 displays detected (3024×1964 + 2560×1440)
+   ○ computer_use: degraded (Accessibility missing)
+   exit 78
+   ```
+
+   Exit code is `0` when all requested capabilities are healthy, `78`
+   (config error) when computer-use was requested but a prerequisite
+   permission is missing.
+
+2. **Daemon refuses to bind WS when consent is missing.** If
+   `computer_use` is in the shim config's requested capabilities AND
+   `AXIsProcessTrusted()` returns false, the daemon writes a structured
+   record to the audit log (`code: PERMISSION_PENDING`, the missing
+   permissions, a hint that the user should run `autogpt-shim doctor`),
+   logs to stderr, and exits with code `78`. Without `computer_use` in
+   the requested set, the daemon binds normally.
+
+3. **launchd `KeepAlive` triggers re-launch on TCC change.** The
+   `autogpt-shim install` template includes:
+
+   ```xml
+   <key>KeepAlive</key>
+   <dict>
+     <key>SuccessfulExit</key>
+     <false/>
+   </dict>
+   ```
+
+   This means: any non-zero exit relaunches the daemon. When the user
+   grants Accessibility in System Settings, the OS modifies the TCC.db,
+   which (a) doesn't notify the running process directly but (b) the
+   *next* time `AXIsProcessTrusted()` is called, the new state is
+   visible. Combined with `KeepAlive: SuccessfulExit=false`, the chain
+   is: daemon exits 78 → launchd re-spawns → new process sees fresh
+   TCC state → binds WS. Documented in
+   [CROSS_PLATFORM.md](CROSS_PLATFORM.md).
+
+4. **`PERMISSION_PENDING` error on revocation mid-session.** If the user
+   revokes Accessibility while the daemon is running, the next
+   `INPUT_ACTION` or AX-dependent op catches the OS-level denial and
+   returns `PERMISSION_PENDING` (new error code, distinct from
+   `CAPABILITY_NOT_GRANTED` because the granting context here is
+   the *OS*, not the platform). The platform LLM retries on the next
+   turn; the user, after seeing the error in their UI, can re-grant.
+
+   Example `PERMISSION_PENDING` error:
+
+   ```json
+   {
+     "type": "ERROR",
+     "id": "req-uuid",
+     "ts": 1712345678.0,
+     "payload": {
+       "code": "PERMISSION_PENDING",
+       "message": "Accessibility permission revoked or not yet granted",
+       "fatal": false,
+       "details": {
+         "permission": "accessibility",
+         "platform": "darwin",
+         "hint": "Open System Settings → Privacy & Security → Accessibility and enable autogpt-shim"
+       }
+     }
+   }
+   ```
+
+5. **Linux / Windows `doctor`.** Returns `0` with platform-specific
+   advice: on Linux, distinguishes X11 (OK) vs Wayland (computer-use
+   degraded by default), and warns on missing `xclip`/`wl-clipboard`. On
+   Windows, reports UAC level and warns that injecting into elevated
+   windows from a non-elevated shim is impossible.
+
 ---
 
 ### Wire-op summary
@@ -554,8 +873,22 @@ Existing message types extended:
   `path`, `paste`, and new action verbs: `middle_click`, `triple_click`,
   `mouse_down`, `mouse_up`, `drag`, `hold_key`, `wait`
 
-New error code: `FEATURE_NOT_SUPPORTED` — feature not in
-`HELLO.computer_use_features`, or attempted on an unsupported OS.
+New error codes introduced by the computer-use surface:
+
+- `FEATURE_NOT_SUPPORTED` — feature not in `HELLO.computer_use_features`,
+  or attempted on an unsupported OS / session (e.g. Wayland input).
+- `WINDOW_STALE` — `window_id` no longer maps to a live window. Caller
+  must re-list (Q2).
+- `INPUT_OUT_OF_BOUNDS` — `INPUT_ACTION.coordinate` is outside the union
+  of connected display rects. Error carries the valid display rects (Q1).
+- `CLIPBOARD_CONCEALED` — clipboard contents are not readable under the
+  current sandbox policy (Q3): either the active flag set doesn't permit
+  reading foreign contents, the writeback window has expired or been
+  overwritten, or the source app marked the contents concealed.
+- `PERMISSION_PENDING` — an OS permission required for the op was not
+  granted (or was revoked mid-session). Q5; distinct from
+  `CAPABILITY_NOT_GRANTED`, which means the *platform* didn't grant the
+  shim the capability.
 
 ---
 
@@ -719,38 +1052,15 @@ Reconnect → new `HELLO` → re-probe.
 
 ---
 
-## Open questions
+## Locked decisions (cross-reference)
 
-1. **Coordinate space when `region` is set.** When the platform sends
-   `INPUT_ACTION.coordinate` after receiving a region screenshot, are
-   the coordinates in *region-local* space (0,0 = region top-left) or
-   *display-global* space (the shim adds `region.origin`)? Anthropic's
-   `zoom` returns a region but expects subsequent clicks in display
-   coordinates. Our wire op should pick one and document it — I'm
-   leaning display-global because it matches Anthropic.
+The five questions that were open at the v0.1 draft are now decided
+inline in the spec above. Quick index:
 
-2. **`window_id` lifetime across reconnects.** If the platform caches
-   `window_id` from before a disconnect and the shim reconnects, do we
-   invalidate the IDs (forcing a fresh `WINDOW_LIST`) or attempt to
-   re-bind them? Invalidation is simpler but means more list calls.
-
-3. **Clipboard sandbox.** The shim's path-jail covers file operations
-   inside `allowed_root`. Clipboard is global — anything the user has
-   copied is readable, anything we write is visible to all apps. Do we
-   add a per-feature toggle (`enable_clipboard` in shim config) so the
-   user can install the shim with computer-use but no clipboard access?
-   Or fold it into `computer_use_features` advertised at HELLO time?
-
-4. **`paste` action and password managers.** If the user has 1Password
-   filling forms via the system clipboard, our `type ... paste: true`
-   will clobber it. Do we (a) accept this and document, (b) detect and
-   refuse via clipboard-type sniffing, or (c) add a `preserve_clipboard:
-   false` opt-out and default-on for restore?
-
-5. **macOS Accessibility permission UX.** v1's `PERMISSIONS_CHECK` is
-   read-only by design. But the first time `INPUT_ACTION` runs without
-   Accessibility granted, macOS shows the system prompt and the keystroke
-   is lost. Do we (a) accept the lost keystroke (model retries on next
-   screenshot) or (b) detect-then-retry with a 1s wait? cua-driver does
-   (b) via its "TCC auto-relaunch" daemon trick which is more involved
-   than we want for v1.
+| Question | Section | Summary |
+|---|---|---|
+| Q1 — coordinate space with `region` | [Extended: `SCREENSHOT_REQUEST` → Q1](#q1--coordinate-space-locked) | Display-global, unscaled, top-left-origin virtual-display pixels always. `region` only crops the image. `INPUT_OUT_OF_BOUNDS` echoes display rects. |
+| Q2 — `window_id` lifetime | [New: `WINDOW_LIST_RESPONSE` → Q2](#q2--window_id-lifetime-locked) | Shim-minted `win_<uuid>`, never reused, wiped on `HELLO`. Re-verify `(pid, class_name, creation_timestamp)` at USE time; mismatch → `WINDOW_STALE`. |
+| Q3 — clipboard sandbox | [New: `CLIPBOARD_READ` / `CLIPBOARD_WRITE` → Q3](#q3--clipboard-sandbox-model-locked) | Default-deny. `--enable-clipboard` + optional `--enable-clipboard-read-foreign`. 30 s writeback-only window. `CLIPBOARD_CONCEALED`. |
+| Q4 — `paste:true` and password managers | [`type` action — input method (Q4)](#type-action--input-method-q4-locked) | Threshold ≥200 chars. Clobber-and-document by default; opt-in `preserve_clipboard: true` with changeCount-skip-restore. Race window honestly documented. |
+| Q5 — macOS TCC first-prompt UX | [`PERMISSIONS_CHECK_REQUEST` → Q5](#q5--macos-tcc-first-prompt-ux-locked) | `autogpt-shim doctor` + daemon refuses to bind when computer-use requested but ungranted + launchd `KeepAlive: SuccessfulExit=false` + `PERMISSION_PENDING` on mid-session revocation. |
