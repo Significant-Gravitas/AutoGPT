@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -810,4 +811,178 @@ async def test_fetch_execution_counts_uses_group_by(mocker):
             "isDeleted": False,
         },
         count=True,
+    )
+
+
+def _library_agent_prisma(
+    *,
+    id: str,
+    graph_id: str,
+    is_hidden: bool,
+    user_id: str = "test-user",
+) -> prisma.models.LibraryAgent:
+    """Build a minimal LibraryAgent prisma row for delete-cascade tests."""
+    return prisma.models.LibraryAgent(
+        id=id,
+        userId=user_id,
+        agentGraphId=graph_id,
+        settings="{}",  # type: ignore
+        agentGraphVersion=1,
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        isHidden=is_hidden,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=prisma.models.AgentGraph(
+            id=graph_id,
+            version=1,
+            name="Agent",
+            description="",
+            userId=user_id,
+            isActive=True,
+            createdAt=datetime.now(),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_library_agent_cascades_to_trigger_agents(mocker):
+    """Deleting an action (parent) agent must also clean up the hidden
+    trigger agents that exist only to drive it."""
+    action = _library_agent_prisma(
+        id="action-id", graph_id="action-graph", is_hidden=False
+    )
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_unique = mocker.AsyncMock(return_value=action)
+    mock_prisma.return_value.update_many = mocker.AsyncMock(return_value=1)
+    mocker.patch.object(db, "_cleanup_schedules_for_graph", new=mocker.AsyncMock())
+    mocker.patch.object(db, "_cleanup_webhooks_for_graph", new=mocker.AsyncMock())
+    cascade = mocker.patch.object(
+        db, "_cleanup_trigger_agents_for_graph", new=mocker.AsyncMock()
+    )
+
+    await db.delete_library_agent("action-id", "test-user", soft_delete=True)
+
+    cascade.assert_awaited_once_with(
+        action_graph_id="action-graph", user_id="test-user", soft_delete=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_library_agent_skips_cascade_for_hidden_agent(mocker):
+    """A trigger agent (hidden) has no triggers of its own, so deleting one
+    must NOT kick off a cascade lookup."""
+    trigger = _library_agent_prisma(id="trig-id", graph_id="trig-graph", is_hidden=True)
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_unique = mocker.AsyncMock(return_value=trigger)
+    mock_prisma.return_value.update_many = mocker.AsyncMock(return_value=1)
+    mocker.patch.object(db, "_cleanup_schedules_for_graph", new=mocker.AsyncMock())
+    mocker.patch.object(db, "_cleanup_webhooks_for_graph", new=mocker.AsyncMock())
+    cascade = mocker.patch.object(
+        db, "_cleanup_trigger_agents_for_graph", new=mocker.AsyncMock()
+    )
+
+    await db.delete_library_agent("trig-id", "test-user", soft_delete=True)
+
+    cascade.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_trigger_agents_deletes_sole_sink_trigger(mocker):
+    """A trigger whose only AgentExecutorBlock sink is the deleted action
+    agent gets deleted."""
+    trigger = _library_agent_prisma(id="trig-id", graph_id="trig-graph", is_hidden=True)
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[trigger])
+    mocker.patch.object(
+        db, "_trigger_targets_other_graph", new=mocker.AsyncMock(return_value=False)
+    )
+    recursive_delete = mocker.patch.object(
+        db, "delete_library_agent", new=mocker.AsyncMock()
+    )
+
+    await db._cleanup_trigger_agents_for_graph(
+        action_graph_id="action-graph", user_id="test-user", soft_delete=True
+    )
+
+    recursive_delete.assert_awaited_once_with(
+        library_agent_id="trig-id", user_id="test-user", soft_delete=True
+    )
+    # Candidate query must be scoped to hidden, non-deleted agents of the
+    # user whose graph runs the action agent via AgentExecutorBlock.
+    where = mock_prisma.return_value.find_many.call_args.kwargs["where"]
+    assert where["userId"] == "test-user"
+    assert where["isHidden"] is True
+    assert where["isDeleted"] is False
+    nodes_some = where["AgentGraph"]["is"]["Nodes"]["some"]
+    assert nodes_some["agentBlockId"] == db._AGENT_EXECUTOR_BLOCK_ID
+    assert nodes_some["constantInput"]["equals"] == prisma.Json("action-graph")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_trigger_agents_keeps_trigger_with_other_sinks(mocker):
+    """A trigger that also drives a different action agent is kept — the
+    deleted agent is not its only sink."""
+    trigger = _library_agent_prisma(id="trig-id", graph_id="trig-graph", is_hidden=True)
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[trigger])
+    mocker.patch.object(
+        db, "_trigger_targets_other_graph", new=mocker.AsyncMock(return_value=True)
+    )
+    recursive_delete = mocker.patch.object(
+        db, "delete_library_agent", new=mocker.AsyncMock()
+    )
+
+    await db._cleanup_trigger_agents_for_graph(
+        action_graph_id="action-graph", user_id="test-user", soft_delete=True
+    )
+
+    recursive_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_targets_other_graph_detects_extra_sink(mocker):
+    """Returns True when the trigger has an AgentExecutorBlock pointing at a
+    graph other than the one being deleted, False when all sinks point at it."""
+    extra_sink = prisma.models.AgentNode(
+        id="n1",
+        agentBlockId=db._AGENT_EXECUTOR_BLOCK_ID,
+        agentGraphId="trig-graph",
+        agentGraphVersion=1,
+        constantInput=json.dumps({"graph_id": "other-graph"}),  # type: ignore
+        metadata="{}",  # type: ignore
+    )
+    same_sink = prisma.models.AgentNode(
+        id="n2",
+        agentBlockId=db._AGENT_EXECUTOR_BLOCK_ID,
+        agentGraphId="trig-graph",
+        agentGraphVersion=1,
+        constantInput=json.dumps({"graph_id": "action-graph"}),  # type: ignore
+        metadata="{}",  # type: ignore
+    )
+    mock_prisma = mocker.patch("prisma.models.AgentNode.prisma")
+
+    mock_prisma.return_value.find_many = mocker.AsyncMock(
+        return_value=[extra_sink, same_sink]
+    )
+    assert (
+        await db._trigger_targets_other_graph(
+            trigger_graph_id="trig-graph",
+            trigger_graph_version=1,
+            action_graph_id="action-graph",
+        )
+        is True
+    )
+
+    mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[same_sink])
+    assert (
+        await db._trigger_targets_other_graph(
+            trigger_graph_id="trig-graph",
+            trigger_graph_version=1,
+            action_graph_id="action-graph",
+        )
+        is False
     )
