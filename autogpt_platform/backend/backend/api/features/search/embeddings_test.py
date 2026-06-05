@@ -78,7 +78,9 @@ async def test_generate_embedding_no_api_key():
     ) as mock_get_client:
         mock_get_client.return_value = None
 
-        with pytest.raises(RuntimeError, match="openai_internal_api_key not set"):
+        with pytest.raises(
+            RuntimeError, match="No embedding-capable LLM client configured"
+        ):
             await embeddings.generate_embedding("test text")
 
 
