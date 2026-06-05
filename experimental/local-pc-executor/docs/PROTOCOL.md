@@ -18,11 +18,52 @@ All messages are JSON with this envelope:
   "type": "MESSAGE_TYPE",
   "id": "uuid-v4",
   "ts": 1712345678.123,
+  "version": "1.0",
   "payload": { ... }
 }
 ```
 
 `id` is used for request/response correlation. Every request gets a response with the same `id`.
+
+`version` is the wire-protocol version this sender speaks, formatted
+`"major.minor"`. Always emitted by both sides. Receivers MUST be lenient
+on non-HELLO frames — use the negotiated version (see
+[Versioning](#versioning)) as the source of truth.
+
+---
+
+## Versioning
+
+The wire protocol carries a `version` field on every envelope, and HELLO /
+HELLO_ACK each carry a `protocol_version` field in the payload that
+advertises the **maximum** version that side supports.
+
+### Negotiation
+
+On connect, the shim sends `HELLO.payload.protocol_version` (its max). The
+platform replies with `HELLO_ACK.payload.protocol_version` (its max). Both
+sides compute the **effective negotiated version** as:
+
+| Case | Result |
+|---|---|
+| Same major, same minor | That version. |
+| Same major, different minor | Same major, `min(shim_minor, platform_minor)`. Both sides MUST tolerate forward-compatible additions within a major. |
+| Different majors | **Hard error.** Platform closes the WebSocket with close code **4426** and reason `{"error": "PROTOCOL_VERSION_MISMATCH", "shim_max": "...", "platform_max": "...", "hint": "..."}` (JSON-encoded). The shim MUST log the mismatch and MUST NOT auto-reconnect until restarted — this avoids hot-reconnect storms against an incompatible peer. |
+
+### Frame-level `version`
+
+All non-HELLO frames SHOULD set `version` to the negotiated value, but
+receivers MUST treat the HELLO-time negotiation as truth. A receiver that
+sees a non-HELLO frame with a different *minor* MUST process it normally;
+a frame with a different *major* MUST be dropped and logged loudly (and
+on the platform side, the session SHOULD be torn down with code 4426).
+
+### Current versions
+
+| Side | Maximum | Notes |
+|---|---|---|
+| Shim | `1.0` | `autogpt_local_executor.protocol.VERSION` |
+| Platform | `1.0` | Mirror this constant in the platform repo. |
 
 ---
 
@@ -36,8 +77,10 @@ All messages are JSON with this envelope:
   "type": "HELLO",
   "id": "uuid",
   "ts": 1234567890.0,
+  "version": "1.0",
   "payload": {
     "shim_version": "0.1.0",
+    "protocol_version": "1.0",     // max wire version this shim supports
     "machine_id": "hostname-uuid4",
     "platform": "darwin",          // "darwin" | "linux" | "windows" | "wsl2"
     "arch": "arm64",               // "x86_64" | "arm64" (normalized; see below)
@@ -67,8 +110,10 @@ All messages are JSON with this envelope:
   "type": "HELLO_ACK",
   "id": "same-uuid-as-HELLO",
   "ts": 1234567890.1,
+  "version": "1.0",
   "payload": {
     "session_id": "session-uuid",
+    "protocol_version": "1.0",     // max wire version this platform supports
     "granted_capabilities": ["shell", "files"],  // subset platform approved
     "max_file_size_bytes": 10485760,
     "command_timeout_seconds": 30,
@@ -76,6 +121,10 @@ All messages are JSON with this envelope:
   }
 }
 ```
+
+The effective negotiated wire-protocol version is computed per
+[Versioning](#versioning). Mismatched majors close the WebSocket with code
+4426 and the shim disables auto-reconnect.
 
 `max_concurrent` sizes the shim-side request semaphore. The shim must
 refuse (with `SHIM_OVERLOADED`) any request that arrives while the
@@ -594,125 +643,155 @@ Platform sends `PING` every 30s. Shim must respond with `PONG` within 10s or con
 
 ---
 
+### Session ownership
+
+The platform owns at most one active WebSocket per `session_id`. Two shims
+trying to claim the same `session_id` (e.g. the same user starting
+`autogpt-shim start` on two laptops with the same auth) is a real concern
+— the v0 spec was silent on it and the platform did silent last-write-wins,
+orphaning the prior shim's pending requests with no clean error.
+
+#### Policy
+
+- **First connecting shim wins ownership** until it explicitly disconnects
+  OR the platform sends `SESSION_REVOKED`.
+- A second shim from the **SAME `machine_id`** is treated as a re-connect
+  (legitimate takeover — laptop sleep/wake, etc.). The platform serves
+  `SESSION_REVOKED` to the old shim with reason `another_shim_connected`
+  and accepts the new one.
+- A second shim from a **DIFFERENT `machine_id`** is REJECTED with WS
+  close code **4427** (`SESSION_TAKEN_OVER`) and a structured reason. The
+  rejected shim MUST NOT auto-reconnect. Rationale: avoid silent
+  split-brain where two machines both try to execute one Claude turn —
+  the file-system / window state diverges, audit chains fork, and the
+  platform can't meaningfully retry a half-finished command on the "other"
+  shim.
+
+#### `SESSION_REVOKED` (platform → shim)
+```json
+{
+  "type": "SESSION_REVOKED",
+  "id": "uuid",
+  "ts": 1234567890.0,
+  "version": "1.0",
+  "payload": {
+    "reason": "another_shim_connected",   // | "user_revoked" | "platform_shutdown"
+    "new_shim_machine_id": "macbook-air-7f3c"   // optional, set when reason is another_shim_connected
+  }
+}
+```
+
+On receipt the shim MUST:
+
+1. Log a `SESSION_REVOKED` audit event with the reason and source.
+2. Send no further frames on this connection.
+3. Gracefully close its half of the WebSocket (close code 4428 from the
+   shim side is acceptable; receivers tolerate any clean close after
+   `SESSION_REVOKED`).
+4. **NOT auto-reconnect** to the same session_id. Operator restart is
+   required to re-establish the session deliberately.
+
+Receivers MUST tolerate unknown future `reason` values (forward-compatible
+minor extension); the spec table above is the v1.0 set.
+
+#### WS close-code table
+
+| Code | Label | Meaning | Sender | Shim auto-reconnect? |
+|---|---|---|---|---|
+| 4426 | `PROTOCOL_VERSION_MISMATCH` | Major-version disagreement in HELLO/HELLO_ACK. | platform | **No** — restart required after upgrade. |
+| 4427 | `SESSION_TAKEN_OVER` | A same-`machine_id` shim connected and took over (this connection is the old one being evicted). | platform | **No** — the takeover is intentional. |
+| 4428 | `SESSION_REVOKED` | User revoked this session in the platform UI (or related admin action). | platform | **No** — auth gone, would just 401. |
+| 4429 | `PLATFORM_SHUTDOWN` | Platform is going down (graceful). | platform | **No** for *this* session — reconnect attempts SHOULD wait for platform health probe. Today the shim just halts; operator restart triggers a fresh connect. |
+
+Codes below 4426 follow IETF/RFC semantics (1000 normal, 1011 server
+error, etc.) and the shim DOES auto-reconnect with exponential backoff —
+only the application-layer codes in the table above are treated as fatal
+"do not retry without operator action".
+
+> The platform-side `ShimConnectionManager` change that actually emits
+> `SESSION_REVOKED` and close-code 4427 lives in a separate ticket; this
+> section is the contract the shim implements on the receive side.
+
+---
+
 ## Concurrency
 
 The platform may send multiple requests before receiving responses (pipelined). The shim
 assigns each request its own async task and responds with matching `id` when complete.
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
 
-## Reconnection
-
-Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
-On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
-Any in-flight requests at disconnect time are considered failed; recovery is
-governed by the per-op idempotency table in
-[In-flight semantics on disconnect](#in-flight-semantics-on-disconnect).
-
 ---
 
-## In-flight semantics on disconnect
+## Backpressure
 
-When the WebSocket drops (or the platform-side `_rpc` timeout fires) while
-one or more requests are in flight, the platform MUST decide on a per-op
-basis whether to auto-retry on reconnect or surface a clean error to the
-LLM. Auto-retry is only safe for **idempotent** ops — repeating a
-non-idempotent op risks duplicated side effects (a second write, a second
-`rm`, a second `Cmd+S` keystroke) which is strictly worse than reporting
-that the outcome is unknown and letting the LLM probe state with an
-idempotent op (e.g. `FILE_STAT`).
+Pre-#38 the only backpressure signal was the after-the-fact
+`SHIM_OVERLOADED` error — the platform issued a request, the shim
+rejected it. Better: have the shim proactively advertise free capacity
+so the platform can throttle issuance before it hits the wall.
 
-### Per-op idempotency table
+### `pending_capacity` on every response envelope
 
-| Op | Idempotent? | Disconnect recovery |
-|---|---|---|
-| `FILE_READ` | yes | platform MAY auto-retry on reconnect |
-| `FILE_STAT` | yes | platform MAY auto-retry on reconnect |
-| `FILE_LIST` | yes | platform MAY auto-retry on reconnect |
-| `CURSOR_POSITION_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `DISPLAY_INFO_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `WINDOW_LIST_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `APP_LIST_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `CLIPBOARD_READ` | yes | platform MAY auto-retry on reconnect |
-| `PERMISSIONS_CHECK_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `SCREENSHOT_REQUEST` | yes | platform MAY auto-retry on reconnect |
-| `EXECUTE_COMMAND` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `FILE_WRITE` | **no** | platform MUST NOT auto-retry; surface `WRITE_UNCONFIRMED` |
-| `FILE_DELETE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `FILE_MOVE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `WINDOW_FOCUS` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `APP_LAUNCH` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `CLIPBOARD_WRITE` | **no** | platform MUST NOT auto-retry; surface error to LLM |
-| `INPUT_ACTION` | **no** | platform MUST NOT auto-retry; surface error to LLM |
+All shim-→-platform response envelopes carry a top-level
+`pending_capacity: int` (placed at envelope level, peer to `id` /
+`ts` / `version`). Value:
 
-Idempotency here means *repeat-safe at the protocol level*: the same wire op
-issued twice produces the same observable state on the user's machine. Read
-ops trivially qualify. `SCREENSHOT_REQUEST` qualifies because each capture
-is a fresh sample — a duplicate sample is wasted work but not incorrect.
-`EXECUTE_COMMAND` is non-idempotent because the shell may have side effects
-(`rm`, `git push`, network calls) the platform can't introspect.
+```
+pending_capacity = max_concurrent - in_flight_after_this_response
+```
 
-### Recovery semantics
+i.e. free slots immediately AFTER this response is sent (we've already
+released ours). `0` means "I'm fully saturated — pause issuance". Field
+is omitted (or `null`) on platform-→-shim requests and on shim-internal
+frames like HELLO; the platform MUST treat absent/null as "no signal,
+use prior value".
 
-For each in-flight wire op when the platform-side `_rpc` times out OR the
-WS disconnects before a response arrives:
+The platform's `LocalPCShim` adapter SHOULD maintain a per-shim
+in-memory `capacity_remaining` counter, decrement on issue, refresh
+from `pending_capacity` on each response, and pause new issuance when
+the counter hits 0. Wiring that consumer is a separate platform-side
+ticket; this section is the contract.
 
-- **Idempotent ops** — the platform MAY auto-retry exactly once after the
-  shim reconnects. The retry MUST use a fresh wire `id` (the old one will
-  be dropped from the shim's correlation table) but otherwise repeats the
-  exact same payload. The platform-side adapter SHOULD hide the retry from
-  the caller — they get the eventual result or, if the retry also fails,
-  a single final error. The retry budget is per-call, not per-session, so
-  a pathological "drop every other frame" link doesn't snowball.
-- **Non-idempotent ops** — the platform MUST raise immediately. The error
-  surfaces to the LLM as a clean, structured failure that tells the model
-  to verify state (e.g. with `FILE_STAT`) rather than blindly retry. The
-  LLM, not the adapter, owns the retry decision because it can observe
-  whether the side effect happened.
-
-### `WRITE_UNCONFIRMED`
-
-A dedicated error code for `FILE_WRITE` whose ack never arrives. The wire
-op was sent — bytes may or may not have hit disk on the shim host — but
-the platform-side `_rpc` either timed out waiting for `ACK` or the WS
-dropped first. The platform converts that platform-side condition into a
-synthetic `WRITE_UNCONFIRMED` `ERROR` envelope so:
-
-1. The LLM sees the same translator-rendered English message regardless of
-   whether the shim explicitly sent `ERROR { code: WRITE_UNCONFIRMED }` or
-   whether the platform synthesized one from a timeout/disconnect.
-2. The recommended recovery — `FILE_STAT` the target path to check actual
-   on-disk state, then re-issue `FILE_WRITE` if needed — is consistent
-   across both branches.
-
-Wire shape of the synthetic envelope the platform adapter raises:
+### `STATUS` frame (shim → platform, unsolicited, periodic)
 
 ```json
 {
-  "type": "ERROR",
-  "id": "req-uuid",
+  "type": "STATUS",
+  "id": "uuid",
   "ts": 1234567890.0,
+  "version": "1.0",
+  "pending_capacity": 3,
   "payload": {
-    "code": "WRITE_UNCONFIRMED",
-    "message": "FILE_WRITE was sent but the shim did not ACK before the connection dropped.",
-    "fatal": false,
-    "details": {
-      "path": "/Users/alice/autogpt-workspace/output.txt",
-      "op": "FILE_WRITE"
-    }
+    "in_flight": 1,
+    "max_concurrent": 4,
+    "queue_depth": 0,
+    "audit_log_bytes": 12345,
+    "uptime_seconds": 137.4
   }
 }
 ```
 
-The shim itself MAY also originate this code if it detects the same race
-on its side (write started but the response could not be flushed before
-the socket closed) — the two paths are wire-indistinguishable by design.
+Emission cadence:
 
-### Other non-idempotent ops on disconnect
+- **Every 30s** (`STATUS_INTERVAL_SECONDS` in shim source) while the WS
+  is healthy. Cheap unsolicited heartbeat — lets the platform observe
+  shim health without spamming an `is_alive` probe.
+- **On the full → not-full edge.** When the shim finishes a request
+  that took the last free slot, a STATUS frame is emitted IMMEDIATELY
+  after the response (in addition to the response carrying
+  `pending_capacity=1`), so the platform's throttle releases without
+  waiting up to 30s for the next tick.
 
-For non-`FILE_WRITE` non-idempotent ops, the platform raises a typed
-`OpUnconfirmedError` carrying the op name + the original wire `id`. The
-translator surfaces this with the same shape as `WRITE_UNCONFIRMED` but
-with op-appropriate wording (e.g. for `EXECUTE_COMMAND`: "the command was
-sent but the shim did not return a result before the connection dropped —
-verify state before retrying"). No new wire ERROR code is minted; the
-platform-side error type carries the structured signal.
+Receivers MUST treat `STATUS` as advisory — the per-response
+`pending_capacity` remains the authoritative number. A receiver that
+doesn't understand `STATUS` MAY drop it; the field is forward-compatible
+and the spec's discriminated union just gains it within v1.x.
+
+> The platform-side consumer that reads `pending_capacity` / `STATUS`
+> and throttles issuance lives in a separate ticket; this section is
+> the contract the shim implements on the emit side.
+
+## Reconnection
+
+Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
+On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+Any in-flight requests at disconnect time are considered failed; platform retries if safe.
