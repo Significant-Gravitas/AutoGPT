@@ -271,6 +271,48 @@ def _write_unconfirmed(
     )
 
 
+def _file_too_large(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    max_bytes = details.get("max_file_size_bytes")
+    attempted = details.get("attempted_bytes")
+    op = details.get("op") or "read/write"
+    if max_bytes is not None:
+        max_str = f"{max_bytes} bytes"
+    else:
+        max_str = "the shim's configured limit"
+    attempted_str = f" (attempted {attempted} bytes)" if attempted is not None else ""
+    return (
+        f"File exceeded the shim's max size ({max_str}){attempted_str}. "
+        f"Chunk the {op} by reading/writing smaller sections with "
+        "offset+length, or compress on the user's side first."
+    )
+
+
+def _dependency_missing(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    dep = details.get("dep")
+    extra = details.get("extra")
+    op = details.get("op")
+    if not dep:
+        # Fallback: passthrough message — the shim's wording is usually
+        # already specific (e.g. "Pillow is required for screenshots").
+        return (
+            f"The shim host is missing a runtime dependency for this op: "
+            f"{message or '<no detail>'}. Ask the user to install the "
+            "needed extra with `pipx install autogpt-local-executor[<extra>]`."
+        )
+    op_clause = f" for {op}" if op else ""
+    extra_clause = f"[{extra}]" if extra else "[<extra>]"
+    return (
+        f"The shim host needs the '{dep}' Python package installed{op_clause}. "
+        f"Ask the user to run `pipx install autogpt-local-executor{extra_clause}` "
+        "to add it. Common deps: pyautogui (input), Pillow (screenshot), "
+        "pyperclip (clipboard), pyserial (hardware)."
+    )
+
+
 def _internal_error(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
@@ -304,6 +346,8 @@ _TRANSLATIONS: dict[str, _Translator] = {
     "AUTH_FAILED": _auth_failed,
     "UNSUPPORTED_ARCH": _unsupported_arch,
     "WRITE_UNCONFIRMED": _write_unconfirmed,
+    "FILE_TOO_LARGE": _file_too_large,
+    "DEPENDENCY_MISSING": _dependency_missing,
     "INTERNAL_ERROR": _internal_error,
 }
 

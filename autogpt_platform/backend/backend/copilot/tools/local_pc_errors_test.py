@@ -53,6 +53,8 @@ _EXPECTED_SUBSTRINGS: dict[str, list[str]] = {
     "AUTH_FAILED": ["OAuth", "autogpt-shim auth"],
     "UNSUPPORTED_ARCH": ["architecture", "x86_64", "arm64"],
     "WRITE_UNCONFIRMED": ["FILE_WRITE", "FILE_STAT"],
+    "FILE_TOO_LARGE": ["exceeded", "Chunk", "offset+length"],
+    "DEPENDENCY_MISSING": ["pipx install", "autogpt-local-executor"],
     "INTERNAL_ERROR": ["unexpected internal error", "audit.log"],
 }
 
@@ -220,6 +222,69 @@ class TestPlaceholderSubstitution:
             "INTERNAL_ERROR", "segfault in adapter", {}, _make_shim()
         )
         assert "segfault in adapter" in out
+
+    def test_file_too_large_includes_max_size_and_op(self):
+        out = translate_shim_error(
+            "FILE_TOO_LARGE",
+            "too big",
+            {
+                "max_file_size_bytes": 10485760,
+                "attempted_bytes": 52428800,
+                "op": "FILE_WRITE",
+            },
+            _make_shim(),
+        )
+        assert "10485760 bytes" in out
+        assert "52428800 bytes" in out
+        assert "FILE_WRITE" in out
+        assert "offset+length" in out
+
+    def test_file_too_large_fallback_when_details_missing(self):
+        out = translate_shim_error("FILE_TOO_LARGE", "too big", {}, _make_shim())
+        # Generic fallback wording must still be actionable.
+        assert "Chunk the read/write" in out
+        assert "shim's configured limit" in out
+
+    def test_file_too_large_op_only_uses_op_in_chunk_clause(self):
+        out = translate_shim_error(
+            "FILE_TOO_LARGE",
+            "too big",
+            {"op": "FILE_READ"},
+            _make_shim(),
+        )
+        assert "Chunk the FILE_READ" in out
+
+    def test_dependency_missing_includes_dep_and_extra(self):
+        out = translate_shim_error(
+            "DEPENDENCY_MISSING",
+            "Pillow not installed",
+            {"dep": "Pillow", "extra": "screenshot", "op": "SCREENSHOT_REQUEST"},
+            _make_shim(),
+        )
+        assert "Pillow" in out
+        assert "pipx install autogpt-local-executor[screenshot]" in out
+        assert "SCREENSHOT_REQUEST" in out
+
+    def test_dependency_missing_falls_back_to_passthrough_without_dep(self):
+        out = translate_shim_error(
+            "DEPENDENCY_MISSING",
+            "missing some package",
+            {},
+            _make_shim(),
+        )
+        # No dep → passthrough message, but still mentions the install path.
+        assert "missing some package" in out
+        assert "pipx install autogpt-local-executor" in out
+
+    def test_dependency_missing_without_extra_uses_placeholder(self):
+        out = translate_shim_error(
+            "DEPENDENCY_MISSING",
+            "pyserial missing",
+            {"dep": "pyserial"},
+            _make_shim(),
+        )
+        assert "pyserial" in out
+        assert "[<extra>]" in out
 
 
 class TestPassthroughForUnknownCodes:
