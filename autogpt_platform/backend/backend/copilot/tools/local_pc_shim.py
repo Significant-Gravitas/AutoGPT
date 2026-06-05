@@ -90,6 +90,30 @@ class WriteUnconfirmedError(OpUnconfirmedError):
         )
 
 
+# Backpressure — see PROTOCOL.md §Concurrency. When the platform asks
+# `_rpc` to send a wire op but the shim's most recent
+# `pending_capacity` signal is 0, the call blocks on
+# ``_capacity_available`` for at most this many seconds before raising
+# ``ShimOverloadedError``. Matches the wire-level ``SHIM_OVERLOADED``
+# semantic so the translator can render the same recovery hint either way.
+_CAPACITY_WAIT_TIMEOUT_SECONDS: float = 30.0
+
+
+class ShimOverloadedError(RuntimeError):
+    """Raised proactively when the shim's pending capacity stays at 0 too long.
+
+    Wire-level ``SHIM_OVERLOADED`` arrives as a normal `ERROR` envelope
+    after the shim refuses an over-cap request. This client-side variant
+    short-circuits before sending — once the platform learns the shim is
+    full (from a prior response or STATUS frame), there's no value in
+    spending a round-trip just to receive `SHIM_OVERLOADED` back. The
+    error code matches the wire code so existing translator + retry logic
+    handles both surfaces uniformly.
+    """
+
+    code = "SHIM_OVERLOADED"
+
+
 def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
     """Translate a wire ERROR payload into an actionable English message."""
     if not isinstance(payload, dict):
@@ -705,10 +729,30 @@ class LocalPCShim:
         self.hardware_devices = hello.hardware_devices
         self.computer_use_features = hello.computer_use_features
         self._pending: dict[str, asyncio.Future[dict]] = {}
+        # Backpressure — see PROTOCOL.md §Concurrency + STATUS frame
+        # support. `pending_capacity` is the shim's self-reported headroom:
+        # 0 = at the concurrency cap, refuse-new-work; >0 = slots free; None
+        # = unknown (pre-STATUS or shim doesn't advertise capacity yet).
+        # Updated by both per-response envelopes and periodic STATUS frames.
+        self._pending_capacity: int | None = None
+        self._capacity_available = asyncio.Event()
+        self._capacity_available.set()  # default: assume open until told otherwise
         self.files = _FilesProxy(self)
         self.commands = _CommandsProxy(self)
         self.computer = _ComputerProxy(self)
         self._recv_task = asyncio.create_task(self._recv_loop())
+
+    @property
+    def pending_capacity(self) -> int | None:
+        """Last-known shim-side request-slot headroom.
+
+        ``None`` until the shim advertises capacity (either embedded in a
+        response envelope's ``pending_capacity`` field or via a periodic
+        STATUS frame). ``0`` means the shim is at its ``max_concurrent`` cap
+        — new `_rpc` calls will block on the capacity event for up to 30s
+        before raising :class:`ShimOverloadedError`.
+        """
+        return self._pending_capacity
 
     @classmethod
     async def for_session(
@@ -721,6 +765,64 @@ class LocalPCShim:
         ws = await manager.wait_for(session_id, timeout=connect_timeout)
         hello = manager.get_hello(session_id)
         return cls(session_id, ws, hello, manager=manager)
+
+    def _update_pending_capacity(self, value: Any, *, source: str) -> None:
+        """Defensive: accept whatever the shim sent and only honor sane ints.
+
+        STATUS / response shapes drift more than wire docs admit. A
+        non-int, missing, or negative value leaves the prior reading
+        unchanged rather than crashing the recv loop. Logged at DEBUG so
+        operators can spot a shim that's regressed its self-report.
+        """
+        if value is None:
+            return
+        try:
+            capacity = int(value)
+        except (TypeError, ValueError):
+            logger.debug(
+                "[LocalPC] Ignoring non-int pending_capacity=%r from %s",
+                value,
+                source,
+            )
+            return
+        if capacity < 0:
+            logger.debug(
+                "[LocalPC] Ignoring negative pending_capacity=%d from %s",
+                capacity,
+                source,
+            )
+            return
+        self._pending_capacity = capacity
+        if capacity > 0:
+            self._capacity_available.set()
+        else:
+            self._capacity_available.clear()
+
+    async def _await_capacity(
+        self, msg_type: str, *, timeout: float = _CAPACITY_WAIT_TIMEOUT_SECONDS
+    ) -> None:
+        """Block until the shim reports headroom, or raise SHIM_OVERLOADED.
+
+        If ``pending_capacity`` is 0, wait up to ``timeout`` seconds for a
+        subsequent response or STATUS frame to clear the gate. Past that,
+        raise :class:`ShimOverloadedError` proactively — sending the op
+        anyway would just get bounced with the same code by the shim.
+        """
+        # Defensive against test fixtures that construct shims via
+        # ``__new__`` and skip ``__init__``.
+        capacity = getattr(self, "_pending_capacity", None)
+        event = getattr(self, "_capacity_available", None)
+        if capacity != 0:
+            return
+        if event is None or event.is_set():
+            return
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise ShimOverloadedError(
+                f"[LocalPC] Shim has reported pending_capacity=0 for {timeout}s; "
+                f"refusing to send {msg_type}"
+            ) from exc
 
     async def _send_and_wait(
         self,
@@ -771,7 +873,12 @@ class LocalPCShim:
           :class:`WriteUnconfirmedError` / :class:`OpUnconfirmedError`
           immediately so the LLM can probe state instead of double-applying
           a side effect.
+
+        Backpressure: if the shim's most recent ``pending_capacity`` signal
+        is 0, this blocks for up to 30s waiting for headroom before sending,
+        then raises :class:`ShimOverloadedError`.
         """
+        await self._await_capacity(msg_type)
         try:
             return await self._send_and_wait(msg_type, payload, timeout=timeout)
         except _RpcAttemptFailed as first:
@@ -841,6 +948,11 @@ class LocalPCShim:
             async for raw in self._ws.iter_text():
                 try:
                     msg = json.loads(raw)
+                    self._handle_envelope_capacity(msg)
+                    msg_type = msg.get("type")
+                    if msg_type == "STATUS":
+                        self._handle_status_frame(msg)
+                        continue
                     msg_id = msg.get("id")
                     if msg_id and msg_id in self._pending:
                         fut = self._pending.pop(msg_id)
@@ -850,6 +962,71 @@ class LocalPCShim:
                     logger.exception("[LocalPC] Error processing shim message")
         except Exception:
             logger.debug("[LocalPC] Shim recv loop ended for %s", self.sandbox_id[:12])
+
+    def _handle_envelope_capacity(self, msg: Any) -> None:
+        """Mine ``pending_capacity`` out of any shim → platform envelope.
+
+        Per the shim partner's backpressure work, every response (and
+        STATUS frame) carries the shim's current headroom. We accept it
+        from either the top-level envelope or the payload — different shim
+        versions have placed it in different spots, and the platform side
+        shouldn't crash on either. Missing field is fine — leave capacity
+        unchanged.
+        """
+        if not isinstance(msg, dict):
+            return
+        if "pending_capacity" in msg:
+            self._update_pending_capacity(
+                msg.get("pending_capacity"), source="envelope"
+            )
+        payload = msg.get("payload")
+        if isinstance(payload, dict) and "pending_capacity" in payload:
+            self._update_pending_capacity(
+                payload.get("pending_capacity"), source="payload"
+            )
+
+    def _handle_status_frame(self, msg: Any) -> None:
+        """Periodic STATUS frame: log the snapshot + refresh capacity.
+
+        Frame shape (per shim partner spec):
+            {type: "STATUS",
+             payload: {in_flight, max_concurrent, queue_depth,
+                       audit_log_bytes, uptime_seconds, pending_capacity?}}
+
+        If ``pending_capacity`` is present, it wins. Otherwise we derive
+        ``max_concurrent - in_flight`` as a fallback for shim versions that
+        omit it. Logged at DEBUG so the snapshot is available for diagnosis
+        without spamming production logs.
+        """
+        if not isinstance(msg, dict):
+            return
+        payload = msg.get("payload")
+        if not isinstance(payload, dict):
+            return
+        if "pending_capacity" in payload:
+            self._update_pending_capacity(
+                payload.get("pending_capacity"), source="STATUS"
+            )
+        else:
+            max_concurrent = payload.get("max_concurrent")
+            in_flight = payload.get("in_flight")
+            try:
+                if max_concurrent is not None and in_flight is not None:
+                    derived = max(0, int(max_concurrent) - int(in_flight))
+                    self._update_pending_capacity(derived, source="STATUS-derived")
+            except (TypeError, ValueError):
+                pass
+        logger.debug(
+            "[LocalPC] STATUS frame for %s: in_flight=%r max_concurrent=%r "
+            "queue_depth=%r audit_log_bytes=%r uptime_seconds=%r capacity=%r",
+            self.sandbox_id[:12],
+            payload.get("in_flight"),
+            payload.get("max_concurrent"),
+            payload.get("queue_depth"),
+            payload.get("audit_log_bytes"),
+            payload.get("uptime_seconds"),
+            self._pending_capacity,
+        )
 
     async def pause(self) -> None:
         pass  # no billing on local machine

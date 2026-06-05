@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +15,7 @@ from .local_pc_shim import (
     ShimComputerUseError,
     ShimConnectionManager,
     ShimHello,
+    ShimOverloadedError,
     WriteUnconfirmedError,
     _CommandsProxy,
     _ComputerProxy,
@@ -814,3 +816,233 @@ class TestOpUnconfirmedErrorShape:
         assert err.op == "FILE_WRITE"
         assert err.code == "WRITE_UNCONFIRMED"
         assert isinstance(err, OpUnconfirmedError)
+
+
+# ---------------------------------------------------------------------------
+# Backpressure consumer — pending_capacity tracking + STATUS frame
+# consumption + 30s overload timeout (matches SHIM_OVERLOADED).
+# ---------------------------------------------------------------------------
+
+
+def _make_backpressure_shim() -> LocalPCShim:
+    """Build a LocalPCShim with init'd backpressure state but stubbed I/O."""
+    shim = LocalPCShim.__new__(LocalPCShim)
+    shim.sandbox_id = "bp-session"
+    shim.allowed_root = "/Users/test/workspace"
+    shim.machine_id = "m"
+    shim.platform = "darwin"
+    shim.arch = "arm64"
+    shim.capabilities = ["files"]
+    shim.computer_use_features = []
+    shim._manager = None
+    shim._pending = {}
+    shim._pending_capacity = None
+    shim._capacity_available = asyncio.Event()
+    shim._capacity_available.set()
+    return shim
+
+
+class TestPendingCapacityTracking:
+    def test_capacity_defaults_to_none(self):
+        shim = _make_backpressure_shim()
+        assert shim.pending_capacity is None
+
+    def test_envelope_capacity_updates_property(self):
+        shim = _make_backpressure_shim()
+        shim._handle_envelope_capacity(
+            {"type": "FILE_CONTENTS", "id": "x", "pending_capacity": 3, "payload": {}}
+        )
+        assert shim.pending_capacity == 3
+
+    def test_payload_capacity_updates_property(self):
+        shim = _make_backpressure_shim()
+        shim._handle_envelope_capacity(
+            {"type": "ACK", "payload": {"ok": True, "pending_capacity": 2}}
+        )
+        assert shim.pending_capacity == 2
+
+    def test_capacity_zero_clears_event(self):
+        shim = _make_backpressure_shim()
+        assert shim._capacity_available.is_set()
+        shim._update_pending_capacity(0, source="test")
+        assert shim.pending_capacity == 0
+        assert not shim._capacity_available.is_set()
+
+    def test_capacity_above_zero_sets_event(self):
+        shim = _make_backpressure_shim()
+        shim._update_pending_capacity(0, source="test")
+        assert not shim._capacity_available.is_set()
+        shim._update_pending_capacity(4, source="test")
+        assert shim._capacity_available.is_set()
+        assert shim.pending_capacity == 4
+
+    def test_non_int_capacity_is_ignored(self):
+        shim = _make_backpressure_shim()
+        shim._update_pending_capacity(5, source="seed")
+        shim._update_pending_capacity("oops", source="bad")
+        assert shim.pending_capacity == 5  # unchanged
+
+    def test_negative_capacity_is_ignored(self):
+        shim = _make_backpressure_shim()
+        shim._update_pending_capacity(3, source="seed")
+        shim._update_pending_capacity(-1, source="bad")
+        assert shim.pending_capacity == 3
+
+    def test_none_capacity_does_not_clear_property(self):
+        shim = _make_backpressure_shim()
+        shim._update_pending_capacity(2, source="seed")
+        shim._update_pending_capacity(None, source="absent")
+        assert shim.pending_capacity == 2
+
+
+class TestStatusFrameConsumption:
+    def test_status_with_pending_capacity_updates(self):
+        shim = _make_backpressure_shim()
+        shim._handle_status_frame(
+            {
+                "type": "STATUS",
+                "payload": {
+                    "in_flight": 2,
+                    "max_concurrent": 4,
+                    "queue_depth": 0,
+                    "audit_log_bytes": 1024,
+                    "uptime_seconds": 60,
+                    "pending_capacity": 2,
+                },
+            }
+        )
+        assert shim.pending_capacity == 2
+
+    def test_status_without_pending_capacity_derives_from_in_flight(self):
+        shim = _make_backpressure_shim()
+        shim._handle_status_frame(
+            {
+                "type": "STATUS",
+                "payload": {
+                    "in_flight": 4,
+                    "max_concurrent": 4,
+                    "queue_depth": 1,
+                },
+            }
+        )
+        assert shim.pending_capacity == 0
+        assert not shim._capacity_available.is_set()
+
+    def test_status_derived_capacity_clamped_to_zero(self):
+        shim = _make_backpressure_shim()
+        shim._handle_status_frame(
+            {
+                "type": "STATUS",
+                "payload": {"in_flight": 10, "max_concurrent": 4},
+            }
+        )
+        # Bad shim arithmetic shouldn't go negative.
+        assert shim.pending_capacity == 0
+
+    def test_status_with_malformed_payload_does_not_crash(self):
+        shim = _make_backpressure_shim()
+        # All of these should be no-ops, not exceptions.
+        shim._handle_status_frame({"type": "STATUS"})
+        shim._handle_status_frame({"type": "STATUS", "payload": None})
+        shim._handle_status_frame({"type": "STATUS", "payload": "garbage"})
+        shim._handle_status_frame(
+            {"type": "STATUS", "payload": {"in_flight": "not-an-int"}}
+        )
+        assert shim.pending_capacity is None  # never updated
+
+    def test_status_with_partial_fields_still_logs(self, caplog):
+        shim = _make_backpressure_shim()
+        import logging
+
+        with caplog.at_level(
+            logging.DEBUG, logger="backend.copilot.tools.local_pc_shim"
+        ):
+            shim._handle_status_frame(
+                {
+                    "type": "STATUS",
+                    "payload": {
+                        "in_flight": 1,
+                        "max_concurrent": 4,
+                        "uptime_seconds": 7,
+                    },
+                }
+            )
+        # DEBUG snapshot should be emitted with the partial fields visible.
+        assert any("STATUS frame for" in r.message for r in caplog.records)
+
+
+class TestBackpressureBlocking:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_rpc_blocks_when_capacity_zero(self):
+        shim = _make_backpressure_shim()
+        shim._send_and_wait = AsyncMock(
+            return_value={"type": "FILE_CONTENTS", "payload": {"content": "ok"}}
+        )
+        shim._update_pending_capacity(0, source="seed")
+
+        # Kick off the rpc — it should hang on the capacity event.
+        task = asyncio.create_task(shim._rpc("FILE_READ", {"path": "/x"}))
+        await asyncio.sleep(0.05)
+        assert not task.done()
+        # send_and_wait MUST NOT have fired yet.
+        assert shim._send_and_wait.await_count == 0
+
+        # Now clear capacity. The blocked _rpc should wake and complete.
+        shim._update_pending_capacity(3, source="release")
+        result = await asyncio.wait_for(task, timeout=1.0)
+        assert result["payload"]["content"] == "ok"
+        assert shim._send_and_wait.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_rpc_unblocks_when_status_frame_releases_capacity(self):
+        shim = _make_backpressure_shim()
+        shim._send_and_wait = AsyncMock(
+            return_value={"type": "ACK", "payload": {"ok": True}}
+        )
+        shim._update_pending_capacity(0, source="seed")
+
+        task = asyncio.create_task(shim._rpc("FILE_STAT", {"path": "/x"}))
+        await asyncio.sleep(0.05)
+        assert not task.done()
+
+        # STATUS frame announcing headroom should release the gate.
+        shim._handle_status_frame(
+            {
+                "type": "STATUS",
+                "payload": {"in_flight": 1, "max_concurrent": 4},
+            }
+        )
+        await asyncio.wait_for(task, timeout=1.0)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_rpc_raises_shim_overloaded_after_timeout(self):
+        shim = _make_backpressure_shim()
+        shim._send_and_wait = AsyncMock()  # should never fire
+        shim._update_pending_capacity(0, source="seed")
+
+        with pytest.raises(ShimOverloadedError) as exc_info:
+            # Patch the timeout to something tiny to keep the test fast.
+            await shim._await_capacity("FILE_READ", timeout=0.05)
+        assert exc_info.value.code == "SHIM_OVERLOADED"
+        assert "pending_capacity=0" in str(exc_info.value)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_rpc_does_not_block_when_capacity_unknown(self):
+        """capacity=None (pre-STATUS / shim doesn't advertise) must not stall."""
+        shim = _make_backpressure_shim()
+        shim._send_and_wait = AsyncMock(
+            return_value={"type": "ACK", "payload": {"ok": True}}
+        )
+        assert shim.pending_capacity is None
+        await shim._rpc("FILE_READ", {"path": "/x"})
+        assert shim._send_and_wait.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_rpc_does_not_block_when_capacity_positive(self):
+        shim = _make_backpressure_shim()
+        shim._send_and_wait = AsyncMock(
+            return_value={"type": "ACK", "payload": {"ok": True}}
+        )
+        shim._update_pending_capacity(2, source="seed")
+        await shim._rpc("FILE_READ", {"path": "/x"})
+        assert shim._send_and_wait.await_count == 1
