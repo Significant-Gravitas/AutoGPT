@@ -11,6 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
@@ -312,9 +313,11 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   const latestTaskList = getLatestTaskList(messages);
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
+    isContextPanelEnabled &&
     isChatStreaming &&
     !!latestTaskList &&
     latestTaskList.some((t) => t.status !== "completed");
