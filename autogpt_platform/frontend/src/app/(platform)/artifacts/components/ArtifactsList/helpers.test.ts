@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   deriveFileOrigin,
+  downloadFileBlob,
   formatFileSize,
   formatRelativeDate,
   getFileDownloadUrl,
+  getFilePreviewUrl,
   getFileTypeIcon,
   getFileTypeLabel,
   getPreviewKind,
@@ -56,6 +58,70 @@ describe("getFileDownloadUrl", () => {
     expect(getFileDownloadUrl("a/b c")).toBe(
       "/api/proxy/api/workspace/files/a%2Fb%20c/download",
     );
+  });
+});
+
+describe("getFilePreviewUrl", () => {
+  test("returns the base url with no query when no opts are given", () => {
+    expect(getFilePreviewUrl("f1", {})).toBe(
+      "/api/proxy/api/workspace/files/f1/preview",
+    );
+  });
+
+  test("adds the width param", () => {
+    expect(getFilePreviewUrl("f1", { width: 400 })).toBe(
+      "/api/proxy/api/workspace/files/f1/preview?w=400",
+    );
+  });
+
+  test("adds the bytes param", () => {
+    expect(getFilePreviewUrl("f1", { bytes: 4096 })).toBe(
+      "/api/proxy/api/workspace/files/f1/preview?bytes=4096",
+    );
+  });
+
+  test("combines width and bytes and url-encodes the id", () => {
+    expect(getFilePreviewUrl("a b", { width: 400, bytes: 4096 })).toBe(
+      "/api/proxy/api/workspace/files/a%20b/preview?w=400&bytes=4096",
+    );
+  });
+});
+
+describe("downloadFileBlob", () => {
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
+
+  test("fetches the download url and triggers an anchor click", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(new Blob(["hi"]), { status: 200 }));
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    await downloadFileBlob("file 1", "out.txt");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/proxy/api/workspace/files/file%201/download",
+    );
+    expect(clickSpy).toHaveBeenCalled();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  test("throws when the response is not ok", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 404 }),
+    );
+
+    await expect(downloadFileBlob("f", "n")).rejects.toThrow(/404/);
   });
 });
 

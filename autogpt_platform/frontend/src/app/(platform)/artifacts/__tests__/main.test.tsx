@@ -372,4 +372,83 @@ describe("ArtifactsPage - rich previews", () => {
 
     expect(await screen.findByText("Ada Lovelace")).toBeDefined();
   });
+
+  test("markdown cards render their formatted content", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "md1", name: "notes.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/md1/preview", () =>
+        HttpResponse.text("# Heading One\n\nbody paragraph"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("Heading One")).toBeDefined();
+    expect(await screen.findByText("body paragraph")).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - file viewer modal", () => {
+  test("opening a markdown file shows a Source toggle that flips to Preview", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "md2", name: "doc.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/md2/preview", () =>
+        HttpResponse.text("# Title"),
+      ),
+      http.get("/api/proxy/api/workspace/files/md2/download", () =>
+        HttpResponse.text("# Title"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
+
+    const sourceButton = await screen.findByRole("button", {
+      name: /source/i,
+    });
+    fireEvent.click(sourceButton);
+
+    expect(
+      await screen.findByRole("button", { name: /preview/i }),
+    ).toBeDefined();
+  });
+
+  test("opening a non-previewable file shows the download-only message", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({
+            id: "zip1",
+            name: "archive.zip",
+            mime_type: "application/zip",
+          }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+
+    expect(await screen.findByText(/can't be previewed/i)).toBeDefined();
+  });
 });
