@@ -49,7 +49,9 @@ const MARKDOWN_COMPONENTS: Components = {
     <p className="mb-1 text-[10px] leading-[1.4] text-zinc-600">{children}</p>
   ),
   ul: ({ children }) => (
-    <ul className="mb-1 ml-3 list-disc text-[10px] text-zinc-600">{children}</ul>
+    <ul className="mb-1 ml-3 list-disc text-[10px] text-zinc-600">
+      {children}
+    </ul>
   ),
   ol: ({ children }) => (
     <ol className="mb-1 ml-3 list-decimal text-[10px] text-zinc-600">

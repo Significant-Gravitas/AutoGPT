@@ -9,10 +9,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CodeIcon, DownloadSimpleIcon, EyeIcon } from "@phosphor-icons/react";
 import { useState } from "react";
-import {
-  downloadFileBlob,
-  getFileDownloadUrl,
-} from "../ArtifactsList/helpers";
+import { downloadFileBlob, getFileDownloadUrl } from "../ArtifactsList/helpers";
 
 interface Props {
   file: WorkspaceFileItem | null;
@@ -67,7 +64,10 @@ export function FileViewerModal({ file, onClose }: Props) {
               classification={classification}
             />
           ) : (
-            <DownloadOnly name={file.name} downloadUrl={getFileDownloadUrl(file.id)} />
+            <DownloadOnly
+              name={file.name}
+              downloadUrl={getFileDownloadUrl(file.id)}
+            />
           )}
         </div>
       </Dialog.Content>
@@ -144,7 +144,13 @@ function Header({
   );
 }
 
-function DownloadOnly({ name, downloadUrl }: { name: string; downloadUrl: string }) {
+function DownloadOnly({
+  name,
+  downloadUrl,
+}: {
+  name: string;
+  downloadUrl: string;
+}) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
       <p className="text-sm text-zinc-500">

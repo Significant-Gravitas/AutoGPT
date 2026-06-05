@@ -212,9 +212,7 @@ function CodeContent() {
           <div className="font-mono text-[5px] leading-none text-zinc-900/40">
             {i === 0 ? "<" : i === lines.length - 1 ? "/>" : "·"}
           </div>
-          <div
-            className={cn("h-[3px] rounded-full bg-zinc-900/20", line.w)}
-          />
+          <div className={cn("h-[3px] rounded-full bg-zinc-900/20", line.w)} />
         </div>
       ))}
     </div>
