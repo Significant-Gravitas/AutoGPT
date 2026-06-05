@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai import APIConnectionError
 from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -43,6 +44,10 @@ from backend.copilot.builder_context import (
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.local_context_probe import (
+    compaction_target_for_window,
+    probe_local_context_window,
+)
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -786,16 +791,33 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
-        # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning; use native thinking param in direct mode.
-        if config.openrouter_active:
-            extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
+        # The wire format must match the endpoint ``main_client_credentials``
+        # actually dialed — ``baseline_provider`` is the shared truth for both
+        # (local → openrouter_active → anthropic). Keying on
+        # ``transport.name == "openrouter"`` would send direct-Anthropic shape
+        # to an OpenRouter endpoint in subscription mode with OR creds present,
+        # where ``transport.name`` is ``"subscription"`` but the baseline client
+        # still routes to OpenRouter.
+        baseline_provider = config.baseline_provider
+        is_openrouter_transport = baseline_provider == "openrouter"
+        extra_body: dict[str, Any] = {}
+        if baseline_provider == "local":
+            # Local backends govern their own context window at launch (e.g.
+            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # compaction (see local_context_probe). Send no extra_body — skip
+            # the OpenRouter ``usage.include`` extension and reasoning params,
+            # which stricter local backends reject outright.
+            pass
+        elif is_openrouter_transport:
+            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
+            extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
             reasoning_param = reasoning_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
             )
             if reasoning_param:
                 extra_body.update(reasoning_param)
         else:
-            extra_body = {}
+            # Direct mode (non-OR, non-local): use native Anthropic thinking param.
             thinking_param = anthropic_thinking_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
             )
@@ -803,7 +825,7 @@ async def _baseline_llm_caller(
                 extra_body.update(thinking_param)
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
         max_tokens_arg: int | Any = openai_omit
-        if not config.openrouter_active and "thinking" in extra_body:
+        if not is_openrouter_transport and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
@@ -820,8 +842,10 @@ async def _baseline_llm_caller(
             extra_body=extra_body,
             extra_headers=extra_headers,
             # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
+            # Local transport (``is_openrouter_transport == False``) also gets
+            # ``None`` so stricter local backends don't 400 on the extension.
             stream_options=(
-                {"include_usage": True} if config.openrouter_active else None
+                {"include_usage": True} if is_openrouter_transport else None
             ),
             tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
             max_tokens=max_tokens_arg,
@@ -844,7 +868,16 @@ async def _baseline_llm_caller(
                             _extract_cache_creation_tokens(ptd)
                         )
                     cost = _extract_usage_cost(chunk.usage)
-                    direct_mode = not config.openrouter_active
+                    # Rate-card recovery covers direct-Anthropic mode —
+                    # Anthropic's OpenAI-compat endpoint doesn't emit OR's
+                    # ``usage.cost`` extension, so the rate card is what
+                    # produces a cost number on that path. Local
+                    # (Ollama/vLLM) transports also lack ``usage.cost`` but
+                    # ``compute_anthropic_cost_usd`` returns None for any
+                    # non-Anthropic slug, so the recovery is a no-op for
+                    # local — skip it explicitly so the intent is clear and
+                    # we don't burn a rate-card lookup per usage chunk.
+                    direct_mode = baseline_provider == "anthropic"
                     if cost is None and direct_mode:
                         # Direct mode: no usage.cost field (OR extension); compute from rate card.
                         ptd = chunk.usage.prompt_tokens_details
@@ -1241,9 +1274,19 @@ async def _compress_session_messages(
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
+    # Under the local transport the model slug isn't in the cloud model
+    # registry, so compress_context()'s default target would fall back to
+    # ~120k and never fire before the (much smaller) local window overflows.
+    # Probe the backend for its real window and target compaction at it.
+    target_tokens: int | None = None
+    if config.effective_transport == "local" and config.base_url:
+        window = await probe_local_context_window(config.base_url, model)
+        target_tokens = compaction_target_for_window(window)
+
     try:
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
             client=_get_main_client(),
         )
@@ -1251,6 +1294,7 @@ async def _compress_session_messages(
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
             client=None,
         )
@@ -1274,6 +1318,22 @@ async def _compress_session_messages(
         ]
 
     return messages
+
+
+def _humanize_baseline_error(e: Exception) -> str:
+    """Map a raw streaming exception to a user-facing message.
+
+    A connection error under the local transport almost always means the
+    operator's LLM backend (Ollama/vLLM/…) isn't running — say so, instead of
+    surfacing a bare "Connection error.".
+    """
+    if isinstance(e, APIConnectionError) and config.effective_transport == "local":
+        return (
+            f"Can't reach the local LLM backend at {config.base_url}. Make sure "
+            "your model server is running — for Ollama, start it with "
+            "`ollama serve` (or check CHAT_BASE_URL)."
+        )
+    return str(e) or type(e).__name__
 
 
 def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
@@ -2247,7 +2307,7 @@ async def stream_chat_completion_baseline(
             state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
-        error_msg = str(e) or type(e).__name__
+        error_msg = _humanize_baseline_error(e)
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         # Drain any queued tail events (reasoning/text close + finish step)
         # that ``_baseline_llm_caller``'s finally block pushed before the
@@ -2334,9 +2394,17 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Safety net: recover cost from rate card if usage chunk was dropped (truncated SSE).
-        # OR mode skips recovery — OR's markup differs from raw Anthropic pricing.
-        if state.cost_usd is None and not config.openrouter_active:
+        # Safety net: recover cost from rate card if usage chunk was dropped
+        # (truncated SSE). OR mode skips recovery — OR's markup differs from
+        # raw Anthropic pricing. Local Ollama/vLLM never emit ``usage.cost``
+        # *and* have no rate card to recover from (``compute_anthropic_cost_usd``
+        # returns None for any non-Anthropic slug), so cost stays None for
+        # the whole turn — fine, since local deployments are self-hosted and
+        # ``persist_and_record_usage`` no-ops the cost-credit charge when
+        # ``cost_usd`` is None. Skip the rate-card call explicitly under
+        # local transport so the intent is clear.
+        baseline_provider = config.baseline_provider
+        if state.cost_usd is None and baseline_provider == "anthropic":
             recovered = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
@@ -2365,7 +2433,11 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            provider="open_router" if config.openrouter_active else "anthropic",
+            provider=(
+                "open_router"
+                if baseline_provider == "openrouter"
+                else config.transport.cost_log_provider
+            ),
         )
 
         # Persist structured tool-call history (assistant + tool messages)

@@ -45,6 +45,12 @@ _KNOWN_OFFENDERS = frozenset(
     {
         "util/clients.py get_async_supabase",
         "util/clients.py get_openai_client",
+        # Inner helper extracted from ``get_openai_client`` so the local-
+        # transport branch shares one cached client across both
+        # ``prefer_openrouter`` arms (no semantic change vs the parent
+        # offender — same loop-binding caveat applies, will be migrated
+        # together when ``get_openai_client`` is moved to ``per_loop_cached``).
+        "util/clients.py _get_local_openai_client",
     }
 )
 

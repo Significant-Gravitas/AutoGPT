@@ -232,6 +232,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Interval in hours between execution accuracy alert checks.",
     )
 
+    # Embeddings
+    store_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description=(
+            "Embedding model used by the unified content embeddings service. "
+            "Overridable so deployments with a compatible backend (vLLM, "
+            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
+            "OpenAI, ...) can swap models without code changes. Model MUST "
+            "emit 1536-dim vectors to match the hardcoded pgvector column."
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -470,6 +482,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=24,
         description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
     )
 
     upload_file_size_limit_mb: int = Field(

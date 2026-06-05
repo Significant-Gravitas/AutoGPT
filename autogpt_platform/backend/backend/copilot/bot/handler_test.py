@@ -235,7 +235,12 @@ class TestResolveTarget:
 
 class TestThreadAdoption:
     @pytest.mark.asyncio
-    async def test_mentioned_unsubscribed_thread_is_subscribed(self):
+    async def test_mentioned_unsubscribed_thread_replies_without_subscribing(self):
+        # Bot was @-ed into an existing thread it didn't create. Reply this
+        # turn so the user gets an answer, but DON'T subscribe — future
+        # messages here need another @ to wake it back up. This keeps the
+        # bot from hijacking ongoing team conversations. The reply should
+        # carry the thread history so AutoPilot has context.
         handler = MessageHandler(_api())
         adapter = _adapter()
         enqueue = AsyncMock()
@@ -255,12 +260,49 @@ class TestThreadAdoption:
                     channel_type="thread",
                     channel_id="thread-existing",
                     bot_mentioned=True,
+                    thread_history=(
+                        MessageHistoryEntry("Alice", "u-1", "I think option A"),
+                    ),
                 ),
                 adapter,
             )
 
-        subscribe.assert_awaited_once_with("discord", "thread-existing")
+        subscribe.assert_not_awaited()
         enqueue.assert_awaited_once()
+        # The enqueued message_text (4th positional arg) must carry the
+        # history-enriched prompt — otherwise include_thread_history is
+        # silently bypassed and the LLM gets the bare message.
+        message_text = enqueue.await_args.args[3]
+        assert "Recent thread context" in message_text
+        assert "I think option A" in message_text
+
+    @pytest.mark.asyncio
+    async def test_unmentioned_unsubscribed_thread_message_is_ignored(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-existing",
+                    bot_mentioned=False,
+                ),
+                adapter,
+            )
+
+        subscribe.assert_not_awaited()
+        enqueue.assert_not_awaited()
 
     def test_thread_history_is_included_in_message_text(self):
         handler = MessageHandler(_api())
