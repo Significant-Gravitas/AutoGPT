@@ -72,6 +72,13 @@ LOCAL_PC_SHIM_RPC_ERRORS = Counter(
     labelnames=("op", "code"),
 )
 
+LOCAL_PC_SHIM_RPC_RETRIES = Counter(
+    "copilot_localpc_shim_rpc_retries_total",
+    "Idempotent ops that hit the in-flight-disconnect path and got auto-retried "
+    "by the adapter. Slice by `outcome` to see how often the retry recovered.",
+    labelnames=("op", "outcome"),  # outcome: "success_after_retry" | "failed_after_retry"
+)
+
 
 def _normalize_label(value: str | None, fallback: str = "unknown") -> str:
     """Keep Prometheus label values lower-cardinality + non-empty."""
@@ -119,4 +126,17 @@ def record_rpc_error(op: str, code: str) -> None:
     """Bump the per-(op, code) error counter."""
     LOCAL_PC_SHIM_RPC_ERRORS.labels(
         op=op, code=_normalize_label(code, fallback="UNKNOWN")
+    ).inc()
+
+
+def record_rpc_retry(op: str, *, recovered: bool) -> None:
+    """Bump the retry counter after an idempotent op's auto-retry resolves.
+
+    Distinguishes recovered (the retry succeeded; LLM never saw an error)
+    from failed (retry also failed; the caller raised). High
+    `success_after_retry` rate ÷ low `failed_after_retry` is the healthy
+    shape — high failed_after_retry means the shim's having a bad time.
+    """
+    LOCAL_PC_SHIM_RPC_RETRIES.labels(
+        op=op, outcome="success_after_retry" if recovered else "failed_after_retry"
     ).inc()

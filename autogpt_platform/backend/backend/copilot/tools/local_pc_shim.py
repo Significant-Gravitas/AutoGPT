@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import WebSocket
 
 from .local_pc_errors import translate_shim_error
+from .local_pc_metrics import record_rpc_retry
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,32 @@ def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
         payload.get("message", "") or fallback,
         payload.get("details"),
         shim,
+    )
+
+
+def _translate_unconfirmed(
+    exc: OpUnconfirmedError,
+    shim: "LocalPCShim | None",
+    *,
+    fallback: str,
+    extra_details: dict | None = None,
+) -> str:
+    """Build the LLM-friendly message for an OpUnconfirmedError.
+
+    Shared by every non-idempotent proxy method so the catch+wrap shape
+    in CommandsProxy / FilesProxy.delete+move / ComputerProxy mirrors
+    FilesProxy.write — the LLM sees the same actionable English ("the
+    op was sent but the connection dropped before the shim acknowledged
+    — verify state with an idempotent probe and re-issue if needed")
+    regardless of which proxy raised.
+    """
+    details: dict = {"op": exc.op}
+    if extra_details:
+        details.update(extra_details)
+    return _friendly(
+        {"code": exc.code, "message": str(exc), "details": details},
+        shim,
+        fallback,
     )
 
 
@@ -392,10 +419,20 @@ class _FilesProxy:
         self, path: str, *, recursive: bool = False, missing_ok: bool = False
     ) -> None:
         """Cross-OS portable replacement for shell `rm` / `del`."""
-        resp = await self._shim._rpc(
-            "FILE_DELETE",
-            {"path": path, "recursive": recursive, "missing_ok": missing_ok},
-        )
+        try:
+            resp = await self._shim._rpc(
+                "FILE_DELETE",
+                {"path": path, "recursive": recursive, "missing_ok": missing_ok},
+            )
+        except OpUnconfirmedError as exc:
+            raise OSError(
+                _translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="FILE_DELETE unconfirmed",
+                    extra_details={"path": path},
+                )
+            ) from exc
         if resp.get("type") == "ERROR":
             raise OSError(
                 _friendly(resp.get("payload", {}), self._shim, "FILE_DELETE failed")
@@ -403,10 +440,20 @@ class _FilesProxy:
 
     async def move(self, src: str, dst: str, *, overwrite: bool = False) -> None:
         """Cross-OS portable replacement for shell `mv` / `move`."""
-        resp = await self._shim._rpc(
-            "FILE_MOVE",
-            {"src": src, "dst": dst, "overwrite": overwrite},
-        )
+        try:
+            resp = await self._shim._rpc(
+                "FILE_MOVE",
+                {"src": src, "dst": dst, "overwrite": overwrite},
+            )
+        except OpUnconfirmedError as exc:
+            raise OSError(
+                _translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="FILE_MOVE unconfirmed",
+                    extra_details={"src": src, "dst": dst},
+                )
+            ) from exc
         if resp.get("type") == "ERROR":
             raise OSError(
                 _friendly(resp.get("payload", {}), self._shim, "FILE_MOVE failed")
@@ -495,7 +542,24 @@ class _ComputerProxy:
         for k, v in fields.items():
             if v is not None:
                 payload[k] = v
-        resp = await self._shim._rpc("INPUT_ACTION", payload)
+        try:
+            resp = await self._shim._rpc("INPUT_ACTION", payload)
+        except OpUnconfirmedError as exc:
+            # INPUT_ACTION is non-idempotent (clicks at the same coord
+            # are NOT the same op — the OS might have a different element
+            # under the cursor on retry). Translate to the structured
+            # OP_UNCONFIRMED shape so Claude knows to take a screenshot
+            # and re-evaluate rather than blindly re-clicking.
+            raise ShimComputerUseError(
+                code=exc.code,
+                message=_translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback=f"INPUT_ACTION {action} unconfirmed",
+                    extra_details={"action": action},
+                ),
+                details={"action": action, "op": exc.op},
+            ) from exc
         _raise_computer_use(resp, self._shim, f"INPUT_ACTION {action} failed")
         return resp.get("payload") or {}
 
@@ -646,9 +710,21 @@ class _ComputerProxy:
         return list((resp.get("payload") or {}).get("windows") or [])
 
     async def focus_window(self, window_id: str, *, raise_: bool = True) -> None:
-        resp = await self._shim._rpc(
-            "WINDOW_FOCUS", {"window_id": window_id, "raise": raise_}
-        )
+        try:
+            resp = await self._shim._rpc(
+                "WINDOW_FOCUS", {"window_id": window_id, "raise": raise_}
+            )
+        except OpUnconfirmedError as exc:
+            raise ShimComputerUseError(
+                code=exc.code,
+                message=_translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="WINDOW_FOCUS unconfirmed",
+                    extra_details={"window_id": window_id},
+                ),
+                details={"window_id": window_id, "op": exc.op},
+            ) from exc
         _raise_computer_use(resp, self._shim, "WINDOW_FOCUS failed")
 
     # --- Apps --------------------------------------------------------------
@@ -672,15 +748,30 @@ class _ComputerProxy:
             raise ValueError(
                 "LocalPCShim.computer.launch_app: bundle_id or executable_path is required"
             )
-        resp = await self._shim._rpc(
-            "APP_LAUNCH",
-            {
-                "bundle_id": bundle_id,
-                "executable_path": executable_path,
-                "args": list(args or []),
-                "activate": activate,
-            },
-        )
+        try:
+            resp = await self._shim._rpc(
+                "APP_LAUNCH",
+                {
+                    "bundle_id": bundle_id,
+                    "executable_path": executable_path,
+                    "args": list(args or []),
+                    "activate": activate,
+                },
+            )
+        except OpUnconfirmedError as exc:
+            raise ShimComputerUseError(
+                code=exc.code,
+                message=_translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="APP_LAUNCH unconfirmed",
+                    extra_details={
+                        "bundle_id": bundle_id,
+                        "executable_path": executable_path,
+                    },
+                ),
+                details={"op": exc.op},
+            ) from exc
         _raise_computer_use(resp, self._shim, "APP_LAUNCH failed")
         return resp.get("payload") or {}
 
@@ -692,9 +783,21 @@ class _ComputerProxy:
         return (resp.get("payload") or {}).get("content")
 
     async def clipboard_write(self, content: str, *, format: str = "text") -> None:
-        resp = await self._shim._rpc(
-            "CLIPBOARD_WRITE", {"format": format, "content": content}
-        )
+        try:
+            resp = await self._shim._rpc(
+                "CLIPBOARD_WRITE", {"format": format, "content": content}
+            )
+        except OpUnconfirmedError as exc:
+            raise ShimComputerUseError(
+                code=exc.code,
+                message=_translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="CLIPBOARD_WRITE unconfirmed",
+                    extra_details={"content_length": len(content)},
+                ),
+                details={"op": exc.op},
+            ) from exc
         _raise_computer_use(resp, self._shim, "CLIPBOARD_WRITE failed")
 
     # --- Permissions -------------------------------------------------------
@@ -741,7 +844,19 @@ class _CommandsProxy:
             payload["timeout_seconds"] = timeout
         if envs:
             payload["env"] = envs
-        resp = await self._shim._rpc("EXECUTE_COMMAND", payload)
+        try:
+            resp = await self._shim._rpc("EXECUTE_COMMAND", payload)
+        except OpUnconfirmedError as exc:
+            raise RuntimeError(
+                _translate_unconfirmed(
+                    exc,
+                    self._shim,
+                    fallback="EXECUTE_COMMAND unconfirmed",
+                    extra_details={
+                        "command": (command or " ".join(argv or []))[:200]
+                    },
+                )
+            ) from exc
         if resp.get("type") == "ERROR":
             raise RuntimeError(
                 _friendly(resp.get("payload", {}), self._shim, "EXECUTE_COMMAND failed")
@@ -975,8 +1090,11 @@ class LocalPCShim:
                 except Exception:
                     pass
                 try:
-                    return await self._send_and_wait(msg_type, payload, timeout=timeout)
+                    result = await self._send_and_wait(
+                        msg_type, payload, timeout=timeout
+                    )
                 except _RpcAttemptFailed as second:
+                    record_rpc_retry(msg_type, recovered=False)
                     if second.timed_out:
                         raise TimeoutError(
                             f"[LocalPC] RPC {msg_type} timed out after {timeout}s "
@@ -990,6 +1108,8 @@ class LocalPCShim:
                             "(retry also failed)"
                         ),
                     ) from second
+                record_rpc_retry(msg_type, recovered=True)
+                return result
             # Non-idempotent: bubble up as a typed unconfirmed error so the
             # caller's translator can surface actionable English.
             if msg_type == "FILE_WRITE":
