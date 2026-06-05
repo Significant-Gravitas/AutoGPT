@@ -451,4 +451,63 @@ describe("ArtifactsPage - file viewer modal", () => {
 
     expect(await screen.findByText(/can't be previewed/i)).toBeDefined();
   });
+
+  test("opening an uploaded file resolves its source ref", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({
+            id: "up1",
+            name: "uploaded.md",
+            mime_type: "text/markdown",
+            origin: "uploaded",
+          }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/up1/preview", () =>
+        HttpResponse.text("# uploaded"),
+      ),
+      http.get("/api/proxy/api/workspace/files/up1/download", () =>
+        HttpResponse.text("# uploaded"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
+  });
+
+  test("the viewer download button recovers after a failed fetch", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({ id: "dl1", name: "doc.md", mime_type: "text/markdown" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/dl1/preview", () =>
+        HttpResponse.text("# doc"),
+      ),
+      http.get(
+        "/api/proxy/api/workspace/files/dl1/download",
+        () => new HttpResponse("nope", { status: 500 }),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-card-open"));
+    fireEvent.click(await screen.findByTestId("file-viewer-download"));
+
+    // After the failed download settles, the button returns to its idle label.
+    expect(
+      await screen.findByRole("button", { name: /^download$/i }),
+    ).toBeDefined();
+  });
 });
