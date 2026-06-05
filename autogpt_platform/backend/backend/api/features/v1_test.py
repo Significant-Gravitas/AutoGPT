@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import fastapi
 import fastapi.testclient
@@ -364,6 +364,37 @@ def test_request_top_up(
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
+    )
+
+
+def test_request_top_up_forwards_datafast_headers(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DataFast attribution headers are forwarded to top_up_intent."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits",
+        json={"credit_amount": 500},
+        headers={
+            "X-Datafast-Visitor-Id": "vis_1",
+            "X-Datafast-Session-Id": "ses_1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_credit_model.top_up_intent.assert_awaited_once_with(
+        ANY,
+        500,
+        datafast_visitor_id="vis_1",
+        datafast_session_id="ses_1",
     )
 
 

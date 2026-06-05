@@ -589,6 +589,55 @@ def test_update_subscription_tier_creates_checkout(
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_abc"
 
 
+def test_update_subscription_tier_forwards_datafast_headers(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DataFast attribution headers are forwarded to create_subscription_checkout."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BASIC
+
+    async def mock_feature_enabled(*args, **kwargs):
+        return True
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mock_checkout = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_abc",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+        headers={
+            "X-Datafast-Visitor-Id": "vis_1",
+            "X-Datafast-Session-Id": "ses_1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_checkout.await_args.kwargs["datafast_visitor_id"] == "vis_1"
+    assert mock_checkout.await_args.kwargs["datafast_session_id"] == "ses_1"
+
+
 def test_update_subscription_tier_forwards_yearly_billing_cycle(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,

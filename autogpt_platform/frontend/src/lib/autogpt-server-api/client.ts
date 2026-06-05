@@ -3,6 +3,7 @@ import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
@@ -888,6 +889,8 @@ export default class BackendAPI {
     if (impersonatedUserId) {
       headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
+
+    Object.assign(headers, getDatafastAttribution());
 
     const response = await fetch(url, {
       method,
