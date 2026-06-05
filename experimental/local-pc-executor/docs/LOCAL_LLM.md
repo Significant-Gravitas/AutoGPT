@@ -282,6 +282,71 @@ feature:
 
 ---
 
+## Platform-side integration shape
+
+The platform-side router + proxy ship as two pieces in
+`autogpt_platform/backend/backend/copilot/`:
+
+- `tools/local_llm_router.py` — `LocalLLMRouter.should_route(user_id,
+  mode, tier, executor)` returns the model name to route to (or `None`
+  to fall back to cloud). Pure decision function — no I/O beyond LD.
+- `tools/local_pc_shim.py::_LocalLLMProxy` — accessed via
+  `executor.local_llm.complete(model, messages, **opts)` which is an
+  async iterator of string deltas, OR `.complete_blocking(...)` which
+  returns the assembled string. Errors surface as `LocalLLMError`
+  (`.code` mirrors the wire error code).
+
+### Wiring into `sdk/service.py::stream_chat_completion_sdk`
+
+The integration point is at the very top of the SDK call, BEFORE the
+Anthropic client is constructed. Pseudocode:
+
+```python
+router = LocalLLMRouter(config)
+local_model = await router.should_route(
+    user_id=user_id, mode=mode, tier=tier, executor=executor,
+)
+if local_model is not None and isinstance(executor, LocalPCShim):
+    # Route locally — yield SSE events shaped like the cloud path
+    yield StreamStart(...)
+    try:
+        async for delta in executor.local_llm.complete(
+            model=local_model,
+            messages=convert_session_to_messages(session),
+            max_tokens=...,
+            temperature=...,
+        ):
+            yield StreamText(delta=delta, ...)
+    except LocalLLMError as exc:
+        # Two options: bubble to user, OR fall back to cloud silently.
+        # v1 recommendation: fall back to cloud + record a metric so
+        # we can see how often the local backend lets us down.
+        yield from cloud_fallback(...)
+        return
+    yield StreamEnd(...)
+    return
+# else: fall through to the existing cloud path
+```
+
+The `convert_session_to_messages(session)` helper translates the
+`session.messages` list of `ChatMessage` records into the
+`[{role, content}]` shape the wire op expects. Tool calls / vision
+content / attachments are NOT supported in v1 — the router's gate
+should already keep complex turns on the cloud path (the `thinking`
+tier is empty by default), so this is just a defensive contract.
+
+### Why this lives behind a follow-up
+
+The actual surgery — wedging the router into the 1500-LoC
+`stream_chat_completion_sdk` function — touches retry loops, partial-
+work preservation, transcript bookkeeping, and rate-limit accounting.
+That's a separate PR with its own test surface; this work delivers
+the wire spec + the router + the proxy + the activation gates and
+documents the wiring. The MCP-tool surface (`local_llm_query` for
+privacy mode) lands separately again (see PRIVACY_MODE.md).
+
+---
+
 ## Open questions
 
 - **Streaming back-pressure**: today the shim ships chunks as fast as

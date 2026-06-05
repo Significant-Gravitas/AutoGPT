@@ -409,6 +409,17 @@ class ChatConfig(BaseSettings):
         default="/ws/local-executor",
         description="WebSocket path prefix for the local executor shim endpoint.",
     )
+    local_llm_policy: Literal["never", "prefer_for_fast", "always"] = Field(
+        default="never",
+        description=(
+            "When the local PC shim advertises local_llm + a non-empty "
+            "local_llm_models list AND the LD flag LOCAL_LLM_ROUTING is on "
+            "for the user, this field sets routing aggression: 'never' "
+            "disables, 'prefer_for_fast' routes fast-mode only, 'always' "
+            "routes any mode that has a tier-matched model. See "
+            "experimental/local-pc-executor/docs/LOCAL_LLM.md."
+        ),
+    )
 
     @property
     def openrouter_active(self) -> bool:

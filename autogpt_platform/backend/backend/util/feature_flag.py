@@ -53,6 +53,19 @@ class Flag(str, Enum):
     # config controls deploy-level kill-switch and the LD flag controls
     # per-user opt-in / staged rollout. Default off.
     LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Local LLM routing — when on AND the user's shim advertises
+    # `local_llm` + a non-empty `local_llm_models`, copilot turns that
+    # match the (mode, tier) policy get routed through the shim's
+    # LOCAL_LLM_COMPLETION wire op instead of Anthropic/OpenRouter. See
+    # `experimental/local-pc-executor/docs/LOCAL_LLM.md` and
+    # `copilot/tools/local_llm_router.py`. Default off; per-user rollout.
+    LOCAL_LLM_ROUTING = "local-llm-routing"
+    # Per-tier preferred local-model lists used by LocalLLMRouter. JSON
+    # value, shape:
+    #   {"fast": ["llama3.2:3b", "llama3.2:1b"], "default": [...], "thinking": []}
+    # Missing tier → empty list → never route that tier locally. See
+    # `local_llm_router.py` for defaults.
+    LOCAL_LLM_TIER_PREFERENCES = "local-llm-tier-preferences"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
     # per Checkout). When set to a real Stripe Product ID, line items reference
