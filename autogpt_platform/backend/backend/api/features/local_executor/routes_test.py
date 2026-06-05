@@ -171,9 +171,7 @@ class TestLoopbackExecuteCommand:
     """
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_execute_command_roundtrip(
-        self, _patched_introspect, _fresh_manager
-    ):
+    async def test_execute_command_roundtrip(self, _patched_introspect, _fresh_manager):
         app = _make_app()
         # Synchronous TestClient runs the route in a thread; we drive
         # both halves via asyncio.gather. The shim side is the TestClient;
@@ -182,9 +180,7 @@ class TestLoopbackExecuteCommand:
 
         def _act_as_shim():
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/local-executor/sess-3?token=x"
-            ) as ws:
+            with client.websocket_connect("/ws/local-executor/sess-3?token=x") as ws:
                 ws.send_text(
                     _envelope(
                         "HELLO",

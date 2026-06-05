@@ -94,7 +94,9 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
             await websocket.close(code=4401, reason="Invalid or expired token")
             return
     except Exception:
-        logger.exception("[LocalPC] Token introspection failed for session %s", session_id[:12])
+        logger.exception(
+            "[LocalPC] Token introspection failed for session %s", session_id[:12]
+        )
         await websocket.close(code=4500, reason="Auth error")
         return
 
@@ -102,7 +104,10 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
 
     # Handshake: expect HELLO, send HELLO_ACK
     try:
-        import json, time, uuid
+        import json
+        import time
+        import uuid
+
         raw = await websocket.receive_text()
         hello_msg = json.loads(raw)
         if hello_msg.get("type") != "HELLO":

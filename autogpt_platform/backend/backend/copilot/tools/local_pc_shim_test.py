@@ -9,9 +9,11 @@ import pytest
 
 from .local_pc_shim import (
     LocalPCShim,
+    ShimComputerUseError,
     ShimConnectionManager,
     ShimHello,
     _CommandsProxy,
+    _ComputerProxy,
     _FilesProxy,
 )
 
@@ -28,6 +30,8 @@ def _make_shim_with_rpc(rpc_return: dict) -> LocalPCShim:
     shim._rpc = AsyncMock(return_value=rpc_return)
     shim.files = _FilesProxy(shim)
     shim.commands = _CommandsProxy(shim)
+    shim.computer = _ComputerProxy(shim)
+    shim.computer_use_features = []
     return shim
 
 
@@ -260,3 +264,321 @@ class TestFilesStat:
         shim = _make_shim_with_rpc({"type": "ERROR", "payload": {"message": "denied"}})
         with pytest.raises(OSError, match="denied"):
             await shim.files.stat("/etc/passwd")
+
+
+# ---------------------------------------------------------------------------
+# _ComputerProxy — wire-op contract for computer-use surface
+# ---------------------------------------------------------------------------
+
+
+class TestComputerScreenshot:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_screenshot_default_payload(self):
+        shim = _make_shim_with_rpc(
+            {"payload": {"image_base64": "abc", "width": 800, "height": 600}}
+        )
+        result = await shim.computer.screenshot()
+        op, payload = shim._rpc.await_args.args
+        assert op == "SCREENSHOT_REQUEST"
+        assert payload["monitor"] == 0
+        assert payload["format"] == "png"
+        assert payload["include_cursor"] is False
+        assert payload["quality"] == 75
+        assert "region" not in payload
+        assert "window_id" not in payload
+        assert result["width"] == 800
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_screenshot_region_forwards_as_list(self):
+        shim = _make_shim_with_rpc({"payload": {"image_base64": "x"}})
+        await shim.computer.screenshot(region=(10, 20, 100, 200), include_cursor=True)
+        payload = shim._rpc.await_args.args[1]
+        assert payload["region"] == [10, 20, 100, 200]
+        assert payload["include_cursor"] is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_screenshot_window_id_forwards(self):
+        shim = _make_shim_with_rpc({"payload": {"image_base64": "x"}})
+        await shim.computer.screenshot(window_id="win_abc")
+        payload = shim._rpc.await_args.args[1]
+        assert payload["window_id"] == "win_abc"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_screenshot_region_and_window_id_mutually_exclusive(self):
+        shim = _make_shim_with_rpc({"payload": {}})
+        with pytest.raises(ValueError):
+            await shim.computer.screenshot(region=(0, 0, 1, 1), window_id="win_x")
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_screenshot_error_raises_typed_error(self):
+        shim = _make_shim_with_rpc(
+            {
+                "type": "ERROR",
+                "payload": {
+                    "code": "PERMISSION_PENDING",
+                    "message": "screen recording denied",
+                    "details": {"permission": "screen_recording"},
+                },
+            }
+        )
+        with pytest.raises(ShimComputerUseError) as exc_info:
+            await shim.computer.screenshot()
+        assert exc_info.value.code == "PERMISSION_PENDING"
+        assert exc_info.value.details.get("permission") == "screen_recording"
+
+
+class TestComputerInputActions:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_left_click_uses_left_click_action(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.click([100, 200])
+        op, payload = shim._rpc.await_args.args
+        assert op == "INPUT_ACTION"
+        assert payload["action"] == "left_click"
+        assert payload["coordinate"] == [100, 200]
+        assert payload["button"] == "left"
+        assert "modifiers" not in payload
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_right_click_maps_to_right_click_action(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.click([5, 6], button="right")
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "right_click"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_modifiers_forwarded(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.click([10, 10], modifiers=["shift", "ctrl"])
+        payload = shim._rpc.await_args.args[1]
+        assert payload["modifiers"] == ["shift", "ctrl"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_scroll_uses_scroll_direction_field(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.scroll([500, 500], direction="up", scroll_amount=4)
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "scroll"
+        assert payload["scroll_direction"] == "up"
+        assert payload["scroll_amount"] == 4
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_type_default_explicit_paste_and_preserve(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.type("hello world")
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "type"
+        assert payload["text"] == "hello world"
+        # The wire schema treats absent and false the same; the proxy
+        # always forwards the explicit value so the shim's per-OS default
+        # never silently overrides what the platform asked for.
+        assert payload["paste"] is False
+        assert payload["preserve_clipboard"] is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_type_paste_true_forwards(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.type("x" * 500, paste=True, preserve_clipboard=True)
+        payload = shim._rpc.await_args.args[1]
+        assert payload["paste"] is True
+        assert payload["preserve_clipboard"] is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_key_forwards_key_field(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.key("ctrl+s")
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "key"
+        assert payload["key"] == "ctrl+s"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_drag_serialises_path_as_list_of_lists(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.drag([(0, 0), (50, 50), (100, 100)], duration_ms=500)
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "drag"
+        assert payload["path"] == [[0, 0], [50, 50], [100, 100]]
+        assert payload["duration_ms"] == 500
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_wait_forwards_duration_ms(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.wait(1200)
+        payload = shim._rpc.await_args.args[1]
+        assert payload["action"] == "wait"
+        assert payload["duration_ms"] == 1200
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_input_out_of_bounds_carries_details(self):
+        shim = _make_shim_with_rpc(
+            {
+                "type": "ERROR",
+                "payload": {
+                    "code": "INPUT_OUT_OF_BOUNDS",
+                    "message": "outside displays",
+                    "details": {
+                        "requested_coordinate": [99999, 99999],
+                        "displays": [
+                            {"index": 0, "origin": [0, 0], "size": [1920, 1080]}
+                        ],
+                    },
+                },
+            }
+        )
+        with pytest.raises(ShimComputerUseError) as exc_info:
+            await shim.computer.click([99999, 99999])
+        assert exc_info.value.code == "INPUT_OUT_OF_BOUNDS"
+        assert exc_info.value.details["requested_coordinate"] == [99999, 99999]
+
+
+class TestComputerCursorAndDisplay:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_cursor_position_returns_payload(self):
+        shim = _make_shim_with_rpc({"payload": {"x": 12, "y": 34, "monitor": 0}})
+        result = await shim.computer.cursor_position()
+        op, _ = shim._rpc.await_args.args
+        assert op == "CURSOR_POSITION_REQUEST"
+        assert result == {"x": 12, "y": 34, "monitor": 0}
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_display_info_returns_payload(self):
+        shim = _make_shim_with_rpc(
+            {"payload": {"monitors": [{"index": 0, "logical_size": [1920, 1080]}]}}
+        )
+        result = await shim.computer.display_info()
+        assert len(result["monitors"]) == 1
+
+
+class TestComputerWindowsAndApps:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_windows_returns_array(self):
+        shim = _make_shim_with_rpc(
+            {
+                "payload": {
+                    "windows": [
+                        {"window_id": "win_1", "title": "Safari"},
+                        {"window_id": "win_2", "title": "Mail"},
+                    ],
+                    "truncated": False,
+                }
+            }
+        )
+        result = await shim.computer.list_windows()
+        assert len(result) == 2
+        assert result[0]["window_id"] == "win_1"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_focus_window_sends_raise_field(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.focus_window("win_1", raise_=False)
+        op, payload = shim._rpc.await_args.args
+        assert op == "WINDOW_FOCUS"
+        assert payload["window_id"] == "win_1"
+        assert payload["raise"] is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_window_stale_raises_typed_error(self):
+        shim = _make_shim_with_rpc(
+            {
+                "type": "ERROR",
+                "payload": {
+                    "code": "WINDOW_STALE",
+                    "message": "stale",
+                    "details": {"window_id": "win_x"},
+                },
+            }
+        )
+        with pytest.raises(ShimComputerUseError) as exc_info:
+            await shim.computer.focus_window("win_x")
+        assert exc_info.value.code == "WINDOW_STALE"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_apps_returns_array(self):
+        shim = _make_shim_with_rpc(
+            {"payload": {"apps": [{"pid": 1, "name": "Safari"}]}}
+        )
+        result = await shim.computer.list_apps()
+        assert result[0]["pid"] == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_launch_app_requires_bundle_or_path(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True, "pid": 99}})
+        with pytest.raises(ValueError):
+            await shim.computer.launch_app()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_launch_app_with_bundle_id(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True, "pid": 99}})
+        result = await shim.computer.launch_app(bundle_id="com.apple.Safari")
+        payload = shim._rpc.await_args.args[1]
+        assert payload["bundle_id"] == "com.apple.Safari"
+        assert payload["activate"] is True
+        assert result["pid"] == 99
+
+
+class TestComputerClipboard:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_clipboard_read_returns_content(self):
+        shim = _make_shim_with_rpc(
+            {"payload": {"format": "text", "content": "hello", "size_bytes": 5}}
+        )
+        result = await shim.computer.clipboard_read()
+        op, payload = shim._rpc.await_args.args
+        assert op == "CLIPBOARD_READ"
+        assert payload["format"] == "text"
+        assert result == "hello"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_clipboard_write_forwards_content(self):
+        shim = _make_shim_with_rpc({"payload": {"ok": True}})
+        await shim.computer.clipboard_write("secret")
+        op, payload = shim._rpc.await_args.args
+        assert op == "CLIPBOARD_WRITE"
+        assert payload["content"] == "secret"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_clipboard_concealed_raises_typed_error(self):
+        shim = _make_shim_with_rpc(
+            {
+                "type": "ERROR",
+                "payload": {
+                    "code": "CLIPBOARD_CONCEALED",
+                    "message": "concealed",
+                    "details": {"reason": "writeback_only"},
+                },
+            }
+        )
+        with pytest.raises(ShimComputerUseError) as exc_info:
+            await shim.computer.clipboard_read()
+        assert exc_info.value.code == "CLIPBOARD_CONCEALED"
+
+
+class TestComputerPermissions:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_permissions_check_default_set(self):
+        shim = _make_shim_with_rpc(
+            {
+                "payload": {
+                    "permissions": {
+                        "screen_recording": "granted",
+                        "accessibility": "denied",
+                        "input_monitoring": "unknown",
+                    }
+                }
+            }
+        )
+        result = await shim.computer.permissions_check()
+        payload = shim._rpc.await_args.args[1]
+        assert payload["permissions"] == [
+            "screen_recording",
+            "accessibility",
+            "input_monitoring",
+        ]
+        assert result["accessibility"] == "denied"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_permissions_check_custom_set(self):
+        shim = _make_shim_with_rpc({"payload": {"permissions": {}}})
+        await shim.computer.permissions_check(["accessibility"])
+        payload = shim._rpc.await_args.args[1]
+        assert payload["permissions"] == ["accessibility"]

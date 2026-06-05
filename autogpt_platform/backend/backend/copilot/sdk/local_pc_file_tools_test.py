@@ -17,7 +17,9 @@ from backend.copilot.sdk.local_pc_file_tools import (
 from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimHello, _FilesProxy
 
 
-def _shim(allowed_root: str = "/Users/test/workspace", platform: str = "darwin") -> LocalPCShim:
+def _shim(
+    allowed_root: str = "/Users/test/workspace", platform: str = "darwin"
+) -> LocalPCShim:
     """Build a LocalPCShim instance with _rpc stubbed."""
     shim = LocalPCShim.__new__(LocalPCShim)
     hello = ShimHello(
@@ -125,7 +127,9 @@ class TestListViaShim:
     async def test_forwards_glob_and_recursive_flags(self):
         shim = _shim()
         shim._rpc.return_value = {"payload": {"entries": [], "truncated": False}}
-        await list_via_shim(shim, "subdir", glob="*.csv", recursive=True, max_entries=50)
+        await list_via_shim(
+            shim, "subdir", glob="*.csv", recursive=True, max_entries=50
+        )
         payload = shim._rpc.await_args.args[1]
         assert payload["glob"] == "*.csv"
         assert payload["recursive"] is True

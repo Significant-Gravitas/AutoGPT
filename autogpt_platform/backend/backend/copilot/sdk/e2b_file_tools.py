@@ -659,11 +659,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
             )
         except OSError as exc:
             return _mcp(f"Glob failed: {exc}", error=True)
-        files = [
-            e.get("path", "")
-            for e in resp.get("entries", [])
-            if e.get("is_file")
-        ]
+        files = [e.get("path", "") for e in resp.get("entries", []) if e.get("is_file")]
         return _mcp(json.dumps(files, indent=2))
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"

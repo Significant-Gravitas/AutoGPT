@@ -10,7 +10,6 @@ is a best-effort lexical check, not a security boundary.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from backend.copilot.context import resolve_executor_path

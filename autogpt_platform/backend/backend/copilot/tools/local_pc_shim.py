@@ -31,6 +31,7 @@ def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
         shim,
     )
 
+
 _shim_manager: "ShimConnectionManager | None" = None
 
 
@@ -66,7 +67,9 @@ class ShimHello:
             shim_version=payload.get("shim_version", ""),
             allowed_root=payload.get("allowed_root", ""),
             capabilities=list(payload.get("capabilities") or []),
-            screen_resolution=tuple(sr) if isinstance(sr, (list, tuple)) and len(sr) == 2 else None,
+            screen_resolution=(
+                tuple(sr) if isinstance(sr, (list, tuple)) and len(sr) == 2 else None
+            ),
             local_llm_models=list(payload.get("local_llm_models") or []),
             hardware_devices=list(payload.get("hardware_devices") or []),
             computer_use_features=list(payload.get("computer_use_features") or []),
@@ -79,7 +82,9 @@ class ShimConnectionManager:
         self._hellos: dict[str, ShimHello] = {}
         self._waiters: dict[str, list[asyncio.Future[WebSocket]]] = {}
 
-    def register(self, session_id: str, ws: WebSocket, hello: ShimHello | None = None) -> None:
+    def register(
+        self, session_id: str, ws: WebSocket, hello: ShimHello | None = None
+    ) -> None:
         self._connections[session_id] = ws
         if hello is not None:
             self._hellos[session_id] = hello
@@ -123,7 +128,9 @@ class _FilesProxy:
             "FILE_READ", {"path": path, "encoding": wire_encoding}
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_READ failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_READ failed")
+            )
         content = resp["payload"]["content"]
         if format == "bytes":
             return base64.b64decode(content)
@@ -146,7 +153,9 @@ class _FilesProxy:
             },
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_WRITE failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_WRITE failed")
+            )
 
     async def stat(self, path: str, *, follow_symlinks: bool = True) -> dict:
         """Cross-OS portable replacement for shell `stat` / `readlink -f` / `test -e`."""
@@ -154,7 +163,9 @@ class _FilesProxy:
             "FILE_STAT", {"path": path, "follow_symlinks": follow_symlinks}
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_STAT failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_STAT failed")
+            )
         return resp["payload"]
 
     async def list(
@@ -178,17 +189,23 @@ class _FilesProxy:
             },
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_LIST failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_LIST failed")
+            )
         return resp["payload"]
 
-    async def delete(self, path: str, *, recursive: bool = False, missing_ok: bool = False) -> None:
+    async def delete(
+        self, path: str, *, recursive: bool = False, missing_ok: bool = False
+    ) -> None:
         """Cross-OS portable replacement for shell `rm` / `del`."""
         resp = await self._shim._rpc(
             "FILE_DELETE",
             {"path": path, "recursive": recursive, "missing_ok": missing_ok},
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_DELETE failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_DELETE failed")
+            )
 
     async def move(self, src: str, dst: str, *, overwrite: bool = False) -> None:
         """Cross-OS portable replacement for shell `mv` / `move`."""
@@ -197,7 +214,9 @@ class _FilesProxy:
             {"src": src, "dst": dst, "overwrite": overwrite},
         )
         if resp.get("type") == "ERROR":
-            raise OSError(_friendly(resp.get("payload", {}), self._shim, "FILE_MOVE failed"))
+            raise OSError(
+                _friendly(resp.get("payload", {}), self._shim, "FILE_MOVE failed")
+            )
 
 
 class ShimComputerUseError(RuntimeError):
@@ -225,7 +244,9 @@ def _raise_computer_use(resp: dict, shim: "LocalPCShim | None", fallback: str) -
     raise ShimComputerUseError(
         code=str(payload.get("code") or "INTERNAL_ERROR"),
         message=_friendly(payload, shim, fallback),
-        details=payload.get("details") if isinstance(payload.get("details"), dict) else {},
+        details=(
+            payload.get("details") if isinstance(payload.get("details"), dict) else {}
+        ),
     )
 
 
@@ -484,9 +505,7 @@ class _ComputerProxy:
 
     # --- Permissions -------------------------------------------------------
 
-    async def permissions_check(
-        self, permissions: list[str] | None = None
-    ) -> dict:
+    async def permissions_check(self, permissions: list[str] | None = None) -> dict:
         resp = await self._shim._rpc(
             "PERMISSIONS_CHECK_REQUEST",
             {
@@ -519,7 +538,9 @@ class _CommandsProxy:
             payload["command"] = command
             payload["shell"] = shell
         else:
-            raise ValueError("LocalPCShim.commands.run: either command or argv must be set")
+            raise ValueError(
+                "LocalPCShim.commands.run: either command or argv must be set"
+            )
         if cwd:
             payload["cwd"] = cwd
         if timeout:
@@ -598,7 +619,9 @@ class LocalPCShim:
         hello = manager.get_hello(session_id)
         return cls(session_id, ws, hello)
 
-    async def _rpc(self, msg_type: str, payload: dict, *, timeout: float = 30.0) -> dict:
+    async def _rpc(
+        self, msg_type: str, payload: dict, *, timeout: float = 30.0
+    ) -> dict:
         msg_id = str(uuid.uuid4())
         msg = {"type": msg_type, "id": msg_id, "ts": time.time(), "payload": payload}
         loop = asyncio.get_event_loop()
