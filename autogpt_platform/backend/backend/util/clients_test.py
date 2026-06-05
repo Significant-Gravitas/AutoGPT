@@ -4,15 +4,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.clients import (
+    _get_local_openai_client,
+    get_openai_client,
+    openrouter_helper_cost_provider,
+)
 
 
 @pytest.fixture(autouse=True)
 def _clear_client_cache():
-    """Clear the @cached singleton between tests."""
+    """Clear the @cached client singletons between tests.
+
+    ``_get_local_openai_client`` is a separate ``@cached`` instance from
+    ``get_openai_client``; clearing only the latter leaves a stale local
+    ``AsyncOpenAI`` aimed at a previous endpoint after a test monkeypatches
+    transport/URL. Clear both.
+    """
     get_openai_client.cache_clear()
+    _get_local_openai_client.cache_clear()
     yield
     get_openai_client.cache_clear()
+    _get_local_openai_client.cache_clear()
 
 
 def _mock_secrets(*, openai_key: str = "", openrouter_key: str = "") -> MagicMock:
