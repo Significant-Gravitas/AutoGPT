@@ -74,13 +74,31 @@ distribution config (`AUTOGPT_LOCAL_EXECUTOR_CLIENT_ID` +
 deployment. End-users installing the official shim get the canonical
 agpt.co client_id; self-hosters bake in their own.
 
-### Future: true public-client support
+### True public-client support (implemented)
 
-To match the OAuth 2.1 best-practice for desktop apps (PKCE, no
-client_secret), the platform schema needs an `isPublic` boolean on
-`OAuthApplication` and `validate_client_credentials` must short-circuit
-the secret check for public clients on PKCE grants. Tracked as a
-follow-up — not blocking shim MVP.
+`OAuthApplication.isPublic` (added in migration
+`20260604120000_add_oauth_application_is_public`) and the
+`validate_client_credentials(..., code_verifier=...)` short-circuit
+together implement the OAuth 2.1 best-practice for desktop / mobile /
+SPA clients (PKCE, no client_secret).
+
+- Confidential client (default, `isPublic=false`): `client_secret` is
+  required as before. No behavior change.
+- Public client (`isPublic=true`): `client_secret` is ignored;
+  `code_verifier` is required and is the only credential. The PKCE
+  challenge/verifier check still happens in `consume_authorization_code`
+  (which compares the verifier against the stored code_challenge).
+
+To migrate a confidential client to public after the migration runs,
+operators flip the column: `UPDATE "OAuthApplication" SET "isPublic" =
+true WHERE "clientId" = '<id>'`. The shim distribution can then drop
+its embedded "open secret" and rely entirely on PKCE; the `client_secret`
+field on the request becomes ignored for that app.
+
+Introspect (`/auth/introspect`) and revoke (`/auth/revoke`) endpoints
+remain confidential-auth-only — public clients shouldn't be calling
+these. The shim never hits them; it gets revocation pushed to it via
+the platform's REVOKE frame (see `PROTOCOL.md`).
 
 ---
 
