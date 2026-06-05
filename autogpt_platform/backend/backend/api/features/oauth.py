@@ -357,10 +357,17 @@ async def token(
     - refresh_token: Token for refreshing access (30 days TTL)
     - scopes: List of scopes
     """
-    # Validate client credentials
+    # Validate client credentials.
+    # Public clients (PKCE-only desktop / mobile apps) authenticate via
+    # the code_verifier in the body — forward it so validate_client_credentials
+    # can short-circuit the secret check for OAuthApplication.isPublic=true.
+    # Confidential clients ignore the code_verifier param here; their
+    # client_secret is still required.
     try:
         app = await validate_client_credentials(
-            request.client_id, request.client_secret
+            request.client_id,
+            request.client_secret,
+            code_verifier=request.code_verifier,
         )
     except InvalidClientError as e:
         raise HTTPException(
@@ -476,7 +483,11 @@ async def introspect(
     - exp: Expiration timestamp (if active)
     - token_type: "access_token" or "refresh_token" (if active)
     """
-    # Validate client credentials
+    # Validate client credentials.
+    # Introspect is a resource-server endpoint per RFC 7662 — public clients
+    # don't typically call it. Confidential auth required; public clients
+    # without a secret hit the standard "Public client requires PKCE
+    # code_verifier" error from validate_client_credentials.
     try:
         await validate_client_credentials(client_id, client_secret)
     except InvalidClientError as e:
