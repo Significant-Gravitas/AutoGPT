@@ -230,7 +230,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             description=(
                 "Variables defined here can be used directly in your Python or "
                 "JavaScript code. Values wired in from other blocks keep their "
-                "type; values typed directly here come in as strings, so parse "
+                "type; default values set on this node come in as strings, so parse "
                 "them in your code if you need a number or other type."
             ),
             default_factory=dict,
