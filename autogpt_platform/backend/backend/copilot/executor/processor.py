@@ -149,6 +149,7 @@ async def resolve_use_sdk_for_mode(
     *,
     use_claude_code_subscription: bool,
     config_default: bool,
+    thinking_available: bool = True,
 ) -> bool:
     """Pick the SDK vs baseline path for a single turn.
 
@@ -156,7 +157,21 @@ async def resolve_use_sdk_for_mode(
     ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
     falls back to the Claude Code subscription override, then the
     ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
+
+    ``thinking_available`` is the kill-switch for deployments where the
+    SDK transport simply cannot run (today: ``CHAT_USE_LOCAL=true`` —
+    Ollama doesn't speak Anthropic's wire protocol).  When False the
+    baseline path is forced regardless of mode / flags / subscription;
+    an explicit ``mode='extended_thinking'`` request is logged at WARNING
+    so misconfigured deployments are visible without 500s.
     """
+    if not thinking_available:
+        if mode == "extended_thinking":
+            logger.warning(
+                "Downgrading mode=extended_thinking to fast: SDK is "
+                "unavailable under the current transport (CHAT_USE_LOCAL=true)"
+            )
+        return False
     if mode == "fast":
         return False
     if mode == "extended_thinking":
@@ -501,6 +516,7 @@ class CoPilotProcessor:
                     entry.user_id,
                     use_claude_code_subscription=config.use_claude_code_subscription,
                     config_default=config.use_claude_agent_sdk,
+                    thinking_available=config.thinking_available,
                 )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk

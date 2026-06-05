@@ -555,15 +555,16 @@ async def test_reconcile_stripe_tier_no_active_sub_downgrades_payer(
 
     assert await reconcile_stripe_tier_for_user("user_abc") is True
     mock_set.assert_awaited_once_with("user_abc", SubscriptionTier.NO_TIER)
-    # A silently-missed cancellation webhook must alert ops, not be corrected quietly.
-    mock_alert.assert_awaited_once()
-    assert "DOWNGRADED" in mock_alert.await_args.args[0]
+    # The lazy path does NOT ping ops per-user; the sweep's aggregate Discord
+    # alert reports corrections. The change is still recorded (log + PostHog).
+    mock_alert.assert_not_awaited()
 
 
-async def test_reconcile_stripe_tier_lazy_upgrade_alerts(
+async def test_reconcile_stripe_tier_lazy_upgrade_no_per_user_alert(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A lazy reconcile that finds an active sub the DB missed also alerts ops."""
+    """A lazy reconcile that finds an active sub the DB missed converts the tier
+    but does NOT ping ops per-user (the sweep aggregates alerts)."""
     user = MagicMock(
         stripe_customer_id="cus_abc",
         subscription_tier=SubscriptionTier.NO_TIER,
@@ -588,8 +589,7 @@ async def test_reconcile_stripe_tier_lazy_upgrade_alerts(
     )
 
     assert await reconcile_stripe_tier_for_user("user_abc") is True
-    mock_alert.assert_awaited_once()
-    assert "upgrade" in mock_alert.await_args.args[0]
+    mock_alert.assert_not_awaited()
 
 
 async def test_reconcile_stripe_tier_enterprise_user_skipped(

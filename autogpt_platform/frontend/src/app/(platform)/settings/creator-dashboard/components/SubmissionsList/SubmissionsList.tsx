@@ -1,7 +1,6 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { CircleNotchIcon } from "@phosphor-icons/react";
 
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -9,6 +8,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
 import {
   EASE_OUT,
@@ -36,6 +36,9 @@ interface Props {
   filterState: FilterState;
   onFilterChange: (next: FilterState) => void;
   onResetFilters: () => void;
+  searchInput: string;
+  onSearchChange: (next: string) => void;
+  debouncedSearch: string;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
@@ -54,6 +57,9 @@ export function SubmissionsList({
   filterState,
   onFilterChange,
   onResetFilters,
+  searchInput,
+  onSearchChange,
+  debouncedSearch,
   onView,
   onEdit,
   onDelete,
@@ -87,27 +93,22 @@ export function SubmissionsList({
           <Text variant="body-medium" as="span" className="text-textBlack">
             Submissions
           </Text>
-          {isFetching ? (
-            <span
-              role="status"
-              aria-live="polite"
-              className="inline-flex items-center gap-1 text-zinc-500"
-              data-testid="submissions-fetching"
-            >
-              <CircleNotchIcon
-                size={14}
-                weight="bold"
-                className="animate-spin"
-              />
-              <Text variant="small" as="span" className="text-zinc-500">
-                Updating
-              </Text>
-            </span>
-          ) : null}
         </div>
         <Text variant="small" className="text-zinc-500">
           {submissions.length} of {totalCount}
         </Text>
+      </div>
+
+      <div className="pr-1 sm:max-w-md">
+        <SearchInput
+          value={searchInput}
+          onChange={onSearchChange}
+          placeholder="Search by agent or listing name"
+          aria-label="Search submissions"
+          maxLength={100}
+          loading={isFetching}
+          size="medium"
+        />
       </div>
 
       <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
@@ -180,15 +181,27 @@ export function SubmissionsList({
                   <td colSpan={COLUMN_COUNT} className="px-4 py-12">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
                       <Text variant="body-medium" className="text-textBlack">
-                        No submissions match these filters
+                        {debouncedSearch
+                          ? `No submissions match "${debouncedSearch}"`
+                          : "No submissions match these filters"}
                       </Text>
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={onResetFilters}
-                      >
-                        Clear filters
-                      </Button>
+                      {debouncedSearch ? (
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          onClick={() => onSearchChange("")}
+                        >
+                          Clear search
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          onClick={onResetFilters}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

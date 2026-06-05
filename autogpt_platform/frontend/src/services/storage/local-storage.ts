@@ -25,6 +25,7 @@ export enum Key {
   COPILOT_DRY_RUN = "copilot-dry-run",
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
+  BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
 }
 
 function get(key: Key) {
