@@ -1668,7 +1668,7 @@ class TestOpenRouterAliases:
     @pytest.mark.parametrize(
         "model",
         [
-            llm.LlmModel.GPT_4O,
+            llm.LlmModel.GPT4O,
             llm.LlmModel.O3,
         ],
     )
