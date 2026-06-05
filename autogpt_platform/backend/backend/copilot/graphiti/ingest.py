@@ -33,9 +33,7 @@ class _LoopIngestState:
         self.workers_lock = asyncio.Lock()
 
 
-_loop_state: (
-    "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]"
-) = weakref.WeakKeyDictionary()
+_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]" = weakref.WeakKeyDictionary()
 
 
 def _get_loop_state() -> _LoopIngestState:

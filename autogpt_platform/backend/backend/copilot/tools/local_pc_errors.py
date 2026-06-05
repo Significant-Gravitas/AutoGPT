@@ -135,9 +135,7 @@ def _path_exists(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
     path = _details_path(details, message)
-    return (
-        f"Destination `{path}` already exists — pass `overwrite=true` to " "replace it."
-    )
+    return f"Destination `{path}` already exists — pass `overwrite=true` to replace it."
 
 
 def _command_timeout(

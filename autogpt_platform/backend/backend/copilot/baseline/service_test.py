@@ -70,9 +70,9 @@ async def test_baseline_multi_turn(setup_test_user, test_user_id):
     assert session, "Session not found after turn 1"
 
     # Verify messages were persisted (user + assistant)
-    assert (
-        len(session.messages) >= 2
-    ), f"Expected at least 2 messages after turn 1, got {len(session.messages)}"
+    assert len(session.messages) >= 2, (
+        f"Expected at least 2 messages after turn 1, got {len(session.messages)}"
+    )
 
     # --- Turn 2: ask model to recall the keyword ---
     turn2_msg = "What was the special keyword I asked you to remember?"

@@ -76,7 +76,10 @@ LOCAL_PC_SHIM_RPC_RETRIES = Counter(
     "copilot_localpc_shim_rpc_retries_total",
     "Idempotent ops that hit the in-flight-disconnect path and got auto-retried "
     "by the adapter. Slice by `outcome` to see how often the retry recovered.",
-    labelnames=("op", "outcome"),  # outcome: "success_after_retry" | "failed_after_retry"
+    labelnames=(
+        "op",
+        "outcome",
+    ),  # outcome: "success_after_retry" | "failed_after_retry"
 )
 
 
@@ -100,9 +103,7 @@ def record_shim_connected(
     ).inc()
 
 
-def record_shim_disconnected(
-    *, platform: str | None, arch: str | None
-) -> None:
+def record_shim_disconnected(*, platform: str | None, arch: str | None) -> None:
     """Record a shim WS close after a successful registration."""
     LOCAL_PC_SHIM_ACTIVE.labels(
         platform=_normalize_label(platform),
@@ -117,9 +118,7 @@ def record_handshake_failure(stage: str) -> None:
 
 def record_rpc(op: str, *, outcome: str, duration_seconds: float) -> None:
     """Record a wire-op roundtrip. Called from ``LocalPCShim._rpc``."""
-    LOCAL_PC_SHIM_RPC_DURATION.labels(op=op, outcome=outcome).observe(
-        duration_seconds
-    )
+    LOCAL_PC_SHIM_RPC_DURATION.labels(op=op, outcome=outcome).observe(duration_seconds)
 
 
 def record_rpc_error(op: str, code: str) -> None:

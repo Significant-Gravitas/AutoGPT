@@ -458,9 +458,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert (
-            len(call_log) == 1
-        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        )
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -980,7 +980,9 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         session = MagicMock()
         session.dry_run = False
         session.session_id = "sess-no-inject"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         async def fake_tool_fn(_args: dict) -> dict:
             return {
@@ -1002,7 +1004,9 @@ class TestTruncatingWrapperLeavesOutputUntouched:
         session = MagicMock()
         session.dry_run = False
         session.session_id = "sess-stash"
-        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
 

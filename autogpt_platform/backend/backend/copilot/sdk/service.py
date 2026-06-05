@@ -793,8 +793,7 @@ async def _consume_sdk_until_done(
             try:
                 await asyncio.shield(upsert_chat_session(ctx.session))
                 logger.debug(
-                    "%s Intermediate flush: %d messages "
-                    "(msgs_since=%d, elapsed=%.1fs)",
+                    "%s Intermediate flush: %d messages (msgs_since=%d, elapsed=%.1fs)",
                     ctx.log_prefix,
                     len(ctx.session.messages),
                     loop_state.msgs_since_flush,
