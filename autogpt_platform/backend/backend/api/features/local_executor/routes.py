@@ -1,19 +1,25 @@
 """
-WebSocket endpoint for the autogpt-local-executor shim.
+Endpoints for the autogpt-local-executor shim.
 
-The shim dials in with:
-    ws://<host>/ws/local-executor/<session_id>?token=<access_token>
+- ``/ws/local-executor/{session_id}`` (WebSocket): the shim dials in here.
+  Auth: bearer access token validated via ``introspect_token``. On success
+  the WebSocket is registered in ``ShimConnectionManager`` so
+  ``LocalPCShim.for_session()`` can find it.
 
-Auth: the token is validated via introspect_token() before the connection
-is accepted. On success the WebSocket is registered in ShimConnectionManager
-so LocalPCShim.for_session() can find it.
+- ``/api/copilot/sessions/{session_id}/executor`` (GET): the frontend
+  ``LocalPCBadge`` polls this to render live shim metadata (platform, arch,
+  workspace, capabilities) when a shim is connected for the session. Auth:
+  Supabase user session via ``auth.get_user_id``.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from autogpt_libs import auth
+from fastapi import APIRouter, Security, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from backend.copilot.tools.local_pc_shim import ShimHello, get_shim_manager
 from backend.data.auth.oauth import introspect_token
@@ -21,6 +27,58 @@ from backend.data.auth.oauth import introspect_token
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class ExecutorStatus(BaseModel):
+    """Per-session executor metadata for the frontend.
+
+    ``kind`` is the only field guaranteed present. Everything else is
+    populated only when ``kind == "shim"`` and a shim is currently
+    connected for the session on this worker. (Multi-worker accuracy
+    needs a Redis-backed registry — follow-up; per-worker is enough to
+    drive the UI when there's one worker, which is most dev / smoke
+    setups today.)
+    """
+
+    kind: Literal["shim", "none"]
+    platform: str | None = None
+    arch: str | None = None
+    allowed_root: str | None = None
+    machine_id: str | None = None
+    shim_version: str | None = None
+    capabilities: list[str] | None = None
+    computer_use_features: list[str] | None = None
+
+
+@router.get(
+    "/api/copilot/sessions/{session_id}/executor",
+    response_model=ExecutorStatus,
+    tags=["copilot", "local-executor"],
+)
+async def get_session_executor(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ExecutorStatus:
+    """Return executor metadata for ``session_id`` if a shim is connected.
+
+    Returns ``{kind: "none"}`` when the session isn't routed to a shim on
+    this worker. The frontend treats that as "no shim" and falls back to
+    the static "Local PC mode" pill if the LD flag is on but no shim has
+    handshaken yet.
+    """
+    hello = get_shim_manager().get_hello(session_id)
+    if hello is None:
+        return ExecutorStatus(kind="none")
+    return ExecutorStatus(
+        kind="shim",
+        platform=hello.platform or None,
+        arch=hello.arch or None,
+        allowed_root=hello.allowed_root or None,
+        machine_id=hello.machine_id or None,
+        shim_version=hello.shim_version or None,
+        capabilities=hello.capabilities or None,
+        computer_use_features=hello.computer_use_features or None,
+    )
 
 
 @router.websocket("/ws/local-executor/{session_id}")
