@@ -229,9 +229,9 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             title="Variables (Python/JS only)",
             description=(
                 "Variables defined here can be used directly in your Python or "
-                "JavaScript code. Values are parsed as JSON when possible "
-                "(e.g. 42 becomes a number, true a boolean); anything else is "
-                'treated as text. Wrap in quotes to force a string (e.g. "42").'
+                "JavaScript code. Values wired in from other blocks keep their "
+                "type; values typed directly here come in as strings, so parse "
+                "them in your code if you need a number or other type."
             ),
             default_factory=dict,
             advanced=False,

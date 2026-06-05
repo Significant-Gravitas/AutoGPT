@@ -66,11 +66,10 @@ def build_variable_injection(
             "Supported languages: python, js."
         )
 
-    coerced = {key: _coerce_value(value) for key, value in variables.items()}
     try:
-        serialized = json.dumps(coerced)
+        serialized = json.dumps(variables)
     except TypeError as e:
-        bad_keys = [k for k, v in coerced.items() if not _is_json_serializable(v)]
+        bad_keys = [k for k, v in variables.items() if not _is_json_serializable(v)]
         raise ValueError(
             f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
         ) from e
@@ -84,18 +83,3 @@ def _is_json_serializable(value: Any) -> bool:
         return True
     except TypeError:
         return False
-
-
-def _coerce_value(value: Any) -> Any:
-    """Parse a string value as JSON so types survive (42 -> int, true -> bool).
-
-    The builder's dynamic-dict widget stores every value as a string. Trying
-    json.loads recovers the intended type; values that aren't valid JSON (e.g.
-    `hello`) are kept as plain strings. Non-string values are passed through.
-    """
-    if not isinstance(value, str):
-        return value
-    try:
-        return json.loads(value)
-    except (json.JSONDecodeError, ValueError):
-        return value

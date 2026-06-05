@@ -76,30 +76,6 @@ class TestBuildVariableInjection:
         assert "process.env" in prefix
         assert "Blake" not in prefix
 
-    def test_string_values_are_coerced_to_json_types(self):
-        """The builder stores values as strings; valid JSON recovers the type."""
-        variables = {
-            "num": "42",
-            "flt": "3.14",
-            "flag": "true",
-            "lst": "[1, 2, 3]",
-            "obj": '{"a": 1}',
-            "text": "hello",  # not valid JSON -> stays a string
-            "empty": "",  # not valid JSON -> stays empty string
-            "quoted": '"42"',  # explicitly a string
-        }
-        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
-        decoded = json.loads(envs[VARIABLES_ENV_KEY])
-
-        assert decoded["num"] == 42 and isinstance(decoded["num"], int)
-        assert decoded["flt"] == 3.14
-        assert decoded["flag"] is True
-        assert decoded["lst"] == [1, 2, 3]
-        assert decoded["obj"] == {"a": 1}
-        assert decoded["text"] == "hello"
-        assert decoded["empty"] == ""
-        assert decoded["quoted"] == "42" and isinstance(decoded["quoted"], str)
-
     def test_malicious_value_cannot_break_out_of_code_channel(self):
         """A value that looks like code stays inert: it's only ever JSON data."""
         variables = {"evil": "'); import os; os.system('rm -rf /'); ('"}
