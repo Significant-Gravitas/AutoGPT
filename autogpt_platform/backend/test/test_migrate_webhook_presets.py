@@ -26,6 +26,7 @@ def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
         seat_status="ACTIVE",
     )
 
+
 # Patch prisma.models.AgentPreset.prisma per the project-wide convention used
 # in backend/api/features/library/db_test.py and the rest of the suite.
 _PRISMA_PATCH_TARGET = "prisma.models.AgentPreset.prisma"

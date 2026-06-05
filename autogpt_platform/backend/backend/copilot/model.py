@@ -1071,6 +1071,7 @@ async def get_user_sessions(
     limit: int = 50,
     offset: int = 0,
     organization_id: str | None = None,
+    title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1084,7 +1085,11 @@ async def get_user_sessions(
     """
     db = chat_db()
     sessions = await db.get_user_chat_sessions(
-        user_id, limit, offset, organization_id=organization_id
+        user_id,
+        limit,
+        offset,
+        organization_id=organization_id,
+        title_contains=title_contains,
     )
     total_count = await db.get_user_session_count(
         user_id, organization_id=organization_id

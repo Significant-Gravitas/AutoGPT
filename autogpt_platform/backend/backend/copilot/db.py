@@ -536,11 +536,19 @@ async def get_user_chat_sessions(
     limit: int = 50,
     offset: int = 0,
     organization_id: str | None = None,
+    title_contains: str | None = None,
 ) -> list[ChatSessionInfo]:
-    """Get chat sessions for a user, ordered by most recent."""
+    """Get chat sessions for a user, ordered by most recent.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
+    """
     where: ChatSessionWhereInput = {"userId": user_id}
     if organization_id is not None:
         where["organizationId"] = organization_id
+    if title_contains:
+        where["title"] = {"contains": title_contains, "mode": "insensitive"}
     prisma_sessions = await PrismaChatSession.prisma().find_many(
         where=where,
         order={"updatedAt": "desc"},

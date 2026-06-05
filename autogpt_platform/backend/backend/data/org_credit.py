@@ -277,13 +277,14 @@ class OrgCreditModel(UserCreditBase):
             limit=transaction_count_limit,
             offset=0,
         )
-        from backend.data.model import UserTransaction
+        from backend.data.model import CreditTransactionItem
 
+        # TransactionHistory expects CreditTransactionItem; running_balance
+        # lives on UserTransaction but isn't part of this DTO and is dropped.
         transactions = [
-            UserTransaction(
+            CreditTransactionItem(
                 user_id=user_id,
                 amount=t["amount"],
-                running_balance=t.get("runningBalance", 0) or 0,
                 transaction_type=t.get("type", CreditTransactionType.USAGE),
                 transaction_key=t.get("transactionKey", ""),
                 description=f"{t.get('type', 'UNKNOWN')} Transaction",
