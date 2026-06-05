@@ -21,6 +21,7 @@ import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
+import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import {
   extractWorkspaceArtifacts,
@@ -217,6 +218,8 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-setup_agent_webhook_trigger":
+      return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
     case "tool-decompose_goal":
       return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":

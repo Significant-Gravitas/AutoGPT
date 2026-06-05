@@ -10457,6 +10457,14 @@
               { "type": "null" }
             ],
             "description": "Full graph structure (nodes + links) when include_graph is requested"
+          },
+          "trigger_info": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Trigger Info",
+            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger — never by editing the trigger node in the graph. None for agents without a webhook trigger."
           }
         },
         "type": "object",
@@ -16332,7 +16340,7 @@
           "schedule_created",
           "agent_trigger_list",
           "trigger_setup",
-          "trigger_credentials_required",
+          "trigger_config_required",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",
