@@ -1217,7 +1217,7 @@ async def _llm_call(
             # Ask OpenRouter to include the per-request USD cost on the usage
             # object. Same shape used by simulator.py — keep aligned.
             extra_body={"usage": {"include": True}},
-            model=(_OPENROUTER_REVERSE.get(llm_model) or llm_model.value),
+            model=_OPENROUTER_REVERSE.get(llm_model, llm_model.value),
             messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
             tools=(
