@@ -9,16 +9,18 @@ injection -- analogous to parameterized SQL queries.
 
 import json
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     ExecuteCodeBlock,
     ProgrammingLanguage,
 )
 from backend.blocks.code_executor_helpers import (
+    MAX_VARIABLES_PAYLOAD_BYTES,
     VARIABLES_ENV_KEY,
     UnsupportedLanguageError,
     build_variable_injection,
@@ -38,8 +40,25 @@ def _execution_context() -> ExecutionContext:
     )
 
 
-async def _collect(agen):
-    return [item async for item in agen]
+def _make_input(**overrides) -> ExecuteCodeBlock.Input:
+    data: dict = {
+        "credentials": TEST_CREDENTIALS_INPUT,
+        "code": "print('hi')",
+        "language": ProgrammingLanguage.PYTHON.value,
+    }
+    data.update(overrides)
+    return ExecuteCodeBlock.Input.model_validate(data)
+
+
+async def _run(block: ExecuteCodeBlock, input_data: ExecuteCodeBlock.Input):
+    return [
+        item
+        async for item in block.run(
+            input_data,
+            credentials=TEST_CREDENTIALS,
+            execution_context=_execution_context(),
+        )
+    ]
 
 
 class TestBuildVariableInjection:
@@ -102,28 +121,30 @@ class TestBuildVariableInjection:
                 {"ok": 1, "bad": {1, 2, 3}}, ProgrammingLanguage.PYTHON
             )
 
+    @pytest.mark.parametrize(
+        "bad_key",
+        ["my var", "2x", "for", "__builtins__", "_agpt_json"],
+    )
+    def test_invalid_variable_names_raise(self, bad_key):
+        with pytest.raises(ValueError, match="Invalid variable name"):
+            build_variable_injection({bad_key: 1}, ProgrammingLanguage.PYTHON)
+
+    def test_oversized_payload_raises(self):
+        big = {"data": "x" * (MAX_VARIABLES_PAYLOAD_BYTES + 1)}
+        with pytest.raises(ValueError, match="too large"):
+            build_variable_injection(big, ProgrammingLanguage.PYTHON)
+
 
 class TestExecuteCodeBlockRun:
     """run() should inject variables: prefix the code and pass the env var."""
 
-    async def test_run_prefixes_code_and_passes_envs(self):
+    async def test_run_prefixes_python_code_and_passes_envs(self):
         block = ExecuteCodeBlock()
         mock = AsyncMock(return_value=([], "", "", "", "sandbox_id", []))
-        block.execute_code = mock  # type: ignore[method-assign]
-
-        input_data = ExecuteCodeBlock.Input(
-            credentials=TEST_CREDENTIALS.model_dump(),  # type: ignore[arg-type]
-            code="print(name)",
-            language=ProgrammingLanguage.PYTHON,
-            variables={"name": "blake"},
-        )
-        await _collect(
-            block.run(
-                input_data,
-                credentials=TEST_CREDENTIALS,
-                execution_context=_execution_context(),
+        with patch.object(block, "execute_code", mock):
+            await _run(
+                block, _make_input(code="print(name)", variables={"name": "blake"})
             )
-        )
 
         kwargs = mock.call_args.kwargs
         # The user's code is prefixed with the deserialize snippet.
@@ -132,23 +153,29 @@ class TestExecuteCodeBlockRun:
         # Variables travel via the env var, JSON-encoded.
         assert kwargs["envs"] == {VARIABLES_ENV_KEY: json.dumps({"name": "blake"})}
 
+    async def test_run_prefixes_javascript_code_and_passes_envs(self):
+        block = ExecuteCodeBlock()
+        mock = AsyncMock(return_value=([], "", "", "", "sandbox_id", []))
+        with patch.object(block, "execute_code", mock):
+            await _run(
+                block,
+                _make_input(
+                    code="console.log(name)",
+                    language=ProgrammingLanguage.JAVASCRIPT.value,
+                    variables={"name": "blake"},
+                ),
+            )
+
+        kwargs = mock.call_args.kwargs
+        assert kwargs["code"].endswith("console.log(name)")
+        assert "Object.assign(globalThis" in kwargs["code"]
+        assert kwargs["envs"] == {VARIABLES_ENV_KEY: json.dumps({"name": "blake"})}
+
     async def test_run_without_variables_sends_no_envs_and_unmodified_code(self):
         block = ExecuteCodeBlock()
         mock = AsyncMock(return_value=([], "", "", "", "sandbox_id", []))
-        block.execute_code = mock  # type: ignore[method-assign]
-
-        input_data = ExecuteCodeBlock.Input(
-            credentials=TEST_CREDENTIALS.model_dump(),  # type: ignore[arg-type]
-            code="print('hi')",
-            language=ProgrammingLanguage.PYTHON,
-        )
-        await _collect(
-            block.run(
-                input_data,
-                credentials=TEST_CREDENTIALS,
-                execution_context=_execution_context(),
-            )
-        )
+        with patch.object(block, "execute_code", mock):
+            await _run(block, _make_input(code="print('hi')"))
 
         kwargs = mock.call_args.kwargs
         assert kwargs["code"] == "print('hi')"
@@ -156,31 +183,20 @@ class TestExecuteCodeBlockRun:
 
     async def test_run_yields_all_outputs_when_present(self):
         block = ExecuteCodeBlock()
-        block.execute_code = AsyncMock(  # type: ignore[method-assign]
+        mock = AsyncMock(
             return_value=([], "42", "stdout text", "stderr text", "sandbox_id", [])
         )
-        # process_execution_results parses E2B-specific result objects; mock it so
+        # process_execution_results parses E2B-specific result objects; patch it so
         # this test only exercises run()'s own output-forwarding branches.
-        block.process_execution_results = lambda results: (  # type: ignore[method-assign]
-            {"text": "42"},
-            [],
-        )
-
-        input_data = ExecuteCodeBlock.Input(
-            credentials=TEST_CREDENTIALS.model_dump(),  # type: ignore[arg-type]
-            code="print(name)",
-            language=ProgrammingLanguage.PYTHON,
-            variables={"name": "blake"},
-        )
-        outputs = dict(
-            await _collect(
-                block.run(
-                    input_data,
-                    credentials=TEST_CREDENTIALS,
-                    execution_context=_execution_context(),
+        with patch.object(block, "execute_code", mock), patch.object(
+            block, "process_execution_results", return_value=({"text": "42"}, [])
+        ):
+            outputs = dict(
+                await _run(
+                    block,
+                    _make_input(code="print(name)", variables={"name": "blake"}),
                 )
             )
-        )
 
         assert outputs["main_result"] == {"text": "42"}
         assert outputs["response"] == "42"
@@ -190,21 +206,16 @@ class TestExecuteCodeBlockRun:
 
     async def test_run_unsupported_language_with_variables_yields_error(self):
         block = ExecuteCodeBlock()
-        block.execute_code = AsyncMock()  # type: ignore[method-assign]
-
-        input_data = ExecuteCodeBlock.Input(
-            credentials=TEST_CREDENTIALS.model_dump(),  # type: ignore[arg-type]
-            code="echo hi",
-            language=ProgrammingLanguage.BASH,
-            variables={"name": "blake"},
-        )
-        outputs = await _collect(
-            block.run(
-                input_data,
-                credentials=TEST_CREDENTIALS,
-                execution_context=_execution_context(),
+        mock = AsyncMock()
+        with patch.object(block, "execute_code", mock):
+            outputs = await _run(
+                block,
+                _make_input(
+                    code="echo hi",
+                    language=ProgrammingLanguage.BASH.value,
+                    variables={"name": "blake"},
+                ),
             )
-        )
 
         assert any(name == "error" for name, _ in outputs)
-        block.execute_code.assert_not_called()
+        mock.assert_not_called()

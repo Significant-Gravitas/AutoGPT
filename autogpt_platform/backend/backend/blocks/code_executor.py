@@ -38,6 +38,20 @@ TEST_CREDENTIALS = APIKeyCredentials(
     title="Mock E2B API key",
     expires_at=None,
 )
+
+
+def _mock_execute_code(
+    *args: Any, **kwargs: Any
+) -> tuple[list, str, str, str, str, list]:
+    """Stub for `execute_code` used by the blocks' test_mock.
+
+    Returns the (results, text, stdout, stderr, sandbox_id, files) tuple,
+    echoing back any provided `sandbox_id` so the step block's test sees it.
+    """
+    sandbox_id = kwargs.get("sandbox_id") or "sandbox_id"
+    return [], "Hello World", "Hello World\n", "", sandbox_id, []
+
+
 TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
     "id": TEST_CREDENTIALS.id,
@@ -141,7 +155,7 @@ class BaseE2BExecutorMixin:
             execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
-                envs=envs,
+                envs=envs or {},
                 on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
             )
 
@@ -316,16 +330,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 ("stdout_logs", "Hello World\n"),
                 ("files", []),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout, dispose_sandbox, execution_context, extract_files, envs: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    "sandbox_id",  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(
@@ -461,16 +466,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, template_id, setup_commands, timeout: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    "sandbox_id",  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(
@@ -569,16 +565,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 ("response", "Hello World"),
                 ("stdout_logs", "Hello World\n"),
             ],
-            test_mock={
-                "execute_code": lambda api_key, code, language, sandbox_id, dispose_sandbox: (  # noqa
-                    [],  # results
-                    "Hello World",  # text_output
-                    "Hello World\n",  # stdout_logs
-                    "",  # stderr_logs
-                    sandbox_id,  # sandbox_id
-                    [],  # files
-                ),
-            },
+            test_mock={"execute_code": _mock_execute_code},
         )
 
     async def run(
