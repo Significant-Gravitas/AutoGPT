@@ -306,6 +306,8 @@ _OPENROUTER_ALIASES: Mapping[str, LlmModel] = {
 # slug (e.g. ``anthropic/claude-opus-4-7``) rather than the bare enum
 # value (``claude-opus-4-7``).  Built from _OPENROUTER_ALIASES via dict
 # inversion so the two tables stay in sync.
+# Assumes each LlmModel appears at most once in _OPENROUTER_ALIASES (1:1
+# mapping); a duplicate value would silently overwrite the earlier key.
 _OPENROUTER_REVERSE: dict[LlmModel, str] = {
     v: k for k, v in _OPENROUTER_ALIASES.items()
 }
@@ -1215,7 +1217,7 @@ async def _llm_call(
             # Ask OpenRouter to include the per-request USD cost on the usage
             # object. Same shape used by simulator.py — keep aligned.
             extra_body={"usage": {"include": True}},
-            model=_OPENROUTER_REVERSE.get(llm_model) or llm_model.value,
+            model=_OPENROUTER_REVERSE.get(llm_model, llm_model.value),
             messages=cast(list[ChatCompletionMessageParam], prompt),
             max_tokens=max_tokens,
             tools=(
