@@ -13,7 +13,7 @@ from backend.executor.utils import add_graph_execution, make_node_credentials_in
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotFoundError, WebhookRegistrationError
 
 from .. import db
 from .. import model as models
@@ -155,15 +155,21 @@ async def setup_trigger(
     Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
     Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
     """
-    return await setup_triggered_preset(
-        user_id=user_id,
-        graph_id=params.graph_id,
-        graph_version=params.graph_version,
-        name=params.name,
-        description=params.description,
-        trigger_config=params.trigger_config,
-        agent_credentials=params.agent_credentials,
-    )
+    try:
+        return await setup_triggered_preset(
+            user_id=user_id,
+            graph_id=params.graph_id,
+            graph_version=params.graph_version,
+            name=params.name,
+            description=params.description,
+            trigger_config=params.trigger_config,
+            agent_credentials=params.agent_credentials,
+        )
+    except WebhookRegistrationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not set up the trigger: {e}",
+        )
 
 
 @router.patch(

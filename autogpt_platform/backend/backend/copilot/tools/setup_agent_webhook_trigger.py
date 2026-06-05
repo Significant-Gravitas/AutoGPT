@@ -2,65 +2,51 @@
 
 Wraps the same logic as the ``POST /presets/setup-trigger`` route so AutoPilot
 can set up a webhook trigger end-to-end and hand the user the correct ingress
-URL for manual-setup webhooks. Credentials for provider/auto-setup webhooks
-must be chosen explicitly by the user — the webhook is registered under the
-chosen account, so this tool never auto-matches a "fitting" credential.
+URL for manual-setup webhooks.
+
+Credential handling splits into two classes:
+
+- The **trigger node's own credential** (the account a provider webhook is
+  *registered under*) is surfaced for an explicit choice in the setup card and
+  used verbatim — never silently auto-picked.
+- All **other agent-body credentials** mirror ``run_agent``: auto-matched, and
+  only shown in the card when missing (to connect).
 """
 
 import logging
 from typing import Any
 
-from pydantic import BaseModel
-
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import graph_db, library_db, triggers_db
-from backend.data.graph import GraphModel
+from backend.data.graph import GraphModel, Node
 from backend.data.model import Credentials, CredentialsMetaInput
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, WebhookRegistrationError
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    SetupInfo,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+    UserReadiness,
+)
 from .utils import (
+    build_missing_credentials_from_graph,
     create_credential_meta_from_match,
     get_or_create_library_agent,
     get_user_credentials,
+    match_user_credentials_to_graph,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class CredentialChoice(BaseModel):
-    """An existing user credential that can be attached to the webhook."""
-
-    id: str
-    title: str | None = None
-    provider: str
-    type: str
-
-
-class RequiredTriggerCredential(BaseModel):
-    """A credential field that must be filled before the trigger can be set up."""
-
-    field_name: str
-    provider: str
-    supported_types: list[str]
-    options: list[CredentialChoice]
-
-
-class TriggerCredentialsRequiredResponse(ToolResponseBase):
-    """Returned when credentials must be selected before setting up the trigger.
-
-    The user must pick which account each webhook is registered under, so the
-    LLM should present the ``options`` and ask the user — never pick for them.
-    """
-
-    type: ResponseType = ResponseType.TRIGGER_CREDENTIALS_REQUIRED
-    library_agent_id: str | None = None
-    graph_id: str
-    graph_version: int
-    required_credentials: list[RequiredTriggerCredential]
+def _is_filled(value: Any) -> bool:
+    """Whether a trigger-config value counts as provided (non-empty)."""
+    return value not in (None, "", {}, [])
 
 
 class TriggerSetupResponse(ToolResponseBase):
@@ -77,13 +63,29 @@ class TriggerSetupResponse(ToolResponseBase):
     webhook_url: str | None = None
 
 
+class TriggerConfigRequiredResponse(ToolResponseBase):
+    """Returned when the webhook trigger block needs configuration the LLM must
+    collect from the user (e.g. a GitHub repo + which events to subscribe to).
+
+    The config is gathered conversationally rather than via a card, because a
+    trigger block's config (event filters etc.) can be arbitrarily structured.
+    The LLM should ask the user for the fields in ``config_schema`` — never
+    guess — then re-call with ``trigger_config`` filled in.
+    """
+
+    type: ResponseType = ResponseType.TRIGGER_CONFIG_REQUIRED
+    missing_config: list[str]
+    config_schema: dict[str, Any]
+    graph_id: str
+    graph_version: int
+
+
 class SetupAgentWebhookTriggerTool(BaseTool):
     """Set up a webhook-triggered preset for an agent that has a trigger block.
 
     For manual-setup (generic) webhooks the response includes the ingress URL
-    to give to the user. For provider webhooks (e.g. GitHub) the platform
-    registers the webhook automatically once the user picks which account to
-    use — credentials must be chosen explicitly, never auto-matched.
+    to give to the user. For provider webhooks (e.g. GitHub) the user picks
+    which account the webhook is registered under via the inline setup card.
     """
 
     @property
@@ -93,12 +95,13 @@ class SetupAgentWebhookTriggerTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Set up a webhook trigger (triggered preset) for an agent with a "
-            "webhook trigger block. For manual/generic webhooks, returns the "
-            "exact ingress URL to give the user — never reconstruct it. For "
-            "provider webhooks (e.g. GitHub), credentials MUST be chosen "
-            "explicitly: call without 'credentials' to list accounts, then "
-            "call again with the user's choice."
+            "Set up a webhook trigger for an agent with a webhook trigger block. "
+            "This is the ONLY way to configure such a trigger: pass the trigger "
+            "block's config as 'trigger_config' — never configure it by editing "
+            "the agent's graph. Manual/generic webhooks return the exact ingress "
+            "URL to give the user (never reconstruct it). If credentials are "
+            "needed it returns a setup card; after the user proceeds, call again "
+            "with the 'credentials' they selected."
         )
 
     @property
@@ -133,17 +136,19 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "trigger_config": {
                     "type": "object",
                     "description": (
-                        "Webhook trigger block config inputs (from "
-                        "trigger_setup_info.config_schema); omit credential "
-                        "fields. Usually empty for generic webhooks."
+                        "Trigger block config inputs (from "
+                        "trigger_setup_info.config_schema), e.g. repo + events; "
+                        "omit credential fields. Set config HERE, not by editing "
+                        "the trigger node. Usually empty for generic webhooks."
                     ),
                     "additionalProperties": True,
                 },
                 "credentials": {
                     "type": "object",
                     "description": (
-                        "Explicit credential choice: {field_name: credential_id}. "
-                        "Required for provider webhooks; omit to list accounts."
+                        "Credential selection {field_name: credential_id} the "
+                        "user made in the setup card. Pass when re-calling after "
+                        "the card; omit on the first call."
                     ),
                     "additionalProperties": {"type": "string"},
                 },
@@ -178,7 +183,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             return error
         assert graph is not None
 
-        if not graph.webhook_input_node:
+        if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
                 message=(
                     f"Agent '{graph.name}' has no webhook trigger block, so it "
@@ -188,28 +193,19 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 session_id=session_id,
             )
 
-        agent_credentials, required = self._resolve_credentials(
-            graph, kwargs.get("credentials") or {}, await get_user_credentials(user_id)
+        config_required = self._missing_trigger_config(
+            graph, kwargs.get("trigger_config") or {}, session_id
         )
+        if config_required:
+            return config_required
+
+        agent_credentials, card = await self._resolve_credentials(
+            user_id, graph, trigger_node, kwargs.get("credentials") or {}, session_id
+        )
+        if card:
+            return card
+
         library_agent = await get_or_create_library_agent(graph, user_id)
-
-        if required:
-            return TriggerCredentialsRequiredResponse(
-                message=(
-                    "This trigger needs you to choose which connected account(s) "
-                    "to use. Ask the user which account to use for each field "
-                    "below, then call setup_agent_webhook_trigger again with "
-                    "credentials={<field_name>: <credential_id>}. If a field has "
-                    "no options, the user must connect an account first via "
-                    "connect_integration."
-                ),
-                session_id=session_id,
-                library_agent_id=library_agent.id,
-                graph_id=graph.id,
-                graph_version=graph.version,
-                required_credentials=required,
-            )
-
         try:
             preset = await triggers_db().setup_triggered_preset(
                 user_id=user_id,
@@ -220,14 +216,16 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 trigger_config=kwargs.get("trigger_config") or {},
                 agent_credentials=agent_credentials,
             )
-        except (NotFoundError, InvalidInputError) as e:
+        except (InvalidInputError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=f"Could not set up the trigger: {e}",
                 error="trigger_setup_failed",
                 session_id=session_id,
             )
 
-        return self._build_success_response(preset, graph, library_agent.id, session_id)
+        return self._build_success_response(
+            preset, trigger_node, library_agent.id, session_id
+        )
 
     async def _resolve_graph(
         self,
@@ -274,63 +272,166 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             )
         return graph, None
 
-    def _resolve_credentials(
+    def _missing_trigger_config(
+        self,
+        graph: GraphModel,
+        trigger_config: dict[str, Any],
+        session_id: str | None,
+    ) -> TriggerConfigRequiredResponse | None:
+        """Return a config-required response if the trigger block has required
+        config inputs (e.g. a repo + event filter) the caller hasn't supplied.
+
+        These are collected from the user conversationally — the LLM must ask
+        for them and never guess — rather than via the credentials card.
+        """
+        info = graph.trigger_setup_info
+        schema = info.config_schema if info else None
+        if not isinstance(schema, dict):
+            return None
+        required = schema.get("required", [])
+        missing = [
+            name for name in required if not _is_filled(trigger_config.get(name))
+        ]
+        if not missing:
+            return None
+        return TriggerConfigRequiredResponse(
+            message=(
+                "Before this trigger can be set up, ask the user for its "
+                "configuration and pass it as `trigger_config` — do NOT guess "
+                "values (e.g. don't invent a repository name). The required "
+                "fields and their schema are below; once you have the user's "
+                "answers, call setup_agent_webhook_trigger again with "
+                "`trigger_config` filled in."
+            ),
+            session_id=session_id,
+            missing_config=missing,
+            config_schema=schema,
+            graph_id=graph.id,
+            graph_version=graph.version,
+        )
+
+    async def _resolve_credentials(
+        self,
+        user_id: str,
+        graph: GraphModel,
+        trigger_node: Node,
+        selection: dict[str, str],
+        session_id: str | None,
+    ) -> tuple[dict[str, CredentialsMetaInput], SetupRequirementsResponse | None]:
+        """Resolve the agent's credentials, or return a setup card to fill them.
+
+        Body credentials are auto-matched (run_agent behaviour). The trigger
+        node's own credential is only resolved from an explicit ``selection``,
+        so it's always surfaced in the card for the user to pick the account the
+        webhook is registered under — never silently auto-picked.
+
+        Returns ``(agent_credentials, None)`` when ready to proceed, or
+        ``({}, SetupRequirementsResponse)`` when the user must act first.
+        """
+        matched, _ = await match_user_credentials_to_graph(user_id, graph)
+        trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
+
+        effective = dict(matched)
+        if selection:
+            available = await get_user_credentials(user_id)
+            effective.update(self._resolve_selection(graph, selection, available))
+
+        # Force the trigger credential into the card until it's explicitly
+        # chosen, even when a candidate auto-matched.
+        matched_for_card = {
+            key: cred
+            for key, cred in effective.items()
+            if not (key == trigger_cred_key and trigger_cred_key not in selection)
+        }
+        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        if card_missing:
+            return {}, self._build_card(graph, card_missing, session_id)
+
+        return effective, None
+
+    @staticmethod
+    def _trigger_cred_key(graph: GraphModel, trigger_node: Node) -> str | None:
+        """Graph-level credential key that maps to the trigger node's own
+        credential field (the webhook-registration account). None for manual
+        webhooks, which have no credential."""
+        return next(
+            (
+                key
+                for key, (_, node_fields, _) in graph.regular_credentials_inputs.items()
+                if any(node_id == trigger_node.id for node_id, _ in node_fields)
+            ),
+            None,
+        )
+
+    def _resolve_selection(
         self,
         graph: GraphModel,
         selection: dict[str, str],
         available_creds: list[Credentials],
-    ) -> tuple[dict[str, CredentialsMetaInput], list[RequiredTriggerCredential]]:
-        """Resolve required credential fields from the user's explicit selection.
-
-        Returns (resolved credentials, fields still requiring an explicit
-        choice). Credentials are never auto-matched: a field is only resolved
-        when the caller passed a valid credential ID for it.
-        """
+    ) -> dict[str, CredentialsMetaInput]:
+        """Resolve {field: credential_id} the user picked into credential metas,
+        validating each against the field's provider/type. Invalid or unknown
+        selections are dropped (so the card re-surfaces them)."""
+        regular = graph.regular_credentials_inputs
         resolved: dict[str, CredentialsMetaInput] = {}
-        required: list[RequiredTriggerCredential] = []
-
-        for field_name, (field_info, _, _) in graph.regular_credentials_inputs.items():
-            matching = [
-                cred
-                for cred in available_creds
-                if cred.provider in field_info.provider
-                and cred.type in field_info.supported_types
-            ]
-            chosen_id = selection.get(field_name)
-            chosen = next((c for c in matching if c.id == chosen_id), None)
-            if chosen is not None:
-                resolved[field_name] = create_credential_meta_from_match(chosen)
+        for key, cred_id in selection.items():
+            if not (entry := regular.get(key)):
                 continue
-
-            required.append(
-                RequiredTriggerCredential(
-                    field_name=field_name,
-                    provider=next(iter(field_info.provider), "unknown"),
-                    supported_types=sorted(field_info.supported_types),
-                    options=[
-                        CredentialChoice(
-                            id=cred.id,
-                            title=cred.title,
-                            provider=cred.provider,
-                            type=cred.type,
-                        )
-                        for cred in matching
-                    ],
-                )
+            field_info = entry[0]
+            cred = next(
+                (
+                    c
+                    for c in available_creds
+                    if c.id == cred_id
+                    and c.provider in field_info.provider
+                    and c.type in field_info.supported_types
+                ),
+                None,
             )
+            if cred:
+                resolved[key] = create_credential_meta_from_match(cred)
+        return resolved
 
-        return resolved, required
+    def _build_card(
+        self,
+        graph: GraphModel,
+        missing_credentials: dict[str, Any],
+        session_id: str | None,
+    ) -> SetupRequirementsResponse:
+        """Build the inline credentials setup card (same shape as run_agent)."""
+        return SetupRequirementsResponse(
+            message=(
+                "Choose or connect the account(s) in the card below, then "
+                "proceed — connecting happens right here in this card, with no "
+                "separate connection step needed first."
+            ),
+            session_id=session_id,
+            setup_info=SetupInfo(
+                agent_id=graph.id,
+                agent_name=graph.name,
+                user_readiness=UserReadiness(
+                    has_all_credentials=False,
+                    missing_credentials=missing_credentials,
+                    ready_to_run=False,
+                ),
+                requirements={
+                    "credentials": list(missing_credentials.values()),
+                    "inputs": [],
+                    "execution_modes": ["webhook"],
+                },
+            ),
+            graph_id=graph.id,
+            graph_version=graph.version,
+        )
 
     def _build_success_response(
         self,
         preset: LibraryAgentPreset,
-        graph: GraphModel,
+        trigger_node: Node,
         library_agent_id: str,
         session_id: str | None,
     ) -> TriggerSetupResponse:
         """Build the success response, surfacing the ingress URL when manual."""
-        trigger_node = graph.webhook_input_node
-        assert trigger_node is not None
         manual = trigger_node.block.block_type == BlockType.WEBHOOK_MANUAL
         webhook_url = preset.webhook.url if preset.webhook else None
         provider = preset.webhook.provider if preset.webhook else None

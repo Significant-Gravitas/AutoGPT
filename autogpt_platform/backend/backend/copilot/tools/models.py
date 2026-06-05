@@ -53,7 +53,7 @@ class ResponseType(str, Enum):
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
     TRIGGER_SETUP = "trigger_setup"
-    TRIGGER_CREDENTIALS_REQUIRED = "trigger_credentials_required"
+    TRIGGER_CONFIG_REQUIRED = "trigger_config_required"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -166,6 +166,16 @@ class AgentInfo(BaseModel):
     graph: BaseGraph | None = Field(
         default=None,
         description="Full graph structure (nodes + links) when include_graph is requested",
+    )
+    trigger_info: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
     )
 
 

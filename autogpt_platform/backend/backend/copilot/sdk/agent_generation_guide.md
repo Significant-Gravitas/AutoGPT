@@ -379,16 +379,38 @@ triggered, not run manually.
 
 **To set up a webhook trigger:** call `setup_agent_webhook_trigger` with the
 agent's `library_agent_id` and the trigger block's `trigger_config` (the trigger
-block's configuration inputs, from the agent's `trigger_setup_info.config_schema`;
-usually empty for a generic webhook). It creates a triggered preset.
+block's configuration inputs). Read those fields from the agent's
+`trigger_info.config_schema`, which `find_library_agent` returns for any
+webhook-trigger agent — you do **not** need to fetch or parse the full graph
+(`include_graph`) for this. Config is usually empty for a generic webhook. The
+call creates a triggered preset.
+
+**Configure the trigger through the tool, NOT by editing the graph.** The trigger
+block's config (e.g. GitHub `repo` and `events`) is *not* set on the trigger node
+via `create_agent`/`edit_agent` — leave those inputs unset in the graph.
+`edit_agent` will reject any change to a trigger node's config fields and point
+you back here. The config is stored per-trigger on the **preset** and applied to
+the trigger node each time the webhook fires, so one agent can have several
+triggers (e.g. different repos) each configured independently. Always supply
+config via `setup_agent_webhook_trigger`'s `trigger_config` — never by editing
+the node.
 
 **Credentials must be chosen explicitly.** For provider webhooks (e.g. GitHub)
 the webhook is registered under a specific account, so always ask the user which
 connected account to use — never assume or auto-pick, even if only one exists.
-Call `setup_agent_webhook_trigger` without `credentials` first: it returns the
-available accounts per credential field. Ask the user, then call again with
-`credentials={<field_name>: <credential_id>}`. If a field has no accounts, have
-the user connect one via `connect_integration` first.
+Call `setup_agent_webhook_trigger` without `credentials` first: it returns a
+setup card listing the available accounts per credential field. Ask the user
+which to use, then call again with `credentials={<field_name>: <credential_id>}`.
+If a field has no connected account, that **same card lets the user connect
+one** — do NOT also call `connect_integration` (that just shows a second,
+duplicate card).
+
+**Trigger config must come from the user, not a guess.** If the tool returns
+`trigger_config_required`, the trigger block needs configuration you must
+collect from the user (e.g. a GitHub repo and which events to subscribe to). Use
+the returned `config_schema` to know the fields and options, **ask the user for
+the actual values — never invent them (e.g. don't make up a repository name)** —
+then call again with `trigger_config` filled in.
 
 **Two kinds of webhook:**
 

@@ -53,14 +53,12 @@ async def test_list_triggers_exposes_webhook_url(tool, session):
     preset_response = MagicMock()
     preset_response.presets = [_make_webhook_preset()]
 
-    with (
-        patch(
-            f"{_PATH}.get_library_agent",
-            new=AsyncMock(return_value=MagicMock(graph_id="graph-1")),
-        ),
-        patch(f"{_PATH}.list_trigger_agents", new=AsyncMock(return_value=[])),
-        patch(f"{_PATH}.list_presets", new=AsyncMock(return_value=preset_response)),
-    ):
+    mock_ldb = MagicMock()
+    mock_ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    mock_ldb.list_trigger_agents = AsyncMock(return_value=[])
+    mock_ldb.list_presets = AsyncMock(return_value=preset_response)
+
+    with patch(f"{_PATH}.library_db", return_value=mock_ldb):
         result = await tool._execute(
             user_id=_USER, session=session, library_agent_id="lib-1"
         )

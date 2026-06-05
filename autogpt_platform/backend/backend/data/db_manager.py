@@ -16,6 +16,8 @@ from backend.api.features.library.db import (
     get_root_agent_summaries,
     list_folders,
     list_library_agents,
+    list_presets,
+    list_trigger_agents,
     move_folder,
     update_folder,
     update_graph_in_library,
@@ -302,6 +304,8 @@ class DatabaseManager(AppService):
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
     setup_triggered_preset = _(setup_triggered_preset)
+    list_presets = _(list_presets)
+    list_trigger_agents = _(list_trigger_agents)
 
     create_folder = _(create_folder)
     list_folders = _(list_folders)
@@ -555,6 +559,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
     setup_triggered_preset = d.setup_triggered_preset
+    list_presets = d.list_presets
+    list_trigger_agents = d.list_trigger_agents
 
     # ============ Library Folders ============ #
     create_folder = d.create_folder
