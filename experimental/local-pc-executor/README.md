@@ -57,6 +57,8 @@ in [AUDIT_LOG.md](docs/AUDIT_LOG.md); review it with
 | [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | Platform-side insertion points |
 | [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) | Per-OS support matrix and path-jail strategy |
 | [AUDIT_LOG.md](docs/AUDIT_LOG.md) | Audit log format, HMAC tamper-evidence, CLI |
+| [HARDWARE.md](docs/HARDWARE.md) | Hardware access wire spec (serial / USB / GPIO) |
+| [COMPUTER_USE.md](docs/COMPUTER_USE.md) | Computer-use wire spec — screenshots, input, windows, clipboard |
 
 ## Contributing
 
