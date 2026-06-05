@@ -12,7 +12,7 @@
 #                          wire backend/.env so AutoPilot runs without any
 #                          cloud API keys (CHAT_USE_LOCAL=true). See
 #                          docs/platform/copilot-local-llm.md.
-#   --ollama-model=NAME    Model to pull (default: llama3.1:8b-instruct-q4_K_M).
+#   --ollama-model=NAME    Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
 #   --ollama-host=URL      Use an existing Ollama at this URL instead of
 #                          installing one locally. Skips the Ollama install
 #                          but still writes the CHAT_USE_LOCAL .env entries.
@@ -33,7 +33,7 @@ DOCKER_CMD="docker"
 DOCKER_COMPOSE_CMD="docker compose"
 LOG_FILE=""
 WITH_OLLAMA=false
-OLLAMA_MODEL="llama3.1:8b-instruct-q4_K_M"
+OLLAMA_MODEL="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
 OLLAMA_HOST_URL=""
 
 # OS-family detection — Linux and macOS install Ollama very differently
@@ -175,7 +175,7 @@ bootstrap_ollama() {
         # the first chat turn fails with "model not found" — a setup
         # script that returns 0 should mean the platform is *usable*.
         # ``grep -F`` (fixed string) so model names containing regex
-        # metacharacters (``llama3.1:8b-instruct-q4_K_M`` has ``.`` and
+        # metacharacters (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`` has ``.`` and
         # ``:``) match literally, not as wildcards.
         if ! curl -sf "${OLLAMA_ROOT}/api/tags" \
             | grep -Fq "\"name\":\"$OLLAMA_MODEL\""; then

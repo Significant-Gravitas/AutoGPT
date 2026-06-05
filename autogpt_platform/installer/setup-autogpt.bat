@@ -11,7 +11,7 @@ REM   /with-ollama           Install Ollama (via winget), pull a default chat
 REM                          model, and wire backend\.env so AutoPilot runs
 REM                          without any cloud API keys (CHAT_USE_LOCAL=true).
 REM                          See docs/platform/copilot-local-llm.md.
-REM   /ollama-model=NAME     Model to pull (default: llama3.1:8b-instruct-q4_K_M).
+REM   /ollama-model=NAME     Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
 REM   /ollama-host=URL       Use an existing Ollama at this URL instead of
 REM                          installing one locally. Skips the Ollama install
 REM                          but still writes the CHAT_USE_LOCAL .env entries.
@@ -24,7 +24,7 @@ set REPO_DIR=%SCRIPT_DIR%..\..
 set CLONE_NEEDED=0
 set LOG_FILE=
 set WITH_OLLAMA=0
-set OLLAMA_MODEL=llama3.1:8b-instruct-q4_K_M
+set OLLAMA_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 set OLLAMA_HOST_URL=
 
 REM --- Parse args ---
