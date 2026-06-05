@@ -10,6 +10,7 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
@@ -20,6 +21,19 @@ import { NavbarLink } from "./components/NavbarLink";
 import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
+
+const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
+  "/marketplace": IconType.Marketplace,
+  "/build": IconType.Builder,
+  "/copilot": IconType.Chat,
+  "/library": IconType.Library,
+  "/artifacts": IconType.UploadCloud,
+  "/monitor": IconType.Library,
+};
+
+function pickMobileNavIcon(href: string): IconType {
+  return MOBILE_NAV_ICONS[href] ?? IconType.LayoutDashboard;
+}
 
 export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
@@ -44,9 +58,12 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
+    ...(isArtifactsEnabled ? [{ name: "Files", href: "/artifacts" }] : []),
     ...loggedInLinks,
   ];
 
@@ -125,30 +142,11 @@ export function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: actualLoggedInLinks
-                    .map((link) => {
-                      return {
-                        icon:
-                          link.href === "/marketplace"
-                            ? IconType.Marketplace
-                            : link.href === "/build"
-                              ? IconType.Builder
-                              : link.href === "/copilot"
-                                ? IconType.Chat
-                                : link.href === "/library"
-                                  ? IconType.Library
-                                  : link.href === "/monitor"
-                                    ? IconType.Library
-                                    : IconType.LayoutDashboard,
-                        text: link.name,
-                        href: link.href,
-                      };
-                    })
-                    .filter((item) => item !== null) as Array<{
-                    icon: IconType;
-                    text: string;
-                    href: string;
-                  }>,
+                  items: actualLoggedInLinks.map((link) => ({
+                    icon: pickMobileNavIcon(link.href),
+                    text: link.name,
+                    href: link.href,
+                  })),
                 },
                 ...dynamicMenuItems,
               ]}

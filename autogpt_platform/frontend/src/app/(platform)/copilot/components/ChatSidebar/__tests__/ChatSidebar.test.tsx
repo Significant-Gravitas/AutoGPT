@@ -3,6 +3,8 @@ import {
   getDeleteV2DeleteSessionMockHandler422,
   getGetV2ListSessionsMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetSearchGlobalSearchMockHandler200 } from "@/app/api/__generated__/endpoints/search/search.msw";
+import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -180,35 +182,61 @@ describe("ChatSidebar — delete flow", () => {
   });
 });
 
-describe("ChatSidebar — search modal", () => {
+describe("ChatSidebar — global search modal", () => {
+  function makeSearchResponse(
+    overrides: Partial<GlobalSearchResponse> = {},
+  ): GlobalSearchResponse {
+    return {
+      agents: [],
+      files: [],
+      chats: [
+        {
+          id: "newer",
+          type: "chat_session",
+          title: "Revenue forecast",
+          score: 0.9,
+          updated_at: new Date("2025-01-03T00:00:00Z"),
+        },
+        {
+          id: "middle",
+          type: "chat_session",
+          title: "Forecast follow-up",
+          score: 0.8,
+          updated_at: new Date("2025-01-02T00:00:00Z"),
+        },
+        {
+          id: "older",
+          type: "chat_session",
+          title: "Budget notes",
+          score: 0.6,
+          updated_at: new Date("2025-01-01T00:00:00Z"),
+        },
+      ],
+      ...overrides,
+    };
+  }
+
   beforeEach(() => {
     useCopilotUIStore.setState({ isSearchOpen: false });
     server.use(
       getGetV2ListSessionsMockHandler200({
-        sessions: [
-          {
-            id: "older",
-            title: "Budget notes",
-            is_processing: false,
-            created_at: "2025-01-01T00:00:00Z",
-            updated_at: "2025-01-01T00:00:00Z",
-          },
-          {
-            id: "newer",
-            title: "Revenue forecast",
-            is_processing: false,
-            created_at: "2025-01-03T00:00:00Z",
-            updated_at: "2025-01-03T00:00:00Z",
-          },
-          {
-            id: "middle",
-            title: "Forecast follow-up",
-            is_processing: false,
-            created_at: "2025-01-02T00:00:00Z",
-            updated_at: "2025-01-02T00:00:00Z",
-          },
-        ],
-        total: 3,
+        sessions: [],
+        total: 0,
+      }),
+      // Search endpoint is filtered server-side by the ``q`` param. To
+      // keep the test deterministic we narrow the chat bucket here
+      // instead of relying on backend semantics.
+      getGetSearchGlobalSearchMockHandler200(({ request }) => {
+        const url = new URL(request.url);
+        const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+        const response = makeSearchResponse();
+        if (!q) {
+          return response;
+        }
+        response.chats = (response.chats ?? []).filter((chat) =>
+          chat.title.toLowerCase().includes(q),
+        );
+        return response;
       }),
     );
   });
@@ -222,10 +250,9 @@ describe("ChatSidebar — search modal", () => {
     );
 
     const dialog = await screen.findByRole("dialog");
-    const input = screen.getByRole("textbox", { name: /search chats/i });
+    const input = screen.getByRole("textbox", { name: /global search/i });
     await vi.waitFor(() => expect(document.activeElement).toBe(input));
-    expect(within(dialog).getByText("Recent chats")).toBeDefined();
-    expect(within(dialog).getByText("Revenue forecast")).toBeDefined();
+    expect(await within(dialog).findByText("Revenue forecast")).toBeDefined();
   });
 
   it("filters results, shows empty copy, and clears the query", async () => {
@@ -236,34 +263,38 @@ describe("ChatSidebar — search modal", () => {
       await screen.findByRole("button", { name: /search chats/i }),
     );
     await user.type(
-      screen.getByRole("textbox", { name: /search chats/i }),
+      screen.getByRole("textbox", { name: /global search/i }),
       "forecast",
     );
 
-    await screen.findByText("Results");
     const dialog = screen.getByRole("dialog");
+    // The hook keeps previous results visible via ``placeholderData`` to
+    // avoid a flash-of-empty on every keystroke — wait for the filtered
+    // response to land before asserting that ``Budget notes`` is gone.
+    await vi.waitFor(() => {
+      expect(
+        within(dialog).queryByRole("option", { name: /budget notes/i }),
+      ).toBeNull();
+    });
     expect(
       within(dialog).getByRole("option", { name: /revenue forecast/i }),
     ).toBeDefined();
     expect(
       within(dialog).getByRole("option", { name: /forecast follow-up/i }),
     ).toBeDefined();
-    expect(
-      within(dialog).queryByRole("option", { name: /budget notes/i }),
-    ).toBeNull();
 
-    await user.clear(screen.getByRole("textbox", { name: /search chats/i }));
+    await user.clear(screen.getByRole("textbox", { name: /global search/i }));
     await user.type(
-      screen.getByRole("textbox", { name: /search chats/i }),
+      screen.getByRole("textbox", { name: /global search/i }),
       "missing",
     );
-    expect(await screen.findByText("No chats found")).toBeDefined();
+    expect(await screen.findByText("No results found")).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: /clear search/i }));
     expect(
       (
         screen.getByRole("textbox", {
-          name: /search chats/i,
+          name: /global search/i,
         }) as HTMLInputElement
       ).value,
     ).toBe("");
@@ -274,14 +305,17 @@ describe("ChatSidebar — search modal", () => {
     renderSidebar();
 
     fireEvent.keyDown(document, { key: "k", metaKey: true });
-    expect(await screen.findByRole("dialog")).toBeDefined();
+    const dialog = await screen.findByRole("dialog");
 
     await user.type(
-      screen.getByRole("textbox", { name: /search chats/i }),
+      screen.getByRole("textbox", { name: /global search/i }),
       "forecast",
     );
-    await screen.findByText("Results");
-    await user.keyboard("{ArrowDown}{Enter}");
+    // Wait for the highlighted result to settle on the top match.
+    await within(dialog).findByRole("option", { name: /revenue forecast/i });
+
+    fireEvent.keyDown(dialog, { key: "ArrowDown" });
+    fireEvent.keyDown(dialog, { key: "Enter" });
 
     await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();

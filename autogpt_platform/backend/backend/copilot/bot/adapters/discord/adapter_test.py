@@ -1,7 +1,7 @@
 """Tests for DiscordAdapter helpers that don't need a live gateway."""
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -146,21 +146,19 @@ class TestShouldIgnoreMessage:
     def test_ignores_unmentioned_bot_message(self):
         # A bot that doesn't @mention us is skipped — otherwise two bots
         # sharing a thread (our own dev + prod included) loop forever.
-        adapter, client = _bare_adapter(bot_id=1000)
+        adapter, _ = _bare_adapter(bot_id=1000)
         msg = _message("hi", [])
         msg.author = MagicMock(id=2000, bot=True)
         msg.guild = MagicMock()
-        client.user.mentioned_in.return_value = False
 
         assert adapter._should_ignore_message(msg) is True
 
     def test_allows_mentioned_bot_message(self):
         # Another bot can still reach us by explicitly @mentioning us.
-        adapter, client = _bare_adapter(bot_id=1000)
-        msg = _message("hi", [])
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [_mention(1000, "AutoPilot")])
         msg.author = MagicMock(id=2000, bot=True)
         msg.guild = MagicMock()
-        client.user.mentioned_in.return_value = True
 
         assert adapter._should_ignore_message(msg) is False
 
@@ -180,24 +178,41 @@ class TestIsMentioned:
         assert adapter._is_mentioned(msg) is True
 
     def test_guild_requires_explicit_mention(self):
-        adapter, client = _bare_adapter(bot_id=1000)
-        msg = MagicMock()
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [_mention(2000, "someone-else")])
         msg.guild = MagicMock()
-        client.user.mentioned_in.return_value = False
         assert adapter._is_mentioned(msg) is False
 
     def test_guild_with_mention_passes(self):
-        adapter, client = _bare_adapter(bot_id=1000)
-        msg = MagicMock()
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hi", [_mention(1000, "AutoPilot")])
         msg.guild = MagicMock()
-        client.user.mentioned_in.return_value = True
         assert adapter._is_mentioned(msg) is True
 
     def test_no_bot_user_treats_guild_mention_as_false(self):
         adapter, _ = _bare_adapter(bot_id=None)
-        msg = MagicMock()
+        msg = _message("hi", [_mention(1000, "AutoPilot")])
         msg.guild = MagicMock()
         assert adapter._is_mentioned(msg) is False
+
+    def test_everyone_ping_alone_is_not_a_mention(self):
+        # `discord.User.mentioned_in` short-circuits to True on @everyone /
+        # @here, which used to make the bot reply to every server-wide ping.
+        # We now check `message.mentions` so only explicit @bot counts.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hey @everyone heads up", [])
+        msg.guild = MagicMock()
+        msg.mention_everyone = True
+        assert adapter._is_mentioned(msg) is False
+
+    def test_everyone_ping_with_explicit_bot_mention_still_counts(self):
+        # If they ping the bot AND @everyone, the bot is still in
+        # `message.mentions` and we should reply normally.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("@everyone and @AutoPilot", [_mention(1000, "AutoPilot")])
+        msg.guild = MagicMock()
+        msg.mention_everyone = True
+        assert adapter._is_mentioned(msg) is True
 
 
 # ── _resolve_channel ───────────────────────────────────────────────────
@@ -514,3 +529,57 @@ class TestRefreshServerNames:
         api.refresh_server_name.side_effect = RuntimeError("rpc down")
         # Must not raise — refreshing names is never critical-path.
         await adapter._refresh_server_name(_guild(1, "Server One"))
+
+
+# ── on_thread_remove ────────────────────────────────────────────────────
+
+
+def _thread(thread_id: int) -> MagicMock:
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = thread_id
+    return thread
+
+
+def _register_events_with_mocked_decorator(adapter: DiscordAdapter) -> dict:
+    """Capture the @client.event handlers without actually attaching to
+    discord.py. Returns a name→coroutine map for direct invocation."""
+    handlers: dict = {}
+
+    def _event(coro):
+        handlers[coro.__name__] = coro
+        return coro
+
+    adapter._client.event = _event  # type: ignore[assignment]
+    adapter._register_events()
+    return handlers
+
+
+class TestOnThreadRemove:
+    @pytest.mark.asyncio
+    async def test_removal_unsubscribes_thread(self):
+        # We use on_thread_remove instead of on_thread_member_remove so we
+        # don't need the privileged `members` intent. The trade-off is that
+        # this only tells us the bot lost access — which is exactly when we
+        # want to drop the subscription, so the trade-off is free.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await handlers["on_thread_remove"](_thread(555))
+
+        mock_unsub.assert_awaited_once_with("discord", "555")
+
+    @pytest.mark.asyncio
+    async def test_swallows_redis_failures(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            # Must not raise — cleanup is never critical-path.
+            await handlers["on_thread_remove"](_thread(555))

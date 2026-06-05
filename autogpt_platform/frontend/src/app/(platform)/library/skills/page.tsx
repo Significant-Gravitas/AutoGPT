@@ -14,7 +14,7 @@ export default function SkillsPage() {
   const { skills, isLoading, error } = useSkillsPage();
 
   useEffect(() => {
-    document.title = "Copilot skills – AutoGPT Platform";
+    document.title = "AutoPilot skills – AutoGPT Platform";
   }, []);
 
   return (
@@ -28,9 +28,9 @@ export default function SkillsPage() {
         Back to Library
       </Link>
       <header className="flex flex-col gap-2">
-        <Text variant="h2">Copilot skills</Text>
+        <Text variant="h2">AutoPilot skills</Text>
         <Text variant="body" className="!text-zinc-500">
-          Reusable procedures your copilot has distilled from past sessions.
+          Reusable procedures your AutoPilot has distilled from past sessions.
           Review what it remembers, or delete a skill you no longer want it to
           reach for.
         </Text>
@@ -42,7 +42,7 @@ export default function SkillsPage() {
             message:
               error instanceof Error ? error.message : "Failed to load skills",
           }}
-          context="copilot skills"
+          context="AutoPilot skills"
         />
       ) : isLoading ? (
         <div
@@ -57,7 +57,7 @@ export default function SkillsPage() {
         <ul
           className="flex flex-col gap-3"
           data-testid="skills-list"
-          aria-label="Copilot skills"
+          aria-label="AutoPilot skills"
         >
           {skills.map((skill) => (
             <li key={skill.name}>
