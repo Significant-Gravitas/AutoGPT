@@ -367,9 +367,10 @@ class WorkspaceManager:
             include_all_sessions: If True, list files from all sessions.
                                   If False (default), only list current session's files.
             name_contains: Case-insensitive substring filter on the file name.
-            path_not_starts_with: Path prefix to exclude from results.
-                Used by the Artifacts page to surface only Builder-origin
-                files (i.e. those not under ``/sessions/``).
+            path_not_starts_with: Optional path prefix to exclude from results.
+                Generic path filter; origin-based filtering for the Artifacts
+                page is handled separately via ``metadata_equals`` /
+                ``metadata_not_equals``.
             metadata_equals: Match files whose ``metadata`` equals this object
                 exactly (Artifacts "Uploaded" filter).
             metadata_not_equals: Match files whose ``metadata`` does not equal
