@@ -61,6 +61,71 @@ _TEXT_HINTS = (
     "markdown",
     "svg",
 )
+# Extension fallback for text-like files whose stored MIME is unreliable.
+# ``mimetypes.guess_type`` returns ``None``/``application/octet-stream`` for
+# ``.md`` and most source extensions on many systems, which would 415 a file
+# the frontend already classified as previewable by extension. Mirrors the
+# frontend's extension-first detection (artifacts ArtifactsList/helpers.ts).
+_TEXT_EXTENSIONS = frozenset(
+    {
+        "md",
+        "markdown",
+        "mdx",
+        "txt",
+        "text",
+        "log",
+        "rst",
+        "json",
+        "jsonl",
+        "yaml",
+        "yml",
+        "toml",
+        "ini",
+        "csv",
+        "tsv",
+        "xml",
+        "html",
+        "htm",
+        "svg",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "mts",
+        "cts",
+        "py",
+        "rb",
+        "go",
+        "rs",
+        "java",
+        "kt",
+        "kts",
+        "c",
+        "h",
+        "cpp",
+        "cc",
+        "hpp",
+        "cs",
+        "php",
+        "swift",
+        "scala",
+        "sh",
+        "bash",
+        "zsh",
+        "css",
+        "scss",
+        "sass",
+        "less",
+        "sql",
+        "vue",
+        "svelte",
+        "dart",
+        "lua",
+        "r",
+    }
+)
 _EMBEDDED_THUMBNAILS = (
     "docprops/thumbnail.jpeg",
     "docprops/thumbnail.jpg",
@@ -93,7 +158,7 @@ async def _dispatch_preview(
     if mime in OFFICE_MIMES:
         _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
         return _webp_response(await _office_thumbnail(file, width))
-    if _is_text_like(mime):
+    if _is_text_like(mime, file.name):
         _ensure_size(file, PREVIEW_MAX_TEXT_BYTES)
         content = await _text_preview(file, max_bytes)
         return Response(
@@ -107,8 +172,11 @@ async def _dispatch_preview(
     )
 
 
-def _is_text_like(mime: str) -> bool:
-    return mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS)
+def _is_text_like(mime: str, name: str = "") -> bool:
+    if mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS):
+        return True
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return ext in _TEXT_EXTENSIONS
 
 
 def _ensure_size(file: WorkspaceFile, limit: int) -> None:

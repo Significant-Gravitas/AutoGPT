@@ -351,6 +351,8 @@ class WorkspaceManager:
         include_all_sessions: bool = False,
         name_contains: Optional[str] = None,
         path_not_starts_with: Optional[str] = None,
+        metadata_equals: Optional[dict] = None,
+        metadata_not_equals: Optional[dict] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -368,6 +370,10 @@ class WorkspaceManager:
             path_not_starts_with: Path prefix to exclude from results.
                 Used by the Artifacts page to surface only Builder-origin
                 files (i.e. those not under ``/sessions/``).
+            metadata_equals: Match files whose ``metadata`` equals this object
+                exactly (Artifacts "Uploaded" filter).
+            metadata_not_equals: Match files whose ``metadata`` does not equal
+                this object (Artifacts "Generated" filter).
 
         Returns:
             List of WorkspaceFile instances
@@ -382,6 +388,8 @@ class WorkspaceManager:
             limit=limit,
             offset=offset,
             name_contains=name_contains,
+            metadata_equals=metadata_equals,
+            metadata_not_equals=metadata_not_equals,
         )
 
     async def delete_file(self, file_id: str) -> bool:

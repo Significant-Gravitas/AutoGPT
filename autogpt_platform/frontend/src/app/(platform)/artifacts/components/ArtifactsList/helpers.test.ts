@@ -8,6 +8,7 @@ import {
   getFileTypeIcon,
   getFileTypeLabel,
   getPreviewKind,
+  isCodeFile,
 } from "./helpers";
 
 describe("deriveFileOrigin", () => {
@@ -181,12 +182,19 @@ describe("getPreviewKind", () => {
     "text/plain",
     "text/html",
     "application/xml",
-    "text/markdown",
     "application/javascript",
     "application/typescript",
     "application/yaml",
   ])("text-like mime '%s' under cap previews as 'text'", (mt) => {
     expect(getPreviewKind(mt, 1_000)).toBe("text");
+  });
+
+  test("markdown previews as 'markdown' so the card renders its content", () => {
+    expect(getPreviewKind("text/markdown", 1_000)).toBe("markdown");
+    expect(getPreviewKind("text/plain", 1_000, "README.md")).toBe("markdown");
+    expect(getPreviewKind("application/octet-stream", 1_000, "notes.mdx")).toBe(
+      "markdown",
+    );
   });
 
   test("csv previews as 'csv'", () => {
@@ -249,5 +257,32 @@ describe("getPreviewKind", () => {
 
   test("undefined mime returns 'none'", () => {
     expect(getPreviewKind(undefined, 100)).toBe("none");
+  });
+});
+
+describe("source code files (`.ts` → video/mp2t MIME)", () => {
+  test("isCodeFile matches code extensions, not media", () => {
+    expect(isCodeFile("main.ts")).toBe(true);
+    expect(isCodeFile("App.tsx")).toBe(true);
+    expect(isCodeFile("script.py")).toBe(true);
+    expect(isCodeFile("style.css")).toBe(true);
+    expect(isCodeFile("clip.mp4")).toBe(false);
+    expect(isCodeFile("photo.png")).toBe(false);
+    expect(isCodeFile("notes.txt")).toBe(false);
+    expect(isCodeFile(undefined)).toBe(false);
+  });
+
+  test("a .ts file with video/mp2t MIME previews as text, not video", () => {
+    expect(getPreviewKind("video/mp2t", 1_000, "main.ts")).toBe("text");
+  });
+
+  test("a .ts file labels as Code, not Video", () => {
+    expect(getFileTypeLabel("video/mp2t", "main.ts")).toBe("Code");
+  });
+
+  test("a .ts file uses the code icon, not the video-camera icon", () => {
+    const codeIcon = getFileTypeIcon("video/mp2t", "main.ts");
+    const videoIcon = getFileTypeIcon("video/mp4", "clip.mp4");
+    expect(codeIcon).not.toBe(videoIcon);
   });
 });

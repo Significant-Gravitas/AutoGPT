@@ -33,6 +33,27 @@ export function getFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
 
+// Fetches the file as a blob and triggers a browser download. Throws on a
+// non-OK response so callers can surface the error (toast) and toggle their
+// own loading state.
+export async function downloadFileBlob(
+  fileId: string,
+  fileName: string,
+): Promise<void> {
+  const res = await fetch(getFileDownloadUrl(fileId));
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revocation so browsers (Firefox/Edge) have time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function getFilePreviewUrl(
   fileId: string,
   opts: { width?: number; bytes?: number },
@@ -79,7 +100,65 @@ export function formatRelativeDate(input: string | Date): string {
   });
 }
 
-export function getFileTypeLabel(mimeType: string | undefined): string {
+// Source-code extensions whose MIME type is ambiguous or actively misleading
+// in the browser/OS database — most notably `.ts`, which resolves to
+// `video/mp2t` (MPEG transport stream) and would otherwise render as a video.
+// Classifying these by extension keeps source files out of the media path.
+// Mirrors the copilot ArtifactPanel classifier, which is also extension-first.
+const CODE_EXTENSIONS = new Set([
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "mts",
+  "cts",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "kts",
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "hpp",
+  "cs",
+  "php",
+  "swift",
+  "scala",
+  "sh",
+  "bash",
+  "zsh",
+  "css",
+  "scss",
+  "sass",
+  "less",
+  "sql",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "vue",
+  "svelte",
+  "dart",
+  "lua",
+  "r",
+]);
+
+export function isCodeFile(fileName: string | undefined): boolean {
+  const ext = (fileName ?? "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return ext ? CODE_EXTENSIONS.has(ext[1]) : false;
+}
+
+export function getFileTypeLabel(
+  mimeType: string | undefined,
+  fileName?: string,
+): string {
+  if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
   if (mt.startsWith("image/")) return "Image";
   if (mt.startsWith("video/")) return "Video";
@@ -94,7 +173,11 @@ export function getFileTypeLabel(mimeType: string | undefined): string {
   return "Generated file";
 }
 
-export function getFileTypeIcon(mimeType: string | undefined): Icon {
+export function getFileTypeIcon(
+  mimeType: string | undefined,
+  fileName?: string,
+): Icon {
+  if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
   if (mt.startsWith("image/")) return ImageIcon;
   if (mt.startsWith("video/")) return VideoCameraIcon;
@@ -119,6 +202,7 @@ export type PreviewKind =
   | "office"
   | "csv"
   | "json"
+  | "markdown"
   | "ics"
   | "vcard"
   | "text"
@@ -157,6 +241,12 @@ export function getPreviewKind(
   const mt = (mimeType ?? "").toLowerCase();
   const name = (fileName ?? "").toLowerCase();
 
+  // Extension-first for source code: `.ts` & friends carry misleading MIME
+  // types (e.g. `video/mp2t`). Render them as a generic file card, not media.
+  if (isCodeFile(name)) {
+    return sizeBytes > MAX_TEXT_PREVIEW_BYTES ? "none" : "text";
+  }
+
   if (mt.startsWith("image/") && !mt.includes("svg")) {
     return sizeBytes > MAX_IMAGE_PREVIEW_BYTES ? "none" : "image";
   }
@@ -181,6 +271,14 @@ export function getPreviewKind(
   if (sizeBytes > MAX_TEXT_PREVIEW_BYTES) return "none";
   if (mt.includes("csv") || name.endsWith(".csv")) return "csv";
   if (mt.includes("json") || name.endsWith(".json")) return "json";
+  if (
+    mt.includes("markdown") ||
+    name.endsWith(".md") ||
+    name.endsWith(".markdown") ||
+    name.endsWith(".mdx")
+  ) {
+    return "markdown";
+  }
   if (
     mt.startsWith("text/") ||
     mt.includes("html") ||

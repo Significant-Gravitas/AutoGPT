@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+import { isCodeFile } from "./helpers";
 
 export type FileTypeKey =
   | "pdf"
@@ -11,6 +12,7 @@ export type FileTypeKey =
   | "html"
   | "video"
   | "react"
+  | "code"
   | "generic";
 
 interface FileTypeConfig {
@@ -192,6 +194,33 @@ function ReactContent() {
   );
 }
 
+function CodeContent() {
+  // Indented "code lines" with a leading angle-bracket motif — visually
+  // distinct from the flat GenericTextContent so code reads as code at a glance.
+  const lines = [
+    { pl: "", w: "w-3" },
+    { pl: "pl-2", w: "w-4" },
+    { pl: "pl-4", w: "w-2.5" },
+    { pl: "pl-4", w: "w-3.5" },
+    { pl: "pl-2", w: "w-2" },
+    { pl: "", w: "w-3" },
+  ];
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => (
+        <div key={i} className={cn("flex items-center gap-1", line.pl)}>
+          <div className="font-mono text-[5px] leading-none text-zinc-900/40">
+            {i === 0 ? "<" : i === lines.length - 1 ? "/>" : "·"}
+          </div>
+          <div
+            className={cn("h-[3px] rounded-full bg-zinc-900/20", line.w)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   pdf: {
     label: "PDF",
@@ -235,6 +264,12 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
     badgePositionClass: "bottom-5 -right-2",
     content: <ReactContent />,
   },
+  code: {
+    label: "CODE",
+    cardClass: "w-20 space-y-1.5 p-2.5",
+    badgePositionClass: "bottom-5 -right-2",
+    content: <CodeContent />,
+  },
   generic: {
     label: "FILE",
     cardClass: "w-20 space-y-3 p-3",
@@ -251,6 +286,7 @@ export const FILE_TYPE_KEYS: FileTypeKey[] = [
   "html",
   "video",
   "react",
+  "code",
   "generic",
 ];
 
@@ -261,6 +297,9 @@ export function pickFileTypeKey(
   const mt = (mimeType ?? "").toLowerCase();
   const name = (fileName ?? "").toLowerCase();
   if (name.endsWith(".jsx") || name.endsWith(".tsx")) return "react";
+  // Extension-first for code: `.ts` resolves to `video/mp2t`, so a MIME-first
+  // check would render TypeScript as a video.
+  if (isCodeFile(name)) return "code";
   if (mt.startsWith("image/")) return "img";
   if (mt.startsWith("video/")) return "video";
   if (mt.includes("pdf")) return "pdf";

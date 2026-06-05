@@ -61,6 +61,7 @@ function makeFile(
     mime_type: "text/plain",
     size_bytes: 1024,
     metadata: {},
+    origin: "generated",
     created_at: "2026-05-01T00:00:00Z",
     ...overrides,
   };
@@ -230,6 +231,27 @@ describe("ArtifactsPage - card menu", () => {
 
     expect(await screen.findByText("menu-target.txt")).toBeDefined();
     expect(screen.getByTestId("artifacts-card-menu")).toBeDefined();
+  });
+
+  test("clicking the card opens the file viewer modal", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [makeFile({ id: "open-me", name: "open-me.txt" })],
+        offset: 0,
+        has_more: false,
+      }),
+      http.get("/api/proxy/api/workspace/files/open-me/download", () =>
+        HttpResponse.text("hello world"),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    const opener = await screen.findByTestId("artifacts-card-open");
+    fireEvent.click(opener);
+
+    expect(await screen.findByTestId("file-viewer")).toBeDefined();
   });
 });
 
