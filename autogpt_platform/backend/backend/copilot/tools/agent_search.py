@@ -147,6 +147,10 @@ async def _search_library(
                 # (parent-coupled, single-purpose). AutoPilot accesses
                 # them via list_agent_triggers instead.
                 is_hidden=False,
+                # Load nodes so has_external_trigger / trigger_setup_info are
+                # populated — lets AutoPilot recognise (and set up) webhook
+                # triggers from the listing without re-reading the full graph.
+                include_nodes=True,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))
@@ -203,8 +207,17 @@ async def _search_library(
         "execution results, or run_agent to execute. Let the user know we can "
         "create a custom agent for them based on their needs."
     )
+    if any(a.trigger_info for a in agents):
+        message += (
+            "\n\nSome agents have a webhook trigger (see their "
+            "`trigger_info`). To set up or activate "
+            "such a trigger, call setup_agent_webhook_trigger and pass the "
+            "config_schema fields as `trigger_config` — you don't need the full "
+            "graph for this, and must NOT edit the trigger node's values in the "
+            "graph (that changes the agent's global default for everyone)."
+        )
     if truncation_notice:
-        message = f"{message}\n\nNote: {truncation_notice}"
+        message += f"\n\nNote: {truncation_notice}"
 
     return AgentsFoundResponse(
         message=message,
@@ -323,6 +336,11 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
         graph_version=agent.graph_version,
         input_schema=agent.input_schema,
         output_schema=agent.output_schema,
+        trigger_info=(
+            agent.trigger_setup_info.model_dump(mode="json")
+            if agent.trigger_setup_info
+            else None
+        ),
     )
 
 

@@ -40,6 +40,7 @@ def _mock_library_agent(library_id: str, name: str, description: str = ""):
     agent.graph_version = 1
     agent.input_schema = {}
     agent.output_schema = {}
+    agent.trigger_setup_info = None
     return agent
 
 

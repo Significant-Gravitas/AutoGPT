@@ -151,6 +151,7 @@ class TestLibraryUUIDLookup:
         mock_agent.graph_version = 1
         mock_agent.input_schema = {}
         mock_agent.output_schema = {}
+        mock_agent.trigger_setup_info = None
         return mock_agent
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -176,6 +177,80 @@ class TestLibraryUUIDLookup:
         assert isinstance(response, AgentsFoundResponse)
         assert response.count == 1
         assert response.agents[0].name == "My Library Agent"
+
+    @staticmethod
+    def _github_trigger_info():
+        from backend.data.graph import GraphTriggerInfo
+
+        return GraphTriggerInfo(
+            provider="github",
+            config_schema={
+                "type": "object",
+                "properties": {"repo": {"type": "string"}},
+                "required": ["repo"],
+            },
+            credentials_input_name="payload_credentials",
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_trigger_info_surfaced_without_graph(self):
+        """A webhook-trigger agent surfaces structured trigger_info (provider +
+        config_schema) so AutoPilot need not fetch/parse the full graph, plus a
+        message steering it to setup_agent_webhook_trigger."""
+        mock_agent = self._make_mock_library_agent()
+        mock_agent.has_external_trigger = True
+        mock_agent.trigger_setup_info = self._github_trigger_info()
+
+        mock_lib_db = MagicMock()
+        mock_search_results = MagicMock()
+        mock_search_results.agents = [mock_agent]
+        mock_lib_db.list_library_agents = AsyncMock(return_value=mock_search_results)
+
+        with patch(
+            "backend.copilot.tools.agent_search.library_db",
+            return_value=mock_lib_db,
+        ):
+            response = await search_agents(
+                query="",
+                source="library",
+                session_id="s",
+                user_id=_TEST_USER_ID,
+                include_graph=False,
+            )
+
+        assert isinstance(response, AgentsFoundResponse)
+        agent = response.agents[0]
+        assert agent.graph is None
+        assert agent.trigger_info is not None
+        assert agent.trigger_info["provider"] == "github"
+        assert "repo" in agent.trigger_info["config_schema"]["properties"]
+        assert "setup_agent_webhook_trigger" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_trigger_info_for_plain_agent(self):
+        """Agents without a webhook trigger have trigger_info=None and no
+        trigger guidance is appended to the message."""
+        mock_agent = self._make_mock_library_agent()  # trigger_setup_info = None
+
+        mock_lib_db = MagicMock()
+        mock_search_results = MagicMock()
+        mock_search_results.agents = [mock_agent]
+        mock_lib_db.list_library_agents = AsyncMock(return_value=mock_search_results)
+
+        with patch(
+            "backend.copilot.tools.agent_search.library_db",
+            return_value=mock_lib_db,
+        ):
+            response = await search_agents(
+                query="",
+                source="library",
+                session_id="s",
+                user_id=_TEST_USER_ID,
+            )
+
+        assert isinstance(response, AgentsFoundResponse)
+        assert response.agents[0].trigger_info is None
+        assert "setup_agent_webhook_trigger" not in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_include_graph_fetches_graph(self):
@@ -338,6 +413,7 @@ class TestEnrichAgentsWithGraph:
         mock_agent.graph_version = 1
         mock_agent.input_schema = {}
         mock_agent.output_schema = {}
+        mock_agent.trigger_setup_info = None
         return mock_agent
 
     @pytest.mark.asyncio(loop_scope="session")
