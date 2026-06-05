@@ -61,6 +61,7 @@ in [AUDIT_LOG.md](docs/AUDIT_LOG.md); review it with
 | [COMPUTER_USE.md](docs/COMPUTER_USE.md) | Computer-use wire spec — screenshots, input, windows, clipboard |
 | [MULTI_MACHINE.md](docs/MULTI_MACHINE.md) | Multi-machine orchestration spec (one session, N shims) |
 | [PRIVACY_MODE.md](docs/PRIVACY_MODE.md) | Privacy mode spec — files never leave the machine, local LLM processes content |
+| [RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) | Operator runbook for PyPI / Homebrew / Scoop publish |
 
 ## Contributing
 
