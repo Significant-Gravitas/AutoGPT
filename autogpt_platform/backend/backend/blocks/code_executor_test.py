@@ -120,6 +120,12 @@ class TestBuildVariableInjection:
         with pytest.raises(UnsupportedLanguageError):
             build_variable_injection({"x": 1}, language)
 
+    def test_non_serializable_value_raises_clear_error_with_key(self):
+        with pytest.raises(ValueError, match="bad"):
+            build_variable_injection(
+                {"ok": 1, "bad": {1, 2, 3}}, ProgrammingLanguage.PYTHON
+            )
+
 
 class TestExecuteCodeBlockRun:
     """run() should inject variables: prefix the code and pass the env var."""

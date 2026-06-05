@@ -67,8 +67,23 @@ def build_variable_injection(
         )
 
     coerced = {key: _coerce_value(value) for key, value in variables.items()}
-    envs = {VARIABLES_ENV_KEY: json.dumps(coerced)}
+    try:
+        serialized = json.dumps(coerced)
+    except TypeError as e:
+        bad_keys = [k for k, v in coerced.items() if not _is_json_serializable(v)]
+        raise ValueError(
+            f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
+        ) from e
+    envs = {VARIABLES_ENV_KEY: serialized}
     return envs, prefix
+
+
+def _is_json_serializable(value: Any) -> bool:
+    try:
+        json.dumps(value)
+        return True
+    except TypeError:
+        return False
 
 
 def _coerce_value(value: Any) -> Any:
