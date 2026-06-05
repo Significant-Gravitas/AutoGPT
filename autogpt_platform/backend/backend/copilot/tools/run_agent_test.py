@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
@@ -819,3 +819,62 @@ async def test_run_agent_execution_structural_error_returns_error_response(
     # user should see the validation error, not the credential setup card.
     assert result_data.get("error") == "graph_validation_failed"
     assert result_data.get("type") != "setup_requirements"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_redirects_webhook_trigger_agent():
+    """A webhook-trigger agent can't be run/scheduled — run_agent returns an
+    AgentDetailsResponse (carrying trigger_info) that points AutoPilot to
+    setup_agent_webhook_trigger instead of attempting to execute it."""
+    from backend.data.graph import GraphTriggerInfo
+
+    from .models import AgentDetailsResponse
+
+    tool = RunAgentTool()
+    session = make_session(user_id="webhook-user")
+
+    lib_agent = MagicMock()
+    lib_agent.id = "lib-wh"
+    lib_agent.graph_id = "graph-wh"
+    lib_agent.graph_version = 1
+
+    graph = MagicMock()
+    graph.id = "graph-wh"
+    graph.name = "PR Notifier"
+    graph.description = "Notifies on PRs"
+    graph.version = 1
+    graph.has_external_trigger = True
+    graph.input_schema = {}
+    graph.credentials_input_schema = {}
+    graph.trigger_setup_info = GraphTriggerInfo(
+        provider="github",
+        config_schema={
+            "type": "object",
+            "properties": {"repo": {"type": "string"}},
+            "required": ["repo"],
+        },
+        credentials_input_name="payload_credentials",
+    )
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(return_value=lib_agent)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+    ):
+        result = await tool._execute(
+            user_id="webhook-user",
+            session=session,
+            library_agent_id="lib-wh",
+        )
+
+    assert isinstance(result, AgentDetailsResponse)
+    assert result.agent.trigger_info is not None
+    assert result.agent.execution_options.webhook is True
+    assert result.agent.execution_options.manual is False
+    assert "setup_agent_webhook_trigger" in result.message
+    # It must NOT have attempted to execute the graph.
+    mock_graph_db.get_graph.assert_awaited_once()

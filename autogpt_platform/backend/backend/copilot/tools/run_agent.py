@@ -321,6 +321,30 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
 
+            # Webhook-trigger agents can't be run or scheduled directly — they
+            # fire on incoming HTTP events. Hand off to the trigger-setup tool,
+            # surfacing the same AgentDetails (with trigger_info) that run_agent
+            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            if graph.has_external_trigger:
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
+                )
+                return AgentDetailsResponse(
+                    message=(
+                        f"Agent '{graph.name}' runs on a webhook trigger, so it "
+                        "can't be run or scheduled directly. Set it up with "
+                        "setup_agent_webhook_trigger using the trigger block's "
+                        "config (see trigger_info.config_schema). For provider "
+                        "webhooks (e.g. GitHub), ask the user which connected "
+                        "account to register the webhook under — never auto-pick."
+                    ),
+                    session_id=session_id,
+                    agent=self._build_agent_details(graph, credentials),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
             # Step 2: Check credentials and inputs
             graph_credentials, prereq_error = await self._check_prerequisites(
                 graph=graph,
