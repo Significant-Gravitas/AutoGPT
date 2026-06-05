@@ -105,6 +105,7 @@ from backend.data.push_subscription import (
     get_user_push_subscriptions,
     increment_fail_count,
 )
+from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -370,6 +371,9 @@ class DatabaseManager(AppService):
         cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
     )
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -614,6 +618,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_push_subscription = d.delete_push_subscription
     increment_push_fail_count = d.increment_push_fail_count
     cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
+
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner

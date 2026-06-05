@@ -476,6 +476,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,

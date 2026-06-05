@@ -26,6 +26,11 @@ describe("pickFileTypeKey", () => {
   ])("pickFileTypeKey(%s) === %s", (mime, expected) => {
     expect(pickFileTypeKey(mime)).toBe(expected);
   });
+
+  test("detects React apps by .jsx/.tsx extension", () => {
+    expect(pickFileTypeKey("text/plain", "App.jsx")).toBe("react");
+    expect(pickFileTypeKey(undefined, "Component.tsx")).toBe("react");
+  });
 });
 
 describe("deriveBadgeLabel", () => {
@@ -68,6 +73,7 @@ describe("FileIllustration", () => {
       "img",
       "html",
       "video",
+      "react",
       "generic",
     ] as const) {
       const { unmount } = render(<FileIllustration typeKey={key} />);
