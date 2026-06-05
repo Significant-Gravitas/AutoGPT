@@ -122,6 +122,7 @@ export function PublishAgentModal({
       <Dialog
         styling={{
           maxWidth: "48rem",
+          marginRight: "0.5rem",
         }}
         controlled={{
           isOpen: currentState.isOpen,

@@ -9338,6 +9338,18 @@
               "$ref": "#/components/schemas/MyAgentsSortBy",
               "default": "most_recent"
             }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
           }
         ],
         "responses": {
@@ -9527,6 +9539,50 @@
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Statuses"
+            }
+          },
+          {
+            "name": "sort_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "enum": ["submitted", "runs"], "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Sort Key"
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string",
+              "default": "desc",
+              "title": "Sort Dir"
             }
           }
         ],
