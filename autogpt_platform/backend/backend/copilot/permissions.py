@@ -116,6 +116,7 @@ ToolName = Literal[
     "schedule_followup",
     "search_docs",
     "search_feature_requests",
+    "setup_agent_webhook_trigger",
     "store_skill",
     "update_folder",
     "validate_agent_graph",
