@@ -26,6 +26,7 @@ from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
+from .get_library_agent_by_id import GetLibraryAgentByIdTool
 from .get_mcp_guide import GetMCPGuideTool
 from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
@@ -76,6 +77,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    "get_library_agent_by_id": GetLibraryAgentByIdTool(),
     # Graphiti memory tools
     "memory_forget_confirm": MemoryForgetConfirmTool(),
     "memory_forget_search": MemoryForgetSearchTool(),

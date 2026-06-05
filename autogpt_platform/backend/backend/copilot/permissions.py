@@ -93,6 +93,7 @@ ToolName = Literal[
     "fix_agent_graph",
     "get_agent_building_guide",
     "get_doc_page",
+    "get_library_agent_by_id",
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",

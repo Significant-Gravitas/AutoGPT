@@ -46,6 +46,76 @@ async def search_agents(
         return await _search_library(query, session_id, user_id, include_graph)
 
 
+async def get_library_agent_by_id(
+    agent_id: str,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    include_graph: bool = False,
+) -> ToolResponseBase:
+    """Direct by-id lookup of a single library agent.
+
+    Resolves an exact ``library_agent_id`` or ``graph_id`` and NEVER falls back
+    to a fuzzy name search — returns ``NoResultsResponse`` when the id doesn't
+    resolve. Use this (not :func:`search_agents`) when the exact id is known.
+    """
+    if not user_id:
+        return ErrorResponse(
+            message="User authentication required to fetch a library agent",
+            session_id=session_id,
+        )
+
+    agent_id = agent_id.strip()
+    if not agent_id:
+        return ErrorResponse(
+            message="agent_id is required to fetch a library agent",
+            session_id=session_id,
+        )
+
+    try:
+        agent = await _get_library_agent_by_id(user_id, agent_id)
+    except DatabaseError as e:
+        logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
+        return ErrorResponse(
+            message="Failed to fetch the library agent. Please try again.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    if agent is None:
+        return NoResultsResponse(
+            message=(
+                f"No library agent found with id '{agent_id}'. It may have been "
+                "deleted or you may not have access. Use find_library_agent to "
+                "search your library, or create a custom agent."
+            ),
+            suggestions=[
+                "Use find_library_agent to search your library",
+                "Check your library at /library",
+            ],
+            session_id=session_id,
+        )
+
+    truncation_notice: str | None = None
+    if include_graph:
+        truncation_notice = await _enrich_agents_with_graph([agent], user_id)
+
+    message = (
+        "Loaded the requested library agent. Link to it at "
+        "/library/agents/{agent_id}. Use view_agent_output for execution "
+        "results, or run_agent to execute it."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
+    return AgentsFoundResponse(
+        message=message,
+        title=f"Loaded agent '{agent.name}'",
+        agents=[agent],
+        count=1,
+        session_id=session_id,
+    )
+
+
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
     """Search marketplace agents, with direct creator/slug lookup fallback."""
     query = query.strip()
