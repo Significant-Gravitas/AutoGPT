@@ -52,7 +52,15 @@ _MINIMUM_SAFE_WINDOW = 24_576
 
 _PROBE_TIMEOUT_S = 2.0
 _CACHE_TTL_S = 300.0
-_probe_cache: dict[str, tuple[int, float]] = {}
+
+# Both keyed by (base_url, model): vLLM / LM Studio expose a *per-model* window,
+# so caching by base_url alone would serve one model's window for another.
+# ``_last_window`` never expires and is reused when a probe can't determine the
+# window (e.g. the model isn't loaded yet) — a far better fallback than the
+# optimistic constant.
+_CacheKey = tuple[str, str]
+_probe_cache: dict[_CacheKey, tuple[int, float]] = {}
+_last_window: dict[_CacheKey, int] = {}
 
 
 def compaction_target_for_window(window: int) -> int:
@@ -64,13 +72,13 @@ def compaction_target_for_window(window: int) -> int:
     return max(_TARGET_FLOOR, window - _FLOOR_RESERVE)
 
 
-def _cache_get(base_url: str) -> int | None:
-    entry = _probe_cache.get(base_url)
+def _cache_get(key: _CacheKey) -> int | None:
+    entry = _probe_cache.get(key)
     if entry is None:
         return None
     window, fetched_at = entry
     if time.monotonic() - fetched_at > _CACHE_TTL_S:
-        del _probe_cache[base_url]
+        del _probe_cache[key]
         return None
     return window
 
@@ -86,32 +94,40 @@ def _server_root(base_url: str) -> str:
 async def probe_local_context_window(base_url: str, model: str) -> int:
     """Return the loaded context window (tokens) for ``model`` at ``base_url``.
 
-    Cached per ``base_url`` for 5 minutes so it never fires on every turn. Falls
-    back to ``LOCAL_CONTEXT_FALLBACK`` when no backend answers, and logs a
-    WARNING when the detected window is below ``_MINIMUM_SAFE_WINDOW``.
+    Cached per ``(base_url, model)`` for 5 minutes so it never fires on every
+    turn. When a probe can't determine the window (e.g. the model isn't loaded
+    yet), reuses the last successfully-detected window for that endpoint+model
+    if known — a far better estimate than the optimistic constant — and does
+    NOT cache the miss, so the next turn re-probes once a model is loaded. Logs
+    a WARNING when a detected window is below ``_MINIMUM_SAFE_WINDOW``.
     """
-    cached = _cache_get(base_url)
+    key = (base_url, model)
+    cached = _cache_get(key)
     if cached is not None:
         return cached
 
-    window = await _detect_window(base_url, model)
-    if window < _MINIMUM_SAFE_WINDOW:
+    detected = await _detect_window(base_url, model)
+    if detected is None:
+        return _last_window.get(key, LOCAL_CONTEXT_FALLBACK)
+
+    _last_window[key] = detected
+    if detected < _MINIMUM_SAFE_WINDOW:
         logger.warning(
             "[LocalProbe] Backend at %s reports a %d-token context window — below "
             "the %d-token minimum AutoPilot needs (its system prompt + tools use "
             "~19k alone, leaving only ~%d for conversation). Raise the backend's "
             "context length (e.g. OLLAMA_CONTEXT_LENGTH=%d) to avoid truncation.",
             base_url,
-            window,
+            detected,
             _MINIMUM_SAFE_WINDOW,
-            max(0, window - _FLOOR_RESERVE),
+            max(0, detected - _FLOOR_RESERVE),
             _MINIMUM_SAFE_WINDOW,
         )
-    _probe_cache[base_url] = (window, time.monotonic())
-    return window
+    _probe_cache[key] = (detected, time.monotonic())
+    return detected
 
 
-async def _detect_window(base_url: str, model: str) -> int:
+async def _detect_window(base_url: str, model: str) -> int | None:
     root = _server_root(base_url)
     base = base_url.rstrip("/")
     model_base = model.split(":")[0]
@@ -184,8 +200,7 @@ async def _detect_window(base_url: str, model: str) -> int:
             logger.debug("[LocalProbe] /api/v0/models probe failed: %s", exc)
 
     logger.debug(
-        "[LocalProbe] No backend window detected at %s; using fallback %d",
+        "[LocalProbe] No backend window detected at %s; caller will fall back",
         base_url,
-        LOCAL_CONTEXT_FALLBACK,
     )
-    return LOCAL_CONTEXT_FALLBACK
+    return None

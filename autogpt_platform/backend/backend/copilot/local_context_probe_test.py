@@ -14,6 +14,7 @@ import pytest
 from backend.copilot.local_context_probe import (
     _MINIMUM_SAFE_WINDOW,
     LOCAL_CONTEXT_FALLBACK,
+    _last_window,
     _probe_cache,
     _server_root,
     compaction_target_for_window,
@@ -77,6 +78,7 @@ class TestServerRoot:
 class TestProbeStrategies:
     def setup_method(self):
         _probe_cache.clear()
+        _last_window.clear()
 
     @pytest.mark.asyncio
     async def test_ollama_api_ps_fixes_compaction_bug(self):
@@ -177,6 +179,7 @@ class TestProbeStrategies:
 class TestFallbackAndWarnings:
     def setup_method(self):
         _probe_cache.clear()
+        _last_window.clear()
 
     @pytest.mark.asyncio
     async def test_all_probes_fail_returns_fallback(self):
@@ -211,10 +214,37 @@ class TestFallbackAndWarnings:
         assert window < _MINIMUM_SAFE_WINDOW
         assert any("OLLAMA_CONTEXT_LENGTH" in r.message for r in caplog.records)
 
+    @pytest.mark.asyncio
+    async def test_probe_miss_reuses_last_known_window(self):
+        """After a successful read, a later miss (model unloaded) reuses the
+        last detected window — not the optimistic 32k constant."""
+        client = _mock_client(
+            [
+                _resp(200, {"models": [{"name": "m", "context_length": 8192}]}),
+                _resp(200, {"models": []}),  # 2nd probe: model unloaded
+                _resp(404, {}),
+                _resp(404, {}),
+                _resp(404, {}),
+            ]
+        )
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ):
+            w1 = await probe_local_context_window("http://h:11434/v1", "m")
+            _probe_cache[("http://h:11434/v1", "m")] = (
+                w1,
+                time.monotonic() - 400,
+            )  # force-expire so the next call re-probes
+            w2 = await probe_local_context_window("http://h:11434/v1", "m")
+        assert w1 == 8192
+        assert w2 == 8192  # reused, not LOCAL_CONTEXT_FALLBACK
+        assert w2 != LOCAL_CONTEXT_FALLBACK
+
 
 class TestCaching:
     def setup_method(self):
         _probe_cache.clear()
+        _last_window.clear()
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_probe(self):
@@ -241,7 +271,7 @@ class TestCaching:
             "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
         ) as cls:
             w1 = await probe_local_context_window("http://h:11434/v1", "m")
-            _probe_cache["http://h:11434/v1"] = (
+            _probe_cache[("http://h:11434/v1", "m")] = (
                 w1,
                 time.monotonic() - 400,
             )  # force-expire
@@ -249,3 +279,23 @@ class TestCaching:
         assert w1 == 32_768
         assert w2 == 65_536
         assert cls.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_keyed_by_base_url_and_model(self):
+        """Two models on the same endpoint don't share a cached window —
+        vLLM / LM Studio expose a per-model window."""
+        loaded = {
+            "models": [
+                {"name": "modelA", "context_length": 32_768},
+                {"name": "modelB", "context_length": 16_384},
+            ]
+        }
+        client = _mock_client([_resp(200, loaded), _resp(200, loaded)])
+        with patch(
+            "backend.copilot.local_context_probe.httpx.AsyncClient", return_value=client
+        ) as cls:
+            wa = await probe_local_context_window("http://h:11434/v1", "modelA")
+            wb = await probe_local_context_window("http://h:11434/v1", "modelB")
+        assert wa == 32_768
+        assert wb == 16_384  # not modelA's cached 32_768
+        assert cls.call_count == 2  # second model re-probed, not served from cache
