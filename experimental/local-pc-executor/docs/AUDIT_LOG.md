@@ -80,6 +80,7 @@ single JSON object with this shape:
 | `FILE_MOVE` | `{src, dst, overwrite}` |
 | `SCREENSHOT_REQUEST` | `{monitor, quality, image_bytes_returned, width?, height?}` — no image content; `width`/`height` only present on success |
 | `INPUT_ACTION` | `{action, coordinate, key, direction, clicks, text_length}` — the `text` payload is replaced by its byte length (`text_length`); `null` when the action has no text |
+| `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
 | `HELLO` | `{platform, arch, capabilities, allowed_root}` |
 | `HELLO_ACK` | `{granted_capabilities, max_concurrent, max_file_size_bytes, command_timeout_seconds}` |
 | Shim-internal | See below |
@@ -108,6 +109,9 @@ didn't trigger:
 - Environment variable VALUES (only keys, so the user can see "GH_TOKEN
   was set" without seeing the token itself).
 - Refresh tokens or access tokens.
+- `LOCAL_LLM_COMPLETION` prompt messages or response content (only
+  character counts and token counts). The whole point of routing to a
+  local LLM is privacy; logging the prompt would defeat it.
 
 ## Tamper-evidence chain
 

@@ -469,6 +469,101 @@ copy+delete in that case. Responds with `ACK`.
 
 ---
 
+### Local LLM
+
+**For the full local LLM routing feature spec, gating, and backend matrix, see [LOCAL_LLM.md](LOCAL_LLM.md).**
+
+The shim advertises local LLM availability via the `local_llm` capability
+in `HELLO.capabilities` plus the populated `HELLO.local_llm_models` list.
+If the list is empty OR the capability is missing, the platform MUST
+treat local LLM routing as unavailable for this session and fall back to
+cloud-side completion.
+
+#### `LOCAL_LLM_COMPLETION` (platform → shim)
+
+```json
+{
+  "type": "LOCAL_LLM_COMPLETION",
+  "id": "req-uuid",
+  "ts": 1234567890.0,
+  "version": "1.0",
+  "payload": {
+    "model": "llama3.2:3b",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Summarize X in 3 bullets."}
+    ],
+    "max_tokens": 1024,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "stream": true
+  }
+}
+```
+
+- `model` MUST be one of the strings advertised in
+  `HELLO.local_llm_models`. Unknown model → `MODEL_NOT_AVAILABLE`.
+- `messages` follows the OpenAI / Anthropic-style chat-completions shape:
+  a list of `{role, content}` records where `role` is one of `"system"`,
+  `"user"`, `"assistant"`. Future minor versions MAY add `"tool"` and
+  attachment payloads — receivers MUST ignore unknown roles.
+- `max_tokens` is the upper bound on the response length. Backends MAY
+  cap this further (Ollama defaults to 2048).
+- `temperature` and `top_p` are sampling knobs. Both optional;
+  shim-side defaults are model-dependent.
+- `stream` (default `true`) selects between chunked and one-shot
+  delivery. When `true`, the shim emits one or more
+  `LOCAL_LLM_COMPLETION_CHUNK` frames followed by a single
+  `LOCAL_LLM_COMPLETION_RESPONSE`. When `false`, only the
+  `LOCAL_LLM_COMPLETION_RESPONSE` is emitted (no chunks).
+
+#### `LOCAL_LLM_COMPLETION_CHUNK` (shim → platform, streaming)
+
+```json
+{
+  "type": "LOCAL_LLM_COMPLETION_CHUNK",
+  "id": "req-uuid",
+  "ts": 1234567890.1,
+  "version": "1.0",
+  "payload": {
+    "delta": "The user spent ",
+    "finish_reason": null
+  }
+}
+```
+
+Multiple frames per request, sharing the request's `id`. Every chunk
+EXCEPT the final one MUST have `finish_reason: null`. The shim emits a
+final chunk with `finish_reason` set to one of `"stop"`, `"length"`, or
+`"content_filter"`, immediately followed by a
+`LOCAL_LLM_COMPLETION_RESPONSE` carrying the assembled output and
+metadata.
+
+#### `LOCAL_LLM_COMPLETION_RESPONSE` (shim → platform, terminal frame)
+
+```json
+{
+  "type": "LOCAL_LLM_COMPLETION_RESPONSE",
+  "id": "req-uuid",
+  "ts": 1234567890.5,
+  "version": "1.0",
+  "payload": {
+    "content": "The user spent ...",
+    "finish_reason": "stop",
+    "tokens": {"prompt": 42, "completion": 384, "total": 426},
+    "duration_seconds": 4.2
+  }
+}
+```
+
+`content` is the assembled output (concatenated chunk deltas in the
+streaming case; the whole response in the non-streaming case).
+`tokens` is best-effort — backends that don't report token counts MAY
+return `null` for any of the three sub-fields. `duration_seconds` is
+wall-clock backend time, not the platform's round-trip.
+
+---
+
 ### Computer Use
 
 **For the full v1 computer-use feature spec and per-OS capability matrix, see [COMPUTER_USE.md](COMPUTER_USE.md).**
@@ -624,6 +719,21 @@ Error codes:
   union of connected display rects. Error payload includes the valid
   display rects so the caller can correct. See
   [COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
+- `MODEL_NOT_AVAILABLE` — `LOCAL_LLM_COMPLETION.model` not present in
+  the `HELLO.local_llm_models` advertisement, OR the backend reports
+  the model is no longer loaded (e.g. Ollama 404 on `/api/chat`). The
+  caller MAY retry with a different model or fall back to cloud-side
+  completion. `details.requested_model` and `details.available_models`
+  are populated when known. See [LOCAL_LLM.md](LOCAL_LLM.md).
+- `LOCAL_LLM_BUSY` — the local LLM backend is already serving another
+  request and only supports one in flight at a time (Ollama serializes
+  by default). The caller SHOULD retry with backoff or fall back. See
+  [LOCAL_LLM.md](LOCAL_LLM.md).
+- `LOCAL_LLM_FAILED` — the local LLM backend crashed, the HTTP call
+  failed, or the connection to the backend was refused. `details.backend_error`
+  carries the raw error string for debugging; the platform-side error
+  translator surfaces a clean user-facing message. See
+  [LOCAL_LLM.md](LOCAL_LLM.md).
 
 Error `ERROR.payload` MAY carry an optional `details` object whose shape
 depends on `code` — see the per-code examples in
@@ -719,6 +829,41 @@ only the application-layer codes in the table above are treated as fatal
 The platform may send multiple requests before receiving responses (pipelined). The shim
 assigns each request its own async task and responds with matching `id` when complete.
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
+
+---
+
+## Idempotency
+
+The platform's auto-retry layer (transient WS drops, transport errors,
+transient `LOCAL_LLM_BUSY` / `SHIM_OVERLOADED`) re-issues failed
+requests. Each op is classified as either **idempotent** (safe to
+re-issue with the same payload) or **non-idempotent** (re-issue may
+double-effect; the platform must surface to the user instead of silently
+retrying).
+
+| Op | Idempotent? | Notes |
+|---|---|---|
+| `HELLO` / `HELLO_ACK` | yes | Handshake; replayable. |
+| `PING` / `PONG` | yes | Keepalive. |
+| `EXECUTE_COMMAND` | **no** | A shell command may have side effects (rm, mv, push). Platform MUST NOT auto-retry. |
+| `FILE_READ` | yes | Pure read; same path → same bytes (modulo concurrent writers). |
+| `FILE_STAT` | yes | Pure read. |
+| `FILE_LIST` | yes | Pure read. |
+| `FILE_WRITE` | yes | Last-write-wins; replay produces same file state. |
+| `FILE_DELETE` | yes | Re-delete with `missing_ok: true` is a no-op; the platform retries with `missing_ok: true`. |
+| `FILE_MOVE` | **no** | Source path is gone after success; replay → `PATH_NOT_FOUND`. Platform surfaces, doesn't auto-retry. |
+| `SCREENSHOT_REQUEST` | yes | Pure read of current display. |
+| `INPUT_ACTION` | **no** | Mouse clicks / key presses have side effects. Never auto-retry. |
+| `WINDOW_FOCUS` / `APP_LAUNCH` | **no** | State-mutating UI ops. |
+| `CLIPBOARD_READ` | yes | Pure read. |
+| `CLIPBOARD_WRITE` | yes | Last-write-wins. |
+| `LOCAL_LLM_COMPLETION` | yes | Same prompt almost certainly produces different output (sampling), but for retry semantics the platform CAN safely re-issue — the user-facing turn is non-destructive and the worst case is "you got a slightly different answer". The auto-retry layer treats it as idempotent. |
+
+Receivers MUST NOT rely on the platform retrying any specific op — this
+table just disciplines the platform's auto-retry layer. Application
+code that needs explicit retry semantics (e.g. an agent that wants to
+re-run a command after it failed) issues a fresh request with a new
+`id`.
 
 ---
 
