@@ -1676,9 +1676,7 @@ class TestOpenRouterAliases:
         self, model: llm.LlmModel
     ):
         """Non-aliased models should fall back to their bare enum value."""
-        assert (
-            llm._OPENROUTER_REVERSE.get(model, model.value) == model.value
-        )
+        assert llm._OPENROUTER_REVERSE.get(model, model.value) == model.value
 
     def test_openrouter_dispatch_uses_reverse_mapping(self, mocker):
         """The actual _llm_call path must pass the provider-prefixed slug.
