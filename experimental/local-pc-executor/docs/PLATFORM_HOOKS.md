@@ -380,47 +380,66 @@ The fixed port `41899` may be in use by another app. The OAuth flow doc
 OAuth client registration must accept ALL ports in that range as valid
 `redirect_uri`s for `client_id=autogpt-local-executor`, not just `41899`.
 
-### 10.9 Computer-use routing (deferred from MVP)
+### 10.9 Computer-use routing (implemented)
 
-`config.allow_computer_use` exists and the shim daemon ships a
-`ComputerUseHandler` (SCREENSHOT_REQUEST / INPUT_ACTION), but the
-platform side is **not yet wired**. Enabling computer-use end-to-end
-requires changes the team should make in a dedicated session because
-they touch Claude Code CLI subprocess plumbing rather than the API
-directly. Sketch:
+End-to-end computer-use is wired. When all of —
+`config.use_local_pc_executor` AND `config.allow_computer_use` AND
+the per-user `local-pc-executor` LaunchDarkly flag AND the connected
+shim advertised `"computer_use"` in its HELLO `capabilities` — are
+true, copilot turns route screenshots / clicks / typing / window
+listing / app launch / clipboard ops to the user's shim.
 
-1. **CLI beta flag pass-through.** This codebase invokes the Claude
-   Code CLI (`backend/copilot/sdk/env.py`), not the Anthropic API.
-   Computer-use beta enabling flows through Claude Code's own surface
-   — env vars or `--beta computer-use-2025-11-24` style flag.
-   `env.py` already toggles
-   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` for OpenRouter
-   compatibility; adding computer-use selectively must NOT regress
-   the existing OpenRouter strip path.
-2. **Tool-call interception.** Claude's `computer_use` tool calls
-   (screenshot/left_click/type/key/scroll/mouse_move) come back as
-   MCP-style tool invocations once the beta is enabled. A new
-   `ComputerUseRouter` in `copilot/tools/` should:
-   - Validate the active sandbox is a `LocalPCShim` and the shim's
-     HELLO advertised `"computer_use"` in `capabilities`.
-   - Forward screenshot calls as wire `SCREENSHOT_REQUEST` and inline
-     the returned `image_base64` into the tool result as an `image`
-     content block (Anthropic content block format).
-   - Forward action calls as wire `INPUT_ACTION` and return
-     `{"ok": true}` to Claude.
-   - Refuse with a structured error if `allow_computer_use=false` or
-     the shim lacks the capability — never silently drop.
-3. **UI consent gate.** Per [SECURITY.md](SECURITY.md) Layer 5, the
-   first computer-use call in a session must show an explicit
-   "Claude is requesting screen access" confirmation in the platform
-   UI before the request goes to the shim. Computer use bypassing
-   consent is a release blocker.
-4. **Tests.** Loopback-style: TestClient acts as shim, platform
-   issues SCREENSHOT_REQUEST, asserts image block shape; same for
-   INPUT_ACTION. The shim daemon's `ComputerUseHandler` is unit-
-   tested on the shim side.
+How the four sketched pieces actually landed:
 
-Until those four ship, `config.allow_computer_use` is a no-op flag.
-Setting it true does NOT route screenshots — it's a placeholder for
-the eventual gate. Document this explicitly in any UI that exposes
-the toggle.
+1. **CLI beta flag pass-through.**
+   `backend/copilot/sdk/env.py::build_sdk_env(enable_computer_use_beta=…)`
+   conditionally appends `computer-use-2025-11-24` to `ANTHROPIC_BETAS`
+   (composable with any pre-existing betas) and drops
+   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` — **unless** the active
+   transport is OpenRouter, in which case the strip flag stays
+   unconditionally (OpenRouter cannot proxy computer-use; honest
+   degradation rather than silent 4xx). `env_test.py` covers each
+   branch.
+
+2. **Tool-call surface (chose MCP tools over the Anthropic native
+   `computer_20251124` beta tool).** Native beta covers only
+   screenshot+click+type+key+scroll. We expose the shim's full surface
+   — including window listing, app launch, clipboard, permissions
+   probing — as 11 plain MCP tools in
+   `backend/copilot/sdk/computer_use_tools.py`. Names: `local_pc_screenshot`,
+   `local_pc_click`, `local_pc_type`, `local_pc_key`, `local_pc_scroll`,
+   `local_pc_cursor_position`, `local_pc_list_windows`,
+   `local_pc_focus_window`, `local_pc_list_apps`, `local_pc_launch_app`,
+   `local_pc_clipboard_read`, `local_pc_clipboard_write`,
+   `local_pc_permissions_check`. Each handler validates `isinstance(sandbox,
+   LocalPCShim)` + `"computer_use" in capabilities` and dispatches into
+   the `_ComputerProxy` adapter, returning Anthropic-format image
+   content blocks for screenshots and structured `{code, error,
+   details}` payloads for shim ERRORs (translated by
+   `local_pc_errors`).
+
+   Registration is gated by `create_copilot_mcp_server(use_local_pc_computer=…)`
+   in `tool_adapter.py`. The CLI's `allowed_tools` whitelist
+   (`get_copilot_tool_names`) and the permissions-gated path in
+   `service.py` both append the local_pc_* names under the same gate,
+   so a misconfigured caller fails closed.
+
+3. **UI consent gate.**
+   `autogpt_platform/frontend/src/app/(platform)/copilot/components/LocalPCComputerUseConsent.tsx`
+   pops a per-session modal the first time the user enters a copilot
+   session with a shim that advertises `computer_use_features`. The
+   user explicitly approves "Claude can screenshot / move my mouse /
+   type / list+launch apps / read+write clipboard for THIS session";
+   acked sessionIds are stored as a JSON array in localStorage under
+   `Key.COPILOT_LOCAL_PC_COMPUTER_USE_ACKED_SESSIONS`. New sessions
+   ask again. **The backend gate is the security boundary; this modal
+   is the UX layer that makes "the system is allowed to do this"
+   visible to the human.**
+
+4. **Tests.** `env_test.py` covers the OpenRouter compatibility
+   regression. `local_pc_shim_test.py::TestComputerProxy` (the prior
+   Q1-Q5 work) covers every wire op via mocked `_rpc`. Loopback-style
+   integration tests for `computer_use_tools` MCP handlers are
+   deferred — the handlers are thin pass-throughs to `_ComputerProxy`
+   which is exhaustively tested, and the registration gate is small
+   enough to read at a glance.

@@ -10,6 +10,7 @@ import { CopilotChatHost } from "./CopilotChatHost";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { LocalPCBadge } from "./components/LocalPCBadge/LocalPCBadge";
+import { LocalPCComputerUseConsent } from "./components/LocalPCComputerUseConsent/LocalPCComputerUseConsent";
 import { LocalPCWarning } from "./components/LocalPCWarning/LocalPCWarning";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -76,6 +77,7 @@ export function CopilotPage() {
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
       {isLocalPCEnabled && <LocalPCWarning />}
+      {isLocalPCEnabled && <LocalPCComputerUseConsent />}
     </SidebarProvider>
   );
 }

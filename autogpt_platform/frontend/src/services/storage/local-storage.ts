@@ -22,6 +22,7 @@ export enum Key {
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
   COPILOT_LOCAL_PC_WARNING_ACKED = "copilot-local-pc-warning-acked",
+  COPILOT_LOCAL_PC_COMPUTER_USE_ACKED_SESSIONS = "copilot-local-pc-computer-use-acked-sessions",
 }
 
 function get(key: Key) {
