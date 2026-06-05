@@ -94,12 +94,22 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
         await websocket.close(code=4401, reason="Missing token")
         return
 
+    user_id: str | None = None
+    token_client_id: str | None = None
     try:
         token_info = await introspect_token(token, token_type_hint="access_token")
-        if not token_info or not token_info.get("active"):
+        # `introspect_token` returns a TokenIntrospectionResult pydantic
+        # model — access via attribute, not dict .get(). The handshake's
+        # active-check predates the typed return and was previously broken
+        # against non-mocked inputs (the test fixture happened to use a
+        # dict).
+        active = bool(getattr(token_info, "active", False)) if token_info else False
+        if not active:
             record_handshake_failure("invalid_token")
             await websocket.close(code=4401, reason="Invalid or expired token")
             return
+        user_id = getattr(token_info, "user_id", None)
+        token_client_id = getattr(token_info, "client_id", None)
     except Exception:
         record_handshake_failure("auth_error")
         logger.exception(
@@ -143,7 +153,13 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
         return
 
     manager = get_shim_manager()
-    manager.register(session_id, websocket, hello)
+    manager.register(
+        session_id,
+        websocket,
+        hello,
+        user_id=user_id,
+        client_id=token_client_id,
+    )
     record_shim_connected(
         platform=hello.platform,
         arch=hello.arch,

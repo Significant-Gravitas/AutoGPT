@@ -58,6 +58,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _push_shim_revocation(user_id: str, client_id: str) -> None:
+    """Push SESSION_REVOKED to any connected LocalPC shims for this user+app.
+
+    The shim closes its WS without waiting for the next op to 401 and
+    does not auto-reconnect (4428 close code). Best-effort: if the shim
+    manager isn't reachable (e.g. test env without it imported), this is
+    a no-op. Never raises into the revoke handler — revocation succeeded
+    regardless of whether we could push to live shims.
+    """
+    try:
+        from backend.copilot.tools.local_pc_shim import get_shim_manager
+
+        notified = await get_shim_manager().revoke_user_shims(
+            user_id, client_id, reason="user_revoked"
+        )
+        if notified:
+            logger.info(
+                "Pushed SESSION_REVOKED to %d shim(s) for user #%s app %s",
+                notified,
+                user_id,
+                client_id,
+            )
+    except Exception:
+        # Don't let shim-push failures break the OAuth revoke contract.
+        logger.exception(
+            "Failed to push SESSION_REVOKED to shims for user #%s app %s",
+            user_id,
+            client_id,
+        )
+
+
 # ============================================================================
 # Request/Response Models
 # ============================================================================
@@ -540,6 +571,7 @@ async def revoke(
                 f"Access token revoked for app {app.name} (#{app.id}); "
                 f"user #{revoked.user_id}"
             )
+            await _push_shim_revocation(revoked.user_id, app.client_id)
             return {"status": "ok"}
 
     # Try to revoke as refresh token
@@ -549,6 +581,7 @@ async def revoke(
             f"Refresh token revoked for app {app.name} (#{app.id}); "
             f"user #{revoked.user_id}"
         )
+        await _push_shim_revocation(revoked.user_id, app.client_id)
         return {"status": "ok"}
 
     # Per RFC 7009, revocation endpoint returns 200 even if token not found

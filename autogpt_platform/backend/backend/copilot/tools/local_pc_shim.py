@@ -175,13 +175,28 @@ class ShimConnectionManager:
         self._connections: dict[str, WebSocket] = {}
         self._hellos: dict[str, ShimHello] = {}
         self._waiters: dict[str, list[asyncio.Future[WebSocket]]] = {}
+        # (user_id, client_id) -> set[session_id]. Lets revoke_user_shims
+        # find every active shim belonging to a user+app without scanning
+        # the full connection dict.
+        self._by_owner: dict[tuple[str | None, str | None], set[str]] = {}
+        # Reverse index for fast unregister cleanup.
+        self._owner_of: dict[str, tuple[str | None, str | None]] = {}
 
     def register(
-        self, session_id: str, ws: WebSocket, hello: ShimHello | None = None
+        self,
+        session_id: str,
+        ws: WebSocket,
+        hello: ShimHello | None = None,
+        *,
+        user_id: str | None = None,
+        client_id: str | None = None,
     ) -> None:
         self._connections[session_id] = ws
         if hello is not None:
             self._hellos[session_id] = hello
+        owner = (user_id, client_id)
+        self._owner_of[session_id] = owner
+        self._by_owner.setdefault(owner, set()).add(session_id)
         for fut in self._waiters.pop(session_id, []):
             if not fut.done():
                 fut.set_result(ws)
@@ -190,7 +205,77 @@ class ShimConnectionManager:
     def unregister(self, session_id: str) -> None:
         self._connections.pop(session_id, None)
         self._hellos.pop(session_id, None)
+        owner = self._owner_of.pop(session_id, None)
+        if owner is not None:
+            sessions = self._by_owner.get(owner)
+            if sessions is not None:
+                sessions.discard(session_id)
+                if not sessions:
+                    self._by_owner.pop(owner, None)
         logger.info("[LocalPC] Shim unregistered for session %s", session_id[:12])
+
+    async def revoke_user_shims(
+        self,
+        user_id: str,
+        client_id: str | None,
+        *,
+        reason: str = "user_revoked",
+    ) -> int:
+        """Push SESSION_REVOKED to every shim owned by (user_id, client_id).
+
+        Returns the count of shims actually notified. Called by
+        ``/auth/revoke`` after a successful token revocation so the user's
+        connected shims tear down their WS without waiting for the next
+        op to 401. The SESSION_REVOKED frame shape mirrors the shim's
+        ``protocol.SessionRevokedPayload`` — see PROTOCOL.md Session
+        ownership section. The shim daemon audits the event, closes the
+        WS, does NOT auto-reconnect.
+
+        ``client_id=None`` means "all of this user's shims, any app."
+        Used for platform-level revocations (e.g. account-wide kill
+        switch) rather than per-OAuth-token revocations.
+        """
+        if client_id is not None:
+            target_owners: list[tuple[str | None, str | None]] = [(user_id, client_id)]
+        else:
+            target_owners = [k for k in self._by_owner if k[0] == user_id]
+
+        notified = 0
+        for owner in target_owners:
+            # Snapshot — sending SESSION_REVOKED eventually closes the WS,
+            # which calls unregister, which mutates _by_owner.
+            for session_id in list(self._by_owner.get(owner, ())):
+                ws = self._connections.get(session_id)
+                if ws is None:
+                    continue
+                envelope = {
+                    "type": "SESSION_REVOKED",
+                    "id": str(uuid.uuid4()),
+                    "ts": time.time(),
+                    "payload": {"reason": reason},
+                }
+                try:
+                    await ws.send_text(json.dumps(envelope))
+                    notified += 1
+                except Exception:
+                    logger.debug(
+                        "[LocalPC] SESSION_REVOKED send failed for session %s "
+                        "(ws likely already closed)",
+                        session_id[:12],
+                    )
+                # Close ourselves; 4428 disables shim auto-reconnect per spec.
+                try:
+                    await ws.close(code=4428, reason="Token revoked")
+                except Exception:
+                    pass
+        if notified:
+            logger.info(
+                "[LocalPC] Revoked %d shim session(s) for user %s app %s",
+                notified,
+                user_id[:12] if user_id else "?",
+                client_id or "*",
+            )
+        return notified
 
     async def wait_for(self, session_id: str, timeout: float = 30.0) -> WebSocket:
         if session_id in self._connections:
