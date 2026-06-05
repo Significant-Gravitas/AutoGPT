@@ -265,9 +265,9 @@ async def list_workspace_files(
     Args:
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/documents/")
-        path_not_starts_with: Optional path prefix to *exclude* — used by
-            the Artifacts page to filter out session-scoped (autopilot)
-            uploads when the user picks the "Builder" origin filter.
+        path_not_starts_with: Optional path prefix to *exclude* from results.
+            Generic path filter; the Artifacts origin filter is handled
+            separately via ``metadata_equals``/``metadata_not_equals``.
         include_deleted: Whether to include soft-deleted files
         limit: Maximum number of files to return
         offset: Number of files to skip

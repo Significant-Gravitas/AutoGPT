@@ -284,7 +284,6 @@ export function getPreviewKind(
     mt.includes("html") ||
     mt.includes("xhtml") ||
     mt.includes("xml") ||
-    mt.includes("markdown") ||
     mt.includes("javascript") ||
     mt.includes("typescript") ||
     mt.includes("yaml")
