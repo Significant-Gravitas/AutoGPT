@@ -21,6 +21,11 @@ from autogpt_libs import auth
 from fastapi import APIRouter, Security, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from backend.copilot.tools.local_pc_metrics import (
+    record_handshake_failure,
+    record_shim_connected,
+    record_shim_disconnected,
+)
 from backend.copilot.tools.local_pc_shim import ShimHello, get_shim_manager
 from backend.data.auth.oauth import introspect_token
 
@@ -85,15 +90,18 @@ async def get_session_executor(
 async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
     token = websocket.query_params.get("token", "")
     if not token:
+        record_handshake_failure("missing_token")
         await websocket.close(code=4401, reason="Missing token")
         return
 
     try:
         token_info = await introspect_token(token, token_type_hint="access_token")
         if not token_info or not token_info.get("active"):
+            record_handshake_failure("invalid_token")
             await websocket.close(code=4401, reason="Invalid or expired token")
             return
     except Exception:
+        record_handshake_failure("auth_error")
         logger.exception(
             "[LocalPC] Token introspection failed for session %s", session_id[:12]
         )
@@ -111,6 +119,7 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
         raw = await websocket.receive_text()
         hello_msg = json.loads(raw)
         if hello_msg.get("type") != "HELLO":
+            record_handshake_failure("expected_hello")
             await websocket.close(code=4400, reason="Expected HELLO")
             return
 
@@ -128,12 +137,18 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
         }
         await websocket.send_text(json.dumps(ack))
     except Exception:
+        record_handshake_failure("handshake_error")
         logger.exception("[LocalPC] Handshake failed for session %s", session_id[:12])
         await websocket.close(code=4500, reason="Handshake error")
         return
 
     manager = get_shim_manager()
     manager.register(session_id, websocket, hello)
+    record_shim_connected(
+        platform=hello.platform,
+        arch=hello.arch,
+        shim_version=hello.shim_version,
+    )
     logger.info(
         "[LocalPC] Shim connected for session %s (platform=%s arch=%s machine=%s)",
         session_id[:12],
@@ -150,4 +165,5 @@ async def local_executor_ws(session_id: str, websocket: WebSocket) -> None:
         pass
     finally:
         manager.unregister(session_id)
+        record_shim_disconnected(platform=hello.platform, arch=hello.arch)
         logger.info("[LocalPC] Shim disconnected for session %s", session_id[:12])
