@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   useGetSubscriptionStatus,
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
@@ -55,7 +55,7 @@ export function usePaywallModal() {
     query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
   const { mutateAsync: updateTier, isPending } = useUpdateSubscriptionTier();
-  const { logOut } = useSupabase();
+  const router = useRouter();
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
     "yearly",
   );
@@ -140,8 +140,12 @@ export function usePaywallModal() {
     setPendingTier(null);
   }
 
+  // Route through the shared /logout page (same path the Navbar uses) rather
+  // than calling logOut() inline: it runs the full sign-out, then redirects to
+  // /login. Navigating away also unmounts this modal — without the redirect the
+  // user would be left logged-out but stranded behind the paywall.
   function handleLogout() {
-    void logOut();
+    router.replace("/logout");
   }
 
   const pendingTierLabel = pendingTier
