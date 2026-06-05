@@ -3,6 +3,22 @@ import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ArtifactRef } from "../../store";
+import type { TodoItem } from "../ContextPanel/components/ProgressTab/helpers";
+
+export function shouldShowTaskListNotice({
+  isContextPanelEnabled,
+  isChatStreaming,
+  latestTaskList,
+}: {
+  isContextPanelEnabled: boolean;
+  isChatStreaming: boolean;
+  latestTaskList: TodoItem[] | null;
+}): boolean {
+  if (!isContextPanelEnabled || !isChatStreaming || !latestTaskList) {
+    return false;
+  }
+  return latestTaskList.some((t) => t.status !== "completed");
+}
 
 export type MessagePart = UIMessage<
   unknown,

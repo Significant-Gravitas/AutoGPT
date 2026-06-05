@@ -27,6 +27,7 @@ import {
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
@@ -316,11 +317,11 @@ export function ChatMessagesContainer({
   const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   const latestTaskList = getLatestTaskList(messages);
   const isChatStreaming = status === "streaming" || status === "submitted";
-  const hasActiveTaskList =
-    isContextPanelEnabled &&
-    isChatStreaming &&
-    !!latestTaskList &&
-    latestTaskList.some((t) => t.status !== "completed");
+  const hasActiveTaskList = shouldShowTaskListNotice({
+    isContextPanelEnabled,
+    isChatStreaming,
+    latestTaskList,
+  });
 
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
