@@ -171,16 +171,13 @@ async def _call_llm_for_simulation(
     # ``baseline/service.py`` policy: only send when actually routing
     # through OpenRouter.
     #
-    # Under local, swap to the same Ollama ``options.num_ctx`` forward
-    # ``baseline/service.py`` uses (Ollama's OpenAI shim defaults to a
-    # 4 k context regardless of the model's real window; without this
-    # hint the simulator silently truncates anything long enough to
-    # matter — see ollama/ollama#2714). Non-Ollama OpenAI-compat
-    # backends ignore unknown ``options`` keys, so this stays safe.
+    # Local backends govern their own context window at launch (e.g.
+    # OLLAMA_CONTEXT_LENGTH), so we send no per-request num_ctx hint —
+    # Ollama's OpenAI shim ignores ``options.num_ctx`` anyway.
     from backend.copilot.sdk.env import config as chat_cfg
 
     if chat_cfg.transport.name == "local":
-        extra_body: dict[str, Any] = {"options": {"num_ctx": chat_cfg.local_num_ctx}}
+        extra_body: dict[str, Any] = {}
     else:
         # Shallow-copy the constant rather than sharing the reference — see
         # the matching pattern in ``baseline/service.py`` and

@@ -337,11 +337,10 @@ async def generate_activity_status_for_execution(
         #   ``use_local`` and is already shaped for the local backend.
         # - ``extra_body={"usage": {"include": True}}`` is OpenRouter's
         #   piggybacked-cost extension; local backends don't implement it
-        #   and may reject the request body. Swap it for the same
-        #   ``options.num_ctx`` forward ``baseline/service.py`` uses so
-        #   Ollama's OpenAI shim doesn't silently cap context at its 4 k
-        #   default (see ollama/ollama#2714). Non-Ollama OpenAI-compat
-        #   backends ignore unknown ``options`` keys.
+        #   and may reject the request body. Local sends an empty
+        #   ``extra_body`` instead — the backend's own launched context
+        #   window (e.g. OLLAMA_CONTEXT_LENGTH) governs, read back at
+        #   runtime by ``local_context_probe`` for compaction.
         #
         # Same gating pattern as ``backend/copilot/baseline/service.py`` and
         # ``backend/executor/simulator.py`` — keep the three in sync.
@@ -359,9 +358,7 @@ async def generate_activity_status_for_execution(
                 if model_name == _DEFAULT_MODEL_NAME
                 else model_name
             )
-            extra_body: dict[str, Any] = {
-                "options": {"num_ctx": chat_cfg.local_num_ctx}
-            }
+            extra_body: dict[str, Any] = {}
         else:
             # Model values arriving without a provider prefix (e.g. "gpt-4o-mini")
             # need to be remapped to OpenRouter's namespaced form. Already-prefixed

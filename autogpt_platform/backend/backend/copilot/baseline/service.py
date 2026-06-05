@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai import APIConnectionError
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
@@ -42,6 +43,10 @@ from backend.copilot.builder_context import (
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.local_context_probe import (
+    compaction_target_for_window,
+    probe_local_context_window,
+)
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -795,16 +800,12 @@ async def _baseline_llm_caller(
         is_openrouter_transport = baseline_provider == "openrouter"
         extra_body: dict[str, Any] = {}
         if baseline_provider == "local":
-            # Ollama's OpenAI shim defaults to ``num_ctx=4096`` regardless of
-            # the model's advertised window — silently truncating AutoPilot's
-            # ~8 k system prompt and producing nonsense responses on the very
-            # first turn (ollama/ollama#2714). Pass an explicit ctx large
-            # enough to hold our system prompt + a real conversation. Skip
-            # the OpenRouter ``usage.include`` extension and reasoning params
-            # — stricter local backends reject unknown body keys outright.
-            extra_body.setdefault("options", {}).setdefault(
-                "num_ctx", config.local_num_ctx
-            )
+            # Local backends govern their own context window at launch (e.g.
+            # OLLAMA_CONTEXT_LENGTH); AutoPilot reads it back at runtime for
+            # compaction (see local_context_probe). Send no extra_body — skip
+            # the OpenRouter ``usage.include`` extension and reasoning params,
+            # which stricter local backends reject outright.
+            pass
         elif is_openrouter_transport:
             # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
             extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
@@ -1264,9 +1265,19 @@ async def _compress_session_messages(
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
+    # Under the local transport the model slug isn't in the cloud model
+    # registry, so compress_context()'s default target would fall back to
+    # ~120k and never fire before the (much smaller) local window overflows.
+    # Probe the backend for its real window and target compaction at it.
+    target_tokens: int | None = None
+    if config.effective_transport == "local" and config.base_url:
+        window = await probe_local_context_window(config.base_url, model)
+        target_tokens = compaction_target_for_window(window)
+
     try:
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
             client=_get_main_client(),
         )
@@ -1274,6 +1285,7 @@ async def _compress_session_messages(
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
             client=None,
         )
@@ -1297,6 +1309,22 @@ async def _compress_session_messages(
         ]
 
     return messages
+
+
+def _humanize_baseline_error(e: Exception) -> str:
+    """Map a raw streaming exception to a user-facing message.
+
+    A connection error under the local transport almost always means the
+    operator's LLM backend (Ollama/vLLM/…) isn't running — say so, instead of
+    surfacing a bare "Connection error.".
+    """
+    if isinstance(e, APIConnectionError) and config.effective_transport == "local":
+        return (
+            f"Can't reach the local LLM backend at {config.base_url}. Make sure "
+            "your model server is running — for Ollama, start it with "
+            "`ollama serve` (or check CHAT_BASE_URL)."
+        )
+    return str(e) or type(e).__name__
 
 
 def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
@@ -2270,7 +2298,7 @@ async def stream_chat_completion_baseline(
             state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
-        error_msg = str(e) or type(e).__name__
+        error_msg = _humanize_baseline_error(e)
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         # Drain any queued tail events (reasoning/text close + finish step)
         # that ``_baseline_llm_caller``'s finally block pushed before the

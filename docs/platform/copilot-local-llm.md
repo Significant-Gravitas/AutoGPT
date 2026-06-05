@@ -71,14 +71,14 @@ CHAT_API_KEY=ollama
 # The chat model. Bare model names ONLY — provider/model slugs (e.g.
 # `anthropic/claude-...`) are passed through verbatim and Ollama can't
 # resolve them. See "Picking a model" below.
-CHAT_FAST_STANDARD_MODEL=llama3.1:8b-instruct-q4_K_M
+CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 
 # Optional — overrides for advanced tier and aux models. If you leave
 # them out, the local transport derives title_model and simulation_model
 # from CHAT_FAST_STANDARD_MODEL automatically; CHAT_FAST_ADVANCED_MODEL
 # stays at its cloud default and you should set it to the same Ollama
 # slug (or a bigger one if you have the VRAM).
-CHAT_FAST_ADVANCED_MODEL=llama3.1:8b-instruct-q4_K_M
+CHAT_FAST_ADVANCED_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
 ## Picking a model
@@ -89,34 +89,35 @@ model that handles all three.
 
 | Tier | Recommended Ollama tag | Why | Footprint |
 | --- | --- | --- | --- |
-| **Default** | `llama3.1:8b-instruct-q4_K_M` | Battle-tested OpenAI-shim tool-calling; 128 k advertised context; no `<think>` tag artifacts | ~6 GB resident, CPU-friendly |
+| **Default** | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` | Unsloth-recommended; solid OpenAI-shim tool-calling at 4B; 256 k native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~3.4 GB resident; runs on a 16 GB laptop, GPU-accelerated |
 | **Tight RAM** | `qwen3:4b` | Smaller; native tools; set `think: false` to avoid the unclosed-`<think>` tool-call render bug | ~3-4 GB resident |
 | **GPU / advanced** | `qwen3:14b-instruct-q4_K_M` | Best tool-selection accuracy in this size class | ~12 GB VRAM |
 
 Pull whichever you choose:
 
 ```bash
-ollama pull llama3.1:8b-instruct-q4_K_M
+ollama pull hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
-## The `num_ctx` gotcha
+## Context window — set it once, on the backend
 
 Ollama defaults `num_ctx` to **4096 tokens regardless of the model's
 advertised window** ([ollama/ollama#2714](https://github.com/ollama/ollama/issues/2714)).
-That's smaller than AutoPilot's system prompt — without a ctx override
-Ollama only sees the *end* of the instructions, the response is
-incoherent or 500s outright.
+That's smaller than AutoPilot's system prompt + tool schemas — without a
+larger window Ollama only sees the *end* of the instructions and responses
+are incoherent or 500 outright.
 
-**Important:** Ollama's OpenAI-compatibility endpoint (`/v1/chat/completions`)
-**does NOT** honor an `options.num_ctx` field in the request body — only
-the native `/api/chat` does. The OpenAI client inside the AutoPilot
-backend talks to the `/v1` shim, so the chat-side `CHAT_LOCAL_NUM_CTX`
-config is forwarded **for OpenAI-compatible backends that DO honor it
-in the request body** (vLLM, LM Studio, LiteLLM proxy …).
+Set the window **once, on the server**, via `OLLAMA_CONTEXT_LENGTH`. There is
+**no AutoGPT-side context config** to keep in sync: AutoPilot reads the
+backend's *actual* loaded window back at runtime — Ollama `/api/ps`, llama.cpp
+`/props`, vLLM / LM Studio `/v1/models` — and compacts the conversation under
+it. Backends that don't report a window (LiteLLM proxy, Jan,
+text-generation-webui) fall back to assuming 32k.
 
-For Ollama specifically, set the context at the **server** via the
-`OLLAMA_CONTEXT_LENGTH` env var. The installer scripts do this for
-you — manual setup looks different per platform:
+Use **at least 24k** (32768 recommended): below that, the system prompt +
+tools leave almost no room for conversation and AutoPilot logs a warning.
+
+The installer sets `OLLAMA_CONTEXT_LENGTH` for you. Manual setup per platform:
 
 **Linux** (systemd drop-in):
 
@@ -149,7 +150,8 @@ setx OLLAMA_CONTEXT_LENGTH "32768"
 ```
 
 Verify on any platform with `ollama ps` (the `CONTEXT` column should
-show 32768).
+show your value, e.g. 32768). If you change it, AutoPilot picks up the
+new window automatically on the next turn — nothing else to update.
 
 ## Networking — same host, different host, or remote
 

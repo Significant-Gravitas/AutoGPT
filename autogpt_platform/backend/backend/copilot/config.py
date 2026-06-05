@@ -549,25 +549,6 @@ class ChatConfig(BaseSettings):
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
     )
-    local_num_ctx: int = Field(
-        default=32768,
-        ge=2048,
-        description="Context window (in tokens) requested from the local "
-        "backend for every chat call when ``use_local`` is True. Ollama's "
-        "OpenAI shim ignores the model's advertised window and defaults to "
-        "``num_ctx=4096`` — small enough to silently truncate AutoPilot's "
-        "~8 k-token system prompt and produce a corrupted first turn "
-        "(ollama/ollama#2714). 32 768 leaves room for the system prompt + a "
-        "few turns of conversation while staying well inside what an 8 GB "
-        "Q4 model can hold on consumer hardware. Adjust for very small "
-        "(set to model's actual window) or very large (only with GPU) "
-        "deployments. NOTE: Ollama's ``/v1/chat/completions`` endpoint does "
-        "NOT honor ``options.num_ctx`` in the request body — set the server "
-        "via ``OLLAMA_CONTEXT_LENGTH=32768`` env var on the systemd unit. "
-        "This config field is forwarded for OpenAI-compatible backends that "
-        "DO honor it in the request (vLLM, LM Studio, LiteLLM proxy, …). "
-        "Ignored under cloud transports.",
-    )
     local_request_timeout_s: float = Field(
         default=1800.0,
         ge=60.0,
