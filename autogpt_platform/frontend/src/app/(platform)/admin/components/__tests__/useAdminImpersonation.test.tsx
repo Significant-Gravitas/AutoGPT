@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -58,7 +58,7 @@ describe("useAdminImpersonation", () => {
     const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
 
     await act(async () => {
-      result.current.startImpersonating(TARGET_USER_ID);
+      void result.current.startImpersonating(TARGET_USER_ID);
     });
 
     await waitFor(() => {
@@ -79,7 +79,7 @@ describe("useAdminImpersonation", () => {
     const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
 
     await act(async () => {
-      result.current.startImpersonating(TARGET_USER_ID);
+      void result.current.startImpersonating(TARGET_USER_ID);
     });
 
     await waitFor(() => expect(reloadMock).toHaveBeenCalledTimes(1));
@@ -104,7 +104,7 @@ describe("useAdminImpersonation", () => {
     const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
 
     await act(async () => {
-      result.current.startImpersonating("   ");
+      void result.current.startImpersonating("   ");
     });
 
     expect(toastMock).toHaveBeenCalledWith(
@@ -116,5 +116,30 @@ describe("useAdminImpersonation", () => {
     expect(apiHit).not.toHaveBeenCalled();
     expect(setSpy).not.toHaveBeenCalled();
     expect(reloadMock).not.toHaveBeenCalled();
+  });
+
+  test("drops a re-entrant second start so only one audit alert is sent", async () => {
+    let calls = 0;
+    server.use(
+      http.post(NOTIFY_URL, async () => {
+        calls++;
+        await delay(10);
+        return new HttpResponse(JSON.stringify({ alerted: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+
+    await act(async () => {
+      // Fire twice before the first resolves; the re-entry guard drops the 2nd.
+      void result.current.startImpersonating(TARGET_USER_ID);
+      void result.current.startImpersonating(TARGET_USER_ID);
+    });
+
+    await waitFor(() => expect(reloadMock).toHaveBeenCalled());
+    expect(calls).toBe(1);
   });
 });
