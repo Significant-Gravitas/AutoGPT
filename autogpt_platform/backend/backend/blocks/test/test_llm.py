@@ -1693,22 +1693,29 @@ class TestOpenRouterAliases:
         """Assert the correct slug is passed to the OpenRouter client."""
         mock_client = AsyncMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create = AsyncMock(return_value=MagicMock(
-            choices=[MagicMock(message=MagicMock(content="ok"))],
-            usage=MagicMock(total_tokens=1, prompt_tokens=1, completion_tokens=0),
-        ))
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=MagicMock(
+                choices=[MagicMock(message=MagicMock(content="ok"))],
+                usage=MagicMock(total_tokens=1, prompt_tokens=1, completion_tokens=0),
+            )
+        )
 
         credentials = MagicMock()
         credentials.api_key.get_secret_value.return_value = "sk-test"
 
         # Force the provider dispatch to the open_router branch regardless of
         # the model's native metadata provider (e.g. anthropic vs openai).
-        with patch.object(model, "metadata", new_callable=PropertyMock) as mock_meta:
-            mock_meta.return_value = MagicMock(
-                provider="open_router",
-                context_window=model.context_window,
-                max_output_tokens=model.max_output_tokens,
-            )
+        original_meta = llm.MODEL_METADATA[model]
+        openrouter_meta = llm.ModelMetadata(
+            provider="open_router",
+            context_window=original_meta.context_window,
+            max_output_tokens=original_meta.max_output_tokens,
+            display_name=original_meta.display_name,
+            provider_name=original_meta.provider_name,
+            creator_name=original_meta.creator_name,
+            price_tier=original_meta.price_tier,
+        )
+        with patch.dict(llm.MODEL_METADATA, {model: openrouter_meta}, clear=False):
             await llm._llm_call(
                 credentials=credentials,
                 llm_model=model,
