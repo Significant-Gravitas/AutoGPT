@@ -36,7 +36,9 @@ if TYPE_CHECKING:
         StoreAgentDetails,
         StoreSubmission,
     )
+    from backend.data.credit import InvoiceListItem as _InvoiceListItem
     from backend.data.execution import GraphExecutionMeta, GraphExecutionWithNodes
+    from backend.data.execution_cost_summary import UserExecutionCostSummary
     from backend.data.graph import Graph as _Graph
     from backend.data.graph import GraphMeta as _GraphMeta
     from backend.data.graph import GraphModel as _GraphModel
@@ -430,6 +432,12 @@ class LibraryAgent(BaseModel):
         "present if the agent has a webhook trigger input",
     )
     recommended_schedule_cron: str | None
+    folder_id: Optional[str] = Field(
+        default=None, description="ID of the folder this agent is in"
+    )
+    folder_name: Optional[str] = Field(
+        default=None, description="Name of the folder this agent is in"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -458,6 +466,8 @@ class LibraryAgent(BaseModel):
             output_schema=agent.output_schema,
             trigger_setup_info=trigger_info,
             recommended_schedule_cron=agent.recommended_schedule_cron,
+            folder_id=agent.folder_id,
+            folder_name=agent.folder_name,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
         )
@@ -601,6 +611,10 @@ class AgentPreset(BaseModel):
     description: str
     is_active: bool
     inputs: dict[str, Any]
+    webhook_id: Optional[str] = Field(
+        default=None,
+        description="Webhook ID if this preset is triggered by a webhook",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -614,6 +628,7 @@ class AgentPreset(BaseModel):
             description=p.description,
             is_active=p.is_active,
             inputs=p.inputs,
+            webhook_id=p.webhook_id,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -681,6 +696,15 @@ RunStatus: TypeAlias = Literal[
 ]
 
 
+class CredentialInputInfo(BaseModel):
+    """Metadata about a credential input used in a run (no secrets)."""
+
+    id: str
+    title: Optional[str] = None
+    provider: str
+    type: str
+
+
 class AgentGraphRun(BaseModel):
     id: str
     graph_id: str
@@ -689,6 +713,17 @@ class AgentGraphRun(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     inputs: Optional[dict[str, Any]]
+    credential_inputs: Optional[dict[str, CredentialInputInfo]] = Field(
+        default=None,
+        description="Credential inputs used in this run (metadata only, no secrets)",
+    )
+    preset_id: Optional[str] = Field(
+        default=None, description="Preset ID used for this run"
+    )
+    is_shared: bool = Field(default=False, description="Whether this run is shared")
+    share_token: Optional[str] = Field(
+        default=None, description="Share token for public access"
+    )
     cost: int = Field(description="Cost in cents ($)")
     duration: float = Field(description="Duration in seconds")
     node_exec_count: int = Field(description="Number of nodes executed")
@@ -709,11 +744,28 @@ class AgentGraphRun(BaseModel):
             started_at=exec.started_at,
             ended_at=exec.ended_at,
             inputs=exec.inputs,
+            credential_inputs=cls._map_credential_inputs(exec),
+            preset_id=exec.preset_id,
+            is_shared=exec.is_shared,
+            share_token=exec.share_token,
             cost=exec.stats.cost if exec.stats else 0,
             duration=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
             correctness_score=exec.stats.correctness_score if exec.stats else None,
         )
+
+    @classmethod
+    def _map_credential_inputs(
+        cls, exec: GraphExecutionMeta
+    ) -> dict[str, CredentialInputInfo] | None:
+        if not exec.credential_inputs:
+            return None
+        return {
+            k: CredentialInputInfo(
+                id=v.id, title=v.title, provider=v.provider, type=v.type
+            )
+            for k, v in exec.credential_inputs.items()
+        }
 
 
 class AgentGraphRunDetails(AgentGraphRun):
@@ -737,6 +789,10 @@ class AgentGraphRunDetails(AgentGraphRun):
             started_at=exec.started_at,
             ended_at=exec.ended_at,
             inputs=exec.inputs,
+            credential_inputs=cls._map_credential_inputs(exec),
+            preset_id=exec.preset_id,
+            is_shared=exec.is_shared,
+            share_token=exec.share_token,
             outputs=exec.outputs,
             cost=exec.stats.cost if exec.stats else 0,
             duration=exec.stats.duration if exec.stats else 0,
@@ -918,10 +974,184 @@ class CreditTransaction(BaseModel):
         )
 
 
-class CreditTransactionsResponse(PaginatedResponse):
-    """Response for listing credit transactions."""
+class CreditTransactionsResponse(BaseModel):
+    """Response for listing credit transactions (cursor-paginated)."""
 
     transactions: list[CreditTransaction]
+    next_cursor: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cursor for the next page (ISO datetime). "
+            "Pass as the `cursor` query parameter to fetch the next page. "
+            "Null when there are no more results."
+        ),
+    )
+
+
+# ============================================================================
+# Subscription Models
+# ============================================================================
+
+SubscriptionTierValue: TypeAlias = Literal[
+    "NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
+]
+
+
+class SubscriptionStatus(BaseModel):
+    """Current subscription status and tier pricing."""
+
+    tier: SubscriptionTierValue
+    monthly_cost: int = Field(description="Current plan cost in cents")
+    tier_costs: dict[str, int] = Field(
+        description="Available tier → monthly cost in cents"
+    )
+    tier_costs_yearly: dict[str, int] = Field(
+        default_factory=dict,
+        description="Available tier → yearly cost in cents",
+    )
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    tier_multipliers: dict[str, float] = Field(
+        default_factory=dict,
+        description="Tier → rate-limit multiplier",
+    )
+    proration_credit_cents: int = Field(
+        description="Unused portion of current plan available as upgrade credit"
+    )
+    has_active_stripe_subscription: bool = False
+    current_period_end: Optional[int] = Field(
+        default=None,
+        description="Unix timestamp of current billing period end",
+    )
+    pending_tier: Optional[SubscriptionTierValue] = None
+    pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = None
+
+
+# ============================================================================
+# Invoice Models
+# ============================================================================
+
+
+class InvoiceItem(BaseModel):
+    """A Stripe invoice."""
+
+    id: str
+    number: Optional[str] = None
+    created_at: datetime
+    total_cents: int = Field(description="Invoice total in cents")
+    amount_paid_cents: int = Field(description="Amount settled so far in cents")
+    currency: str = "usd"
+    status: str
+    description: Optional[str] = None
+    hosted_invoice_url: Optional[str] = Field(
+        default=None, description="Stripe-hosted invoice view URL"
+    )
+    invoice_pdf_url: Optional[str] = Field(
+        default=None, description="Direct PDF download URL"
+    )
+
+    @classmethod
+    def from_internal(cls, inv: _InvoiceListItem) -> Self:
+        return cls(
+            id=inv.id,
+            number=inv.number,
+            created_at=inv.created_at,
+            total_cents=inv.total_cents,
+            amount_paid_cents=inv.amount_paid_cents,
+            currency=inv.currency,
+            status=inv.status,
+            description=inv.description,
+            hosted_invoice_url=inv.hosted_invoice_url,
+            invoice_pdf_url=inv.invoice_pdf_url,
+        )
+
+
+class InvoiceListResponse(BaseModel):
+    """Response for listing invoices."""
+
+    invoices: list[InvoiceItem]
+
+
+# ============================================================================
+# Automation Credit Cost Summary Models
+# ============================================================================
+
+
+class AgentAutomationCost(BaseModel):
+    """Per-agent automation credit cost aggregation."""
+
+    graph_id: str
+    cost_cents: int
+    run_count: int
+
+
+class TopAutomationCostRun(BaseModel):
+    """A high-cost run by automation credit spend."""
+
+    execution_id: str
+    graph_id: str
+    cost_cents: int
+    started_at: datetime
+    status: str
+    duration_seconds: float
+    node_error_count: int
+
+
+class DailyAutomationCost(BaseModel):
+    """Daily automation credit cost aggregation."""
+
+    date: str = Field(description="Calendar date (YYYY-MM-DD)")
+    cost_cents: int
+    run_count: int
+
+
+class AutomationCostSummary(BaseModel):
+    """Aggregated automation credit cost breakdown."""
+
+    total_cents: int
+    run_count: int
+    billable_run_count: int
+    failed_cost_cents: int
+    by_agent: list[AgentAutomationCost]
+    top_runs: list[TopAutomationCostRun]
+    daily: list[DailyAutomationCost]
+
+    @classmethod
+    def from_internal(cls, s: UserExecutionCostSummary) -> Self:
+        return cls(
+            total_cents=s.total_cents,
+            run_count=s.run_count,
+            billable_run_count=s.billable_run_count,
+            failed_cost_cents=s.failed_cost_cents,
+            by_agent=[
+                AgentAutomationCost(
+                    graph_id=a.graph_id,
+                    cost_cents=a.cost_cents,
+                    run_count=a.run_count,
+                )
+                for a in s.by_agent
+            ],
+            top_runs=[
+                TopAutomationCostRun(
+                    execution_id=r.execution_id,
+                    graph_id=r.graph_id,
+                    cost_cents=r.cost_cents,
+                    started_at=r.started_at,
+                    status=r.status.value,
+                    duration_seconds=r.duration_seconds,
+                    node_error_count=r.node_error_count,
+                )
+                for r in s.top_runs
+            ],
+            daily=[
+                DailyAutomationCost(
+                    date=d.date.isoformat(),
+                    cost_cents=d.cost_cents,
+                    run_count=d.run_count,
+                )
+                for d in s.daily
+            ],
+        )
 
 
 # ============================================================================
@@ -939,6 +1169,10 @@ class CredentialInfo(BaseModel):
     type: CredentialType
     provider: str = Field(description="Integration provider name")
     title: Optional[str] = Field(description="User-assigned title for this credential")
+    username: Optional[str] = Field(
+        default=None,
+        description="Third-party service username (OAuth2 credentials only)",
+    )
     scopes: list[str] = Field(
         description="Permission scopes granted to this credential"
     )
@@ -948,9 +1182,11 @@ class CredentialInfo(BaseModel):
     def from_internal(cls, cred: Credentials) -> Self:
         scopes: list[str] = []
         expires_at: int | None = None
+        username: str | None = None
         if cred.type == "oauth2":
             scopes = cred.scopes
             expires_at = cred.refresh_token_expires_at
+            username = cred.username
         elif cred.type == "api_key":
             expires_at = cred.expires_at
 
@@ -959,6 +1195,7 @@ class CredentialInfo(BaseModel):
             type=cred.type,
             provider=cred.provider,
             title=cred.title,
+            username=username,
             scopes=scopes,
             expires_at=(
                 datetime.fromtimestamp(expires_at, tz=timezone.utc)
