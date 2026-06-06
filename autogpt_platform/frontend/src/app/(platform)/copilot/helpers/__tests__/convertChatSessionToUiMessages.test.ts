@@ -278,6 +278,272 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     const mergedId = result.messages[1].id;
     expect(result.stats.get(mergedId)?.createdAt).toBe(later);
   });
+
+  // ----------------------------------------------------------------- //
+  //  Tool-call → tool-result pairing (#13306)                          //
+  // ----------------------------------------------------------------- //
+  //
+  // The LLM provider does NOT guarantee globally-unique tool_call_ids
+  // across multiple turns of the same session — only within one
+  // completions response.  When a duplicate id reappears in a later
+  // turn, naive id-keyed pairing collapses both occurrences onto the
+  // last tool message and the earlier assistant tool call ends up
+  // displaying the WRONG output (issue #13306: "tool call descriptions
+  // and result pairings are getting mixed up").  Pairing must be
+  // position-aware: each assistant tool_call slot is filled by the
+  // NEAREST FOLLOWING tool message with the matching id, and once
+  // filled it cannot be re-bound to a later tool message of the same
+  // id.
+
+  it("pairs duplicate tool_call_ids by position so each assistant tool call gets its own output", () => {
+    // Two distinct turns (user message between them) where the LLM
+    // happens to reuse "call_dup" for an unrelated web_search call in
+    // the second turn.  Pre-fix, both assistant messages received the
+    // SAME (last-wins) output because the helper keyed on tool_call_id
+    // alone.  Post-fix, each assistant call binds to its own slot.
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "search foo", sequence: 0 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "call_dup",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "foo" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_dup",
+          content: JSON.stringify({ results: [{ title: "foo result" }] }),
+          sequence: 2,
+        },
+        { role: "user", content: "now search bar", sequence: 3 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 4,
+          tool_calls: [
+            {
+              id: "call_dup",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "bar" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_dup",
+          content: JSON.stringify({ results: [{ title: "bar result" }] }),
+          sequence: 5,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // user, assistant(foo), user, assistant(bar)
+    expect(result.messages).toHaveLength(4);
+
+    const firstToolPart = result.messages[1].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    const secondToolPart = result.messages[3].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    expect(firstToolPart).toBeDefined();
+    expect(secondToolPart).toBeDefined();
+    expect(firstToolPart).toMatchObject({
+      type: "tool-web_search",
+      input: { query: "foo" },
+      output: { results: [{ title: "foo result" }] },
+    });
+    expect(secondToolPart).toMatchObject({
+      type: "tool-web_search",
+      input: { query: "bar" },
+      output: { results: [{ title: "bar result" }] },
+    });
+  });
+
+  it("preserves pairing when multiple tool_calls in the same assistant message share an id with later calls", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "do two things", sequence: 0 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "call_a",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "alpha" }),
+              },
+            },
+            {
+              id: "call_b",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "beta" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_a",
+          content: JSON.stringify({ results: [{ title: "alpha result" }] }),
+          sequence: 2,
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_b",
+          content: JSON.stringify({ results: [{ title: "beta result" }] }),
+          sequence: 3,
+        },
+        { role: "user", content: "do alpha again", sequence: 4 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 5,
+          tool_calls: [
+            {
+              id: "call_a",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "alpha-again" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_a",
+          content: JSON.stringify({
+            results: [{ title: "alpha-again result" }],
+          }),
+          sequence: 6,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    // user, assistant(2 calls), user, assistant(1 call)
+    expect(result.messages).toHaveLength(4);
+    const firstAssistantParts = result.messages[1].parts.filter((p) =>
+      p.type.startsWith("tool-"),
+    );
+    const secondAssistantParts = result.messages[3].parts.filter((p) =>
+      p.type.startsWith("tool-"),
+    );
+
+    expect(firstAssistantParts).toHaveLength(2);
+    expect(firstAssistantParts[0]).toMatchObject({
+      input: { query: "alpha" },
+      output: { results: [{ title: "alpha result" }] },
+    });
+    expect(firstAssistantParts[1]).toMatchObject({
+      input: { query: "beta" },
+      output: { results: [{ title: "beta result" }] },
+    });
+
+    expect(secondAssistantParts).toHaveLength(1);
+    expect(secondAssistantParts[0]).toMatchObject({
+      input: { query: "alpha-again" },
+      output: { results: [{ title: "alpha-again result" }] },
+    });
+  });
+
+  it("uses extraToolOutputs only for the FIRST unfilled slot when an id reappears later in the same page", () => {
+    // Cross-page handoff: tool message for an assistant call landed on
+    // an adjacent page and is passed in via extraToolOutputs keyed by
+    // tool_call_id.  If the same id is reused later in the current
+    // page, the cross-page output must attach to the FIRST assistant
+    // call (oldest slot) and the in-page tool message attaches to the
+    // later one.  Without slot-based pairing, the cross-page seed
+    // would clobber the in-page output (or vice versa) and one of the
+    // assistant cards would render with the wrong results.
+    const cross = new Map<string, unknown>([
+      ["call_dup", JSON.stringify({ results: [{ title: "from-other-page" }] })],
+    ]);
+
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "first", sequence: 10 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 11,
+          tool_calls: [
+            {
+              id: "call_dup",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "first-call" }),
+              },
+            },
+          ],
+        },
+        { role: "user", content: "second", sequence: 12 },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 13,
+          tool_calls: [
+            {
+              id: "call_dup",
+              type: "function",
+              function: {
+                name: "web_search",
+                arguments: JSON.stringify({ query: "second-call" }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_dup",
+          content: JSON.stringify({ results: [{ title: "in-page result" }] }),
+          sequence: 14,
+        },
+      ],
+      { isComplete: true, extraToolOutputs: cross },
+    );
+
+    // user, assistant(first-call), user, assistant(second-call)
+    expect(result.messages).toHaveLength(4);
+    const firstToolPart = result.messages[1].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    const secondToolPart = result.messages[3].parts.find((p) =>
+      p.type.startsWith("tool-"),
+    );
+    expect(firstToolPart).toMatchObject({
+      input: { query: "first-call" },
+      output: { results: [{ title: "from-other-page" }] },
+    });
+    expect(secondToolPart).toMatchObject({
+      input: { query: "second-call" },
+      output: { results: [{ title: "in-page result" }] },
+    });
+  });
 });
 
 // --------------------------------------------------------------------------- //
