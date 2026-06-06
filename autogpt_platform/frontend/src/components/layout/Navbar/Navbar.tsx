@@ -62,7 +62,7 @@ export function Navbar() {
   const actualLoggedInLinks = [
     { name: "Home", href: "/copilot" },
     { name: "Agents", href: "/library" },
-    ...(isArtifactsEnabled ? [{ name: "Artifacts", href: "/artifacts" }] : []),
+    ...(isArtifactsEnabled ? [{ name: "Files", href: "/artifacts" }] : []),
     ...loggedInLinks,
   ];
 
