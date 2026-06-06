@@ -244,13 +244,83 @@ export function convertChatSessionMessagesToUiMessages(
   const latestUserMessageIndex = messages.findLastIndex(
     (m) => m.role === "user",
   );
-  const toolOutputsByCallId = new Map<string, unknown>();
 
-  // Seed with extra tool outputs from adjacent pages first;
-  // outputs from this page will override if present in both.
+  // Position-aware tool-call → tool-output pairing (#13306).
+  //
+  // LLM providers do NOT guarantee globally-unique ``tool_call_id``s
+  // across separate completions calls, only within a single response.
+  // A naive ``Map<id, output>`` collapses every reappearance of an id
+  // onto the latest tool message, so the earlier assistant card
+  // displays the wrong output ("description and result pairings are
+  // mixed up" — issue #13306).
+  //
+  // Walk messages in DB order and, per occurrence of each
+  // ``tool_call_id``, allocate a slot.  Tool messages fill the OLDEST
+  // unfilled slot for their id.  Cross-page seeds from
+  // ``extraToolOutputs`` fill the first slot in the same FIFO manner —
+  // they represent tool outputs that landed on an adjacent page for
+  // the earliest assistant call(s) on this page.  An assistant card
+  // renders the output bound to its specific slot, not whatever
+  // happens to be the last value under that id.
+  type ToolSlotKey = string;
+  const slotsById = new Map<string, ToolSlotKey[]>();
+  const slotOutputs = new Map<ToolSlotKey, unknown>();
+  let slotCounter = 0;
+
+  function allocateSlot(toolCallId: string): ToolSlotKey {
+    const slotKey = `${toolCallId}#${slotCounter++}`;
+    const existing = slotsById.get(toolCallId);
+    if (existing) {
+      existing.push(slotKey);
+    } else {
+      slotsById.set(toolCallId, [slotKey]);
+    }
+    return slotKey;
+  }
+
+  function fillNextSlot(toolCallId: string, output: unknown): boolean {
+    const queue = slotsById.get(toolCallId);
+    if (!queue || queue.length === 0) return false;
+    for (let i = 0; i < queue.length; i++) {
+      const slotKey = queue[i];
+      if (!slotOutputs.has(slotKey)) {
+        slotOutputs.set(slotKey, output);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Allocate slots for every assistant tool_call in DB order, then bind
+  // outputs in two passes: cross-page seeds first (oldest pending slot
+  // wins), in-page tool messages second (next pending slot for that id).
+  // This preserves the "in-page wins over cross-page" semantics from
+  // before for the common no-duplicate case while keeping each
+  // duplicate id occurrence in its own bucket.
+  const assistantToolCallSlots = new Map<number, ToolSlotKey[]>();
+  messages.forEach((msg, idx) => {
+    if (msg.role !== "assistant") return;
+    if (!Array.isArray(msg.tool_calls)) return;
+    const slots: ToolSlotKey[] = [];
+    for (const rawToolCall of msg.tool_calls) {
+      if (!rawToolCall || typeof rawToolCall !== "object") {
+        slots.push("");
+        continue;
+      }
+      const toolCall = rawToolCall as { id?: unknown };
+      const toolCallId = String(toolCall.id ?? "").trim();
+      if (!toolCallId) {
+        slots.push("");
+        continue;
+      }
+      slots.push(allocateSlot(toolCallId));
+    }
+    assistantToolCallSlots.set(idx, slots);
+  });
+
   if (options?.extraToolOutputs) {
     for (const [id, output] of options.extraToolOutputs) {
-      toolOutputsByCallId.set(id, output);
+      fillNextSlot(id, output);
     }
   }
 
@@ -258,7 +328,7 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.role !== "tool") continue;
     if (!msg.tool_call_id) continue;
     if (msg.content == null) continue;
-    toolOutputsByCallId.set(msg.tool_call_id, msg.content);
+    fillNextSlot(msg.tool_call_id, msg.content);
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
@@ -316,8 +386,9 @@ export function convertChatSessionMessagesToUiMessages(
     }
 
     if (uiRole === "assistant" && Array.isArray(msg.tool_calls)) {
-      for (const rawToolCall of msg.tool_calls) {
-        if (!rawToolCall || typeof rawToolCall !== "object") continue;
+      const slotKeys = assistantToolCallSlots.get(idx) ?? [];
+      msg.tool_calls.forEach((rawToolCall, callIdx) => {
+        if (!rawToolCall || typeof rawToolCall !== "object") return;
         const toolCall = rawToolCall as {
           id?: unknown;
           function?: { name?: unknown; arguments?: unknown };
@@ -325,10 +396,11 @@ export function convertChatSessionMessagesToUiMessages(
 
         const toolCallId = String(toolCall.id ?? "").trim();
         const toolName = String(toolCall.function?.name ?? "").trim();
-        if (!toolCallId || !toolName) continue;
+        if (!toolCallId || !toolName) return;
 
         const input = toToolInput(toolCall.function?.arguments);
-        const output = toolOutputsByCallId.get(toolCallId);
+        const slotKey = slotKeys[callIdx];
+        const output = slotKey ? slotOutputs.get(slotKey) : undefined;
 
         if (output !== undefined) {
           parts.push({
@@ -356,7 +428,7 @@ export function convertChatSessionMessagesToUiMessages(
             input,
           });
         }
-      }
+      });
     }
 
     // User messages must always be rendered, even with empty content, so the
