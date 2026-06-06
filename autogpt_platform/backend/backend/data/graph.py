@@ -815,6 +815,30 @@ class GraphModel(Graph, GraphMeta):
                     ):
                         node_errors[node.id][field_name] = "This field is required"
 
+                # Validate field-level JSON-schema bound constraints
+                # (minimum/maximum/exclusiveMinimum/exclusiveMaximum and
+                # minLength/maxLength/minItems/maxItems — i.e. the keywords
+                # ``get_field_errors`` surfaces, see ``_INLINE_FIELD_ERROR_KEYWORDS``)
+                # so violations surface inline on the offending field via the
+                # same ``node_errors`` path used by structural checks. Skip
+                # fields whose value comes from an upstream link — the runtime
+                # value is unknown here, and the saved ``input_default`` for a
+                # linked field may be a placeholder.
+                linked_field_names = {
+                    sanitize_pin_name(link.sink_name)
+                    for link in input_links.get(node.id, [])
+                }
+                field_data = {
+                    k: v
+                    for k, v in {**node.input_default, **node_input_mask}.items()
+                    if sanitize_pin_name(k) not in linked_field_names
+                }
+                for field_name, message in InputSchema.get_field_errors(
+                    field_data
+                ).items():
+                    if field_name not in node_errors[node.id]:
+                        node_errors[node.id][field_name] = message
+
             # Get input schema properties and check dependencies
             input_fields = InputSchema.model_fields
 

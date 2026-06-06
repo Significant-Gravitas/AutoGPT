@@ -180,9 +180,7 @@ describe("getPreviewKind", () => {
   test.each([
     "text/plain",
     "text/html",
-    "application/json",
     "application/xml",
-    "text/csv",
     "text/markdown",
     "application/javascript",
     "application/typescript",
@@ -191,8 +189,58 @@ describe("getPreviewKind", () => {
     expect(getPreviewKind(mt, 1_000)).toBe("text");
   });
 
-  test("text over the cap suppresses the preview", () => {
-    expect(getPreviewKind("text/plain", 500_000)).toBe("none");
+  test("csv previews as 'csv'", () => {
+    expect(getPreviewKind("text/csv", 1_000)).toBe("csv");
+    expect(getPreviewKind("text/plain", 1_000, "data.csv")).toBe("csv");
+  });
+
+  test("json previews as 'json'", () => {
+    expect(getPreviewKind("application/json", 1_000)).toBe("json");
+    expect(getPreviewKind("text/plain", 1_000, "data.json")).toBe("json");
+  });
+
+  test("pdf previews as 'pdf' by mime or extension", () => {
+    expect(getPreviewKind("application/pdf", 1_000)).toBe("pdf");
+    expect(getPreviewKind("application/octet-stream", 1_000, "x.pdf")).toBe(
+      "pdf",
+    );
+  });
+
+  test("office openxml docs preview as 'office'", () => {
+    expect(
+      getPreviewKind(
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        1_000,
+      ),
+    ).toBe("office");
+    expect(getPreviewKind("application/octet-stream", 1_000, "deck.pptx")).toBe(
+      "office",
+    );
+  });
+
+  test("ics/vcard preview as cards only under the 50KB cap", () => {
+    expect(getPreviewKind("text/calendar", 1_000, "e.ics")).toBe("ics");
+    expect(getPreviewKind("text/vcard", 1_000, "c.vcf")).toBe("vcard");
+    expect(getPreviewKind("text/calendar", 200_000, "e.ics")).toBe("none");
+  });
+
+  test("svg images are treated as text, not raster image", () => {
+    expect(getPreviewKind("image/svg+xml", 1_000)).toBe("text");
+  });
+
+  test("large text/csv still previews (fetch is byte-capped)", () => {
+    expect(getPreviewKind("text/plain", 5_000_000)).toBe("text");
+    expect(getPreviewKind("text/csv", 5_000_000)).toBe("csv");
+  });
+
+  test("text/csv over the 50MB backend ceiling suppresses the preview", () => {
+    expect(getPreviewKind("text/plain", 60_000_000)).toBe("none");
+    expect(getPreviewKind("text/csv", 60_000_000)).toBe("none");
+  });
+
+  test("images/pdf over the backend ceiling suppress the preview", () => {
+    expect(getPreviewKind("image/png", 11_000_000)).toBe("none");
+    expect(getPreviewKind("application/pdf", 60_000_000)).toBe("none");
   });
 
   test("unknown binary mime types return 'none'", () => {
