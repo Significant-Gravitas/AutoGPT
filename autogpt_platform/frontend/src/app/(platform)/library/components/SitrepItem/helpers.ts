@@ -2,8 +2,9 @@ import { SitrepItemData } from "../../types";
 
 export function buildAutoPilotPrompt(item: SitrepItemData): string {
   // Embed the exact library agent ID and steer the assistant to resolve it by
-  // ID with the dedicated direct-lookup tool instead of a fuzzy name search.
-  const idHint = ` Use get_library_agent_by_id with the exact ID ${item.agentID} to look it up.`;
+  // ID via find_library_agent's agent_id (direct lookup) instead of a fuzzy
+  // name search.
+  const idHint = ` Use find_library_agent with the exact agent_id ${item.agentID} to look it up.`;
   switch (item.priority) {
     case "error":
       return `What happened with ${item.agentName}? It says "${item.message}" — can you check the logs and tell me what to fix?${idHint}`;

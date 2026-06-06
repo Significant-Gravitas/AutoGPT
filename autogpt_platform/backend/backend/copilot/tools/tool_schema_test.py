@@ -70,12 +70,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the require_approval gate, and the "STOP before building" caveat the
 # model needs to halt for user approval instead of rushing into
 # create_agent.
-# Bumped 40500 -> 41500 for the get_library_agent_by_id tool — a dedicated
-# direct by-id lookup (library_agent_id / graph_id) so the library "Chat"
-# flow resolves the exact agent instead of misusing find_library_agent's
-# fuzzy name search. Descriptions are trimmed to the minimum viable copy;
-# the bump absorbs the new schema skeleton.
-_CHAR_BUDGET = 41_500
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+_CHAR_BUDGET = 41_000
 
 
 @pytest.fixture(scope="module")

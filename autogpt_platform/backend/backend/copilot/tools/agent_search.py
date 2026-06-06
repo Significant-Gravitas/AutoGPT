@@ -38,82 +38,19 @@ async def search_agents(
     session_id: str | None = None,
     user_id: str | None = None,
     include_graph: bool = False,
+    agent_id: str = "",
 ) -> ToolResponseBase:
-    """Search for agents in marketplace or user library."""
+    """Search for agents in marketplace or user library.
+
+    For the library source, a non-empty ``agent_id`` switches to a strict
+    direct by-id lookup (library_agent_id or graph_id) with no fuzzy fallback.
+    """
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id, include_graph)
-
-
-async def get_library_agent_by_id(
-    agent_id: str,
-    session_id: str | None = None,
-    user_id: str | None = None,
-    include_graph: bool = False,
-) -> ToolResponseBase:
-    """Direct by-id lookup of a single library agent.
-
-    Resolves an exact ``library_agent_id`` or ``graph_id`` and NEVER falls back
-    to a fuzzy name search — returns ``NoResultsResponse`` when the id doesn't
-    resolve. Use this (not :func:`search_agents`) when the exact id is known.
-    """
-    if not user_id:
-        return ErrorResponse(
-            message="User authentication required to fetch a library agent",
-            session_id=session_id,
+        return await _search_library(
+            query, session_id, user_id, include_graph, agent_id
         )
-
-    agent_id = agent_id.strip()
-    if not agent_id:
-        return ErrorResponse(
-            message="agent_id is required to fetch a library agent",
-            session_id=session_id,
-        )
-
-    try:
-        agent = await _get_library_agent_by_id(user_id, agent_id)
-    except DatabaseError as e:
-        logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
-        return ErrorResponse(
-            message="Failed to fetch the library agent. Please try again.",
-            error=str(e),
-            session_id=session_id,
-        )
-
-    if agent is None:
-        return NoResultsResponse(
-            message=(
-                f"No library agent found with id '{agent_id}'. It may have been "
-                "deleted or you may not have access. Use find_library_agent to "
-                "search your library, or create a custom agent."
-            ),
-            suggestions=[
-                "Use find_library_agent to search your library",
-                "Check your library at /library",
-            ],
-            session_id=session_id,
-        )
-
-    truncation_notice: str | None = None
-    if include_graph:
-        truncation_notice = await _enrich_agents_with_graph([agent], user_id)
-
-    message = (
-        "Loaded the requested library agent. Link to it at "
-        "/library/agents/{agent_id}. Use view_agent_output for execution "
-        "results, or run_agent to execute it."
-    )
-    if truncation_notice:
-        message = f"{message}\n\nNote: {truncation_notice}"
-
-    return AgentsFoundResponse(
-        message=message,
-        title=f"Loaded agent '{agent.name}'",
-        agents=[agent],
-        count=1,
-        session_id=session_id,
-    )
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -183,12 +120,24 @@ async def _search_library(
     session_id: str | None,
     user_id: str | None,
     include_graph: bool = False,
+    agent_id: str = "",
 ) -> ToolResponseBase:
-    """Search user's library agents, with direct UUID lookup fallback."""
+    """Search user's library agents.
+
+    When ``agent_id`` is given, resolves that exact agent (library_agent_id or
+    graph_id) directly with NO fuzzy name-search fallback. Otherwise runs a
+    name/description search, with a direct UUID lookup for UUID-shaped queries.
+    """
     if not user_id:
         return ErrorResponse(
             message="User authentication required to search library",
             session_id=session_id,
+        )
+
+    agent_id = agent_id.strip()
+    if agent_id:
+        return await _lookup_library_agent_by_id(
+            agent_id, session_id, user_id, include_graph
         )
 
     query = query.strip()
@@ -585,6 +534,63 @@ async def _load_and_format_matched_agents(
         info.match_score = match.get("combined_score") or 0.0
         agents.append(info)
     return agents
+
+
+async def _lookup_library_agent_by_id(
+    agent_id: str,
+    session_id: str | None,
+    user_id: str,
+    include_graph: bool,
+) -> ToolResponseBase:
+    """Strict direct resolution of one library agent by id.
+
+    Resolves an exact ``library_agent_id`` or ``graph_id`` and never falls back
+    to a fuzzy name search — returns ``NoResultsResponse`` when the id doesn't
+    resolve. Backs ``find_library_agent``'s ``agent_id`` parameter.
+    """
+    try:
+        agent = await _get_library_agent_by_id(user_id, agent_id)
+    except DatabaseError as e:
+        logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
+        return ErrorResponse(
+            message="Failed to fetch the library agent. Please try again.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    if agent is None:
+        return NoResultsResponse(
+            message=(
+                f"No library agent found with id '{agent_id}'. It may have been "
+                "deleted or you may not have access. Retry find_library_agent "
+                "with a name query, or create a custom agent."
+            ),
+            suggestions=[
+                "Retry find_library_agent with a name/description query",
+                "Check your library at /library",
+            ],
+            session_id=session_id,
+        )
+
+    truncation_notice: str | None = None
+    if include_graph:
+        truncation_notice = await _enrich_agents_with_graph([agent], user_id)
+
+    message = (
+        "Found the requested library agent. Link to it at "
+        "/library/agents/{agent_id}. Use view_agent_output for execution "
+        "results, or run_agent to execute it."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
+    return AgentsFoundResponse(
+        message=message,
+        title=f"Loaded agent '{agent.name}'",
+        agents=[agent],
+        count=1,
+        session_id=session_id,
+    )
 
 
 async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | None:
