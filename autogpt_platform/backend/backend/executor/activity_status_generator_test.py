@@ -563,6 +563,10 @@ class TestGenerateActivityStatusForExecution:
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
             assert entry.block_name == "activity_status_generator"
+            # Routes through ``get_openai_client(prefer_openrouter=True)``, which
+            # only hits OpenRouter (or None) under non-local transport — so the
+            # cost row is always ``open_router`` here, never the chat transport's
+            # identity. See ``clients_test.TestOpenrouterHelperCostProvider``.
             assert entry.provider == "open_router"
             assert entry.model == "openai/gpt-4o-mini"
             assert entry.tracking_type == "cost_usd"

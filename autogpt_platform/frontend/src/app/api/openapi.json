@@ -9338,6 +9338,18 @@
               "$ref": "#/components/schemas/MyAgentsSortBy",
               "default": "most_recent"
             }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
           }
         ],
         "responses": {
@@ -9527,6 +9539,50 @@
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Statuses"
+            }
+          },
+          {
+            "name": "sort_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "enum": ["submitted", "runs"], "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Sort Key"
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string",
+              "default": "desc",
+              "title": "Sort Dir"
             }
           }
         ],
@@ -9966,6 +10022,64 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}/preview": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Preview file by ID",
+        "description": "Return a cheap preview of a file.\n\nImages/PDFs/Office docs are returned as a small WebP thumbnail; text-like\nfiles return only their first ``bytes`` bytes. Used by the Artifacts page so\na grid of files no longer downloads every file in full.",
+        "operationId": "getWorkspaceFilePreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          },
+          {
+            "name": "w",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1024,
+              "minimum": 16,
+              "default": 400,
+              "title": "W"
+            }
+          },
+          {
+            "name": "bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 131072,
+              "minimum": 256,
+              "default": 4096,
+              "title": "Bytes"
+            }
           }
         ],
         "responses": {
@@ -20161,7 +20275,13 @@
             "type": "integer",
             "title": "Weekly Cost Used Microdollars"
           },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "default": {}
+          }
         },
         "type": "object",
         "required": [
