@@ -1678,4 +1678,36 @@ class TestOpenRouterAliases:
         """Non-aliased models should fall back to their bare enum value."""
         assert llm._OPENROUTER_REVERSE.get(model, model.value) == model.value
 
-# test comment
+    @pytest.mark.parametrize(
+        ("model", "expected_slug"),
+        [
+            (llm.LlmModel.CLAUDE_4_7_OPUS, "anthropic/claude-opus-4-7"),
+            (llm.LlmModel.CLAUDE_4_6_OPUS, "anthropic/claude-opus-4-6"),
+            (llm.LlmModel.GPT4O, "gpt-4o"),
+        ],
+    )
+    @patch("backend.blocks.llm.openai.AsyncOpenAI")
+    async def test_openrouter_dispatch_uses_reverse_map(
+        self, mock_openai_cls, model: llm.LlmModel, expected_slug: str
+    ):
+        """Assert the correct slug is passed to the OpenRouter client."""
+        mock_client = AsyncMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=MagicMock(
+            choices=[MagicMock(message=MagicMock(content="ok"))],
+            usage=MagicMock(total_tokens=1, prompt_tokens=1, completion_tokens=0),
+        ))
+
+        credentials = MagicMock()
+        credentials.api_key.get_secret_value.return_value = "sk-test"
+
+        await llm._llm_call(
+            credentials=credentials,
+            llm_model=model,
+            prompt=[{"role": "user", "content": "hi"}],
+            max_tokens=10,
+            provider="open_router",
+        )
+
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == expected_slug
