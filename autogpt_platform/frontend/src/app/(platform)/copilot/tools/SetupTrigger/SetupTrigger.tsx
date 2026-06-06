@@ -103,11 +103,16 @@ export function SetupTriggerTool({ part }: Props) {
 function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
   const [copied, setCopied] = useState(false);
 
-  function handleCopy() {
+  async function handleCopy() {
     if (!output.webhook_url) return;
-    navigator.clipboard.writeText(output.webhook_url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(output.webhook_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable (e.g. non-secure context) — the URL stays
+      // visible in the card for manual copy, so just skip the confirmation.
+    }
   }
 
   return (
