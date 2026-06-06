@@ -218,7 +218,7 @@ async def _search_library(
 
     message = (
         "Found agents in the user's library. You can provide a link to view "
-        "an agent at: /library/agents/{agent_id}. Use agent_output to get "
+        "an agent at: /library/agents/{agent_id}. Use view_agent_output to get "
         "execution results, or run_agent to execute. Let the user know we can "
         "create a custom agent for them based on their needs."
     )
