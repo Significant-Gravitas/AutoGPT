@@ -13,7 +13,7 @@ class Pagination(pydantic.BaseModel):
         description="Total number of pages.", examples=[2]
     )
     current_page: int = pydantic.Field(
-        description="Current_page page number.", examples=[1]
+        description="Current page number.", examples=[1]
     )
     page_size: int = pydantic.Field(
         description="Number of items per page.", examples=[25]
