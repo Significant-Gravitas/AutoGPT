@@ -512,7 +512,7 @@ def _get_hmac_key() -> bytes:
     return hashlib.sha256(secret.encode()).digest()
 
 
-def thread_cached(func):
+def thread_cached(func: Callable[P, R]) -> Callable[P, R]:
     """
     Thread-local cache decorator for both sync and async functions.
 
@@ -544,7 +544,7 @@ def thread_cached(func):
     if inspect.iscoroutinefunction(func):
 
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
@@ -559,7 +559,7 @@ def thread_cached(func):
     else:
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
@@ -572,7 +572,7 @@ def thread_cached(func):
         return sync_wrapper
 
 
-def clear_thread_cache(func: Callable) -> None:
+def clear_thread_cache(func: Callable[..., Any]) -> None:
     """Clear thread-local cache for a function."""
     if clear := getattr(func, "clear_cache", None):
         clear()
