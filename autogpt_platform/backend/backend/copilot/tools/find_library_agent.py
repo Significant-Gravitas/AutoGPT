@@ -4,7 +4,11 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-from .agent_search import search_agents, search_library_for_creation
+from .agent_search import (
+    lookup_library_agent_by_id,
+    search_agents,
+    search_library_for_creation,
+)
 from .base import BaseTool
 from .models import ToolResponseBase
 
@@ -88,11 +92,17 @@ class FindLibraryAgentTool(BaseTool):
                 session_id=session.session_id,
                 user_id=user_id,
             )
+        if agent_id := agent_id.strip():
+            return await lookup_library_agent_by_id(
+                agent_id=agent_id,
+                session_id=session.session_id,
+                user_id=user_id,
+                include_graph=include_graph,
+            )
         return await search_agents(
             query=query.strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,
             include_graph=include_graph,
-            agent_id=agent_id.strip(),
         )

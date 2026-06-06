@@ -38,19 +38,12 @@ async def search_agents(
     session_id: str | None = None,
     user_id: str | None = None,
     include_graph: bool = False,
-    agent_id: str = "",
 ) -> ToolResponseBase:
-    """Search for agents in marketplace or user library.
-
-    For the library source, a non-empty ``agent_id`` switches to a strict
-    direct by-id lookup (library_agent_id or graph_id) with no fuzzy fallback.
-    """
+    """Search for agents in marketplace or user library."""
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(
-            query, session_id, user_id, include_graph, agent_id
-        )
+        return await _search_library(query, session_id, user_id, include_graph)
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -120,24 +113,18 @@ async def _search_library(
     session_id: str | None,
     user_id: str | None,
     include_graph: bool = False,
-    agent_id: str = "",
 ) -> ToolResponseBase:
-    """Search user's library agents.
+    """Search user's library agents by name/description.
 
-    When ``agent_id`` is given, resolves that exact agent (library_agent_id or
-    graph_id) directly with NO fuzzy name-search fallback. Otherwise runs a
-    name/description search, with a direct UUID lookup for UUID-shaped queries.
+    For UUID-shaped queries this also tries a direct id lookup as a
+    convenience. The strict, no-fuzzy-fallback by-id path lives in
+    ``lookup_library_agent_by_id`` (dispatched by the tool when ``agent_id``
+    is given) — prefer that when the exact id is known.
     """
     if not user_id:
         return ErrorResponse(
             message="User authentication required to search library",
             session_id=session_id,
-        )
-
-    agent_id = agent_id.strip()
-    if agent_id:
-        return await _lookup_library_agent_by_id(
-            agent_id, session_id, user_id, include_graph
         )
 
     query = query.strip()
@@ -147,6 +134,8 @@ async def _search_library(
 
     agents: list[AgentInfo] = []
     try:
+        # Safety net for a UUID passed as the query; the preferred by-id path
+        # is the tool's explicit agent_id → lookup_library_agent_by_id.
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(user_id, query)
@@ -536,11 +525,11 @@ async def _load_and_format_matched_agents(
     return agents
 
 
-async def _lookup_library_agent_by_id(
+async def lookup_library_agent_by_id(
     agent_id: str,
     session_id: str | None,
-    user_id: str,
-    include_graph: bool,
+    user_id: str | None,
+    include_graph: bool = False,
 ) -> ToolResponseBase:
     """Strict direct resolution of one library agent by id.
 
@@ -548,6 +537,12 @@ async def _lookup_library_agent_by_id(
     to a fuzzy name search — returns ``NoResultsResponse`` when the id doesn't
     resolve. Backs ``find_library_agent``'s ``agent_id`` parameter.
     """
+    if not user_id:
+        return ErrorResponse(
+            message="User authentication required to fetch a library agent",
+            session_id=session_id,
+        )
+
     try:
         agent = await _get_library_agent_by_id(user_id, agent_id)
     except DatabaseError as e:
