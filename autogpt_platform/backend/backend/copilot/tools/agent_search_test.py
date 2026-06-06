@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.graph import GraphTriggerInfo
+
 from .agent_search import _enrich_agents_with_graph, search_agents
 from .models import AgentInfo, AgentsFoundResponse, NoResultsResponse
 
@@ -180,8 +182,6 @@ class TestLibraryUUIDLookup:
 
     @staticmethod
     def _github_trigger_info():
-        from backend.data.graph import GraphTriggerInfo
-
         return GraphTriggerInfo(
             provider="github",
             config_schema={

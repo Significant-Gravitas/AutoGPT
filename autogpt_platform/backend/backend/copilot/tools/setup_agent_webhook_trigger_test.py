@@ -55,8 +55,8 @@ def _github_credential(cred_id: str = "cred-gh-1") -> APIKeyCredentials:
 def _github_meta(cred_id: str = "cred-gh-1") -> CredentialsMetaInput:
     return CredentialsMetaInput(
         id=cred_id,
-        provider="github",  # type: ignore[arg-type]
-        type="api_key",  # type: ignore[arg-type]
+        provider=ProviderName.GITHUB,
+        type="api_key",
         title="My GitHub",
     )
 

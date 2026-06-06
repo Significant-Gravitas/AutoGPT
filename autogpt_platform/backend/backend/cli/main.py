@@ -57,7 +57,6 @@ def get_pid() -> int | None:
     if not file_path.exists():
         return None
 
-    os.makedirs(file_path.parent, exist_ok=True)
     with open(file_path, "r", encoding="utf-8") as file:
         pid = file.read()
     try:
@@ -77,7 +76,11 @@ def stop():
         return
 
     os.remove(get_pid_path())
-    process = psutil.Process(int(pid))
+    try:
+        process = psutil.Process(int(pid))
+    except psutil.NoSuchProcess:
+        print("Server Stopped")
+        return
     for child in process.children(recursive=True):
         child.terminate()
     process.terminate()

@@ -1,4 +1,10 @@
+import logging
+
 import click
+
+# Default max length for rendered message content before truncation (override
+# per-call with ``full=True`` / the ``--full`` flag).
+_TRUNCATE_LENGTH = 500
 
 
 @click.group()
@@ -10,8 +16,6 @@ def chat():
     # setup) so they don't interleave with the rendered transcript. Use
     # logging.disable so it can't be undone by configure_logging() running
     # later during connect().
-    import logging
-
     logging.disable(logging.INFO)
 
 
@@ -135,8 +139,6 @@ def _parse_seq_range(text: str) -> tuple[int | None, int | None]:
     """Parse a sequence selector into inclusive ``(lo, hi)`` bounds (``None`` =
     open-ended): ``'N'`` -> ``(N, N)``, ``'N-M'`` -> ``(N, M)``, ``'N-'`` ->
     ``(N, None)``, ``'-M'`` -> ``(None, M)``."""
-    import click
-
     raw = text.strip()
     try:
         if "-" not in raw:
@@ -277,7 +279,7 @@ def _strip_context_blocks(content: str) -> str:
     return content.strip()
 
 
-def _truncate(text: str, full: bool, length: int = 500) -> str:
+def _truncate(text: str, full: bool, length: int = _TRUNCATE_LENGTH) -> str:
     text = text.strip()
     if full or len(text) <= length:
         return text
