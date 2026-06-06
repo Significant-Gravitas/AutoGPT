@@ -1,7 +1,7 @@
 import asyncio
 import re
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import anthropic
 import httpx
@@ -447,7 +447,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_text_summarizer_real_llm_call_stats(self):
         """Test AITextSummarizer with real LLM call mocking to verify llm_call_count."""
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
         import backend.blocks.llm as llm
 
@@ -1701,13 +1701,20 @@ class TestOpenRouterAliases:
         credentials = MagicMock()
         credentials.api_key.get_secret_value.return_value = "sk-test"
 
-        await llm._llm_call(
-            credentials=credentials,
-            llm_model=model,
-            prompt=[{"role": "user", "content": "hi"}],
-            max_tokens=10,
-            provider="open_router",
-        )
+        # Force the provider dispatch to the open_router branch regardless of
+        # the model's native metadata provider (e.g. anthropic vs openai).
+        with patch.object(model, "metadata", new_callable=PropertyMock) as mock_meta:
+            mock_meta.return_value = MagicMock(
+                provider="open_router",
+                context_window=model.context_window,
+                max_output_tokens=model.max_output_tokens,
+            )
+            await llm._llm_call(
+                credentials=credentials,
+                llm_model=model,
+                prompt=[{"role": "user", "content": "hi"}],
+                max_tokens=10,
+            )
 
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == expected_slug
