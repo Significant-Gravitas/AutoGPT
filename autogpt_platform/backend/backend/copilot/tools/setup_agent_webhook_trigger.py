@@ -22,7 +22,11 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import graph_db, library_db, triggers_db
 from backend.data.graph import GraphModel, Node
 from backend.data.model import Credentials, CredentialsMetaInput
-from backend.util.exceptions import InvalidInputError, WebhookRegistrationError
+from backend.util.exceptions import (
+    InvalidInputError,
+    NotFoundError,
+    WebhookRegistrationError,
+)
 
 from .base import BaseTool
 from .models import (
@@ -216,7 +220,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 trigger_config=kwargs.get("trigger_config") or {},
                 agent_credentials=agent_credentials,
             )
-        except (InvalidInputError, WebhookRegistrationError) as e:
+        except (
+            InvalidInputError,
+            NotFoundError,
+            WebhookRegistrationError,
+        ) as e:
             return ErrorResponse(
                 message=f"Could not set up the trigger: {e}",
                 error="trigger_setup_failed",
