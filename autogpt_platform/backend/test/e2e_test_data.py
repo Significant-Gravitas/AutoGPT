@@ -174,6 +174,20 @@ class TestDataCreator:
             self._user_org_cache[user_id] = (org_id, ws_id)
         return self._user_org_cache[user_id]
 
+    async def _bootstrap_personal_orgs_for_seeded_users(self) -> None:
+        """Run the personal-org bootstrap so seeded users have an org/team.
+
+        ``create_orgs_for_existing_users`` is idempotent — it finds users
+        without a personal Organization owner-membership and creates one
+        plus a default Team. We invoke it directly (rather than the full
+        ``run_migration``) because credit/transaction/store backfills
+        aren't relevant to fresh test users.
+        """
+        from backend.data.org_migration import create_orgs_for_existing_users
+
+        created = await create_orgs_for_existing_users()
+        print(f"Bootstrapped personal orgs for {created} seeded user(s)")
+
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
         print(f"Creating {NUM_USERS} test users...")
@@ -1021,6 +1035,14 @@ class TestDataCreator:
 
         # Create users first
         await self.create_test_users()
+
+        # Backfill personal orgs/teams for the users we just inserted.
+        # The app's lifespan-context migration already ran at backend
+        # startup, so it only knows about users that existed back then —
+        # seeded users created above wouldn't have orgs without this,
+        # and every route that now requires ctx.org_id (API keys,
+        # builder save/run, library run, copilot session) would fail.
+        await self._bootstrap_personal_orgs_for_seeded_users()
 
         # Get available blocks
         await self.get_available_blocks()
