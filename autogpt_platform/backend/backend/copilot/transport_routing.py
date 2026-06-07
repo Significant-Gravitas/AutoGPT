@@ -18,15 +18,15 @@ long as the resolution falls back through ``CHAT_API_KEY`` / Settings.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.util.llm.providers import ProviderLiteral
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
-class ProviderRoutingKwargs:
+class ProviderRoutingKwargs(BaseModel):
     """Kwargs to pass through to ``call_provider`` for the active transport.
 
     ``provider`` / ``api_key`` / ``base_url`` map 1:1 to ``call_provider``
@@ -35,8 +35,12 @@ class ProviderRoutingKwargs:
     what label to write on a ``PlatformCostLog`` row.
 
     Returned by ``routing_kwargs_for_chat_transport`` — never construct
-    directly; the constructor is plumbing, not an API surface.
+    directly; the constructor is plumbing, not an API surface. Frozen
+    Pydantic model per the backend architecture rule
+    (``util/architecture_test.py::test_backend_uses_pydantic_not_dataclasses``).
     """
+
+    model_config = ConfigDict(frozen=True)
 
     provider: ProviderLiteral
     api_key: str

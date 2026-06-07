@@ -155,6 +155,25 @@ jobs:
           --health-timeout 10s
           --health-retries 5
           --health-start-period 180s
+      # FalkorDB backs the Graphiti knowledge graph the copilot uses for
+      # long-term memory. Mirrors the local compose mapping
+      # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
+      # ``GraphitiConfig`` defaults (``localhost:6380``, empty password)
+      # work unchanged. Integration tests in
+      # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
+      # via the ``falkordb_available`` fixture when the port isn't open
+      # (e.g. on a contributor's laptop) — this service makes the port
+      # available in CI so the integration suite actually runs.
+      falkordb:
+        image: falkordb/falkordb:latest
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 10s
 
     steps:
       - name: Checkout repository

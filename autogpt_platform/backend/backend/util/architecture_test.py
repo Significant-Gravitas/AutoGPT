@@ -113,6 +113,12 @@ _DATACLASS_EXEMPT_DIR_NAMES = frozenset({"lib", "libs"})
 _DATACLASS_KNOWN_OFFENDERS = frozenset(
     {
         "api/features/builder/db.py",
+        # ``search/`` siblings to the original ``store/`` offenders — landed
+        # in dev's global-search rollout (#13217) after this allowlist was
+        # last snapshotted. Tracked here so the rule still catches genuinely
+        # new violations; migrate alongside the ``store/`` originals.
+        "api/features/search/content_handlers.py",
+        "api/features/search/hybrid_search.py",
         "api/features/store/content_handlers.py",
         "api/features/store/hybrid_search.py",
         "blocks/codex.py",
@@ -127,6 +133,9 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
         "copilot/sdk/service_test.py",
         "copilot/sdk/session_waiter.py",
         "copilot/stream_registry.py",
+        # Self-distilled skills registry added by dev's copilot-skills PR
+        # series; predates this allowlist refresh, same migration plan.
+        "copilot/tools/skills.py",
         "copilot/tools/helpers.py",
         "copilot/transcript.py",
         "util/cache.py",

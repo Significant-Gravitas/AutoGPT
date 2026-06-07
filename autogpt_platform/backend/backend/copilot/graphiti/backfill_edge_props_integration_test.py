@@ -142,12 +142,20 @@ async def test_backfill_does_not_overwrite_existing_status(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_backfill_one_user_skips_missing_graph(monkeypatch) -> None:
+async def test_backfill_one_user_skips_missing_graph(
+    falkordb_available, monkeypatch
+) -> None:
     """``backfill_one_user`` should not raise on a user_id whose
     FalkorDB database has never been written to (no graph exists yet).
 
     Returns 0 quietly. The migration is safe to point at every User row
     in Postgres, including users who have never used memory features.
+
+    Depends on ``falkordb_available`` so the suite is skipped cleanly
+    when no FalkorDB is reachable (matches the other tests in this
+    file, which inherit the skip via ``clean_graph``). Without this,
+    CI runs without docker-compose'd FalkorDB hit a
+    ``ConnectionError: localhost:6380``.
     """
     # Construct a user_id whose derived group_id is valid but corresponds
     # to a database that doesn't exist. derive_group_id will accept any
