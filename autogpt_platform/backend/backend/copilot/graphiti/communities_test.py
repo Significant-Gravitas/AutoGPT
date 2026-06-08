@@ -15,6 +15,21 @@ from .communities import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _free_rebuild_lock():
+    """``rebuild_communities_for_user`` acquires a per-user Redis lock before
+    doing any work. Give every test a redis whose lock is free (SET NX → ok,
+    release → ok); the contention test overrides ``set``."""
+    redis = AsyncMock()
+    redis.set = AsyncMock(return_value=True)
+    redis.eval = AsyncMock(return_value=1)
+    with patch(
+        "backend.copilot.graphiti.communities.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        yield redis
+
+
 def _neighbor(uuid: str, edge_count: int = 1):
     """Mimic graphiti's Neighbor namedtuple — only attributes touched by LP."""
     return SimpleNamespace(node_uuid=uuid, edge_count=edge_count)
@@ -222,6 +237,80 @@ class TestRebuildCommunitiesForUser:
         assert "RuntimeError" in result["error"]
         # Always returns elapsed_seconds even on failure
         assert result["elapsed_seconds"] is not None
+
+    @pytest.mark.asyncio
+    async def test_skips_when_lock_held(self, _free_rebuild_lock) -> None:
+        """A second concurrent rebuild (SET NX fails) returns skipped and
+        never touches the graph — no client, no activity gate, no DETACH."""
+        _free_rebuild_lock.set = AsyncMock(return_value=None)
+
+        with (
+            patch(
+                "backend.copilot.graphiti.communities.make_flex_graphiti_client",
+                new=AsyncMock(),
+            ) as flex,
+            patch(
+                "backend.copilot.graphiti.communities.get_graphiti_client",
+                new=AsyncMock(),
+            ) as plain,
+            patch(
+                "backend.copilot.graphiti.communities._activity_since_last_rebuild",
+                new=AsyncMock(),
+            ) as gate,
+        ):
+            result = await rebuild_communities_for_user(
+                "883cc9da-fe37-4863-839b-acba022bf3ef"
+            )
+
+        assert result["skipped"] is True
+        assert result["skip_reason"] == "rebuild already in progress"
+        # Short-circuited before any work — the held lock is the whole point.
+        gate.assert_not_awaited()
+        flex.assert_not_awaited()
+        plain.assert_not_awaited()
+        # We don't own the lock, so we must NOT release it.
+        _free_rebuild_lock.eval.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_releases_lock_after_run(self, _free_rebuild_lock) -> None:
+        """A normal run releases via single-key compare-and-delete Lua
+        (cluster-routable) using the same token it acquired with."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+        client = MagicMock()
+        client.graph_driver = driver
+        client.build_communities = AsyncMock(return_value=[{"name": "c1"}])
+
+        with (
+            patch(
+                "backend.copilot.graphiti.communities.make_flex_graphiti_client",
+                new=AsyncMock(return_value=client),
+            ),
+            patch(
+                "backend.copilot.graphiti.communities.close_graphiti_client",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.graphiti.communities._activity_since_last_rebuild",
+                new=AsyncMock(return_value=(True, "first_rebuild", {})),
+            ),
+        ):
+            result = await rebuild_communities_for_user(
+                "883cc9da-fe37-4863-839b-acba022bf3ef"
+            )
+
+        assert result["skipped"] is False
+        # Acquire: single-key SET NX EX with a token value + TTL backstop.
+        set_args, set_kwargs = _free_rebuild_lock.set.call_args
+        assert set_kwargs.get("nx") is True
+        assert set_kwargs.get("ex") == 1800 + 120
+        # Release: single-key Lua compare-and-delete (numkeys=1 → routes on
+        # the cluster) using the same token we acquired with.
+        _free_rebuild_lock.eval.assert_awaited_once()
+        eval_args = _free_rebuild_lock.eval.call_args.args
+        assert eval_args[1] == 1
+        assert eval_args[2].startswith("graphiti:community_rebuild_lock:")
+        assert eval_args[3] == set_args[1]
 
 
 def _ep_query_result(latest: str | None, total: int) -> tuple:

@@ -33,6 +33,9 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
+
+from backend.data.redis_client import get_redis_async
 
 from .client import (
     close_graphiti_client,
@@ -219,6 +222,53 @@ async def _activity_since_last_rebuild(
     return True, "activity_above_threshold", stats
 
 
+# Per-user community-rebuild lock. The rebuild does a destructive
+# ``DETACH DELETE`` + Leiden clustering + per-community LLM summarization;
+# two racing on the same user's graph corrupt each other. Every rebuild
+# caller (weekly cron, admin-immediate, sync debug) funnels through
+# ``rebuild_communities_for_user``, so the guard lives here rather than in
+# any single caller.
+#
+# Cluster-safe by construction: production Redis is an ``AsyncRedisCluster``,
+# so we use only single-key primitives — ``SET key token NX EX`` to acquire
+# and a single-key Lua compare-and-delete to release, both of which route to
+# the slot owner. The random token makes release safe: we delete the key
+# only if we still own it, so a rebuild that overran its TTL can never drop a
+# lock another worker has since taken.
+#
+# The TTL exceeds the scheduler's hard rebuild bound
+# (``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` = 1800s; every caller wraps
+# the rebuild in ``run_async(..., timeout=...)``), so the lock cannot expire
+# mid-rebuild and no lease-renewal watchdog is needed — the TTL is purely a
+# crash backstop.
+_REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
+_REBUILD_LOCK_TTL_SECONDS = 1800 + 120
+
+_REBUILD_UNLOCK_SCRIPT = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+
+def _rebuild_lock_key(group_id: str) -> str:
+    return f"{_REBUILD_LOCK_KEY_PREFIX}{group_id}"
+
+
+async def _release_rebuild_lock(redis, key: str, token: str) -> None:
+    """Compare-and-delete: drop the lock only if we still hold this token.
+
+    Single-key Lua so it routes on Redis Cluster. On any redis error the TTL
+    clears the key, so a failed release never wedges the user.
+    """
+    try:
+        await redis.eval(_REBUILD_UNLOCK_SCRIPT, 1, key, token)
+    except Exception:
+        logger.warning(
+            "Failed to release community-rebuild lock %s — TTL will clear it",
+            key,
+        )
+
+
 async def rebuild_communities_for_user(
     user_id: str, *, force: bool = False
 ) -> dict[str, Any]:
@@ -276,6 +326,22 @@ async def rebuild_communities_for_user(
     flex_requested = graphiti_config.community_rebuild_use_flex_tier
     use_flex = flex_requested and chat_cfg.transport.supports_flex_tier
     flex_client = None
+
+    # Per-user mutual exclusion — acquired BEFORE the activity gate so a
+    # concurrent rebuild short-circuits instead of racing the DETACH DELETE
+    # below. A contended acquire rides the existing ``skipped`` contract.
+    redis = await get_redis_async()
+    lock_key = _rebuild_lock_key(group_id)
+    lock_token = uuid4().hex
+    if not await redis.set(lock_key, lock_token, nx=True, ex=_REBUILD_LOCK_TTL_SECONDS):
+        result["skipped"] = True
+        result["skip_reason"] = "rebuild already in progress"
+        logger.info(
+            "Community rebuild skipped for user %s — already in progress",
+            user_id[:12],
+        )
+        return result
+
     try:
         if use_flex:
             flex_client = await make_flex_graphiti_client(group_id)
@@ -342,6 +408,7 @@ async def rebuild_communities_for_user(
             await close_graphiti_client(flex_client)
         ended_at = datetime.now(timezone.utc)
         result["elapsed_seconds"] = (ended_at - started_at).total_seconds()
+        await _release_rebuild_lock(redis, lock_key, lock_token)
 
     return result
 
