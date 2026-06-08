@@ -7,12 +7,15 @@ persistent typing indicator.
 
 import asyncio
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
 
 from backend.data.redis_client import get_redis_async
+from backend.data.sharing.workspace_refs import (
+    WorkspaceArtifactLink,
+    extract_artifact_links,
+)
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -32,20 +35,6 @@ THREAD_NAME_MAX_LENGTH = 100
 THREAD_NAME_PREFIX = "AutoPilot: "
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
-
-# Matches the workspace artifact markdown the LLM emits: `[name](workspace://uuid#mime)`.
-# Both the display name and the trailing `#mime` fragment are optional from
-# our side — we only rely on the file ID (group 2) for the actual fetch.
-_WORKSPACE_ARTIFACT_RE = re.compile(
-    r"\[([^\]]+)\]\(workspace://([A-Za-z0-9_-]+)(?:#([^)]*))?\)"
-)
-
-
-@dataclass(frozen=True)
-class _ParsedArtifact:
-    display_name: str
-    file_id: str
-    mime_hint: str | None
 
 
 @dataclass
@@ -183,7 +172,7 @@ class MessageHandler:
         when small enough, otherwise we drop a link button pointing at the
         chat on the platform so the user can grab it from there.
         """
-        stripped, artifacts = _extract_artifacts(text)
+        stripped, artifacts = extract_artifact_links(text)
         sent_any = False
         if stripped:
             await adapter.send_message(
@@ -201,7 +190,7 @@ class MessageHandler:
         self,
         adapter: PlatformAdapter,
         target_id: str,
-        artifact: _ParsedArtifact,
+        artifact: WorkspaceArtifactLink,
         session_id: str | None,
     ) -> bool:
         """Attach the file inline when possible; otherwise drop a link to
@@ -214,51 +203,78 @@ class MessageHandler:
                 "Workspace artifact %s referenced before session id known",
                 artifact.file_id,
             )
-            await adapter.send_message(
-                target_id,
-                f"_(produced `{artifact.display_name}` — open the chat to download)_",
-            )
+            await self._send_artifact_note(adapter, target_id, artifact)
             return True
-        max_bytes = adapter.max_attachment_bytes
-        fetched = None
+        if await self._attach_artifact(adapter, target_id, artifact, session_id):
+            return True
+        await self._send_artifact_fallback(adapter, target_id, artifact, session_id)
+        return True
+
+    async def _attach_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> bool:
+        """Fetch and inline-attach the file. Returns False when it's missing,
+        unowned, too large, or the fetch errored."""
         try:
             fetched = await self._api.fetch_workspace_artifact(
                 session_id=session_id,
                 file_id=artifact.file_id,
-                max_bytes=max_bytes,
+                max_bytes=adapter.max_attachment_bytes,
             )
         except Exception:
             logger.exception("Failed to fetch workspace artifact %s", artifact.file_id)
-        if fetched is not None:
-            await adapter.send_file(
-                target_id,
-                text="",
-                file=FileAttachment(
-                    filename=artifact.display_name or fetched.filename,
-                    mime_type=fetched.mime_type,
-                    content=fetched.content,
-                ),
-            )
-            return True
-        # Too large, not found, or fetch errored → link the user to the chat.
+            return False
+        if fetched is None:
+            return False
+        await adapter.send_file(
+            target_id,
+            text="",
+            file=FileAttachment(
+                filename=artifact.display_name or fetched.filename,
+                mime_type=fetched.mime_type,
+                content=fetched.content,
+            ),
+        )
+        return True
+
+    async def _send_artifact_fallback(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> None:
+        """Link the user to the chat when the file can't be attached here —
+        covers missing, unavailable, errored and too-large cases alike."""
         session_url = _copilot_session_url(session_id)
         if session_url is None:
             logger.warning(
                 "No base URL configured; can't render fallback link for %s",
                 artifact.file_id,
             )
-            await adapter.send_message(
-                target_id,
-                f"_(produced `{artifact.display_name}` — open the chat to download)_",
-            )
-            return True
+            await self._send_artifact_note(adapter, target_id, artifact)
+            return
         await adapter.send_link(
             target_id,
-            f"`{artifact.display_name}` is too large to attach here.",
+            f"Open AutoGPT to download `{artifact.display_name}`.",
             link_label="Open in AutoGPT",
             link_url=session_url,
         )
-        return True
+
+    async def _send_artifact_note(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+    ) -> None:
+        await adapter.send_message(
+            target_id,
+            f"_(produced `{artifact.display_name}` — open the chat to download)_",
+        )
 
     async def _stream_batch(
         self,
@@ -296,15 +312,19 @@ class MessageHandler:
             setup_output: dict[str, Any],
             _tool_name: str | None,
         ) -> None:
-            nonlocal buffer, sent_any_content, setup_prompt_sent
+            nonlocal active_session_id, buffer, sent_any_content, setup_prompt_sent
             if setup_prompt_sent:
                 return
             setup_prompt_sent = True
+            # This callback carries the authoritative session id — adopt it so
+            # buffered workspace artifacts resolve instead of falling back to
+            # the "no session" plain-text note.
+            active_session_id = session_id
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
                 if await self._send_text_and_artifacts(
-                    adapter, target_id, buffer, ctx, active_session_id
+                    adapter, target_id, buffer, ctx, session_id
                 ):
                     sent_any_content = True
                 buffer = ""
@@ -501,34 +521,6 @@ class MessageHandler:
                 ctx.channel_id,
                 "Something went wrong setting up the link. Try again later.",
             )
-
-
-def _extract_artifacts(text: str) -> tuple[str, list[_ParsedArtifact]]:
-    """Strip workspace artifact markdown links out of ``text`` and return
-    them separately.
-
-    Raw ``workspace://`` URIs are useless to a chat-platform user, so the
-    handler peels them out of the streamed text and either inline-attaches
-    the file or replaces them with a link-to-chat button instead.
-    """
-    artifacts: list[_ParsedArtifact] = []
-
-    def _capture(match: re.Match[str]) -> str:
-        artifacts.append(
-            _ParsedArtifact(
-                display_name=match.group(1).strip(),
-                file_id=match.group(2),
-                mime_hint=match.group(3) or None,
-            )
-        )
-        return ""
-
-    stripped = _WORKSPACE_ARTIFACT_RE.sub(_capture, text)
-    # Clean up the gaps the removed URIs left behind so the surrounding
-    # prose still reads naturally.
-    stripped = re.sub(r"[ \t]+\n", "\n", stripped)
-    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
-    return stripped.strip(), artifacts
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:

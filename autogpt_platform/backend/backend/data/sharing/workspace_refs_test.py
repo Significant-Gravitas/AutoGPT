@@ -10,7 +10,11 @@ new patterns and the cross-pattern de-dup behaviour.
 
 from __future__ import annotations
 
-from backend.data.sharing.workspace_refs import extract_workspace_file_ids
+from backend.data.sharing.workspace_refs import (
+    cut_lands_inside_artifact_link,
+    extract_artifact_links,
+    extract_workspace_file_ids,
+)
 
 UUID_A = "11111111-2222-3333-4444-555555555555"
 UUID_B = "66666666-7777-8888-9999-aaaaaaaaaaaa"
@@ -97,3 +101,78 @@ class TestMixedInput:
             "ref": [f"workspace://{UUID_A}"],
         }
         assert extract_workspace_file_ids(outputs) == {UUID_A}
+
+
+class TestExtractArtifactLinks:
+    """``[name](workspace://id#mime)`` markdown parsing used by chat-bot
+    delivery to peel artifacts out of assistant text."""
+
+    def test_no_artifacts_returns_text_unchanged(self):
+        text, artifacts = extract_artifact_links("hello world")
+        assert text == "hello world"
+        assert artifacts == []
+
+    def test_strips_artifact_markdown(self):
+        text, artifacts = extract_artifact_links(
+            "Here's your result: [chart.png](workspace://abc-123#image/png)"
+        )
+        assert text == "Here's your result:"
+        assert len(artifacts) == 1
+        assert artifacts[0].file_id == "abc-123"
+        assert artifacts[0].display_name == "chart.png"
+        assert artifacts[0].mime_hint == "image/png"
+
+    def test_handles_artifact_with_no_mime_fragment(self):
+        text, artifacts = extract_artifact_links("[doc.pdf](workspace://xyz)")
+        assert text == ""
+        assert artifacts[0].file_id == "xyz"
+        assert artifacts[0].mime_hint is None
+
+    def test_strips_image_embed_without_leaving_bang(self):
+        # The prompt tells the LLM to emit images as `![name](workspace://...)`;
+        # the leading `!` must be consumed so no marker is left behind.
+        text, artifacts = extract_artifact_links(
+            "Result: ![chart](workspace://abc-123#image/png)"
+        )
+        assert text == "Result:"
+        assert "!" not in text
+        assert artifacts[0].file_id == "abc-123"
+        assert artifacts[0].display_name == "chart"
+        assert artifacts[0].mime_hint == "image/png"
+
+    def test_handles_multiple_artifacts(self):
+        text, artifacts = extract_artifact_links(
+            "First [a.png](workspace://1#image/png) "
+            "then [b.csv](workspace://2#text/csv)"
+        )
+        assert "workspace://" not in text
+        assert [a.file_id for a in artifacts] == ["1", "2"]
+
+    def test_collapses_blank_lines_left_behind(self):
+        text, _ = extract_artifact_links(
+            "Above paragraph.\n\n[file.png](workspace://abc)\n\nBelow paragraph."
+        )
+        assert "\n\n\n" not in text
+        assert "Above paragraph." in text
+        assert "Below paragraph." in text
+
+
+class TestCutLandsInsideArtifactLink:
+    def test_cut_inside_link_pulls_back_to_start(self):
+        text = "see [chart.png](workspace://abc-123#image/png) now"
+        start = text.index("[chart.png]")
+        mid = text.index("workspace://")  # a cut landing inside the link
+        assert cut_lands_inside_artifact_link(text, mid) == start
+
+    def test_cut_outside_link_is_unchanged(self):
+        text = "see [chart.png](workspace://abc) now"
+        end = len(text) - 1
+        assert cut_lands_inside_artifact_link(text, end) == end
+
+    def test_cut_at_link_boundaries_is_unchanged(self):
+        text = "x [a.png](workspace://a) y"
+        start = text.index("[a.png]")
+        after = text.index(") y") + 1
+        # Boundaries are exclusive — exactly at start/end keeps the link whole.
+        assert cut_lands_inside_artifact_link(text, start) == start
+        assert cut_lands_inside_artifact_link(text, after) == after

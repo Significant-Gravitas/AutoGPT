@@ -11,13 +11,7 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
 from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
 from .bot_backend import LinkTokenResult, ResolveResult
-from .handler import (
-    MessageHandler,
-    TargetState,
-    _extract_artifacts,
-    build_thread_name,
-    clamp_thread_name,
-)
+from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -677,47 +671,6 @@ class TestThreadNames:
 # ── Workspace artifact extraction & delivery ────────────────────────────
 
 
-class TestExtractArtifacts:
-    def test_no_artifacts_returns_text_unchanged(self):
-        text, artifacts = _extract_artifacts("hello world")
-        assert text == "hello world"
-        assert artifacts == []
-
-    def test_strips_artifact_markdown(self):
-        text, artifacts = _extract_artifacts(
-            "Here's your result: [chart.png](workspace://abc-123#image/png)"
-        )
-        assert text == "Here's your result:"
-        assert len(artifacts) == 1
-        assert artifacts[0].file_id == "abc-123"
-        assert artifacts[0].display_name == "chart.png"
-        assert artifacts[0].mime_hint == "image/png"
-
-    def test_handles_artifact_with_no_mime_fragment(self):
-        text, artifacts = _extract_artifacts("[doc.pdf](workspace://xyz)")
-        assert text == ""
-        assert artifacts[0].file_id == "xyz"
-        assert artifacts[0].mime_hint is None
-
-    def test_handles_multiple_artifacts(self):
-        text, artifacts = _extract_artifacts(
-            "First [a.png](workspace://1#image/png) "
-            "then [b.csv](workspace://2#text/csv)"
-        )
-        assert "workspace://" not in text
-        assert [a.file_id for a in artifacts] == ["1", "2"]
-
-    def test_collapses_blank_lines_left_behind(self):
-        # The URI lives alone on its line — once stripped we shouldn't leave
-        # a triple-newline scar in the surrounding prose.
-        text, _ = _extract_artifacts(
-            "Above paragraph.\n\n[file.png](workspace://abc)\n\nBelow paragraph."
-        )
-        assert "\n\n\n" not in text
-        assert "Above paragraph." in text
-        assert "Below paragraph." in text
-
-
 class TestDeliverArtifact:
     @pytest.mark.asyncio
     async def test_small_file_attaches_inline(self):
@@ -740,6 +693,12 @@ class TestDeliverArtifact:
 
         adapter.send_message.assert_awaited_once()
         adapter.send_file.assert_awaited_once()
+        # The adapter's size cap must be forwarded so the backend enforces it.
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-1",
+            file_id="abc",
+            max_bytes=adapter.max_attachment_bytes,
+        )
         sent_file = adapter.send_file.await_args.kwargs["file"]
         # The bot uses the LLM's display name as the filename, not the
         # backend's storage name — that's what the user expects to see.
@@ -767,6 +726,11 @@ class TestDeliverArtifact:
 
         adapter.send_file.assert_not_awaited()
         adapter.send_link.assert_awaited_once()
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-42",
+            file_id="big",
+            max_bytes=adapter.max_attachment_bytes,
+        )
         # send_link(target_id, text, link_label=..., link_url=...) — text is
         # positional arg[1], the URL is a kwarg.
         assert "big.zip" in adapter.send_link.await_args.args[1]
@@ -793,6 +757,11 @@ class TestDeliverArtifact:
 
         adapter.send_file.assert_not_awaited()
         adapter.send_link.assert_awaited_once()
+        handler._api.fetch_workspace_artifact.assert_awaited_once_with(
+            session_id="sess-1",
+            file_id="x",
+            max_bytes=adapter.max_attachment_bytes,
+        )
 
     @pytest.mark.asyncio
     async def test_no_session_id_drops_inline_note(self):

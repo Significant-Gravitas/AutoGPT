@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
+from pydantic import BaseModel
+
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
 
@@ -28,8 +30,7 @@ class MessageHistoryEntry:
     text: str
 
 
-@dataclass
-class FileAttachment:
+class FileAttachment(BaseModel):
     """A workspace artifact ready to attach to a platform message.
 
     ``content`` carries the file bytes — the handler only ever produces

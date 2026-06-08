@@ -341,12 +341,6 @@ services:
       <<: *backend-env
     ports:
       - "8005:8005"
-    volumes:
-      # database_manager serves workspace file reads (e.g. the bot's
-      # fetch_workspace_artifact RPC and embedding backfill), so it needs the
-      # same local-storage volume as the writer/reader services. No-op in
-      # prod where workspace storage is GCS.
-      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:

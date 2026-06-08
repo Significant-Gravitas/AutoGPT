@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
@@ -294,8 +295,6 @@ class TestSendMethods:
 
     @pytest.mark.asyncio
     async def test_send_file_attaches_bytes_with_display_name(self):
-        from backend.copilot.bot.adapters.base import FileAttachment
-
         adapter, client = _bare_adapter()
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
@@ -321,8 +320,6 @@ class TestSendMethods:
     async def test_send_file_drops_empty_caption_to_none(self):
         # discord.py rejects empty-string content alongside a file; we
         # collapse `text=""` to None so the upload still succeeds.
-        from backend.copilot.bot.adapters.base import FileAttachment
-
         adapter, client = _bare_adapter()
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
