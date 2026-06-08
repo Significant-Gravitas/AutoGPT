@@ -294,7 +294,7 @@ class DiscordAdapter(PlatformAdapter):
                 message_id=str(message.id),
                 user_id=str(message.author.id),
                 username=message.author.display_name,
-                text=self._strip_mentions(message),
+                text=self._message_text(message),
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
@@ -342,6 +342,43 @@ class DiscordAdapter(PlatformAdapter):
         if isinstance(message.channel, discord.Thread):
             return "thread"
         return "channel"
+
+    def _message_text(self, message: discord.Message) -> str:
+        """The full message body the LLM should see.
+
+        A Discord *forward* carries the forwarded message in
+        ``message.message_snapshots`` — separate from ``content``, which only
+        holds the comment the user typed alongside the forward. Reading
+        ``content`` alone (as ``_strip_mentions`` does) drops the forwarded
+        message entirely, so the LLM acts on just the comment and can badly
+        misread the request. Stitch the forwarded content back in here.
+        """
+        own = self._strip_mentions(message)
+        forwarded = self._forwarded_text(message)
+        if not forwarded:
+            return own
+        if own:
+            return f"{own}\n\n[Forwarded message]\n{forwarded}"
+        return f"[Forwarded message]\n{forwarded}"
+
+    @staticmethod
+    def _forwarded_text(message: discord.Message) -> str:
+        """Flatten any forwarded message snapshots into labelled text."""
+        # ``message_snapshots`` is a real runtime attribute (in ``Message``'s
+        # slots) but isn't in discord.py 2.6's type stubs yet; read it through
+        # getattr so the type checker is happy and older builds without message
+        # forwarding degrade to "no snapshots".
+        snapshots = getattr(message, "message_snapshots", [])
+        parts: list[str] = []
+        for snapshot in snapshots:
+            content = (snapshot.content or "").strip()
+            if content:
+                parts.append(content)
+            # Surface forwarded attachments by name so the LLM knows files came
+            # with the forward, even though we can't inline their bytes here.
+            for attachment in snapshot.attachments:
+                parts.append(f"[Attached file: {attachment.filename}]")
+        return "\n\n".join(parts).strip()
 
     def _strip_mentions(self, message: discord.Message) -> str:
         """Strip the bot's own mention; replace other users' raw mention
