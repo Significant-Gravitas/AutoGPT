@@ -237,10 +237,13 @@ class TestPhaseChaining:
         apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
         mark_complete = AsyncMock()
         record_cost = AsyncMock()
+        release_lock = AsyncMock()
         with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
             "backend.copilot.dream.job_status.mark_complete", mark_complete
         ), patch(
             "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -249,6 +252,9 @@ class TestPhaseChaining:
 
         apply.assert_awaited_once()
         mark_complete.assert_awaited_once()
+        # The batch path disowned the dream lock to this callback; the
+        # terminal handler must release it so the next dream can run.
+        release_lock.assert_awaited_once_with("u1")
         # One cost-log row per phase (consolidate, recombine, sanitize)
         assert record_cost.await_count == 3
         for call in record_cost.await_args_list:

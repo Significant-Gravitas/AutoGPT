@@ -44,6 +44,7 @@ from .batch_submit import (
     submit_phase,
 )
 from .billing import record_phase_cost
+from .locks import release_dream_lock
 from .model_pricing import compute_cost_usd
 from .schemas import DreamOperations, PhaseUsage
 
@@ -464,6 +465,9 @@ async def _finalize_complete(
         except Exception:
             logger.exception("Failed to mark dream pass job %s complete", job_id)
 
+    # The batch path disowned the dream lock to this callback; release it now
+    # that the pass has terminated so the next dream for this user can run.
+    await release_dream_lock(user_id)
     await _delete_state(pass_id)
     await delete_input_bundle(pass_id)
 
@@ -502,6 +506,8 @@ async def _fail_pass(
             state=state,
             phase_models=phase_models,
         )
+    # Release the dream lock the batch path disowned to this callback.
+    await release_dream_lock(user_id)
     await _delete_state(pass_id)
     await delete_input_bundle(pass_id)
 

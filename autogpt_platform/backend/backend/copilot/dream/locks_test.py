@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from .locks import DEFAULT_LOCK_TTL_SECONDS, DreamLockHeld, dream_lock
+from .locks import (
+    BATCH_LOCK_TTL_SECONDS,
+    DEFAULT_LOCK_TTL_SECONDS,
+    DreamLockHeld,
+    dream_lock,
+    release_dream_lock,
+)
 
 
 @pytest.mark.asyncio
@@ -63,3 +69,40 @@ async def test_dream_lock_swallows_delete_failure(mocker, caplog):
         pass
 
     assert "Failed to release dream lock" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dream_lock_disown_skips_release_and_extends_ttl(mocker):
+    """The batch path extends the TTL to the batch window and disowns the
+    lock, so the context manager must NOT delete it on exit — the batch
+    callback (or the TTL) owns release."""
+    redis = AsyncMock()
+    redis.set = AsyncMock(return_value=True)
+    redis.delete = AsyncMock(return_value=1)
+    redis.expire = AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=redis),
+    )
+
+    async with dream_lock("user-d") as handle:
+        await handle.extend(BATCH_LOCK_TTL_SECONDS)
+        handle.disown()
+
+    redis.expire.assert_awaited_once_with(
+        "dream:inflight:user-d", BATCH_LOCK_TTL_SECONDS
+    )
+    redis.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_release_dream_lock_deletes_key(mocker):
+    redis = AsyncMock()
+    redis.delete = AsyncMock(return_value=1)
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=redis),
+    )
+
+    await release_dream_lock("user-e")
+    redis.delete.assert_awaited_once_with("dream:inflight:user-e")

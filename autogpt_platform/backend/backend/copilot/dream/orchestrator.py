@@ -33,8 +33,10 @@ from .llm import (
     structured_completion,
 )
 from .locks import (
+    BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
     LOCAL_LOCK_TTL_SECONDS,
+    DreamLockHandle,
     DreamLockHeld,
     dream_lock,
 )
@@ -238,7 +240,7 @@ async def _execute_dream_pass_async(
 
     ttl = _resolve_lock_ttl(transport_is_local)
     try:
-        async with dream_lock(user_id, ttl_seconds=ttl):
+        async with dream_lock(user_id, ttl_seconds=ttl) as dream_lock_handle:
             # Pre-flight billing check. Runs inside the lock so a
             # paywalled user doesn't burn the slot for an eligible
             # concurrent pass on a shared FalkorDB.
@@ -302,6 +304,7 @@ async def _execute_dream_pass_async(
                     config=config,
                     input_bundle=input_bundle,
                     status_id=status_id,
+                    dream_lock_handle=dream_lock_handle,
                 )
 
             step_usages: list[PhaseUsage] = []
@@ -485,6 +488,7 @@ async def _submit_dream_pass_batch(
     config: ChatConfig,
     input_bundle: DreamInput,
     status_id: str | None,
+    dream_lock_handle: DreamLockHandle,
 ) -> DreamPassResult:
     """Submit phase 1 of the dream pass via Anthropic batch + return.
 
@@ -563,6 +567,11 @@ async def _submit_dream_pass_batch(
         pass_id,
         submission.provider_batch_id,
     )
+    # Phase 1 is enqueued — hand the dream lock to the batch callback so it
+    # spans the full async lifetime (apply runs hours later). Extend the TTL
+    # to the batch window first; the callback releases it on terminal/failure.
+    await dream_lock_handle.extend(BATCH_LOCK_TTL_SECONDS)
+    dream_lock_handle.disown()
     return DreamPassResult(
         user_id=user_id,
         pass_id=pass_id,
