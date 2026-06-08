@@ -7,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArtifactDragHandle } from "../ArtifactPanel/components/ArtifactDragHandle";
@@ -48,7 +49,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           </Button>
         </div>
       )}
-      <div className="p-2">
+      <div className={cn("p-2", mobile && "mt-8")}>
         <TabSwitcher
           activeTab={activeTab}
           filesCount={filesCount}
