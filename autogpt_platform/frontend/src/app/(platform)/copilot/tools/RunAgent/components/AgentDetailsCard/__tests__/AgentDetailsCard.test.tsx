@@ -1,5 +1,5 @@
 import type { AgentDetailsResponse } from "@/app/api/__generated__/models/agentDetailsResponse";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentDetailsCard } from "../AgentDetailsCard";
 
@@ -11,6 +11,21 @@ vi.mock(
     useCopilotChatActions: () => ({ onSend }),
   }),
 );
+
+vi.mock("@/components/renderers/InputRenderer/FormRenderer", () => ({
+  FormRenderer: ({
+    handleChange,
+  }: {
+    handleChange: (e: { formData?: Record<string, unknown> }) => void;
+  }) => (
+    <button
+      data-testid="form-change"
+      onClick={() => handleChange({ formData: { topic: "weather" } })}
+    >
+      Fill
+    </button>
+  ),
+}));
 
 afterEach(() => {
   cleanup();
@@ -58,6 +73,25 @@ function nonWebhookOutput(): AgentDetailsResponse {
   } as AgentDetailsResponse;
 }
 
+function inputAgentOutput(): AgentDetailsResponse {
+  return {
+    type: "agent_details",
+    message: "Ready to run.",
+    user_authenticated: true,
+    agent: {
+      id: "g-inputs",
+      name: "Topic Agent",
+      description: "Needs a topic",
+      inputs: {
+        properties: {
+          topic: { type: "string", title: "Topic" },
+        },
+      },
+      execution_options: { manual: true, scheduled: false, webhook: false },
+    },
+  } as AgentDetailsResponse;
+}
+
 describe("AgentDetailsCard", () => {
   it("shows an informational message and no action button for a webhook-trigger agent", () => {
     render(<AgentDetailsCard output={webhookOutput()} />);
@@ -76,5 +110,30 @@ describe("AgentDetailsCard", () => {
     // webhook-trigger messaging (the webhook branch must not shadow it).
     expect(screen.getByRole("button", { name: /proceed/i })).toBeDefined();
     expect(screen.queryByText(/webhook trigger/i)).toBeNull();
+  });
+
+  it("sends a placeholder-values run message for an input-less agent", () => {
+    render(<AgentDetailsCard output={nonWebhookOutput()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /proceed/i }));
+    expect(onSend).toHaveBeenCalledWith(
+      'Run the agent "Summariser" with placeholder/example values so I can test it.',
+    );
+  });
+
+  it("renders the input form and sends collected inputs on Proceed", () => {
+    render(<AgentDetailsCard output={inputAgentOutput()} />);
+
+    // The schema yields a form; Proceed starts disabled until the form is valid.
+    expect(screen.getByText(/Review the inputs below/i)).toBeDefined();
+
+    // Simulate the user filling the form, which flips validity and captures
+    // the new input values.
+    fireEvent.click(screen.getByTestId("form-change"));
+    fireEvent.click(screen.getByRole("button", { name: /proceed/i }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      'Run the agent "Topic Agent" with these inputs: {\n  "topic": "weather"\n}',
+    );
   });
 });
