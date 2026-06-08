@@ -96,7 +96,7 @@ async def get_bot_analytics_summary(
             count(*) FILTER (WHERE "eventType" = 'stream_error') AS errors,
             avg("durationMs") FILTER (WHERE "eventType" = 'reply_sent') AS avg_reply_ms
         FROM {{schema_prefix}}"BotEvent"
-        WHERE "createdAt" >= $1::timestamp {event_filter}
+        WHERE "createdAt" >= $1::timestamptz {event_filter}
         """,
         *event_params,
     )
@@ -142,7 +142,7 @@ async def get_bot_message_timeseries(
             count(*) FILTER (WHERE "eventType" = 'reply_sent') AS replies,
             count(*) FILTER (WHERE "eventType" = 'stream_error') AS errors
         FROM {{schema_prefix}}"BotEvent"
-        WHERE "createdAt" >= $1::timestamp {platform_filter}
+        WHERE "createdAt" >= $1::timestamptz {platform_filter}
         GROUP BY day
         ORDER BY day
         """,
@@ -212,7 +212,7 @@ async def get_bot_top_servers(
         FROM {{schema_prefix}}"BotEvent" e
         LEFT JOIN {{schema_prefix}}"BotGuild" g
             ON g."serverId" = e."serverId" AND g."platform" = e."platform"
-        WHERE e."createdAt" >= $1::timestamp AND e."serverId" IS NOT NULL {platform_filter}
+        WHERE e."createdAt" >= $1::timestamptz AND e."serverId" IS NOT NULL {platform_filter}
         GROUP BY e."serverId", g."name"
         ORDER BY messages DESC
         LIMIT ${len(params)}::int
@@ -241,7 +241,7 @@ async def get_bot_command_usage(
         FROM {{schema_prefix}}"BotEvent"
         WHERE "eventType" = 'command_used'
             AND "commandName" IS NOT NULL
-            AND "createdAt" >= $1::timestamp {platform_filter}
+            AND "createdAt" >= $1::timestamptz {platform_filter}
         GROUP BY "commandName"
         ORDER BY uses DESC
         """,
