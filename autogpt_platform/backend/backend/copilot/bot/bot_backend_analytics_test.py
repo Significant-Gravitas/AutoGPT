@@ -84,6 +84,19 @@ async def test_analytics_failure_is_swallowed():
 
 
 @pytest.mark.asyncio
+async def test_bad_platform_string_is_swallowed():
+    # Platform(...) raises ValueError on an unknown string. That must fail the
+    # background task — never the synchronous caller in the reply path.
+    backend, client = _backend()
+    backend.track_event(platform="myspace", event_type="message_received")
+    await _drain(backend)
+    assert backend._analytics_tasks == set()
+    # The bad platform must short-circuit before the RPC; the client must not
+    # have been called.
+    client.record_bot_event.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_analytics_task_is_silent():
     # Cancelled tasks during shutdown must not raise CancelledError from the
     # done-callback (which would print as an unhandled exception by asyncio).

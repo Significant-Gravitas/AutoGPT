@@ -125,6 +125,11 @@ class BotBackend:
         if exc is not None:
             logger.warning("Bot analytics write failed: %s", exc)
 
+    # NOTE: each track method defers Platform() and Pydantic construction into
+    # the background coroutine — that way a bad platform string or validation
+    # error fails the analytics task (which is swallowed) instead of leaking
+    # back into the caller's reply path.
+
     def track_event(
         self,
         *,
@@ -137,8 +142,8 @@ class BotBackend:
         char_count: int | None = None,
         duration_ms: int | None = None,
     ) -> None:
-        self._fire_and_forget(
-            self._client.record_bot_event(
+        async def _send() -> None:
+            await self._client.record_bot_event(
                 event=BotEventInput(
                     platform=Platform(platform.upper()),
                     event_type=event_type,
@@ -150,33 +155,36 @@ class BotBackend:
                     duration_ms=duration_ms,
                 )
             )
-        )
+
+        self._fire_and_forget(_send())
 
     def track_guild_joined(
         self, platform: str, server_id: str, name: str | None = None
     ) -> None:
-        self._fire_and_forget(
-            self._client.record_guild_joined(
+        async def _send() -> None:
+            await self._client.record_guild_joined(
                 guild=BotGuildInput(
                     platform=Platform(platform.upper()),
                     server_id=server_id,
                     name=name,
                 )
             )
-        )
+
+        self._fire_and_forget(_send())
 
     def track_guild_left(self, platform: str, server_id: str) -> None:
-        self._fire_and_forget(
-            self._client.mark_guild_left(
+        async def _send() -> None:
+            await self._client.mark_guild_left(
                 platform=Platform(platform.upper()),
                 server_id=server_id,
             )
-        )
+
+        self._fire_and_forget(_send())
 
     def sync_guilds(self, platform: str, guilds: list[tuple[str, str | None]]) -> None:
-        platform_enum = Platform(platform.upper())
-        self._fire_and_forget(
-            self._client.sync_guild_presence(
+        async def _send() -> None:
+            platform_enum = Platform(platform.upper())
+            await self._client.sync_guild_presence(
                 platform=platform_enum,
                 guilds=[
                     BotGuildInput(
@@ -187,7 +195,8 @@ class BotBackend:
                     for server_id, name in guilds
                 ],
             )
-        )
+
+        self._fire_and_forget(_send())
 
     async def resolve_server(
         self, platform: str, platform_server_id: str
