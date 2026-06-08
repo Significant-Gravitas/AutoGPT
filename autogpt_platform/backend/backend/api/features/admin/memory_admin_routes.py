@@ -16,7 +16,8 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from redis.exceptions import ResponseError
@@ -182,6 +183,31 @@ def _resolve_user_id(user_id: str, caller_id: str) -> str:
     return caller_id if user_id == "me" else user_id
 
 
+def _audit_cross_user_access(
+    *,
+    request: Request,
+    caller_id: str,
+    target_id: str,
+    jwt_payload: dict,
+) -> None:
+    """Log admin reads/writes against another user's memory.
+
+    ``get_user_id`` only audits impersonation via ``X-Act-As-User-Id``;
+    these routes accept the target user id directly in the path, so we
+    log here to keep an audit trail for PII access (entity names, fact
+    text) and destructive ops (community rebuild).
+    """
+    if target_id == caller_id:
+        return
+    caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
+        "email", ""
+    )
+    logger.info(
+        f"Admin memory access: {caller_id} ({caller_email}) "
+        f"acting on user {target_id} for {request.method} {request.url}"
+    )
+
+
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     """Read-only driver — bypasses the full Graphiti client construction.
 
@@ -240,10 +266,18 @@ async def _count(driver, query: str) -> int:
 
 @router.get("/{user_id}/overview", response_model=MemoryOverview)
 async def get_memory_overview(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         group_id = derive_group_id(target)
     except ValueError as exc:
@@ -276,11 +310,19 @@ async def get_memory_overview(
 
 @router.get("/{user_id}/entities", response_model=EntityListResponse)
 async def list_entities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         group_id = derive_group_id(target)
     except ValueError as exc:
@@ -319,8 +361,10 @@ async def list_entities(
 
 @router.get("/{user_id}/facts", response_model=FactListResponse)
 async def list_facts(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
     status: Annotated[
         Literal["active", "superseded", "contradicted", "any"], Query()
@@ -328,6 +372,12 @@ async def list_facts(
     scope: Annotated[str | None, Query()] = None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         group_id = derive_group_id(target)
     except ValueError as exc:
@@ -393,11 +443,19 @@ async def list_facts(
 
 @router.get("/{user_id}/communities", response_model=CommunityListResponse)
 async def list_communities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         group_id = derive_group_id(target)
     except ValueError as exc:
@@ -444,8 +502,10 @@ async def list_communities(
 
 @router.get("/{user_id}/graph", response_model=GraphResponse)
 async def get_graph(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
     edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
     include_episodes: Annotated[bool, Query()] = False,
@@ -462,6 +522,12 @@ async def get_graph(
     typical inspector view.
     """
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         group_id = derive_group_id(target)
     except ValueError as exc:
@@ -812,8 +878,10 @@ async def get_nightly_batch_status(
     status_code=202,
 )
 async def rebuild_communities(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     force: Annotated[
         bool,
         Query(
@@ -834,6 +902,12 @@ async def rebuild_communities(
     """
     _ = force  # not yet plumbed through the with_status wrapper
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         derive_group_id(target)
     except ValueError as exc:
