@@ -437,6 +437,26 @@ class TestThreadHistory:
         assert len(history[0].text) <= THREAD_HISTORY_CHAR_BUDGET
         assert history[0].text.endswith("[message truncated]")
 
+    @pytest.mark.asyncio
+    async def test_truncated_newest_message_stops_older_messages(self):
+        # Once the newest message is truncated to the budget, older messages
+        # must not be appended into the whitespace the truncation freed up.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        newest = _message(huge, [])
+        newest.author = MagicMock(bot=False, id=2000, display_name="Newest")
+        older = _message("older context", [])
+        older.author = MagicMock(bot=False, id=3000, display_name="Older")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([newest, older])  # newest-first
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert [entry.username for entry in history] == ["Newest"]
+
 
 class TestProperties:
     def test_platform_name_is_discord(self):

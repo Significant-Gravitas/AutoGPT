@@ -375,13 +375,14 @@ class DiscordAdapter(PlatformAdapter):
                 remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
                 if remaining <= 0:
                     break
-                if len(text) > remaining:
-                    # Doesn't fit. Stop if we already have context; otherwise
-                    # this lone (most recent) message is itself over budget —
-                    # keep a truncated head so we never send an oversized
-                    # payload to the copilot API.
-                    if entries:
-                        break
+                oversized = len(text) > remaining
+                if oversized and entries:
+                    # No room for another whole message — stop and keep what we
+                    # have (the more recent messages).
+                    break
+                if oversized:
+                    # Lone most-recent message is itself over budget: keep a
+                    # truncated head of it.
                     text = _truncate_to_budget(text, remaining)
                 used_chars += len(text)
                 entries.append(
@@ -391,6 +392,11 @@ class DiscordAdapter(PlatformAdapter):
                         text=text,
                     )
                 )
+                if oversized:
+                    # We just truncated the newest message to the budget; older
+                    # messages are both less relevant and would otherwise sneak
+                    # into the whitespace `rstrip` freed up. Stop here.
+                    break
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
             return ()
