@@ -118,13 +118,22 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(screen.queryByTestId("step-subscription")).toBeNull();
   });
 
-  it("renders SubscriptionStep at step 4 when payments are enabled", async () => {
+  it("renders SubscriptionStep first (step 1) when payments are enabled", async () => {
     mockFlagValue = true;
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
-    currentSearchParams = new URLSearchParams("step=4");
+    currentSearchParams = new URLSearchParams("step=1");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
     expect(screen.queryByTestId("step-preparing")).toBeNull();
+  });
+
+  it("renders Welcome at step 2 (after the paywall) when payments are enabled", async () => {
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+    currentSearchParams = new URLSearchParams("step=2");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-welcome")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
   });
 
   it("treats step 5 as Preparing when payments are enabled", async () => {
@@ -138,55 +147,56 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("clamps ?step=5 to the user's highest reached step (no fast-forward)", async () => {
     mockFlagValue = true;
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
     currentSearchParams = new URLSearchParams("step=5");
     render(<OnboardingPage />);
-    // Highest reached is 2 (RoleStep), so manually editing the URL to step=5
-    // should land the user back on step 2, not let them skip ahead.
+    // Highest reached is 3 (RoleStep), so manually editing the URL to step=5
+    // should land the user back on step 3, not let them skip ahead.
     expect(await screen.findByTestId("step-role")).toBeDefined();
     expect(screen.queryByTestId("step-preparing")).toBeNull();
   });
 
   it("resumes from the highest reached step when ?step= is omitted", async () => {
     mockFlagValue = true;
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
     // No step param — user navigated to /onboarding directly.
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-painpoints")).toBeDefined();
-    expect(screen.queryByTestId("step-welcome")).toBeNull();
-  });
-
-  it("rejects decimal step values and falls back to step 1", async () => {
-    mockFlagValue = true;
-    currentSearchParams = new URLSearchParams("step=2.5");
-    render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-welcome")).toBeDefined();
-    expect(screen.queryByTestId("step-role")).toBeNull();
-  });
-
-  it("rejects non-numeric step values and falls back to step 1", async () => {
-    mockFlagValue = true;
-    currentSearchParams = new URLSearchParams("step=foo");
-    render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-welcome")).toBeDefined();
-  });
-
-  it("lets ?step=5&subscription=success bypass the highestStep ceiling", async () => {
-    // Simulates returning from a successful Stripe checkout. The highest
-    // reached step before the redirect was 4 (SubscriptionStep). Without the
-    // success-bypass, ceiling=min(4,5)=4 would clamp the user back to step 4.
-    mockFlagValue = true;
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
-    currentSearchParams = new URLSearchParams("step=5&subscription=success");
-    render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(screen.queryByTestId("step-subscription")).toBeNull();
   });
 
-  it("returns to SubscriptionStep on ?step=4&subscription=cancelled", async () => {
+  it("rejects decimal step values and falls back to step 1 (the paywall)", async () => {
     mockFlagValue = true;
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
-    currentSearchParams = new URLSearchParams("step=4&subscription=cancelled");
+    currentSearchParams = new URLSearchParams("step=2.5");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+  });
+
+  it("rejects non-numeric step values and falls back to step 1 (the paywall)", async () => {
+    mockFlagValue = true;
+    currentSearchParams = new URLSearchParams("step=foo");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+  });
+
+  it("lets ?step=2&subscription=success land on Welcome past the paywall", async () => {
+    // Simulates returning from a successful Stripe checkout. The highest
+    // reached step before the redirect was 1 (the paywall). Without the
+    // success-bypass, ceiling=min(1,2)=1 would clamp the user back onto the
+    // paywall they just paid through.
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "1");
+    currentSearchParams = new URLSearchParams("step=2&subscription=success");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-welcome")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("returns to SubscriptionStep on ?step=1&subscription=cancelled", async () => {
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "1");
+    currentSearchParams = new URLSearchParams("step=1&subscription=cancelled");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
@@ -222,8 +232,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
   it("still shows SubscriptionStep for NO_TIER users with payments enabled", async () => {
     mockFlagValue = true;
     mockSubscriptionTier = "NO_TIER";
-    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
-    currentSearchParams = new URLSearchParams("step=4");
+    currentSearchParams = new URLSearchParams("step=1");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(screen.queryByTestId("step-preparing")).toBeNull();
@@ -264,7 +273,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     });
     currentSearchParams = new URLSearchParams("step=4");
     render(<OnboardingPage />);
-    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
     const state = useOnboardingWizardStore.getState();
     expect(state.name).toBe("Alice");
     expect(state.role).toBe("Engineering");
