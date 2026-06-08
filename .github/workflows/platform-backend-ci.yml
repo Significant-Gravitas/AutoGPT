@@ -158,18 +158,26 @@ jobs:
       # FalkorDB backs the Graphiti knowledge graph the copilot uses for
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
-      # ``GraphitiConfig`` defaults (``localhost:6380``, empty password)
-      # work unchanged. Integration tests in
+      # ``GraphitiConfig`` defaults (``localhost:6380``,
+      # password=``local-dev-password`` from backend/.env.default) work
+      # unchanged. ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
+      # image's documented way to set the bearer; mirrors the entrypoint
+      # the compose stack writes. Integration tests in
       # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
       # via the ``falkordb_available`` fixture when the port isn't open
       # (e.g. on a contributor's laptop) — this service makes the port
       # available in CI so the integration suite actually runs.
+      # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
+      # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
+      # an unauthenticated PING.
       falkordb:
         image: falkordb/falkordb:latest
         ports:
           - 6380:6379
+        env:
+          REDIS_ARGS: "--requirepass local-dev-password"
         options: >-
-          --health-cmd "redis-cli ping || exit 1"
+          --health-cmd "redis-cli -a local-dev-password ping || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
