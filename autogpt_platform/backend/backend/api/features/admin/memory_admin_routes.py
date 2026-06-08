@@ -384,10 +384,12 @@ async def list_communities(
 
     driver = _open_driver(group_id)
     try:
+        # Graphiti stores membership as (Community)-[HAS_MEMBER]->(Entity); match
+        # in that direction so member_count and the size sort are correct.
         result = await driver.execute_query(
             """
             MATCH (c:Community {group_id: $g})
-            OPTIONAL MATCH (c)<-[:HAS_MEMBER]-(m:Entity)
+            OPTIONAL MATCH (c)-[:HAS_MEMBER]->(m:Entity)
             WITH c, count(m) AS member_count
             RETURN c.uuid AS uuid,
                    c.name AS name,
