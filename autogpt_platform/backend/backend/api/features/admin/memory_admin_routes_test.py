@@ -211,6 +211,31 @@ class TestListCommunities:
         assert items[0]["member_count"] == 7
 
 
+class TestGraph:
+    def test_missing_graph_returns_empty(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = ResponseError("no such graph")
+        driver.close = AsyncMock()
+        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/graph")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["nodes"] == []
+        assert body["edges"] == []
+
+    def test_unexpected_error_propagates(self) -> None:
+        """A non-graph-not-found FalkorDB error must surface, not be
+        hidden behind an empty graph payload."""
+        driver = AsyncMock()
+        driver.execute_query.side_effect = ResponseError("syntax error near 'MATHC'")
+        driver.close = AsyncMock()
+        bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
+        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+            with pytest.raises(ResponseError, match="MATHC"):
+                bare_client.get("/admin/memory/abc/graph")
+        driver.close.assert_awaited_once()
+
+
 class TestRebuildCommunitiesPolling:
     """POST /communities/rebuild is now fire-and-forget.
 
@@ -245,20 +270,27 @@ class TestRebuildCommunitiesPolling:
         assert call_kwargs["job_id"] == body["job_id"]
         assert call_kwargs["user_id"] == "abc"
 
-    def test_scheduler_failure_returns_500(self) -> None:
+    def test_scheduler_failure_marks_errored_and_returns_500(self) -> None:
         scheduler = MagicMock()
         scheduler.schedule_immediate_community_rebuild = AsyncMock(
             side_effect=RuntimeError("scheduler unreachable")
         )
+        mark_errored = AsyncMock()
         with patch(
             f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
         ), patch(
             f"{_MOCK_MODULE}.write_initial_status",
             new=_make_fake_initial_status("rebuild"),
+        ), patch(
+            f"{_MOCK_MODULE}.mark_errored", mark_errored
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500
         assert "scheduler unreachable" in resp.json()["detail"]
+        # The just-queued JobStatus must be flipped to errored, not left
+        # stuck on 'queued' for a job the scheduler never picked up.
+        mark_errored.assert_awaited_once()
+        assert mark_errored.call_args.kwargs["kind"] == "rebuild"
 
 
 class TestTriggerStatusGetEndpoints:

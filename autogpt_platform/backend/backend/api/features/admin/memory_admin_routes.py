@@ -26,6 +26,7 @@ from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
     JobStatus,
+    mark_errored,
     read_status,
     write_initial_status,
 )
@@ -206,6 +207,24 @@ def _audit_cross_user_access(
         f"Admin memory access: {caller_id} ({caller_email}) "
         f"acting on user {target_id} for {request.method} {request.url}"
     )
+
+
+async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> None:
+    """Best-effort: flip a just-queued JobStatus to errored when the
+    scheduler hand-off failed, so a poller doesn't wait on a job that
+    will never run."""
+    try:
+        await mark_errored(
+            kind=kind,
+            job_id=job_id,
+            error=f"scheduling failed: {type(exc).__name__}: {exc}",
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark %s job %s errored after schedule failure",
+            kind,
+            job_id[:12],
+        )
 
 
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
@@ -643,10 +662,13 @@ async def get_graph(
             if len(edges) >= edge_limit:
                 truncated = True
                 break
-    except Exception:
-        # Missing graph (new user) — return an empty payload rather
-        # than 500. Frontend renders the empty state.
-        pass
+    except ResponseError as exc:
+        # Missing graph (new user) — return an empty payload rather than
+        # 500; the frontend renders the empty state. Any other FalkorDB
+        # error (Cypher typo, schema mismatch) propagates instead of
+        # being hidden behind an empty graph.
+        if not _is_missing_graph_error(exc):
+            raise
     finally:
         await driver.close()
 
@@ -741,6 +763,7 @@ async def trigger_dream_pass(
             target[:12],
             exc,
         )
+        await _mark_schedule_failed("dream_pass", job_id, exc)
         raise HTTPException(
             status_code=500,
             detail=f"Dream pass scheduling failed: {type(exc).__name__}: {exc}",
@@ -862,6 +885,7 @@ async def trigger_nightly_batch(
             target[:12],
             exc,
         )
+        await _mark_schedule_failed("nightly", job_id, exc)
         raise HTTPException(
             status_code=500,
             detail=f"Nightly batch scheduling failed: {type(exc).__name__}: {exc}",
@@ -951,6 +975,7 @@ async def rebuild_communities(
             target[:12],
             exc,
         )
+        await _mark_schedule_failed("rebuild", job_id, exc)
         raise HTTPException(
             status_code=500,
             detail=(
