@@ -28,6 +28,7 @@ from backend.platform_linking.models import (
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     Platform,
+    WorkspaceArtifact,
 )
 from backend.util.clients import get_platform_linking_manager_client
 from backend.util.exceptions import (
@@ -188,6 +189,17 @@ class BotBackend:
             )
             for s in resp.sessions
         ]
+
+    async def fetch_workspace_artifact(
+        self, session_id: str, file_id: str, max_bytes: int
+    ) -> WorkspaceArtifact | None:
+        """Resolve a ``workspace://`` URI from the chat stream to bytes,
+        scoped to the session's owning user. Returns ``None`` when the file
+        is too large, missing, or doesn't belong to the session — in which
+        case the caller drops a link-to-chat fallback button."""
+        return await self._client.fetch_workspace_artifact(
+            session_id=session_id, file_id=file_id, max_bytes=max_bytes
+        )
 
     async def stream_chat(
         self,
