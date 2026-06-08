@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
     _resolve_mentions,
@@ -399,7 +400,9 @@ class TestRenameThread:
 
 class TestThreadHistory:
     @pytest.mark.asyncio
-    async def test_fetches_user_thread_history_oldest_first(self):
+    async def test_fetches_user_thread_history_chronological(self):
+        # Discord returns history newest-first; the adapter reverses it back to
+        # chronological order, dropping its own outputs.
         adapter, _ = _bare_adapter(bot_id=1000)
         bot = _mention(1000, "AutoPilot")
 
@@ -411,7 +414,8 @@ class TestThreadHistory:
         bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoPilot")
 
         channel = MagicMock(spec=discord.Thread)
-        channel.history.return_value = _AsyncHistory([prior_1, bot_msg, prior_2])
+        # newest-first as the Discord API delivers it: Bob, (bot), Alice
+        channel.history.return_value = _AsyncHistory([prior_2, bot_msg, prior_1])
         message = _message("<@1000> help", [bot])
         message.channel = channel
 
@@ -420,7 +424,7 @@ class TestThreadHistory:
         channel.history.assert_called_once_with(
             limit=THREAD_HISTORY_LIMIT,
             before=message,
-            oldest_first=True,
+            oldest_first=False,
         )
         assert [entry.username for entry in history] == ["Alice", "Bob"]
         assert [entry.user_id for entry in history] == ["2000", "3000"]
@@ -428,6 +432,74 @@ class TestThreadHistory:
             "first idea",
             "can ignore old bot ping",
         ]
+
+    @pytest.mark.asyncio
+    async def test_drops_oldest_messages_past_the_size_budget(self):
+        # A very long thread can't all fit in one copilot request. Keep the most
+        # recent messages (newest-first scan, budget cut) and drop the oldest.
+        adapter, _ = _bare_adapter(bot_id=1000)
+
+        big = "x" * 5000  # 4 fit in the 24000-char budget, the 5th overflows
+        newest_first = []
+        for i in range(6, 0, -1):  # User6 (newest) .. User1 (oldest)
+            msg = _message(big, [])
+            msg.author = MagicMock(bot=False, id=i, display_name=f"User{i}")
+            newest_first.append(msg)
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory(newest_first)
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        # Most-recent 4 kept, returned chronologically; oldest two dropped.
+        assert [entry.username for entry in history] == [
+            "User3",
+            "User4",
+            "User5",
+            "User6",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_truncates_a_single_oversized_message(self):
+        # If the latest message alone exceeds the budget, keep a truncated head
+        # rather than drop all context or emit an oversized payload.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        msg = _message(huge, [])
+        msg.author = MagicMock(bot=False, id=2000, display_name="Alice")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([msg])
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert len(history) == 1
+        assert len(history[0].text) <= THREAD_HISTORY_CHAR_BUDGET
+        assert history[0].text.endswith("[message truncated]")
+
+    @pytest.mark.asyncio
+    async def test_truncated_newest_message_stops_older_messages(self):
+        # Once the newest message is truncated to the budget, older messages
+        # must not be appended into the whitespace the truncation freed up.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        newest = _message(huge, [])
+        newest.author = MagicMock(bot=False, id=2000, display_name="Newest")
+        older = _message("older context", [])
+        older.author = MagicMock(bot=False, id=3000, display_name="Older")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([newest, older])  # newest-first
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert [entry.username for entry in history] == ["Newest"]
 
 
 class TestProperties:

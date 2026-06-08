@@ -27,7 +27,16 @@ from ..base import (
 from . import commands, config, intro
 
 logger = logging.getLogger(__name__)
-THREAD_HISTORY_LIMIT = 20
+
+# When the bot is @-ed into an existing thread it pulls the prior messages in as
+# context. Read the whole thread (up to this hard cap, ~10 Discord API pages)
+# rather than just the last handful — skipping older messages makes the bot act
+# on a partial conversation. THREAD_HISTORY_CHAR_BUDGET then keeps the assembled
+# context within the copilot request size limit, preferring the most recent
+# messages when a thread is very long.
+THREAD_HISTORY_LIMIT = 1000
+THREAD_HISTORY_CHAR_BUDGET = 24000
+_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -365,12 +374,16 @@ class DiscordAdapter(PlatformAdapter):
             return ()
 
         entries: list[MessageHistoryEntry] = []
+        used_chars = 0
         bot_user_id = self._client.user.id if self._client.user else None
         try:
+            # Newest-first so that when a long thread exceeds the size budget we
+            # keep the most recent (most relevant) messages instead of the
+            # oldest; we reverse back to chronological order before returning.
             async for prior in message.channel.history(
                 limit=THREAD_HISTORY_LIMIT,
                 before=message,
-                oldest_first=True,
+                oldest_first=False,
             ):
                 # Skip our own outputs — copilot has its own transcript for
                 # that side. Other bots' messages are kept as context.
@@ -379,6 +392,19 @@ class DiscordAdapter(PlatformAdapter):
                 text = self._strip_mentions(prior)
                 if not text:
                     continue
+                remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
+                if remaining <= 0:
+                    break
+                oversized = len(text) > remaining
+                if oversized and entries:
+                    # No room for another whole message — stop and keep what we
+                    # have (the more recent messages).
+                    break
+                if oversized:
+                    # Lone most-recent message is itself over budget: keep a
+                    # truncated head of it.
+                    text = _truncate_to_budget(text, remaining)
+                used_chars += len(text)
                 entries.append(
                     MessageHistoryEntry(
                         username=prior.author.display_name,
@@ -386,11 +412,30 @@ class DiscordAdapter(PlatformAdapter):
                         text=text,
                     )
                 )
+                if oversized:
+                    # We just truncated the newest message to the budget; older
+                    # messages are both less relevant and would otherwise sneak
+                    # into the whitespace `rstrip` freed up. Stop here.
+                    break
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
             return ()
 
+        entries.reverse()  # chronological order for the prompt
         return tuple(entries)
+
+
+def _truncate_to_budget(text: str, limit: int) -> str:
+    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
+
+    Used only when a single thread message is itself larger than the history
+    budget — keep a head of it (with context that it was cut) rather than emit
+    an oversized payload or drop the message entirely.
+    """
+    if len(text) <= limit:
+        return text
+    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
+    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
 
 
 def _resolve_mentions(
