@@ -26,7 +26,7 @@ from backend.util.settings import Settings
 
 from . import sessions, threads
 from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
-from .bot_backend import BotBackend
+from .bot_backend import BotBackend, BotStreamError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
@@ -388,6 +388,22 @@ class MessageHandler:
             # Another in-flight turn is already processing this exact message —
             # stay quiet so the user doesn't get a double response.
             logger.info("Duplicate message dropped for target %s", target_id)
+            return
+        except BotStreamError as exc:
+            # Stream couldn't complete (timeout, subscribe fail, backend stream
+            # error). Track the specific kind, surface a generic message, and
+            # do NOT fire reply_sent below.
+            logger.warning(
+                "Stream failed for target %s: %s (%s)",
+                target_id,
+                exc,
+                exc.error_kind,
+            )
+            self._track_stream_error(ctx, exc.error_kind)
+            await adapter.send_message(
+                target_id,
+                "AutoPilot ran into an error. Try again in a moment.",
+            )
             return
         except NotFoundError:
             logger.exception("Chat turn rejected")

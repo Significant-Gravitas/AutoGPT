@@ -46,8 +46,22 @@ STREAM_CHUNK_TIMEOUT_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
+
+class BotStreamError(Exception):
+    """A copilot stream couldn't produce a successful reply.
+
+    Carries a bounded ``error_kind`` so the handler can attribute analytics
+    accurately instead of guessing from the inline text.
+    """
+
+    def __init__(self, error_kind: str, message: str):
+        super().__init__(message)
+        self.error_kind = error_kind
+
+
 __all__ = [
     "BotBackend",
+    "BotStreamError",
     "ChatSummary",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
@@ -319,8 +333,10 @@ class BotBackend:
             last_message_id=handle.subscribe_from,
         )
         if queue is None:
-            yield "\n[Error: failed to subscribe to response stream]"
-            return
+            raise BotStreamError(
+                "subscribe_failed",
+                "failed to subscribe to response stream",
+            )
 
         setup_notified = False
 
@@ -336,8 +352,10 @@ class BotBackend:
                         STREAM_CHUNK_TIMEOUT_SECONDS,
                         handle.session_id,
                     )
-                    yield "\n[Error: response timed out]"
-                    return
+                    raise BotStreamError(
+                        "stream_timeout",
+                        "response timed out",
+                    )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
                         yield chunk.delta
@@ -354,8 +372,10 @@ class BotBackend:
                     return
                 elif isinstance(chunk, StreamError):
                     logger.error("Stream error from backend: %s", chunk.errorText)
-                    yield f"\n[Error: {chunk.errorText}]"
-                    return
+                    raise BotStreamError(
+                        "backend_stream_error",
+                        chunk.errorText,
+                    )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
                 # aren't useful for the plain-text bot transcript.
