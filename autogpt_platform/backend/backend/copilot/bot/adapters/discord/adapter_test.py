@@ -110,6 +110,50 @@ class TestStripMentions:
         assert adapter._strip_mentions(msg) == expected
 
 
+# ── _message_text (forwarded messages) ─────────────────────────────────
+
+
+def _snapshot(content: str = "", filenames: tuple[str, ...] = ()) -> MagicMock:
+    snapshot = MagicMock()
+    snapshot.content = content
+    snapshot.attachments = [MagicMock(filename=name) for name in filenames]
+    return snapshot
+
+
+class TestMessageText:
+    def test_plain_message_without_forward(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hello", [])
+        msg.message_snapshots = []
+        assert adapter._message_text(msg) == "hello"
+
+    def test_forward_with_comment_includes_both(self):
+        # The dangerous case Toran hit: a forward + comment used to arrive as
+        # just the comment, losing the forwarded message entirely.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("can you make a ticket for this?", [])
+        msg.message_snapshots = [_snapshot("The original forwarded request")]
+        result = adapter._message_text(msg)
+        assert "can you make a ticket for this?" in result
+        assert "[Forwarded message]" in result
+        assert "The original forwarded request" in result
+
+    def test_forward_without_comment_uses_forwarded_content(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("", [])
+        msg.message_snapshots = [_snapshot("Just the forwarded text")]
+        result = adapter._message_text(msg)
+        assert result.startswith("[Forwarded message]")
+        assert "Just the forwarded text" in result
+
+    def test_forward_notes_attachment_filenames(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("look at this", [])
+        msg.message_snapshots = [_snapshot("", filenames=("report.pdf",))]
+        result = adapter._message_text(msg)
+        assert "[Attached file: report.pdf]" in result
+
+
 # ── _channel_type ──────────────────────────────────────────────────────
 
 
