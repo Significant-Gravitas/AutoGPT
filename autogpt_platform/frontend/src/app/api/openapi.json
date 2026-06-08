@@ -11901,7 +11901,11 @@
             "title": "Platform"
           },
           "window_days": { "type": "integer", "title": "Window Days" },
-          "live_servers": { "type": "integer", "title": "Live Servers" },
+          "live_servers": {
+            "type": "integer",
+            "title": "Live Servers",
+            "description": "Current count of servers the bot is in right now. Point-in-time gauge — intentionally ignores window_days. Use the server-count timeseries endpoint for the windowed growth curve."
+          },
           "messages_received": {
             "type": "integer",
             "title": "Messages Received"

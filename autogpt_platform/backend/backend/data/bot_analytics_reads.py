@@ -11,7 +11,7 @@ rows. There is no message content or user identity anywhere in the schema.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema
 
@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 class BotAnalyticsSummary(BaseModel):
     platform: str | None
     window_days: int
-    live_servers: int
+    live_servers: int = Field(
+        description=(
+            "Current count of servers the bot is in right now. "
+            "Point-in-time gauge — intentionally ignores window_days. "
+            "Use the server-count timeseries endpoint for the windowed growth curve."
+        ),
+    )
     messages_received: int
     replies_sent: int
     commands_used: int
