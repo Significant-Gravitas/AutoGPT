@@ -27,7 +27,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
   const canDelete = !isUploadedFile(item);
 
   return (
-    <div className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-50">
+    <div className="group flex items-center gap-2 rounded-md py-1.5 hover:bg-zinc-50">
       <button
         type="button"
         onClick={() => onOpen(file)}

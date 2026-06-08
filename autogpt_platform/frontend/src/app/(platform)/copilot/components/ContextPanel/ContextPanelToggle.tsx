@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { FolderIcon } from "@phosphor-icons/react";
 import { useCopilotUIStore } from "../../store";
 
 export function ContextPanelToggle() {
@@ -20,7 +20,7 @@ export function ContextPanelToggle() {
         aria-label="Open workspace panel"
         aria-pressed={false}
       >
-        <SidebarSimpleIcon className="!size-5 rotate-180" />
+        <FolderIcon className="!size-5" />
       </Button>
     </div>
   );

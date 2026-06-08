@@ -139,6 +139,7 @@ export function FilesTab({ sessionId }: Props) {
           onClick={handleDownloadAll}
           loading={isZipping}
           aria-label="Download all"
+          className="h-7 !min-w-0 !p-1"
         >
           <DownloadSimpleIcon size={16} />
         </Button>
@@ -149,7 +150,7 @@ export function FilesTab({ sessionId }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-3">
         {uploaded.length > 0 && (
           <FileSection
             title="Uploaded files"
@@ -201,7 +202,7 @@ function FileSection({
 }) {
   return (
     <section>
-      <div className="flex items-center justify-between px-2 pb-1">
+      <div className="flex items-center justify-between pb-1">
         <h3 className="text-sm font-medium text-zinc-900">{title}</h3>
         {action}
       </div>

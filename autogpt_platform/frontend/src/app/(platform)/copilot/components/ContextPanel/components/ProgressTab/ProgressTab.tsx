@@ -55,7 +55,7 @@ export function ProgressTab({ sessionId }: Props) {
     : todos;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 pb-3 pt-4">
       <header className="flex items-baseline justify-between">
         <h3 className="text-sm font-medium text-zinc-900">Task list</h3>
         <span className="text-xs text-zinc-500">
