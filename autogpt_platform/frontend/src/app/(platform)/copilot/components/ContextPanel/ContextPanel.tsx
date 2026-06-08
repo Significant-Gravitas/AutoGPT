@@ -49,7 +49,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           </Button>
         </div>
       )}
-      <div className={cn("p-2", mobile && "mt-8")}>
+      <div className={cn("p-2", mobile && "mt-12")}>
         <TabSwitcher
           activeTab={activeTab}
           filesCount={filesCount}
