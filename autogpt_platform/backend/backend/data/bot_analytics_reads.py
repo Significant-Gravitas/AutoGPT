@@ -170,6 +170,11 @@ async def get_bot_server_timeseries(
     params: list = [days]
     joined_filter = _platform_filter(platform, params, alias="g.")
     left_filter = joined_filter  # same param ($2) reused in both subqueries
+    # The BotGuild.joinedAt / leftAt columns are `timestamp` (no tz) storing
+    # naive UTC values (Prisma's default for DateTime). `now() AT TIME ZONE 'utc'`
+    # also produces a naive UTC `timestamp`, so date_trunc here uses neither the
+    # session TZ nor any implicit cast — comparisons stay naive-to-naive and the
+    # daily buckets line up with UTC days regardless of session TZ.
     rows = await query_raw_with_schema(
         f"""
         SELECT
