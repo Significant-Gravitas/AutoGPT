@@ -6,6 +6,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from redis.exceptions import ResponseError
 
 from .memory_admin_routes import router as memory_admin_router
 
@@ -75,9 +76,11 @@ class TestOverview:
         assert resp.status_code == 400
 
     def test_missing_graph_returns_zeros(self) -> None:
-        # Simulate a FalkorDB error on every query (database doesn't exist)
+        # Simulate the FalkorDB error for a database that doesn't exist yet.
         driver = AsyncMock()
-        driver.execute_query.side_effect = RuntimeError("no such graph")
+        driver.execute_query.side_effect = ResponseError(
+            "Invalid graph operation on empty key"
+        )
         driver.close = AsyncMock()
         with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/overview")
@@ -85,6 +88,34 @@ class TestOverview:
         body = resp.json()
         assert body["entities"] == 0
         assert body["communities"] == 0
+
+    def test_unexpected_cypher_error_propagates(self) -> None:
+        """A Cypher typo / unrelated FalkorDB error must NOT be swallowed
+        as a zero count — admins need to see the failure."""
+        driver = AsyncMock()
+        driver.execute_query.side_effect = ResponseError("syntax error near 'MATHC'")
+        driver.close = AsyncMock()
+        # Surface the underlying exception instead of letting the test
+        # client convert it to a 500 — we want to assert the exact type
+        # propagated past _count.
+        bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
+        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+            with pytest.raises(ResponseError, match="MATHC"):
+                bare_client.get("/admin/memory/abc/overview")
+        # Driver must still be closed even when the query blows up.
+        driver.close.assert_awaited_once()
+
+    def test_non_response_error_propagates(self) -> None:
+        """Non-FalkorDB exceptions (e.g. a programming TypeError) must not
+        be silently zeroed."""
+        driver = AsyncMock()
+        driver.execute_query.side_effect = TypeError("bad query param")
+        driver.close = AsyncMock()
+        bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
+        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+            with pytest.raises(TypeError, match="bad query param"):
+                bare_client.get("/admin/memory/abc/overview")
+        driver.close.assert_awaited_once()
 
 
 class TestListEntities:
