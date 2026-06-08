@@ -77,10 +77,9 @@ export function EmptySession({
       <DotDistortionShader
         dotGap={14}
         dotSize={1}
-        mouseRadius={100}
-        distortionStrength={1.2}
-        returnSpeed={0.06}
         opacity={0.2}
+        enableMouseInteraction={false}
+        breathingSpeed={0.4}
         className="pointer-events-none absolute inset-0 !bg-transparent [&_canvas]:opacity-70"
       />
       <motion.div
