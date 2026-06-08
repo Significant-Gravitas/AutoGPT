@@ -134,10 +134,13 @@ async def get_bot_message_timeseries(
 ) -> list[BotTimeseriesPoint]:
     params: list = [_since(days)]
     platform_filter = _platform_filter(platform, params)
+    # date_trunc on a timestamptz uses the session's time zone by default —
+    # convert to UTC explicitly via AT TIME ZONE so days are bucketed by UTC
+    # regardless of the connection's TZ (mirrors platform_cost's pattern).
     rows = await query_raw_with_schema(
         f"""
         SELECT
-            date_trunc('day', "createdAt") AS day,
+            date_trunc('day', "createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS day,
             count(*) FILTER (WHERE "eventType" = 'message_received') AS messages,
             count(*) FILTER (WHERE "eventType" = 'reply_sent') AS replies,
             count(*) FILTER (WHERE "eventType" = 'stream_error') AS errors
