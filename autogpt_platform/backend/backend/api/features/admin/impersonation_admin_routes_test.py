@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -148,3 +149,74 @@ def test_notify_actor_is_jwt_admin_not_impersonation_header(
     assert response.status_code == 200
     content = mock_alert.await_args.args[0]
     assert "spoofed-impersonated-id" not in content
+
+
+def test_notify_alert_timeout_blocks(mocker: pytest_mock.MockerFixture) -> None:
+    """A Discord send that exceeds the timeout is bounded and blocks the swap."""
+    _set_token(mocker, "fake-token")
+    _patch_emails(mocker)
+
+    async def slow_alert(*_args, **_kwargs):
+        await asyncio.sleep(1)
+        return "Message sent"
+
+    mocker.patch(f"{_MOCK_MODULE}.discord_send_alert", new=slow_alert)
+    mocker.patch(f"{_MOCK_MODULE}._DISCORD_ALERT_TIMEOUT_SECONDS", 0.05)
+
+    response = client.post(
+        "/admin/impersonation/notify", json={"target_user_id": _TARGET_USER_ID}
+    )
+
+    assert response.status_code == 502
+
+
+def test_notify_missing_target_user_id_returns_422() -> None:
+    """A request body without target_user_id fails validation."""
+    response = client.post("/admin/impersonation/notify", json={})
+    assert response.status_code == 422
+
+
+def test_notify_email_lookup_failure_is_non_fatal(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A failed email lookup degrades to 'unknown' but still delivers (200)."""
+    _set_token(mocker, "fake-token")
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=Exception("DB connection lost"),
+    )
+    mock_alert = _patch_alert(mocker, return_value="Message sent")
+
+    response = client.post(
+        "/admin/impersonation/notify", json={"target_user_id": _TARGET_USER_ID}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"alerted": True}
+    content = mock_alert.await_args.args[0]
+    assert "test-admin@example.com" in content  # admin email from the JWT
+    assert "unknown" in content  # target lookup failed, degraded gracefully
+
+
+def test_notify_admin_email_comes_from_jwt_without_db_lookup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The admin email is read from the JWT; only the target is looked up in DB."""
+    _set_token(mocker, "fake-token")
+    mock_email = mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mock_alert = _patch_alert(mocker, return_value="Message sent")
+
+    response = client.post(
+        "/admin/impersonation/notify", json={"target_user_id": _TARGET_USER_ID}
+    )
+
+    assert response.status_code == 200
+    content = mock_alert.await_args.args[0]
+    assert "test-admin@example.com" in content
+    # Admin email came from the JWT, so the DB is only hit for the target.
+    mock_email.assert_awaited_once_with(_TARGET_USER_ID)
