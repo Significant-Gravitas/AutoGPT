@@ -441,6 +441,8 @@ class MessageHandler:
                 target_id,
                 "AutoPilot didn't produce a response. Try rephrasing your question.",
             )
+            self._track_stream_error(ctx, "empty_reply")
+            return
 
         self._api.track_event(
             platform=ctx.platform,
