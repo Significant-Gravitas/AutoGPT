@@ -12,6 +12,7 @@ import {
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { Select } from "../../../../atoms/Select/Select";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { StepHeader } from "../StepHeader";
 import { StepFooter } from "../StepFooter";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
@@ -59,6 +60,10 @@ export function AgentSelectStep({
     pageSize,
     sortBy,
     pageDirection,
+    searchInput,
+    setSearchInput,
+    debouncedSearch,
+    isDebouncingSearch,
     handleAgentClick,
     handleNext,
     handleSortChange,
@@ -97,7 +102,14 @@ export function AgentSelectStep({
     );
   }
 
-  const showEmpty = !isLoading && totalItems === 0 && myAgents.length === 0;
+  const hasNoResults = !isLoading && totalItems === 0 && myAgents.length === 0;
+  const hasActiveSearch = Boolean(searchInput.trim() || debouncedSearch);
+  const showLibraryEmpty = hasNoResults && !hasActiveSearch && !isFetching;
+  const showNoMatches =
+    hasNoResults &&
+    Boolean(debouncedSearch) &&
+    !isFetching &&
+    !isDebouncingSearch;
 
   return (
     <div className="mx-auto flex w-full flex-col">
@@ -107,7 +119,7 @@ export function AgentSelectStep({
         currentStep="select"
       />
 
-      {showEmpty ? (
+      {showLibraryEmpty ? (
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
           <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
             <PlusIcon size={20} weight="bold" />
@@ -123,7 +135,18 @@ export function AgentSelectStep({
         </div>
       ) : (
         <>
-          <div className="mt-2 flex items-center justify-start pb-0">
+          <div className="mt-2 flex flex-col gap-2 px-1 pb-0 sm:flex-row sm:items-center sm:justify-start">
+            <div className="w-full sm:w-[calc((100%-0.5rem)/2)] sm:flex-none">
+              <SearchInput
+                value={searchInput}
+                onChange={setSearchInput}
+                placeholder="Search your agents"
+                aria-label="Search your agents"
+                maxLength={100}
+                loading={isFetching || isDebouncingSearch}
+                size="small"
+              />
+            </div>
             <div className="w-full sm:w-[220px]">
               <Select
                 id="agent-sort"
@@ -133,12 +156,12 @@ export function AgentSelectStep({
                 value={sortBy}
                 onValueChange={handleSortChange}
                 options={SORT_OPTIONS}
-                wrapperClassName="mb-2"
+                wrapperClassName="mb-0"
               />
             </div>
           </div>
 
-          <div className="flex-grow overflow-hidden pb-3">
+          <div className="mt-1 flex-grow overflow-hidden pb-3">
             <h3 className="sr-only">List of agents</h3>
             <div
               className={cn(
@@ -165,6 +188,25 @@ export function AgentSelectStep({
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : showNoMatches ? (
+                <div
+                  className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center"
+                  data-testid="agent-search-no-matches"
+                >
+                  <Text variant="body-medium" className="text-textBlack">
+                    No agents match &ldquo;{debouncedSearch}&rdquo;
+                  </Text>
+                  <Text variant="small" className="text-zinc-500">
+                    Try a different name or clear the search.
+                  </Text>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => setSearchInput("")}
+                  >
+                    Clear search
+                  </Button>
                 </div>
               ) : (
                 <AnimatePresence

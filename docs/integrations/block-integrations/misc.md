@@ -247,6 +247,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
+| variables | Variables defined here can be used directly in your Python or JavaScript code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. | Dict[str, Any] | No |
 | code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |

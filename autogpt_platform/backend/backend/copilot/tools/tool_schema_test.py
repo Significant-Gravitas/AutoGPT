@@ -70,12 +70,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the require_approval gate, and the "STOP before building" caveat the
 # model needs to halt for user approval instead of rushing into
 # create_agent.
-# Bumped 40500 -> 42000 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
 # ~1.3k chars: identifier + trigger_config + explicit-credentials schema
 # and the "manual webhooks return an exact URL / provider webhooks need
 # an explicitly chosen account" copy the model needs to drive webhook
 # trigger setup without inventing URLs or auto-picking credentials.
-_CHAR_BUDGET = 42_000
+_CHAR_BUDGET = 42_500
 
 
 @pytest.fixture(scope="module")

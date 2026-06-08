@@ -10,6 +10,7 @@ export type FileTypeKey =
   | "img"
   | "html"
   | "video"
+  | "react"
   | "generic";
 
 interface FileTypeConfig {
@@ -176,6 +177,21 @@ function ImgContent() {
   );
 }
 
+function ReactContent() {
+  return (
+    <div className="flex h-16 items-center justify-center">
+      <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
+        <circle r="2" fill="rgb(24 24 27 / 0.55)" />
+        <g fill="none" stroke="rgb(24 24 27 / 0.35)" strokeWidth="1">
+          <ellipse rx="10" ry="4" />
+          <ellipse rx="10" ry="4" transform="rotate(60)" />
+          <ellipse rx="10" ry="4" transform="rotate(120)" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   pdf: {
     label: "PDF",
@@ -213,6 +229,12 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
     badgePositionClass: "bottom-5 -right-2",
     content: <VideoContent />,
   },
+  react: {
+    label: "REACT",
+    cardClass: "w-20 p-2.5",
+    badgePositionClass: "bottom-5 -right-2",
+    content: <ReactContent />,
+  },
   generic: {
     label: "FILE",
     cardClass: "w-20 space-y-3 p-3",
@@ -228,11 +250,17 @@ export const FILE_TYPE_KEYS: FileTypeKey[] = [
   "img",
   "html",
   "video",
+  "react",
   "generic",
 ];
 
-export function pickFileTypeKey(mimeType: string | undefined): FileTypeKey {
+export function pickFileTypeKey(
+  mimeType: string | undefined,
+  fileName?: string,
+): FileTypeKey {
   const mt = (mimeType ?? "").toLowerCase();
+  const name = (fileName ?? "").toLowerCase();
+  if (name.endsWith(".jsx") || name.endsWith(".tsx")) return "react";
   if (mt.startsWith("image/")) return "img";
   if (mt.startsWith("video/")) return "video";
   if (mt.includes("pdf")) return "pdf";
