@@ -7,6 +7,7 @@ import discord
 import pytest
 
 from backend.copilot.bot.adapters.discord.adapter import (
+    THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
     _resolve_mentions,
@@ -415,6 +416,26 @@ class TestThreadHistory:
             "User5",
             "User6",
         ]
+
+    @pytest.mark.asyncio
+    async def test_truncates_a_single_oversized_message(self):
+        # If the latest message alone exceeds the budget, keep a truncated head
+        # rather than drop all context or emit an oversized payload.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        msg = _message(huge, [])
+        msg.author = MagicMock(bot=False, id=2000, display_name="Alice")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([msg])
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert len(history) == 1
+        assert len(history[0].text) <= THREAD_HISTORY_CHAR_BUDGET
+        assert history[0].text.endswith("[message truncated]")
 
 
 class TestProperties:

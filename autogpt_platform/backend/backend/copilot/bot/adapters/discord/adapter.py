@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # messages when a thread is very long.
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
+_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -371,10 +372,17 @@ class DiscordAdapter(PlatformAdapter):
                 text = self._strip_mentions(prior)
                 if not text:
                     continue
-                # Stop once we'd blow the request size budget, but always keep
-                # at least the most recent message.
-                if entries and used_chars + len(text) > THREAD_HISTORY_CHAR_BUDGET:
+                remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
+                if remaining <= 0:
                     break
+                if len(text) > remaining:
+                    # Doesn't fit. Stop if we already have context; otherwise
+                    # this lone (most recent) message is itself over budget —
+                    # keep a truncated head so we never send an oversized
+                    # payload to the copilot API.
+                    if entries:
+                        break
+                    text = _truncate_to_budget(text, remaining)
                 used_chars += len(text)
                 entries.append(
                     MessageHistoryEntry(
@@ -389,6 +397,19 @@ class DiscordAdapter(PlatformAdapter):
 
         entries.reverse()  # chronological order for the prompt
         return tuple(entries)
+
+
+def _truncate_to_budget(text: str, limit: int) -> str:
+    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
+
+    Used only when a single thread message is itself larger than the history
+    budget — keep a head of it (with context that it was cut) rather than emit
+    an oversized payload or drop the message entirely.
+    """
+    if len(text) <= limit:
+        return text
+    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
+    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
 
 
 def _resolve_mentions(
