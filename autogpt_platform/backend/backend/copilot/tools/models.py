@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.data.graph import BaseGraph
+from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
 
@@ -167,7 +167,7 @@ class AgentInfo(BaseModel):
         default=None,
         description="Full graph structure (nodes + links) when include_graph is requested",
     )
-    trigger_info: dict[str, Any] | None = Field(
+    trigger_info: GraphTriggerInfo | None = Field(
         default=None,
         description=(
             "Webhook-trigger setup info (provider, config_schema, "
@@ -228,7 +228,7 @@ class AgentDetails(BaseModel):
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
-    trigger_info: dict[str, Any] | None = None
+    trigger_info: GraphTriggerInfo | None = None
 
 
 class AgentDetailsResponse(ToolResponseBase):

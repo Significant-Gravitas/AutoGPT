@@ -222,8 +222,8 @@ class TestLibraryUUIDLookup:
         agent = response.agents[0]
         assert agent.graph is None
         assert agent.trigger_info is not None
-        assert agent.trigger_info["provider"] == "github"
-        assert "repo" in agent.trigger_info["config_schema"]["properties"]
+        assert agent.trigger_info.provider == "github"
+        assert "repo" in agent.trigger_info.config_schema["properties"]
         assert "setup_agent_webhook_trigger" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")

@@ -435,9 +435,7 @@ class RunAgentTool(BaseTool):
         credentials: list[CredentialsMetaInput],
     ) -> AgentDetails:
         """Build AgentDetails from a graph."""
-        trigger_info = (
-            graph.trigger_setup_info.model_dump() if graph.trigger_setup_info else None
-        )
+        trigger_info = graph.trigger_setup_info
         return AgentDetails(
             id=graph.id,
             name=graph.name,

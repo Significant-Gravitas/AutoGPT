@@ -344,11 +344,7 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
         graph_version=agent.graph_version,
         input_schema=agent.input_schema,
         output_schema=agent.output_schema,
-        trigger_info=(
-            agent.trigger_setup_info.model_dump(mode="json")
-            if agent.trigger_setup_info
-            else None
-        ),
+        trigger_info=agent.trigger_setup_info,
     )
 
 
