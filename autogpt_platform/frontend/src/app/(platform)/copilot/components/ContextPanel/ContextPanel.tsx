@@ -86,6 +86,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       {isOpen && (
         // data-artifact-panel is required by the reused ArtifactDragHandle,
         // which measures the panel via closest("[data-artifact-panel]").
+        // Fixed to the viewport right edge with banner-aware top/height so
+        // the panel pins under the navbar/banner regardless of page scroll.
         <motion.div
           key="context-panel"
           data-context-panel
@@ -94,7 +96,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width }}
           exit={{ width: 0 }}
           transition={{ duration: 0.2, ease: "linear" }}
-          className="relative flex h-full shrink-0 flex-col overflow-hidden bg-transparent"
+          className="fixed right-0 top-[calc(50px+var(--preview-banner-height,0px))] z-10 flex h-[calc(100vh-50px-var(--preview-banner-height,0px))] flex-col overflow-hidden bg-sidebar"
         >
           {/* Opacity is delayed so the content fades in after the width
               animation completes, avoiding the squished-content look. */}

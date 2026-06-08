@@ -3,6 +3,7 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -58,7 +59,16 @@ export function CopilotPage() {
   }
 
   return (
-    <SidebarProvider defaultOpen={true} className="h-full min-h-0">
+    <SidebarProvider
+      defaultOpen={true}
+      // Explicit height: `h-full` against <section className="flex-1"> drifts
+      // out of sync with the navbar-driven --preview-banner-height var during
+      // re-renders, clipping the navbar when the sidebar toggles.
+      style={{
+        height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+      }}
+      className="min-h-0"
+    >
       {!isMobile && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
