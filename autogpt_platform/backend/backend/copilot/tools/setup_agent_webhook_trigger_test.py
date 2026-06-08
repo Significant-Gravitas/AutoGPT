@@ -383,3 +383,44 @@ async def test_setup_failure_graph_deleted_midway(tool, session):
     assert isinstance(result, ErrorResponse)
     assert result.error == "trigger_setup_failed"
     assert "not accessible" in result.message
+
+
+@pytest.mark.asyncio
+async def test_library_agent_id_resolves_and_proceeds(tool, session):
+    """Passing library_agent_id resolves the graph via get_library_agent."""
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(
+        provider="generic_webhook",
+        url="https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress",
+    )
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(
+        return_value=MagicMock(graph_id="graph-1", graph_version=1)
+    )
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4], patch(
+        f"{_PATH}.library_db", return_value=mock_lib_db
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", library_agent_id="lib-1"
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    mock_lib_db.get_library_agent.assert_awaited_once()
+    setup_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_library_agent_not_found_returns_error(tool, session):
+    """get_library_agent raising NotFoundError -> clean library_agent_not_found."""
+    graph = _make_graph(manual=True)
+    ctxs, _ = _patches(graph)
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(side_effect=NotFoundError("gone"))
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4], patch(
+        f"{_PATH}.library_db", return_value=mock_lib_db
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", library_agent_id="lib-1"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "library_agent_not_found"
