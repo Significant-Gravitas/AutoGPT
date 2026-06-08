@@ -25,21 +25,24 @@ async def graph_cleanup():  # type: ignore[override]
 
 @pytest.fixture(autouse=True)
 def stub_user_lookup_in_helpers(monkeypatch):
-    """Stub ``user_db.get_user_by_id`` ONLY for the helpers.py-local binding.
+    """Stub the ``user_db()`` accessor ONLY for the helpers.py-local binding.
 
-    ``prepare_block_for_execution`` reads the user record to plumb
-    ``user_timezone`` into ``ExecutionContext``. The existing tests don't
+    ``execute_block`` reads the user record via ``user_db().get_user_by_id``
+    to plumb ``user_timezone`` into ``ExecutionContext``. ``user_db`` is the
+    connection-aware accessor from ``db_accessors`` (a callable returning the
+    direct module or the DatabaseManager RPC client). The existing tests don't
     need a real DB for that.
 
     ⚠️ We must patch the ``user_db`` name on the helpers module itself,
-    NOT ``helpers.user_db.get_user_by_id`` — the latter resolves through
-    the module reference and mutates ``backend.data.user.get_user_by_id``
-    globally, which leaks into unrelated callers (e.g. ``rate_limit``'s
-    ``user_db().get_user_by_id`` in ``run_agent_test``) and clobbers
-    their real-DB test users with our MagicMock.
+    NOT ``helpers.user_db().get_user_by_id`` — patching through the returned
+    client would mutate the shared accessor target globally, which leaks into
+    unrelated callers (e.g. ``rate_limit``'s ``user_db().get_user_by_id`` in
+    ``run_agent_test``) and clobbers their real-DB test users with our
+    MagicMock.
     """
     user = MagicMock()
     user.timezone = "UTC"
-    stub = MagicMock()
-    stub.get_user_by_id = AsyncMock(return_value=user)
+    client = MagicMock()
+    client.get_user_by_id = AsyncMock(return_value=user)
+    stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
