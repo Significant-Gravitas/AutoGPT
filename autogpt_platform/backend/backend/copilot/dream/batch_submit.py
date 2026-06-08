@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
@@ -43,6 +43,9 @@ from .prompts import (
     build_sanitize_prompt,
 )
 from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
+
+if TYPE_CHECKING:
+    from backend.copilot.config import ChatConfig
 
 logger = logging.getLogger(__name__)
 
@@ -96,13 +99,43 @@ PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
 }
 
 
+def _to_native_anthropic_model(model: str) -> str:
+    """``anthropic/claude-opus-4.7`` → ``claude-opus-4-7``.
+
+    The batch path always submits to Anthropic's native Batches API
+    (direct key), regardless of the chat transport, so strip the
+    OpenRouter vendor prefix AND convert dots to hyphens — native
+    Anthropic rejects both the prefix and the dot-separated version,
+    and the dream rate card only carries the hyphenated id.
+    """
+    if "/" in model:
+        model = model.split("/", 1)[1]
+    return model.replace(".", "-")
+
+
+def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
+    """Per-phase model map (native-Anthropic form) for the batch path.
+
+    Mirrors the sync orchestrator's per-phase choice: the standard tier
+    for consolidate/sanitize, the advanced tier (opus + extended
+    thinking) for recombine. Built once at submit and threaded through
+    the batch payload so the model used to *submit* a phase is the exact
+    model used to *price* it — no single-model fan-out across phases.
+    """
+    return {
+        "consolidate": _to_native_anthropic_model(config.fast_standard_model),
+        "recombine": _to_native_anthropic_model(config.fast_advanced_model),
+        "sanitize": _to_native_anthropic_model(config.fast_standard_model),
+    }
+
+
 async def submit_phase(
     *,
     user_id: str,
     pass_id: str,
     job_id: str,
     phase: DreamPhase,
-    model: str,
+    phase_models: dict[str, str],
     api_key: str,
     input_bundle: DreamInput,
     consolidated_json: str | None = None,
@@ -117,8 +150,10 @@ async def submit_phase(
 
     The pending-queue entry's ``payload`` carries everything the
     callback needs to chain to the next phase: user_id, pass_id,
-    job_id, and the model so the same model is used across phases.
+    job_id, and the per-phase model map so each phase is submitted —
+    and later priced — with its own model.
     """
+    model = phase_models[phase]
     messages = _build_phase_messages(
         phase=phase,
         input_bundle=input_bundle,
@@ -170,7 +205,7 @@ async def submit_phase(
             "pass_id": pass_id,
             "job_id": job_id,
             "phase": phase,
-            "model": model,
+            "phase_models": phase_models,
             "custom_ids": [custom_id],
             # The phase mapping is what dream_callbacks uses to route
             # the result row back to a phase label. With one custom_id

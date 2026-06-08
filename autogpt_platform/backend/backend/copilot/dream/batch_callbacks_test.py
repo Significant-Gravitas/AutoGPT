@@ -84,7 +84,11 @@ def _entry(
             "pass_id": pass_id,
             "job_id": job_id,
             "phase": phase,
-            "model": "claude-sonnet-4-6",
+            "phase_models": {
+                "consolidate": "claude-sonnet-4-6",
+                "recombine": "claude-opus-4-7",
+                "sanitize": "claude-sonnet-4-6",
+            },
             "custom_ids": [custom_id],
             "phase_for_custom_id": {custom_id: phase},
         },
@@ -249,6 +253,15 @@ class TestPhaseChaining:
         assert record_cost.await_count == 3
         for call in record_cost.await_args_list:
             assert call.kwargs["execution_path"] == "anthropic_batch"
+        # Each phase is priced with ITS OWN model — recombine uses the
+        # advanced (opus) model, not phase 1's standard model.
+        models_by_phase = {
+            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].model
+            for call in record_cost.await_args_list
+        }
+        assert models_by_phase["consolidate"] == "claude-sonnet-4-6"
+        assert models_by_phase["recombine"] == "claude-opus-4-7"
+        assert models_by_phase["sanitize"] == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_redispatch_after_charge_does_not_double_bill(self, fake_redis):
@@ -305,7 +318,12 @@ class TestErrorPaths:
     @pytest.mark.asyncio
     async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
         mark_errored = AsyncMock()
-        with patch("backend.copilot.dream.job_status.mark_errored", mark_errored):
+        record_cost = AsyncMock()
+        with patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
                 [
@@ -318,6 +336,8 @@ class TestErrorPaths:
             )
         mark_errored.assert_awaited_once()
         assert "content moderation" in mark_errored.call_args.kwargs["error"]
+        # The errored phase itself is not billed.
+        record_cost.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_invalid_json_marks_errored_does_not_chain(self, fake_redis):
@@ -328,9 +348,12 @@ class TestErrorPaths:
         test pins is invalid-JSON not unknown-field."""
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
+        record_cost = AsyncMock()
         with patch(
             "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
-        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored):
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
                 [
@@ -345,9 +368,10 @@ class TestErrorPaths:
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
 
     @pytest.mark.asyncio
-    async def test_apply_crash_marks_errored_skips_cost_log(self, fake_redis):
-        """If apply raises, the user must NOT be charged — those tokens
-        bought operations that didn't land in the graph."""
+    async def test_apply_crash_marks_errored_still_records_usage(self, fake_redis):
+        """If apply raises, the pass is errored — but the three LLM phases
+        already ran and Anthropic billed us, so their usage is still
+        recorded (matches the sync path + dream/billing.py)."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
@@ -384,7 +408,9 @@ class TestErrorPaths:
             )
 
         mark_errored.assert_awaited_once()
-        record_cost.assert_not_awaited()
+        # consolidate + recombine + sanitize all completed and were billed
+        # by Anthropic; apply failing afterward doesn't refund those tokens.
+        assert record_cost.await_count == 3
 
 
 class TestMalformedPayload:

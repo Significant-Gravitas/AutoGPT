@@ -500,7 +500,11 @@ async def _submit_dream_pass_batch(
     ``job_id`` is empty and the callback skips the JobStatus updates —
     apply still runs, cost still logs.
     """
-    from .batch_submit import persist_input_bundle, submit_phase
+    from .batch_submit import (
+        persist_input_bundle,
+        phase_models_for_config,
+        submit_phase,
+    )
 
     api_key = config.direct_anthropic_api_key
     if not api_key:
@@ -539,7 +543,7 @@ async def _submit_dream_pass_batch(
             pass_id=pass_id,
             job_id=status_id or "",
             phase="consolidate",
-            model=_strip_provider_prefix(config.fast_standard_model),
+            phase_models=phase_models_for_config(config),
             api_key=api_key,
             input_bundle=input_bundle,
         )
@@ -571,15 +575,3 @@ async def _submit_dream_pass_batch(
         # The BatchExecutor + dream callbacks deliver those when phase
         # 3 lands and apply runs.
     )
-
-
-def _strip_provider_prefix(model: str) -> str:
-    """``anthropic/claude-sonnet-4-6`` → ``claude-sonnet-4-6``.
-
-    OpenRouter aliases include the provider prefix; native Anthropic
-    rejects that form. The orchestrator's config carries the
-    OpenRouter alias for portability, so strip when sending direct.
-    """
-    if "/" in model:
-        return model.split("/", 1)[1]
-    return model

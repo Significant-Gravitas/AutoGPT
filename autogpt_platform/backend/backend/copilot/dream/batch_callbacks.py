@@ -134,6 +134,16 @@ async def _delete_state(pass_id: str) -> None:
     await redis.delete(_state_key(pass_id))
 
 
+def _phase_models_from_payload(payload: dict[str, Any]) -> dict[str, str]:
+    """Per-phase model map persisted by ``submit_phase`` — used to chain
+    the next phase and to price each phase with the model it actually
+    used. Empty when absent (current code never omits it)."""
+    raw = payload.get("phase_models")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 # ---------------------------------------------------------------------------
 # Handler entry point
 # ---------------------------------------------------------------------------
@@ -158,7 +168,7 @@ async def handle_dream_batch_result(
     user_id = str(payload.get("user_id") or "")
     pass_id = str(payload.get("pass_id") or "")
     job_id = str(payload.get("job_id") or "")
-    model = str(payload.get("model") or "claude-sonnet-4-6")
+    phase_models = _phase_models_from_payload(payload)
     phase = payload.get("phase")
 
     if not user_id or not pass_id or not phase:
@@ -178,6 +188,7 @@ async def handle_dream_batch_result(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{phase}: provider returned no rows",
         )
         return
@@ -192,6 +203,7 @@ async def handle_dream_batch_result(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{phase}: {row.error}",
         )
         return
@@ -207,6 +219,7 @@ async def handle_dream_batch_result(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{phase}: invalid output shape — {type(exc).__name__}",
         )
         return
@@ -219,7 +232,7 @@ async def handle_dream_batch_result(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
-            model=model,
+            phase_models=phase_models,
             next_phase=next_phase,
         )
         return
@@ -229,7 +242,7 @@ async def handle_dream_batch_result(
         user_id=user_id,
         pass_id=pass_id,
         job_id=job_id,
-        model=model,
+        phase_models=phase_models,
     )
 
 
@@ -243,7 +256,7 @@ async def _chain_next_phase(
     user_id: str,
     pass_id: str,
     job_id: str,
-    model: str,
+    phase_models: dict[str, str],
     next_phase: DreamPhase,
 ) -> None:
     """Submit the next phase in the chain.
@@ -259,6 +272,7 @@ async def _chain_next_phase(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{next_phase}: DreamInput missing from Redis (TTL expired?)",
         )
         return
@@ -273,6 +287,7 @@ async def _chain_next_phase(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{next_phase}: no Anthropic API key configured",
         )
         return
@@ -283,7 +298,7 @@ async def _chain_next_phase(
             pass_id=pass_id,
             job_id=job_id,
             phase=next_phase,
-            model=model,
+            phase_models=phase_models,
             api_key=api_key,
             input_bundle=input_bundle,
             consolidated_json=consolidated_json,
@@ -299,6 +314,7 @@ async def _chain_next_phase(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"{next_phase}: submit failed: {type(exc).__name__}: {exc}",
         )
         return
@@ -336,17 +352,19 @@ def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
 
 
 async def _finalize_complete(
-    *, user_id: str, pass_id: str, job_id: str, model: str
+    *, user_id: str, pass_id: str, job_id: str, phase_models: dict[str, str]
 ) -> None:
     """Sanitize phase has landed. Run apply + cost log + complete."""
     try:
         from .apply import apply_operations
+        from .orchestrator import _clamp_operations
     except Exception:
         logger.exception("Failed to import dream apply for pass=%s", pass_id)
         await _fail_pass(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error="apply: import failed",
         )
         return
@@ -358,6 +376,7 @@ async def _finalize_complete(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error="sanitize: missing terminal phase content",
         )
         return
@@ -369,9 +388,14 @@ async def _finalize_complete(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"sanitize: shape validation failed: {type(exc).__name__}",
         )
         return
+
+    # Enforce the same per-pass operation caps the sync path applies
+    # before writing — the model can over-emit past the prompt's limits.
+    ops = _clamp_operations(ops)
 
     try:
         apply_stats = await apply_operations(user_id, pass_id, ops)
@@ -384,17 +408,17 @@ async def _finalize_complete(
             user_id=user_id,
             pass_id=pass_id,
             job_id=job_id,
+            phase_models=phase_models,
             error=f"apply: {type(exc).__name__}: {exc}",
         )
         return
 
-    # Per-phase cost log — applied AFTER apply succeeds so a failed
-    # apply doesn't double-bill the user. The Redis dedup gate inside
-    # ``_log_all_phase_costs`` also guards against a crash between
-    # charging and removing the pending batch entry: if the
-    # BatchExecutor re-dispatches the same batch we won't re-charge.
+    # Per-phase usage log on the success path. Failure paths record the
+    # same usage via ``_fail_pass`` (we incurred those provider tokens
+    # regardless); the Redis dedup gate inside ``_log_all_phase_costs``
+    # keeps it at-most-once across both paths and any batch re-dispatch.
     await _log_all_phase_costs(
-        user_id=user_id, pass_id=pass_id, state=state, model=model
+        user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
     )
 
     if job_id:
@@ -444,8 +468,24 @@ async def _finalize_complete(
     await delete_input_bundle(pass_id)
 
 
-async def _fail_pass(*, user_id: str, pass_id: str, job_id: str, error: str) -> None:
-    """Mark JobStatus errored + clean up per-pass state."""
+async def _fail_pass(
+    *,
+    user_id: str,
+    pass_id: str,
+    job_id: str,
+    phase_models: dict[str, str],
+    error: str,
+) -> None:
+    """Mark JobStatus errored, record usage for any phases that already
+    landed, then clean up per-pass state.
+
+    We incurred the provider tokens for completed phases regardless of
+    whether the whole pass landed, so they're recorded against the
+    user's usage — matching the sync path and the documented contract in
+    ``dream/billing.py``. The idempotency gate inside
+    ``_log_all_phase_costs`` keeps this at-most-once even if the batch
+    re-dispatches.
+    """
     logger.warning("Dream batch pass=%s failed: %s", pass_id, error)
     if job_id:
         try:
@@ -454,6 +494,14 @@ async def _fail_pass(*, user_id: str, pass_id: str, job_id: str, error: str) -> 
             await mark_errored(kind="dream_pass", job_id=job_id, error=error)
         except Exception:
             logger.exception("Failed to mark dream pass job %s errored", job_id)
+    state = await _read_state(pass_id)
+    if state:
+        await _log_all_phase_costs(
+            user_id=user_id,
+            pass_id=pass_id,
+            state=state,
+            phase_models=phase_models,
+        )
     await _delete_state(pass_id)
     await delete_input_bundle(pass_id)
 
@@ -509,7 +557,7 @@ async def _log_all_phase_costs(
     user_id: str,
     pass_id: str,
     state: dict[str, dict[str, Any]],
-    model: str,
+    phase_models: dict[str, str],
 ) -> None:
     """One PlatformCostLog row per phase, tagged ``anthropic_batch``.
 
@@ -539,12 +587,24 @@ async def _log_all_phase_costs(
 
     for phase, row in state.items():
         try:
+            if row.get("error"):
+                # Phase errored — don't record usage for a phase that
+                # didn't complete; downstream phases never ran either.
+                continue
+            phase_model = phase_models.get(phase)
+            if not phase_model:
+                logger.warning(
+                    "No model recorded for pass=%s phase=%s — skipping cost log",
+                    pass_id,
+                    phase,
+                )
+                continue
             input_tokens = int(row.get("input_tokens") or 0)
             output_tokens = int(row.get("output_tokens") or 0)
             cache_read_tokens = int(row.get("cache_read_tokens") or 0)
             cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
             cost_usd = compute_cost_usd(
-                model=model,
+                model=phase_model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
@@ -553,7 +613,7 @@ async def _log_all_phase_costs(
             )
             usage = PhaseUsage(
                 phase=phase,  # type: ignore[arg-type]
-                model=model,
+                model=phase_model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
