@@ -21,6 +21,7 @@ What this file does NOT cover (needs an LLM key — separate
   (which we *do* assert on cleanly below).
 """
 
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -51,15 +52,18 @@ async def test_rebuild_returns_structured_result_on_failure(
 
     # Seed a couple entities so the label-propagation step has something
     # to chew on before the LLM summarization step (which will fail
-    # without a key in CI).
+    # without a key in CI). FalkorDB doesn't implement Cypher's no-arg
+    # ``datetime()``; generate the timestamp in Python and bind as a
+    # parameter (mirrors the seeded_graph fixture + dream/fetch.py).
     await driver.execute_query(
         """
         CREATE
-          (a:Entity {uuid: 'a', name: 'Alice', group_id: $gid, created_at: datetime()}),
-          (b:Entity {uuid: 'b', name: 'Bob',   group_id: $gid, created_at: datetime()}),
+          (a:Entity {uuid: 'a', name: 'Alice', group_id: $gid, created_at: $now}),
+          (b:Entity {uuid: 'b', name: 'Bob',   group_id: $gid, created_at: $now}),
           (a)-[:RELATES_TO {uuid: 'e1', group_id: $gid, fact: 'a knows b'}]->(b)
         """,
         gid=group_id,
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
     user_id = _make_user_id(group_id)
@@ -118,11 +122,16 @@ async def test_detach_delete_clears_orphan_community_nodes(
     assert {r["uuid"] for r in records} == {"orphan-1", "orphan-2"}
 
     user_id = _make_user_id(group_id)
+    # ``force=True`` bypasses ``_activity_since_last_rebuild``. Without
+    # the override the rebuild short-circuits on ``no_episodes`` BEFORE
+    # the ``DETACH DELETE c`` step runs (see communities.py:298-326),
+    # and the orphans this test seeds would stay in place — which would
+    # mask the regression the test is supposed to catch.
     with patch(
         "backend.copilot.graphiti.communities.derive_group_id",
         return_value=group_id,
     ):
-        await rebuild_communities_for_user(user_id)
+        await rebuild_communities_for_user(user_id, force=True)
 
     # Orphans must be gone, whether or not the rebuild itself succeeded.
     records, _, _ = await driver.execute_query(

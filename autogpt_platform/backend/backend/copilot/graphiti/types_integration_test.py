@@ -16,6 +16,8 @@ finding that motivated P-1.1 — metadata stranded inside
 properties at least *can* live on the durable edge.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from .client import derive_group_id
@@ -72,6 +74,11 @@ async def test_memory_fact_properties_roundtrip(clean_graph) -> None:
     """Every MemoryFact property survives a write + read through Cypher."""
     driver, group_id = clean_graph
 
+    # FalkorDB doesn't implement Cypher's literal-string ``datetime(...)``
+    # constructor (errors with ``Unknown function 'datetime'``). Pass ISO
+    # strings as parameters and write them straight onto the edge — the
+    # property's wire type is irrelevant to this roundtrip test, which
+    # only asserts the value reads back as non-null.
     await driver.execute_query(
         """
         CREATE
@@ -87,12 +94,14 @@ async def test_memory_fact_properties_roundtrip(clean_graph) -> None:
               source_kind: 'user_asserted',
               scope: 'real:global',
               provenance: 'session:abc#msg:42',
-              web_verified_at: datetime('2026-05-13T03:00:00Z'),
-              ratified_at: datetime('2026-05-14T03:00:00Z'),
+              web_verified_at: $web_verified_at,
+              ratified_at: $ratified_at,
               expiration_reason: null
           }]->(t)
         """,
         gid=group_id,
+        web_verified_at="2026-05-13T03:00:00Z",
+        ratified_at="2026-05-14T03:00:00Z",
     )
 
     records, _, _ = await driver.execute_query(
@@ -134,14 +143,18 @@ async def test_status_filter_is_cypher_native(seeded_graph) -> None:
     """
     driver, group_id = seeded_graph
 
-    # Demote e1.
+    # Demote e1. FalkorDB doesn't implement Cypher's no-arg ``datetime()``;
+    # generate the timestamp in Python and bind it as a parameter (same
+    # workaround the seeded_graph fixture, dream/fetch.py, and
+    # tools/graphiti_forget.py use against the same backend).
     await driver.execute_query(
         """
         MATCH ()-[e:RELATES_TO {uuid: 'e1'}]->()
         SET e.status = 'superseded',
-            e.expired_at = datetime(),
+            e.expired_at = $now,
             e.expiration_reason = 'integration-test-demotion'
         """,
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
     records, _, _ = await driver.execute_query(

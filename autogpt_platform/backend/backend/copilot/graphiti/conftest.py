@@ -27,6 +27,7 @@ The fixtures connect using ``GraphitiConfig`` defaults
 
 import socket
 import uuid
+from datetime import datetime, timezone
 from typing import AsyncIterator
 
 import pytest
@@ -95,7 +96,7 @@ async def _drop_database(driver: AutoGPTFalkorDriver) -> None:
         pass
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def clean_graph(
     falkordb_available: bool,
 ) -> AsyncIterator[tuple[AutoGPTFalkorDriver, str]]:
@@ -105,6 +106,16 @@ async def clean_graph(
     the database is detach-deleted; the database itself is left
     in place (FalkorDB doesn't expose a "drop database" Cypher and the
     test FalkorDB is ephemeral anyway).
+
+    Passes ``build_indices=False`` so the driver does NOT spawn the
+    background ``build_indices_and_constraints`` task graphiti-core's
+    ``FalkorDriver.__init__`` fires by default. That task runs many
+    sequential ``CREATE INDEX`` statements that race the test's own
+    queries — the integration tests hang indefinitely on the test
+    runner with ``Connection closed by server`` retries piling up.
+    Indexes are irrelevant to these tests anyway (they assert against
+    Cypher we issue directly), so opting out is harmless. See the
+    ``AutoGPTFalkorDriver`` docstring for the production rationale.
     """
     group_id = _new_test_group_id()
     driver = AutoGPTFalkorDriver(
@@ -112,6 +123,7 @@ async def clean_graph(
         port=graphiti_config.falkordb_port,
         password=graphiti_config.falkordb_password or None,
         database=group_id,
+        build_indices=False,
     )
     try:
         yield driver, group_id
@@ -120,7 +132,7 @@ async def clean_graph(
         await driver.close()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def seeded_graph(
     clean_graph: tuple[AutoGPTFalkorDriver, str],
 ) -> tuple[AutoGPTFalkorDriver, str]:
@@ -135,12 +147,19 @@ async def seeded_graph(
         (Bob   {uuid:'bob'})  -[:RELATES_TO {uuid:'e2', status:'active'}]->(Atlas {uuid:'atlas'})
     """
     driver, group_id = clean_graph
+    # FalkorDB doesn't implement Cypher's no-arg ``datetime()`` function
+    # (it errors with ``Unknown function 'datetime'``). Generate the
+    # timestamp in Python and bind it as a parameter so the seed query
+    # runs cleanly against FalkorDB — same workaround the production
+    # ``dream/fetch.py`` and ``tools/graphiti_forget.py`` use against
+    # the same backend.
+    now_iso = datetime.now(timezone.utc).isoformat()
     await driver.execute_query(
         """
         CREATE
-          (a:Entity {uuid: 'alice', name: 'Alice', group_id: $gid, created_at: datetime()}),
-          (b:Entity {uuid: 'bob',   name: 'Bob',   group_id: $gid, created_at: datetime()}),
-          (t:Entity {uuid: 'atlas', name: 'Atlas', group_id: $gid, created_at: datetime()}),
+          (a:Entity {uuid: 'alice', name: 'Alice', group_id: $gid, created_at: $now}),
+          (b:Entity {uuid: 'bob',   name: 'Bob',   group_id: $gid, created_at: $now}),
+          (t:Entity {uuid: 'atlas', name: 'Atlas', group_id: $gid, created_at: $now}),
           (a)-[:RELATES_TO {
               uuid: 'e1',
               group_id: $gid,
@@ -151,7 +170,7 @@ async def seeded_graph(
               source_kind: 'user_asserted',
               scope: 'real:global',
               provenance: 'session:test#msg:1',
-              created_at: datetime()
+              created_at: $now
           }]->(t),
           (b)-[:RELATES_TO {
               uuid: 'e2',
@@ -163,9 +182,10 @@ async def seeded_graph(
               source_kind: 'user_asserted',
               scope: 'real:global',
               provenance: 'session:test#msg:2',
-              created_at: datetime()
+              created_at: $now
           }]->(t)
         """,
         gid=group_id,
+        now=now_iso,
     )
     return driver, group_id
