@@ -152,7 +152,7 @@ export function FilesTab({ sessionId }: Props) {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2">
         {uploaded.length > 0 && (
           <FileSection
-            title="Uploaded"
+            title="Uploaded files"
             action={generated.length === 0 ? downloadAllButton : null}
           >
             {uploaded.map((file) => (
@@ -167,7 +167,7 @@ export function FilesTab({ sessionId }: Props) {
           </FileSection>
         )}
         {generated.length > 0 && (
-          <FileSection title="Generated" action={downloadAllButton}>
+          <FileSection title="Generated files" action={downloadAllButton}>
             {generated.map((file) => (
               <FileRow
                 key={file.item.id}
@@ -202,9 +202,7 @@ function FileSection({
   return (
     <section>
       <div className="flex items-center justify-between px-2 pb-1">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-          {title}
-        </h3>
+        <h3 className="text-sm font-medium text-zinc-900">{title}</h3>
         {action}
       </div>
       <div className="flex flex-col">{children}</div>

@@ -48,8 +48,8 @@ interface ArtifactPanelState {
   activeTab: ContextPanelTab;
 }
 
-export const DEFAULT_PANEL_WIDTH = 272; // 17rem
-export const MAX_PANEL_WIDTH = 280; // 17.5rem
+export const DEFAULT_PANEL_WIDTH = 352; // 22rem
+export const MAX_PANEL_WIDTH = 352; // 22rem
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -63,16 +63,8 @@ export type ContextPanelTab = "progress" | "files";
 const isClient = typeof window !== "undefined";
 
 function getPersistedWidth(): number {
-  if (!isClient) return DEFAULT_PANEL_WIDTH;
-  const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-  if (saved) {
-    const parsed = parseInt(saved, 10);
-    // Clamp stale persisted values to the current MAX so a previously larger
-    // panel doesn't reopen above the new cap.
-    if (!isNaN(parsed) && parsed >= 240) {
-      return Math.min(parsed, MAX_PANEL_WIDTH);
-    }
-  }
+  // Panel width is fixed; ignore any persisted value so previously-saved widths
+  // don't override the current design.
   return DEFAULT_PANEL_WIDTH;
 }
 

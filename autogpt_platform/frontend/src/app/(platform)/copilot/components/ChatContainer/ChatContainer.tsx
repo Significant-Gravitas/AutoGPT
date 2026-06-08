@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -150,102 +149,78 @@ export const ChatContainer = ({
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
-        <div
-          className={cn(
-            "flex h-full min-h-0 flex-col",
-            sessionId && "bg-white",
-          )}
-        >
+        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
           {sessionId ? (
-            <>
-              <div className="flex min-h-0 flex-1 flex-col px-2 pt-[15px] lg:px-0">
-                <div
-                  className={cn(
-                    "mx-auto flex h-full min-h-0 w-full flex-col",
-                    "max-w-3xl",
-                  )}
-                >
-                  <ChatMessagesContainer
-                    messages={messages}
-                    status={status}
-                    error={error}
-                    isLoading={isLoadingSession}
-                    isRestoringActiveSession={isRestoringActiveSession}
-                    restoreStatusMessage={restoreStatusMessage}
-                    activeStreamStartedAt={activeStreamStartedAt}
-                    sessionID={sessionId}
-                    sessionChatStatus={sessionChatStatus}
-                    hasMoreMessages={hasMoreMessages}
-                    isLoadingMore={isLoadingMore}
-                    onLoadMore={onLoadMore}
-                    onRetry={handleRetry}
-                    turnStats={turnStats}
-                    queuedMessages={queuedMessages}
-                    bottomContentPadding={usageCardHeight}
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="h-px w-full bg-neutral-200" />
-                <div className="h-px w-full bg-white" />
-              </div>
+            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
+                activeStreamStartedAt={activeStreamStartedAt}
+                sessionID={sessionId}
+                sessionChatStatus={sessionChatStatus}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                turnStats={turnStats}
+                queuedMessages={queuedMessages}
+                bottomContentPadding={usageCardHeight}
+              />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className="relative bg-zinc-50"
+                className="relative px-3 pb-2 pt-2"
               >
-                <div
-                  className={cn(
-                    "relative mx-auto w-full px-3 pb-2 pt-0",
-                    "max-w-3xl",
-                  )}
-                >
-                  {isLimitReached && (
+                <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#fafafa]" />
+                {isLimitReached && (
+                  <div
+                    ref={usageCardRef}
+                    className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+                  >
                     <div
-                      ref={usageCardRef}
-                      className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+                      aria-hidden="true"
+                      data-testid="usage-limit-backdrop"
+                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                     >
-                      <div
-                        aria-hidden="true"
-                        data-testid="usage-limit-backdrop"
-                        className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
-                      >
-                        <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
-                        <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
-                      </div>
-                      <div className="pointer-events-auto relative px-3">
-                        <UsageLimitReachedCard />
-                      </div>
+                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                      <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
-                  )}
-                  <SharedChatNotice sessionId={sessionId} />
-                  <Tooltip open={isLimitReached ? undefined : false}>
-                    <TooltipTrigger asChild>
-                      <div>
-                        <ChatInput
-                          inputId="chat-input-session"
-                          onSend={onSend}
-                          disabled={isInputDisabled}
-                          isStreaming={isStreaming}
-                          isUploadingFiles={isUploadingFiles}
-                          onStop={onStop}
-                          onEnqueue={onEnqueue}
-                          placeholder="What else can I help with?"
-                          droppedFiles={droppedFiles}
-                          onDroppedFilesConsumed={onDroppedFilesConsumed}
-                          hasSession={!!sessionId}
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-sm">
-                      You&apos;ve reached your usage limit. Wait for it to
-                      refresh or upgrade your plan to continue sending messages.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
+                    <div className="pointer-events-auto relative px-3">
+                      <UsageLimitReachedCard />
+                    </div>
+                  </div>
+                )}
+                <SharedChatNotice sessionId={sessionId} />
+                <Tooltip open={isLimitReached ? undefined : false}>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <ChatInput
+                        inputId="chat-input-session"
+                        onSend={onSend}
+                        disabled={isInputDisabled}
+                        isStreaming={isStreaming}
+                        isUploadingFiles={isUploadingFiles}
+                        onStop={onStop}
+                        onEnqueue={onEnqueue}
+                        placeholder="What else can I help with?"
+                        droppedFiles={droppedFiles}
+                        onDroppedFilesConsumed={onDroppedFilesConsumed}
+                        hasSession={!!sessionId}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-sm">
+                    You&apos;ve reached your usage limit. Wait for it to refresh
+                    or upgrade your plan to continue sending messages.
+                  </TooltipContent>
+                </Tooltip>
               </motion.div>
-            </>
+            </div>
           ) : (
             <EmptySession
               inputLayoutId={inputLayoutId}

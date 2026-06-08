@@ -31,20 +31,20 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
       <button
         type="button"
         onClick={() => onOpen(file)}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="flex min-w-0 flex-1 flex-col text-left"
         title={file.messageID ? "Jump to chat" : item.name}
       >
-        <Icon size={24} className="shrink-0 text-zinc-400" />
-        <span className="flex min-w-0 flex-col">
+        <span className="flex min-w-0 items-center gap-2">
+          <Icon size={16} className="shrink-0 text-black" />
           <OverflowText
             variant="body"
             value={item.name}
             className="text-zinc-800"
           />
-          <span className="text-xs text-zinc-400">
-            {formatFileSize(item.size_bytes ?? 0)} ·{" "}
-            {formatFileTimestamp(item.created_at)}
-          </span>
+        </span>
+        <span className="text-xs text-zinc-400">
+          {formatFileSize(item.size_bytes ?? 0)} ·{" "}
+          {formatFileTimestamp(item.created_at)}
         </span>
       </button>
       <div className="flex shrink-0 items-center gap-0.5">

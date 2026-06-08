@@ -86,8 +86,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       {isOpen && (
         // data-artifact-panel is required by the reused ArtifactDragHandle,
         // which measures the panel via closest("[data-artifact-panel]").
-        // Fixed to the viewport right edge with banner-aware top/height so
-        // the panel pins under the navbar/banner regardless of page scroll.
+        // Flex sibling (not fixed) so it pushes the chat column left instead
+        // of overlaying it; height inherits from the MainArea flex row.
         <motion.div
           key="context-panel"
           data-context-panel
@@ -96,7 +96,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width }}
           exit={{ width: 0 }}
           transition={{ duration: 0.2, ease: "linear" }}
-          className="fixed right-0 top-[calc(50px+var(--preview-banner-height,0px))] z-10 flex h-[calc(100vh-50px-var(--preview-banner-height,0px))] flex-col overflow-hidden bg-sidebar"
+          className="flex h-full shrink-0 flex-col overflow-hidden border-l border-l-[#80808017] bg-sidebar"
         >
           {/* Opacity is delayed so the content fades in after the width
               animation completes, avoiding the squished-content look. */}
@@ -109,8 +109,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           >
             <ArtifactDragHandle
               onWidthChange={setArtifactPanelWidth}
-              minWidth={240}
-              maxWidth={280}
+              minWidth={352}
+              maxWidth={352}
             />
             {tabs}
           </motion.div>

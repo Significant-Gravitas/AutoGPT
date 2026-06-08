@@ -5,7 +5,6 @@ import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
@@ -106,13 +105,8 @@ function MainArea({
 }: MainAreaProps) {
   const hasSession = !!sessionId;
   return (
-    <div className="relative mr-5 mt-2.5 flex h-full w-full flex-row pb-1 lg:mr-[0.3rem]">
-      <div
-        className={cn(
-          "relative flex min-w-0 flex-1 overflow-hidden",
-          hasSession && "bg-[#fafafa] p-2",
-        )}
-      >
+    <div className="flex h-full w-full flex-row overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
         {hasSession && (
           <DotDistortionShader
             dotGap={14}
@@ -123,23 +117,17 @@ function MainArea({
           />
         )}
         <FileDropZone
-          className={cn(
-            "relative mx-auto flex min-w-0 max-w-[53rem] flex-1 flex-col overflow-hidden px-0",
-            hasSession &&
-              "rounded-2xl border border-[#80808033] bg-white shadow-sm",
-          )}
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}
-          <LowCreditBanner />
+          <LowCreditBanner className="px-4 pt-4" />
           <NotificationBanner />
           <CopilotChatHost
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
-          {/* Auto-open is desktop-only: on mobile the panel is a fullscreen
-              sheet, so opening it on first file would take over the chat. */}
           {!isMobile && isContextPanelEnabled && (
             <ContextPanelAutoOpen
               key={`context-auto-open-${sessionId ?? "new"}`}

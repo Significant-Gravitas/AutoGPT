@@ -781,7 +781,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
