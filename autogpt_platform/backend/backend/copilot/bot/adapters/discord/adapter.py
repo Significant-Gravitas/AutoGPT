@@ -25,7 +25,15 @@ from ..base import (
 from . import commands, config, intro
 
 logger = logging.getLogger(__name__)
-THREAD_HISTORY_LIMIT = 20
+
+# When the bot is @-ed into an existing thread it pulls the prior messages in as
+# context. Read the whole thread (up to this hard cap, ~10 Discord API pages)
+# rather than just the last handful — skipping older messages makes the bot act
+# on a partial conversation. THREAD_HISTORY_CHAR_BUDGET then keeps the assembled
+# context within the copilot request size limit, preferring the most recent
+# messages when a thread is very long.
+THREAD_HISTORY_LIMIT = 1000
+THREAD_HISTORY_CHAR_BUDGET = 24000
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -345,12 +353,16 @@ class DiscordAdapter(PlatformAdapter):
             return ()
 
         entries: list[MessageHistoryEntry] = []
+        used_chars = 0
         bot_user_id = self._client.user.id if self._client.user else None
         try:
+            # Newest-first so that when a long thread exceeds the size budget we
+            # keep the most recent (most relevant) messages instead of the
+            # oldest; we reverse back to chronological order before returning.
             async for prior in message.channel.history(
                 limit=THREAD_HISTORY_LIMIT,
                 before=message,
-                oldest_first=True,
+                oldest_first=False,
             ):
                 # Skip our own outputs — copilot has its own transcript for
                 # that side. Other bots' messages are kept as context.
@@ -359,6 +371,11 @@ class DiscordAdapter(PlatformAdapter):
                 text = self._strip_mentions(prior)
                 if not text:
                     continue
+                # Stop once we'd blow the request size budget, but always keep
+                # at least the most recent message.
+                if entries and used_chars + len(text) > THREAD_HISTORY_CHAR_BUDGET:
+                    break
+                used_chars += len(text)
                 entries.append(
                     MessageHistoryEntry(
                         username=prior.author.display_name,
@@ -370,6 +387,7 @@ class DiscordAdapter(PlatformAdapter):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
             return ()
 
+        entries.reverse()  # chronological order for the prompt
         return tuple(entries)
 
 
