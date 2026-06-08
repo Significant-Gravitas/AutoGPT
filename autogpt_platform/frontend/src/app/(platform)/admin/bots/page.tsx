@@ -1,5 +1,3 @@
-import { Suspense } from "react";
-
 import { withRoleAccess } from "@/lib/withRoleAccess";
 
 import { BotsContent } from "./components/BotsContent";
@@ -17,13 +15,7 @@ function BotsDashboard() {
           </p>
         </div>
 
-        <Suspense
-          fallback={
-            <div className="py-10 text-center">Loading bot analytics...</div>
-          }
-        >
-          <BotsContent />
-        </Suspense>
+        <BotsContent />
       </div>
     </div>
   );

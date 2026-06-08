@@ -7,9 +7,84 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/blocks/cost-estimates": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "blocks"],
+        "summary": "Export Block Cost Estimates",
+        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
+        "operationId": "getV2Export block cost estimates",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "min_samples",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum executions per block to include",
+              "default": 10,
+              "title": "Min Samples"
+            },
+            "description": "Minimum executions per block to include"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/bot-analytics/command-usage": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Command Usage Breakdown",
         "operationId": "getV2Command usage breakdown",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -68,7 +143,7 @@
     },
     "/api/admin/bot-analytics/guilds": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Server Roster",
         "operationId": "getV2Bot server roster",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -137,7 +212,7 @@
     },
     "/api/admin/bot-analytics/server-timeseries": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Server-Count Timeseries (sharding curve)",
         "operationId": "getV2Bot server-count timeseries (sharding curve)",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -198,7 +273,7 @@
     },
     "/api/admin/bot-analytics/summary": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Usage Summary",
         "operationId": "getV2Bot usage summary",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -253,7 +328,7 @@
     },
     "/api/admin/bot-analytics/timeseries": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Bot Message Timeseries",
         "operationId": "getV2Bot message timeseries",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -314,7 +389,7 @@
     },
     "/api/admin/bot-analytics/top-servers": {
       "get": {
-        "tags": ["v2", "admin", "bot-analytics", "admin"],
+        "tags": ["v2", "admin", "bot-analytics"],
         "summary": "Top Servers by Activity",
         "operationId": "getV2Top servers by activity",
         "security": [{ "HTTPBearerJWT": [] }],
@@ -365,81 +440,6 @@
                   "type": "array",
                   "items": { "$ref": "#/components/schemas/BotServerActivity" },
                   "title": "Response Getv2Top Servers By Activity"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/blocks/cost-estimates": {
-      "get": {
-        "tags": ["v2", "admin", "admin", "blocks"],
-        "summary": "Export Block Cost Estimates",
-        "description": "Aggregate per-block average credits-per-execution over [start, end].\n\nCapped at ANALYTICS_MAX_DAYS days. Returns only blocks whose current cost\ntype is dynamic (SECOND/ITEMS/COST_USD) — static-cost blocks already\ncharge correctly pre-flight and don't need an estimate override. TOKENS\nis excluded because `compute_token_credits` already supplies a per-model\nfloor at pre-flight; a per-block historical mean would lose that\ngranularity.",
-        "operationId": "getV2Export block cost estimates",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "start",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "description": "ISO timestamp (inclusive)",
-              "title": "Start"
-            },
-            "description": "ISO timestamp (inclusive)"
-          },
-          {
-            "name": "end",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "description": "ISO timestamp (inclusive)",
-              "title": "End"
-            },
-            "description": "ISO timestamp (inclusive)"
-          },
-          {
-            "name": "min_samples",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Minimum executions per block to include",
-              "default": 10,
-              "title": "Min Samples"
-            },
-            "description": "Minimum executions per block to include"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BlockCostEstimatesResponse"
                 }
               }
             }
@@ -10517,131 +10517,6 @@
   },
   "components": {
     "schemas": {
-      "Platform": {
-        "type": "string",
-        "enum": [
-          "DISCORD",
-          "TELEGRAM",
-          "SLACK",
-          "TEAMS",
-          "WHATSAPP",
-          "GITHUB",
-          "LINEAR"
-        ],
-        "title": "Platform",
-        "description": "Mirror of the Prisma PlatformType enum."
-      },
-      "BotAnalyticsSummary": {
-        "properties": {
-          "platform": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Platform"
-          },
-          "window_days": { "type": "integer", "title": "Window Days" },
-          "live_servers": { "type": "integer", "title": "Live Servers" },
-          "messages_received": {
-            "type": "integer",
-            "title": "Messages Received"
-          },
-          "replies_sent": { "type": "integer", "title": "Replies Sent" },
-          "commands_used": { "type": "integer", "title": "Commands Used" },
-          "stream_errors": { "type": "integer", "title": "Stream Errors" },
-          "avg_reply_ms": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Avg Reply Ms"
-          },
-          "error_rate": { "type": "number", "title": "Error Rate" }
-        },
-        "type": "object",
-        "required": [
-          "platform",
-          "window_days",
-          "live_servers",
-          "messages_received",
-          "replies_sent",
-          "commands_used",
-          "stream_errors",
-          "avg_reply_ms",
-          "error_rate"
-        ],
-        "title": "BotAnalyticsSummary"
-      },
-      "BotTimeseriesPoint": {
-        "properties": {
-          "date": { "type": "string", "format": "date-time", "title": "Date" },
-          "messages": { "type": "integer", "title": "Messages" },
-          "replies": { "type": "integer", "title": "Replies" },
-          "errors": { "type": "integer", "title": "Errors" }
-        },
-        "type": "object",
-        "required": ["date", "messages", "replies", "errors"],
-        "title": "BotTimeseriesPoint"
-      },
-      "BotServerCountPoint": {
-        "properties": {
-          "date": { "type": "string", "format": "date-time", "title": "Date" },
-          "server_count": { "type": "integer", "title": "Server Count" }
-        },
-        "type": "object",
-        "required": ["date", "server_count"],
-        "title": "BotServerCountPoint"
-      },
-      "BotServerActivity": {
-        "properties": {
-          "server_id": { "type": "string", "title": "Server Id" },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "messages": { "type": "integer", "title": "Messages" },
-          "commands": { "type": "integer", "title": "Commands" }
-        },
-        "type": "object",
-        "required": ["server_id", "name", "messages", "commands"],
-        "title": "BotServerActivity"
-      },
-      "BotCommandUsage": {
-        "properties": {
-          "command": { "type": "string", "title": "Command" },
-          "uses": { "type": "integer", "title": "Uses" }
-        },
-        "type": "object",
-        "required": ["command", "uses"],
-        "title": "BotCommandUsage"
-      },
-      "BotGuildInfo": {
-        "properties": {
-          "platform": { "type": "string", "title": "Platform" },
-          "server_id": { "type": "string", "title": "Server Id" },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "joined_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Joined At"
-          },
-          "left_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Left At"
-          },
-          "active": { "type": "boolean", "title": "Active" }
-        },
-        "type": "object",
-        "required": [
-          "platform",
-          "server_id",
-          "name",
-          "joined_at",
-          "left_at",
-          "active"
-        ],
-        "title": "BotGuildInfo"
-      },
       "APIKeyCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -12019,6 +11894,83 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "BotAnalyticsSummary": {
+        "properties": {
+          "platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform"
+          },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "live_servers": { "type": "integer", "title": "Live Servers" },
+          "messages_received": {
+            "type": "integer",
+            "title": "Messages Received"
+          },
+          "replies_sent": { "type": "integer", "title": "Replies Sent" },
+          "commands_used": { "type": "integer", "title": "Commands Used" },
+          "stream_errors": { "type": "integer", "title": "Stream Errors" },
+          "avg_reply_ms": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Avg Reply Ms"
+          },
+          "error_rate": { "type": "number", "title": "Error Rate" }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "window_days",
+          "live_servers",
+          "messages_received",
+          "replies_sent",
+          "commands_used",
+          "stream_errors",
+          "avg_reply_ms",
+          "error_rate"
+        ],
+        "title": "BotAnalyticsSummary"
+      },
+      "BotCommandUsage": {
+        "properties": {
+          "command": { "type": "string", "title": "Command" },
+          "uses": { "type": "integer", "title": "Uses" }
+        },
+        "type": "object",
+        "required": ["command", "uses"],
+        "title": "BotCommandUsage"
+      },
+      "BotGuildInfo": {
+        "properties": {
+          "platform": { "type": "string", "title": "Platform" },
+          "server_id": { "type": "string", "title": "Server Id" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "left_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Left At"
+          },
+          "active": { "type": "boolean", "title": "Active" }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "server_id",
+          "name",
+          "joined_at",
+          "left_at",
+          "active"
+        ],
+        "title": "BotGuildInfo"
+      },
       "BotPlatformInfo": {
         "properties": {
           "platform": { "type": "string", "title": "Platform" },
@@ -12044,6 +11996,40 @@
         "required": ["platform", "display_name", "icon"],
         "title": "BotPlatformInfo",
         "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
+      },
+      "BotServerActivity": {
+        "properties": {
+          "server_id": { "type": "string", "title": "Server Id" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "messages": { "type": "integer", "title": "Messages" },
+          "commands": { "type": "integer", "title": "Commands" }
+        },
+        "type": "object",
+        "required": ["server_id", "name", "messages", "commands"],
+        "title": "BotServerActivity"
+      },
+      "BotServerCountPoint": {
+        "properties": {
+          "date": { "type": "string", "format": "date-time", "title": "Date" },
+          "server_count": { "type": "integer", "title": "Server Count" }
+        },
+        "type": "object",
+        "required": ["date", "server_count"],
+        "title": "BotServerCountPoint"
+      },
+      "BotTimeseriesPoint": {
+        "properties": {
+          "date": { "type": "string", "format": "date-time", "title": "Date" },
+          "messages": { "type": "integer", "title": "Messages" },
+          "replies": { "type": "integer", "title": "Replies" },
+          "errors": { "type": "integer", "title": "Errors" }
+        },
+        "type": "object",
+        "required": ["date", "messages", "replies", "errors"],
+        "title": "BotTimeseriesPoint"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -16031,6 +16017,20 @@
         "required": ["access_token"],
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "DISCORD",
+          "TELEGRAM",
+          "SLACK",
+          "TEAMS",
+          "WHATSAPP",
+          "GITHUB",
+          "LINEAR"
+        ],
+        "title": "Platform",
+        "description": "Mirror of the Prisma PlatformType enum."
       },
       "PlatformCostDashboard": {
         "properties": {

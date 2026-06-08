@@ -24,8 +24,8 @@ export function SimpleTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
-            {columns.map((column) => (
-              <th key={column} className="px-3 py-2 font-medium">
+            {columns.map((column, columnIndex) => (
+              <th key={columnIndex} className="px-3 py-2 font-medium">
                 {column}
               </th>
             ))}

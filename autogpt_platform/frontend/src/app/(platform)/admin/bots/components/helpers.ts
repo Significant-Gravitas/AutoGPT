@@ -34,9 +34,7 @@ export function formatDay(value: string | Date): string {
   });
 }
 
-export function formatDateTime(
-  value: string | Date | null | undefined,
-): string {
+export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
   return new Date(value).toLocaleDateString(undefined, {
     year: "numeric",

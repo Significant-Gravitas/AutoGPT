@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/bot-analytics",
-    tags=["bot-analytics", "admin"],
+    tags=["bot-analytics"],
     dependencies=[Security(requires_admin_user)],
 )
 

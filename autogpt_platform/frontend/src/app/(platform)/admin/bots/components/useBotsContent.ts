@@ -56,8 +56,26 @@ export function useBotsContent() {
     topServers: topServers.data ?? [],
     commands: commands.data ?? [],
     roster: roster.data ?? [],
-    isLoading: summary.isLoading || messages.isLoading || servers.isLoading,
-    isError: summary.isError || messages.isError,
-    error: summary.error || messages.error,
+    isLoading:
+      summary.isLoading ||
+      messages.isLoading ||
+      servers.isLoading ||
+      topServers.isLoading ||
+      commands.isLoading ||
+      roster.isLoading,
+    isError:
+      summary.isError ||
+      messages.isError ||
+      servers.isError ||
+      topServers.isError ||
+      commands.isError ||
+      roster.isError,
+    error:
+      summary.error ||
+      messages.error ||
+      servers.error ||
+      topServers.error ||
+      commands.error ||
+      roster.error,
   };
 }

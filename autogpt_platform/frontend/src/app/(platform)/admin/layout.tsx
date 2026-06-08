@@ -8,7 +8,7 @@ import {
   FileText,
   Heartbeat,
   CalculatorIcon,
-  Robot,
+  RobotIcon,
 } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -54,7 +54,7 @@ const sidebarLinkGroups = [
       {
         text: "Bot Analytics",
         href: "/admin/bots",
-        icon: <Robot className="h-6 w-6" />,
+        icon: <RobotIcon className="h-6 w-6" />,
       },
       {
         text: "Block Cost Estimates",

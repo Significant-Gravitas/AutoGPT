@@ -12,7 +12,7 @@ import { SummaryCard } from "./SummaryCard";
 import { useBotsContent } from "./useBotsContent";
 import {
   DAYS_OPTIONS,
-  formatDateTime,
+  formatDate,
   formatDuration,
   formatNumber,
   formatPercent,
@@ -135,7 +135,7 @@ export function BotsContent() {
                 rows={state.roster.map((guild) => [
                   guild.name || guild.server_id,
                   guild.active ? "Active" : "Left",
-                  formatDateTime(guild.joined_at),
+                  formatDate(guild.joined_at),
                 ])}
               />
             </Card>
