@@ -10,7 +10,19 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
 import { useOnboardingWizardStore } from "../../store";
+import {
+  getSubscriptionPricingExperimentConfig,
+  getSubscriptionPricingExperimentPlans,
+} from "../SubscriptionStep/helpers";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
+
+const postHog = vi.hoisted(() => ({
+  variant: undefined as string | boolean | undefined,
+}));
+
+vi.mock("@posthog/react", () => ({
+  useFeatureFlagVariantKey: () => postHog.variant,
+}));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
   FadeIn: ({ children }: { children: React.ReactNode }) => (
@@ -25,11 +37,54 @@ vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
 afterEach(cleanup);
 
 beforeEach(() => {
+  postHog.variant = undefined;
   useOnboardingWizardStore.getState().reset();
   useOnboardingWizardStore.getState().goToStep(4);
   // Default tests to cloud mode so they exercise the Stripe Checkout path.
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
+});
+
+describe("subscription pricing experiment helpers", () => {
+  test("uses the current yearly Max experience as the default", () => {
+    expect(getSubscriptionPricingExperimentConfig(undefined)).toMatchObject({
+      billing: "yearly",
+      highlightedPlan: "MAX",
+      variant: "control",
+    });
+  });
+
+  test("maps PostHog variants to billing and highlighted plan config", () => {
+    expect(getSubscriptionPricingExperimentConfig("monthly-pro")).toMatchObject(
+      {
+        billing: "monthly",
+        highlightedPlan: "PRO",
+        variant: "monthly-pro",
+      },
+    );
+    expect(getSubscriptionPricingExperimentConfig("yearly-max")).toMatchObject({
+      billing: "yearly",
+      highlightedPlan: "MAX",
+      variant: "yearly-max",
+    });
+  });
+
+  test("moves the highlighted styling from Max to Pro", () => {
+    const plans = getSubscriptionPricingExperimentPlans("PRO");
+    const pro = plans.find((plan) => plan.key === "PRO");
+    const max = plans.find((plan) => plan.key === "MAX");
+
+    expect(pro).toMatchObject({
+      highlighted: true,
+      badge: "Best value",
+      buttonVariant: "primary",
+    });
+    expect(max).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+  });
 });
 
 describe("SubscriptionStep", () => {
@@ -48,6 +103,34 @@ describe("SubscriptionStep", () => {
     expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
     expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
     expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
+  });
+
+  test("PostHog monthly Pro variant starts on monthly billing", async () => {
+    postHog.variant = "monthly-pro";
+
+    render(<SubscriptionStep />);
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "monthly",
+      );
+    });
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+  });
+
+  test("PostHog billing default does not override a user-selected cycle", async () => {
+    postHog.variant = "monthly-pro";
+    useOnboardingWizardStore.getState().setSelectedBilling("yearly");
+
+    render(<SubscriptionStep />);
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
+    expect(screen.getByLabelText("$42.50")).toBeDefined();
   });
 
   test("switching to monthly shows the full monthly price and matching charged-today", () => {

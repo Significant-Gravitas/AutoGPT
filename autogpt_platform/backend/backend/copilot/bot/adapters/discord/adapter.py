@@ -12,6 +12,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import (
@@ -216,10 +217,32 @@ class DiscordAdapter(PlatformAdapter):
                 await self._refresh_server_name(after)
 
         @self._client.event
+        async def on_thread_remove(thread: discord.Thread) -> None:
+            # Fires when a thread is removed from the client's cache — the
+            # typical path is the bot being kicked or the thread being made
+            # private without us in it. Drop the auto-reply subscription so a
+            # subsequent re-add by @mention starts in the @-only mode again.
+            # Unlike on_thread_member_remove, this event only requires the
+            # default Intents.guilds and not the privileged members intent.
+            try:
+                await threads.unsubscribe("discord", str(thread.id))
+            except Exception:
+                logger.exception(
+                    f"Failed to unsubscribe thread {thread.id} after removal"
+                )
+
+        @self._client.event
         async def on_message(message: discord.Message) -> None:
             if self._should_ignore_message(message):
                 return
             if self._on_message_callback is None:
+                return
+
+            # A locked thread rejects bot sends — processing the message would
+            # just burn a turn and error on every reply. Skip until it's
+            # unlocked. (`locked` is set on archive-locked threads too.)
+            channel = message.channel
+            if isinstance(channel, discord.Thread) and channel.locked:
                 return
 
             channel_type = self._channel_type(message)
@@ -278,7 +301,10 @@ class DiscordAdapter(PlatformAdapter):
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
             return True  # DMs always count
-        return bool(self._client.user and self._client.user.mentioned_in(message))
+        bot_user = self._client.user
+        if bot_user is None:
+            return False
+        return any(user.id == bot_user.id for user in message.mentions)
 
     @staticmethod
     def _channel_type(message: discord.Message) -> ChannelType:

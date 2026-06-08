@@ -16,16 +16,16 @@ export function ChatOriginIcon({ sourcePlatform }: Props) {
 
   return (
     <span
-      className="inline-flex size-4 shrink-0 items-center justify-center"
+      className="inline-flex size-3.5 shrink-0 items-center justify-center"
       title={`From ${logo.name}`}
     >
       <Image
         src={logo.src}
         alt={logo.name}
-        width={16}
-        height={16}
+        width={14}
+        height={14}
         loading="lazy"
-        className="size-4 object-contain"
+        className="size-3.5 object-contain opacity-80 grayscale"
         onError={() => setBrokenSrc(logo.src)}
       />
     </span>

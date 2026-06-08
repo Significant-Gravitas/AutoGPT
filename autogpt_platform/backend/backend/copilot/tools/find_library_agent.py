@@ -4,7 +4,11 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-from .agent_search import search_agents, search_library_for_creation
+from .agent_search import (
+    lookup_library_agent_by_id,
+    search_agents,
+    search_library_for_creation,
+)
 from .base import BaseTool
 from .models import ToolResponseBase
 
@@ -19,9 +23,10 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search user's library agents. for_creation=true+goal_summary "
-            "runs the similarity check required by create_agent. Omit query "
-            "to list all; include_graph=true for nodes+links."
+            "Search library agents by name/description, or pass agent_id "
+            "(library_agent_id/graph_id) for a direct by-id lookup. "
+            "for_creation=true+goal_summary runs the create_agent similarity "
+            "check. Omit query to list all; include_graph=true for nodes+links."
         )
 
     @property
@@ -32,6 +37,13 @@ class FindLibraryAgentTool(BaseTool):
                 "query": {
                     "type": "string",
                     "description": "Search by name/description. Omit to list all.",
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": (
+                        "Exact library_agent_id/graph_id for a direct lookup "
+                        "(no fuzzy fallback). Use when you know the id."
+                    ),
                 },
                 "include_graph": {
                     "type": "boolean",
@@ -66,6 +78,7 @@ class FindLibraryAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         query: str = "",
+        agent_id: str = "",
         include_graph: bool = False,
         for_creation: bool = False,
         goal_summary: str = "",
@@ -78,6 +91,13 @@ class FindLibraryAgentTool(BaseTool):
                 goal_summary=goal_summary,
                 session_id=session.session_id,
                 user_id=user_id,
+            )
+        if agent_id := agent_id.strip():
+            return await lookup_library_agent_by_id(
+                agent_id=agent_id,
+                session_id=session.session_id,
+                user_id=user_id,
+                include_graph=include_graph,
             )
         return await search_agents(
             query=query.strip(),

@@ -95,6 +95,9 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+# The Stripe tier sweep pages through every active subscription, so it needs a
+# generous ceiling relative to the per-op default.
+STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 
 def job_listener(event):
@@ -446,6 +449,16 @@ def cleanup_platform_link_tokens():
         return await db.cleanup_expired_platform_link_tokens()
 
     run_async(_cleanup())
+
+
+def reconcile_stripe_tiers():
+    """Reconcile all STRIPE-sourced user tiers against live Stripe state."""
+
+    async def _reconcile():
+        db = get_database_manager_async_client()
+        return await db.reconcile_all_stripe_tiers()
+
+    run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
 def execution_accuracy_alerts():
@@ -956,6 +969,19 @@ class Scheduler(AppService):
                 trigger="interval",
                 replace_existing=True,
                 seconds=config.platform_link_token_cleanup_interval_hours * 3600,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Stripe Subscription Tier Reconciliation - configurable interval
+            # Safety net for missed/lost Stripe webhooks: makes Stripe the
+            # eventual source of truth for STRIPE-sourced tiers (incl. downgrades).
+            self.scheduler.add_job(
+                reconcile_stripe_tiers,
+                id="reconcile_stripe_tiers",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,  # Prevent overlapping sweeps
+                seconds=config.stripe_tier_reconcile_interval_hours * 3600,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

@@ -20,9 +20,8 @@ from backend.copilot.constants import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
-from backend.data import user as user_db
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, workspace_db
+from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
@@ -233,7 +232,7 @@ async def execute_block(
         # so an orphaned-session block call still runs instead of crashing.
         try:
             user_timezone = get_user_timezone_or_utc(
-                (await user_db.get_user_by_id(user_id)).timezone
+                (await user_db().get_user_by_id(user_id)).timezone
             )
         except ValueError:
             user_timezone = "UTC"

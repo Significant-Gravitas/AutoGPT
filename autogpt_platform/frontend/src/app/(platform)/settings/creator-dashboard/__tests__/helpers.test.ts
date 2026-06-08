@@ -53,7 +53,6 @@ describe("creator-dashboard helpers", () => {
     test("starts with no filters and descending sort direction", () => {
       expect(INITIAL_FILTER_STATE).toEqual({
         statuses: [],
-        nameQuery: "",
         sortKey: null,
         sortDir: "desc",
       });
@@ -71,15 +70,6 @@ describe("creator-dashboard helpers", () => {
         statuses: [SubmissionStatus.APPROVED],
       };
       expect(isFiltered(state)).toBe(true);
-    });
-
-    test("returns true if name query is non-empty after trim", () => {
-      expect(isFiltered({ ...INITIAL_FILTER_STATE, nameQuery: "foo" })).toBe(
-        true,
-      );
-      expect(isFiltered({ ...INITIAL_FILTER_STATE, nameQuery: "   " })).toBe(
-        false,
-      );
     });
 
     test("returns true if sortKey is set", () => {
@@ -129,23 +119,6 @@ describe("creator-dashboard helpers", () => {
         statuses: [SubmissionStatus.APPROVED, SubmissionStatus.REJECTED],
       });
       expect(result.map((s) => s.listing_version_id)).toEqual(["a", "c"]);
-    });
-
-    test("filters by case-insensitive name query", () => {
-      const result = applyFiltersAndSort(items, {
-        ...INITIAL_FILTER_STATE,
-        nameQuery: "BETA",
-      });
-      expect(result).toHaveLength(1);
-      expect(result[0].listing_version_id).toBe("b");
-    });
-
-    test("ignores whitespace-only name query", () => {
-      const result = applyFiltersAndSort(items, {
-        ...INITIAL_FILTER_STATE,
-        nameQuery: "   ",
-      });
-      expect(result).toHaveLength(3);
     });
 
     test("sorts by runs descending", () => {
