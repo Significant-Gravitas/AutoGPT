@@ -259,10 +259,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 )
 
         if library_agent_id:
-            library_agent = await library_db().get_library_agent(
-                library_agent_id, user_id
-            )
-            if not library_agent:
+            try:
+                library_agent = await library_db().get_library_agent(
+                    library_agent_id, user_id
+                )
+            except NotFoundError:
                 return None, ErrorResponse(
                     message=f"Library agent '{library_agent_id}' not found.",
                     error="library_agent_not_found",

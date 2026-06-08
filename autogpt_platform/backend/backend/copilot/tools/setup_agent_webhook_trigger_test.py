@@ -18,7 +18,11 @@ from backend.data.model import (
     CredentialsMetaInput,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import InvalidInputError
+from backend.util.exceptions import (
+    InvalidInputError,
+    NotFoundError,
+    WebhookRegistrationError,
+)
 
 from ._test_data import make_session
 
@@ -343,3 +347,39 @@ async def test_setup_failure_surfaces_actionable_message(tool, session):
     assert isinstance(result, ErrorResponse)
     assert result.error == "trigger_setup_failed"
     assert "without any enabled events" in result.message
+
+
+@pytest.mark.asyncio
+async def test_setup_failure_webhook_registration_error(tool, session):
+    """A provider registration failure (WebhookRegistrationError, e.g. GitHub
+    refused the repo) surfaces its reason instead of the generic fallback."""
+    graph = _make_graph(manual=True)
+    ctxs, setup_mock = _patches(graph)
+    setup_mock.side_effect = WebhookRegistrationError(
+        "Failed to register webhook: repository not found"
+    )
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "trigger_setup_failed"
+    assert "repository not found" in result.message
+
+
+@pytest.mark.asyncio
+async def test_setup_failure_graph_deleted_midway(tool, session):
+    """If the graph is deleted between resolve and preset creation,
+    setup_triggered_preset raises NotFoundError — caught as a clean failure."""
+    graph = _make_graph(manual=True)
+    ctxs, setup_mock = _patches(graph)
+    setup_mock.side_effect = NotFoundError("Graph #graph-1 is not accessible (anymore)")
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "trigger_setup_failed"
+    assert "not accessible" in result.message
