@@ -99,15 +99,19 @@ def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]
 
 
 def cut_lands_inside_artifact_link(text: str, cut: int) -> int:
-    """Pull *cut* back to the start of any artifact link it would bisect.
+    """Move *cut* off any artifact link it would bisect, keeping the link whole.
 
     Splitting a streamed buffer mid-``[name](workspace://...)`` would leave the
-    fragment unrecognisable to :func:`extract_artifact_links`, so the link must
-    move intact to the remainder. Returns the (possibly earlier) cut index.
+    fragment unrecognisable to :func:`extract_artifact_links`, so the link is
+    kept intact. Normally we pull the cut back to the link's start so the link
+    travels into the remainder — but if the link sits at the very start of the
+    buffer, that yields an empty chunk and stalls the stream (the buffer never
+    advances). In that case we cut at the link's end instead, emitting the whole
+    link as one chunk. Either way the returned cut makes forward progress.
     """
     for match in _WORKSPACE_ARTIFACT_LINK_RE.finditer(text):
         if match.start() < cut < match.end():
-            return match.start()
+            return match.start() if match.start() > 0 else match.end()
     return cut
 
 

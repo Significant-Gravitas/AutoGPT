@@ -76,6 +76,16 @@ class TestSplitAtBoundary:
         _, artifacts = extract_artifact_links(after)
         assert [a.file_id for a in artifacts] == ["abc-123"]
 
+    def test_leading_long_artifact_link_does_not_stall(self):
+        # A long link at the very start spanning the boundary must not return
+        # an empty chunk (which would stall the stream) — emit the whole link.
+        link = "[" + "report " * 30 + "final.txt](workspace://abc-123)"
+        text = link + " and then more trailing text"
+        before, after = split_at_boundary(text, 30)
+        assert before != ""  # forward progress — never empty
+        assert link in before  # whole link emitted intact
+        assert "workspace://" not in after
+
 
 class TestBalanceCodeFences:
     def test_balanced_code_unchanged(self):

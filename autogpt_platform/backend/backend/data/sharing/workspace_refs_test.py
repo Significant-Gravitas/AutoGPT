@@ -176,3 +176,12 @@ class TestCutLandsInsideArtifactLink:
         # Boundaries are exclusive — exactly at start/end keeps the link whole.
         assert cut_lands_inside_artifact_link(text, start) == start
         assert cut_lands_inside_artifact_link(text, after) == after
+
+    def test_cut_inside_leading_link_returns_end_not_zero(self):
+        # A link at index 0 can't pull the cut back to its start — that yields
+        # an empty chunk and stalls the stream. Cut at the link's end instead so
+        # the whole link is emitted and the buffer advances.
+        link = "[report.txt](workspace://abc-123#text/plain)"
+        text = link + " trailing text"
+        cut = link.index("workspace://")  # inside the leading link
+        assert cut_lands_inside_artifact_link(text, cut) == len(link)
