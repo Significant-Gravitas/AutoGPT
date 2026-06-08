@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ContextPanelAutoOpen({ sessionId }: Props) {
-  useCollapseContextPanelOnSession();
+  useCollapseContextPanelOnSession(sessionId);
   useAutoOpenForFiles(sessionId);
   useAutoOpenForProgress(sessionId);
   return null;

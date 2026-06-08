@@ -125,6 +125,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
     const dpr = Math.max(1, window.devicePixelRatio || 1);
 
     let resolvedDotColor = resolveColor(dotColor);
+    let resolvedGlowColor = resolveColor(glowColor);
 
     const resize = () => {
       const { width, height } = container.getBoundingClientRect();
@@ -135,6 +136,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       dotsRef.current = initDots(width, height);
       resolvedDotColor = resolveColor(dotColor);
+      resolvedGlowColor = resolveColor(glowColor);
       if (isStatic) requestAnimationFrame(drawStatic);
     };
 
@@ -309,7 +311,7 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
             baseGlowIntensity,
             dot.glowIntensity,
           );
-          ctx.shadowColor = glowColor;
+          ctx.shadowColor = resolvedGlowColor;
           ctx.shadowBlur = 10 + 20 * combinedGlowIntensity;
         } else {
           ctx.shadowColor = "transparent";
