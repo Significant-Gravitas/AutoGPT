@@ -238,6 +238,13 @@ class DiscordAdapter(PlatformAdapter):
             if self._on_message_callback is None:
                 return
 
+            # A locked thread rejects bot sends — processing the message would
+            # just burn a turn and error on every reply. Skip until it's
+            # unlocked. (`locked` is set on archive-locked threads too.)
+            channel = message.channel
+            if isinstance(channel, discord.Thread) and channel.locked:
+                return
+
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
 
