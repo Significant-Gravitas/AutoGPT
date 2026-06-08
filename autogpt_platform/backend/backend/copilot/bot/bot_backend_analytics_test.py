@@ -81,3 +81,21 @@ async def test_analytics_failure_is_swallowed():
     # A failing write must never propagate into the caller's reply path.
     await _drain(backend)
     assert backend._analytics_tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_analytics_task_is_silent():
+    # Cancelled tasks during shutdown must not raise CancelledError from the
+    # done-callback (which would print as an unhandled exception by asyncio).
+    backend, client = _backend()
+
+    async def hang() -> None:
+        await asyncio.sleep(3600)
+
+    client.record_bot_event.side_effect = lambda **_: hang()
+    backend.track_event(platform="discord", event_type="message_received")
+    task = next(iter(backend._analytics_tasks))
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert backend._analytics_tasks == set()

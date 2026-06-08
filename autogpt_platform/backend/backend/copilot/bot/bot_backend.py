@@ -105,6 +105,8 @@ class BotBackend:
 
     def _on_analytics_done(self, task: asyncio.Task) -> None:
         self._analytics_tasks.discard(task)
+        if task.cancelled():
+            return
         exc = task.exception()
         if exc is not None:
             logger.warning("Bot analytics write failed: %s", exc)
@@ -158,12 +160,13 @@ class BotBackend:
         )
 
     def sync_guilds(self, platform: str, guilds: list[tuple[str, str | None]]) -> None:
+        platform_enum = Platform(platform.upper())
         self._fire_and_forget(
             self._client.sync_guild_presence(
-                platform=Platform(platform.upper()),
+                platform=platform_enum,
                 guilds=[
                     BotGuildInput(
-                        platform=Platform(platform.upper()),
+                        platform=platform_enum,
                         server_id=server_id,
                         name=name,
                     )
