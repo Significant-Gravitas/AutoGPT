@@ -702,8 +702,10 @@ class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
     status_code=202,
 )
 async def trigger_dream_pass(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> JSONResponse:
     """Fire a dream pass and return 202 + job_id immediately.
 
@@ -712,6 +714,12 @@ async def trigger_dream_pass(
     nightly fan-out use ``POST /{user_id}/nightly``.
     """
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         derive_group_id(target)  # validate before kicking off
     except ValueError as exc:
@@ -769,8 +777,10 @@ async def get_dream_pass_status(
 
 @router.post("/{user_id}/ratification", response_model=RatificationResult)
 async def trigger_ratification_pass(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> RatificationResult:
     """Trigger an on-demand ratification sweep for the user (in isolation).
 
@@ -780,6 +790,12 @@ async def trigger_ratification_pass(
     without the full nightly fan-out.
     """
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         derive_group_id(target)
     except ValueError as exc:
@@ -808,8 +824,10 @@ async def trigger_ratification_pass(
     status_code=202,
 )
 async def trigger_nightly_batch(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> JSONResponse:
     """Fire the full nightly batch fan-out and return 202 + job_id immediately.
 
@@ -819,6 +837,12 @@ async def trigger_nightly_batch(
     for cost-log attribution.
     """
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     try:
         derive_group_id(target)
     except ValueError as exc:
