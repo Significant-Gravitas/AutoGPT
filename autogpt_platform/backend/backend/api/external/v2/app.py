@@ -11,6 +11,7 @@ from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.openapi import sort_openapi
 
+from .global_rate_limit import GlobalRateLimitMiddleware
 from .mcp_server import create_mcp_app
 from .routes import v2_router
 
@@ -96,6 +97,7 @@ v2_app = FastAPI(
     ],
 )
 
+v2_app.add_middleware(GlobalRateLimitMiddleware)
 v2_app.add_middleware(SecurityHeadersMiddleware)
 v2_app.include_router(v2_router)
 

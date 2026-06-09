@@ -1,4 +1,4 @@
-"""V2 External API - Rate Limiters"""
+"""V2 External API - Per-Endpoint Rate Limiters"""
 
 from backend.api.utils.rate_limit import RateLimiter
 
