@@ -8,9 +8,11 @@ Three side-effects, in order:
   3. Demotions / entity invalidations → ``mark_edges_superseded`` /
      ``invalidate_entity_direct_neighbors`` against the FalkorDB driver.
 
-Finally writes a ``ChatSession`` with ``metadata.kind='dream'`` plus
-``metadata.dream_pass_id`` and a single assistant message containing
-``summary_for_user`` so the dream is reviewable in the admin UI.
+A ``ChatSession`` shell (``metadata.kind='dream'`` +
+``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
+provenance can reference its id; the assistant message holding
+``summary_for_user`` is appended LAST, after the ops above, so a partway
+failure leaves an empty dream rather than a narrative with no memory.
 """
 
 from __future__ import annotations
@@ -226,16 +228,17 @@ async def _apply_entity_invalidations(
     return total, summaries
 
 
-async def _write_dream_session(
-    user_id: str,
-    pass_id: str,
-    summary_for_user: str,
-) -> str:
-    """Create a dream-kind ChatSession + an assistant message holding the summary.
+async def _create_dream_session(user_id: str, pass_id: str) -> str:
+    """Create the dream-kind ChatSession shell and return its id.
 
-    Returns the session id. We use a fresh uuid here rather than the
-    pass_id so that re-runs of the same pass (admin retries on
-    failure) can each produce their own session row.
+    Written up front (before the memory ops) because the fact/proposal
+    ``MemoryEnvelope`` provenance references this ``session_id``. The
+    user-facing narrative is written separately, AFTER the ops land
+    (``_write_dream_summary_message``), so a partway failure leaves an
+    empty dream rather than a 'completed' narrative with no memory.
+
+    We use a fresh uuid rather than the pass_id so re-runs of the same
+    pass (admin retries on failure) each produce their own session row.
     """
     # Lazy import — avoids circular dependency at module-import time
     # AND keeps the dream-pass / chat-model coupling explicit. Routing
@@ -245,22 +248,33 @@ async def _write_dream_session(
     from backend.copilot.model import ChatSessionMetadata
     from backend.data.db_accessors import chat_db
 
-    db = chat_db()
     session_id = str(uuidlib.uuid4())
-    await db.create_chat_session(
+    await chat_db().create_chat_session(
         session_id=session_id,
         user_id=user_id,
         metadata=ChatSessionMetadata(kind="dream", dream_pass_id=pass_id),
     )
+    return session_id
+
+
+async def _write_dream_summary_message(
+    session_id: str, pass_id: str, summary_for_user: str
+) -> None:
+    """Append the assistant narrative to an already-created dream session.
+
+    Called at the END of ``apply_operations`` so the user-visible summary
+    only appears once the memory ops above have been attempted.
+    """
+    from backend.data.db_accessors import chat_db
+
     body = summary_for_user.strip() or "Dream pass completed with no narrative output."
-    await db.add_chat_message(
+    await chat_db().add_chat_message(
         session_id=session_id,
         role="assistant",
         sequence=0,
         content=body,
         metadata={"dream_pass_id": pass_id},
     )
-    return session_id
 
 
 async def apply_operations(
@@ -288,13 +302,11 @@ async def apply_operations(
     """
     group_id = derive_group_id(user_id)
 
-    # Phase A — write a placeholder session up front so the
-    # MemoryEnvelope provenance can reference it. We could also use
-    # the session_id as part of provenance, but for slice 1 the
-    # pass_id is sufficient.
-    session_id = await _write_dream_session(
-        user_id=user_id, pass_id=pass_id, summary_for_user=ops.summary_for_user
-    )
+    # Phase A — create the session shell up front so the MemoryEnvelope
+    # provenance can reference its id. The user-facing narrative summary
+    # is written AFTER the ops (see below), so a partway failure leaves an
+    # empty dream rather than a 'completed' narrative with no memory.
+    session_id = await _create_dream_session(user_id=user_id, pass_id=pass_id)
 
     written = 0
     write_summaries: list[WriteSummary] = []
@@ -336,6 +348,10 @@ async def apply_operations(
     entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
         group_id, ops.entity_invalidations
     )
+
+    # Narrative summary last — only surface the user-facing dream story
+    # once the memory ops above have been attempted.
+    await _write_dream_summary_message(session_id, pass_id, ops.summary_for_user)
 
     logger.info(
         "Dream pass %s applied for user %s: "

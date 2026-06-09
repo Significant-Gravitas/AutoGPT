@@ -47,8 +47,8 @@ def _stub_boundaries(mocker):
         AsyncMock(return_value=["e1", "e2"]),
     )
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
-    # ``_write_dream_session`` to avoid a circular import. Patch where the
-    # symbol is looked up (the copilot.db module).
+    # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
+    # circular import. Patch where the symbol is looked up (copilot.db).
     mocker.patch(
         "backend.copilot.db.create_chat_session",
         AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
@@ -161,6 +161,49 @@ async def test_no_op_dream_still_writes_summary_session(mocker):
     assert msg_kwargs["content"] == "Nothing new today."
 
 
+@pytest.mark.asyncio
+async def test_summary_written_after_memory_ops(mocker):
+    """The user-facing narrative must be written AFTER the memory ops, so a
+    partway failure doesn't leave a 'completed' dream narrative with no
+    memory behind it."""
+    calls: list[str] = []
+
+    async def _track_write(*args, **kwargs):
+        calls.append("write")
+        return True
+
+    async def _track_summary(*args, **kwargs):
+        calls.append("summary")
+
+    mocker.patch.object(
+        apply_mod, "_create_dream_session", new_callable=AsyncMock, return_value="s"
+    )
+    mocker.patch.object(apply_mod, "_write_consolidated_fact", side_effect=_track_write)
+    mocker.patch.object(
+        apply_mod, "_write_dream_summary_message", side_effect=_track_summary
+    )
+    mocker.patch.object(
+        apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
+    )
+    mocker.patch.object(
+        apply_mod,
+        "_apply_entity_invalidations",
+        new_callable=AsyncMock,
+        return_value=(0, []),
+    )
+
+    await apply_mod.apply_operations(
+        user_id="u-1",
+        pass_id="p-1",
+        ops=DreamOperations(
+            writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+            summary_for_user="done",
+        ),
+    )
+
+    assert calls == ["write", "summary"], calls
+
+
 # ---------------------------------------------------------------------------
 # Prisma auto-connect regression (scheduler service starts without an open
 # Prisma connection; apply_operations must open one before any DB writes).
@@ -186,7 +229,10 @@ async def test_apply_operations_never_auto_connects_prisma(mocker):
     from backend.copilot.dream.schemas import DreamOperations
 
     mocker.patch.object(
-        apply_mod, "_write_dream_session", new_callable=AsyncMock, return_value="s"
+        apply_mod, "_create_dream_session", new_callable=AsyncMock, return_value="s"
+    )
+    mocker.patch.object(
+        apply_mod, "_write_dream_summary_message", new_callable=AsyncMock
     )
     mocker.patch.object(
         apply_mod, "_apply_demotions", new_callable=AsyncMock, return_value=(0, 0, [])
