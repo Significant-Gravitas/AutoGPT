@@ -142,7 +142,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
-    GPT4_TURBO = "gpt-4-turbo"
     # Regolo models
     REGOLO_APERTUS_70B = "regolo/apertus-70b"
     REGOLO_BRICK_ROUTER = "regolo/brick-v1-beta"
