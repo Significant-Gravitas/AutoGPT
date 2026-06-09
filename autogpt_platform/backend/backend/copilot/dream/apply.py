@@ -35,6 +35,7 @@ from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .schemas import (
     ConsolidatedFact,
@@ -346,9 +347,19 @@ async def apply_operations(
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         user_id, group_id, ops.demotions
     )
-    entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-        group_id, ops.entity_invalidations
-    )
+    # Entity invalidation single-hop demotes every edge around the
+    # entity — the most destructive op in the pass — so it stays behind
+    # its own LD flag for staged rollout, independent of the dream pass
+    # being enabled. Truthiness check short-circuits the flag eval when
+    # the model proposed nothing to invalidate.
+    if ops.entity_invalidations and await is_feature_enabled(
+        Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
+    ):
+        entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
+            group_id, ops.entity_invalidations
+        )
+    else:
+        entity_edges_demoted, entity_summaries = 0, []
 
     # Narrative summary last — only surface the user-facing dream story
     # once the memory ops above have been attempted.

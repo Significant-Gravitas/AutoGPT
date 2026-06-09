@@ -54,6 +54,10 @@ def _stub_boundaries(mocker):
         AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
     )
     mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
+    # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
+    # the flag ON so the existing entity tests exercise the apply path; the
+    # flag-off behavior has its own dedicated test below.
+    mocker.patch.object(apply_mod, "is_feature_enabled", AsyncMock(return_value=True))
     # derive_group_id is deterministic; let it run.
 
 
@@ -140,6 +144,24 @@ async def test_entity_invalidation_calls_single_hop_helper():
     kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
     assert kwargs["entity_uuid"] == "ent-x"
     assert kwargs["reason"] == "dead_to_us"
+
+
+@pytest.mark.asyncio
+async def test_entity_invalidation_skipped_when_flag_off(mocker):
+    """With DREAM_PASS_INVALIDATE_ENTITY off, proposed invalidations are
+    dropped — the destructive single-hop helper must never run and the
+    snapshot reflects zero entity edges touched."""
+    mocker.patch.object(apply_mod, "is_feature_enabled", AsyncMock(return_value=False))
+    ops = DreamOperations(
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="ent-x", reason="dead_to_us"),
+        ],
+    )
+    stats = await apply_mod.apply_operations(user_id="u-z", pass_id="p-off", ops=ops)
+
+    apply_mod.invalidate_entity_direct_neighbors.assert_not_awaited()
+    assert stats["entity_invalidation_count"] == 0
+    assert stats["snapshot"].entity_invalidations == []
 
 
 @pytest.mark.asyncio
