@@ -304,8 +304,8 @@ describe("SharedChatPage", () => {
 
     await screen.findByText(/Latest artifact/);
     await waitFor(() => {
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
       const panel = useCopilotUIStore.getState().artifactPanel;
-      expect(panel.isOpen).toBe(true);
       expect(panel.activeArtifact?.id).toBe(latestArtifactId);
       expect(panel.activeArtifact?.title).toBe("latest.md");
     });

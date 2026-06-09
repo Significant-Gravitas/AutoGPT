@@ -249,18 +249,20 @@ describe("context panel open/close guards", () => {
     expect(s.activeArtifact).toBeNull();
   });
 
-  it("closeArtifactPanel suppresses subsequent files auto-open", () => {
+  it("closeArtifactPanel does NOT suppress auto-open (it is also the collapse path)", () => {
+    // useCollapseContextPanelOnSession calls closeArtifactPanel on every session
+    // entry, immediately before the auto-open hooks reopen the panel. Closing
+    // must therefore NOT set the user-closed flag, or auto-open would break.
+    useCopilotUIStore.getState().openContextPanelForFiles();
+    useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().openContextPanelForFiles();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().closeArtifactPanel(); // explicit user close
-    useCopilotUIStore.getState().openContextPanelForFiles(); // now a no-op
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
-  it("openContextPanelForProgress respects an explicit user close", () => {
+  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
     useCopilotUIStore.getState().openContextPanelForProgress();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().closeArtifactPanel(); // sets the closed flag
+    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
     useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });

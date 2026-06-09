@@ -275,9 +275,13 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   closeArtifactPanel: () =>
     set((state) => {
       if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
-      // Closing via the panel's X is an explicit user close — suppress files
-      // auto-open for the rest of the session, consistent with toggleContextPanel.
-      _autoOpenUserClosed = true;
+      // NOTE: deliberately does NOT set _autoOpenUserClosed. Unlike
+      // toggleContextPanel (a user action), closeArtifactPanel is also the
+      // programmatic collapse path — useCollapseContextPanelOnSession calls it
+      // on every session entry, right before the auto-open hooks reopen the
+      // panel. Suppressing auto-open here would break that collapse→reopen
+      // flow. Unwanted reopen-after-user-close is already prevented per-session
+      // by the auto-open hooks' own "triggered" guards.
       return {
         // Clear the preview too: the drawer is gated solely on activeArtifact,
         // so leaving it set would float a drawer with no panel behind it (and
