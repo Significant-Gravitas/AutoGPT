@@ -725,6 +725,24 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
             )
         return
 
+    if result.error:
+        # A sync pass that returned an error result must surface as
+        # errored, not complete — otherwise the Memory Visualizer renders
+        # a failed dream as a successful one.
+        try:
+            run_async(
+                mark_errored(kind="dream_pass", job_id=job_id, error=result.error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark dream pass %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="dream_pass", job_id=job_id, result=result),
