@@ -298,7 +298,10 @@ describe("ChatContainer", () => {
         <ChatContainer {...baseProps} sessionId="s1" />,
       );
 
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      // The preview drawer is driven by activeArtifact, not `isOpen`.
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_B_ID);
 
       rerender(<ChatContainer {...baseProps} sessionId="s2" />);
 
@@ -339,7 +342,9 @@ describe("ChatContainer", () => {
       useCopilotUIStore
         .getState()
         .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe(ARTIFACT_A_ID);
 
       const { unmount } = render(<ChatContainer {...baseProps} />);
       unmount();

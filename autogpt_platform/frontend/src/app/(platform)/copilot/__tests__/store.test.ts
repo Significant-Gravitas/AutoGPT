@@ -34,16 +34,22 @@ function resetStore() {
       activeTab: "files",
     },
   });
+  // Clear the module-level auto-open flags so each test starts isolated —
+  // closeArtifactPanel/toggleContextPanel set _autoOpenUserClosed, which
+  // would otherwise leak into later tests' openContextPanelFor* calls.
+  useCopilotUIStore.getState().resetAutoOpenState();
 }
 
 describe("artifactPanel store actions", () => {
   beforeEach(resetStore);
 
-  it("openArtifact opens the panel and sets the active artifact", () => {
+  it("openArtifact sets the active artifact without forcing the context sidebar open", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(true);
+    // The preview drawer is driven by activeArtifact; `isOpen` is the context
+    // sidebar's flag and is intentionally left untouched.
+    expect(s.isOpen).toBe(false);
     expect(s.isMinimized).toBe(false);
     expect(s.activeArtifact?.id).toBe("a");
     expect(s.history).toEqual([]);
@@ -97,7 +103,7 @@ describe("artifactPanel store actions", () => {
     expect(s.activeArtifact?.id).toBe("a");
   });
 
-  it("closeArtifactPanel keeps activeArtifact (for exit animation) and clears history", () => {
+  it("closeArtifactPanel clears the preview (activeArtifact + history) and isOpen", () => {
     const a = makeArtifact("a");
     const b = makeArtifact("b");
     useCopilotUIStore.getState().openArtifact(a);
@@ -106,7 +112,8 @@ describe("artifactPanel store actions", () => {
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.isOpen).toBe(false);
     expect(s.isMinimized).toBe(false);
-    expect(s.activeArtifact?.id).toBe("b");
+    // Drawer is gated on activeArtifact — closing must drop it so it can't float.
+    expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
   });
 
@@ -118,7 +125,6 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().openArtifact(b);
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(true);
     expect(s.activeArtifact?.id).toBe("b");
     expect(s.history).toEqual([]);
   });
@@ -132,7 +138,6 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().openArtifact(binary);
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isOpen).toBe(true);
     expect(s.activeArtifact?.id).toBe("bin");
   });
 
@@ -142,6 +147,11 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().openArtifact(a);
     useCopilotUIStore.getState().openArtifact(b);
     useCopilotUIStore.getState().maximizeArtifactPanel();
+    // Simulate the context sidebar being open — `isOpen` is its flag now and
+    // openArtifact no longer sets it.
+    useCopilotUIStore.setState((st) => ({
+      artifactPanel: { ...st.artifactPanel, isOpen: true },
+    }));
 
     useCopilotUIStore.getState().resetArtifactPanel();
 
@@ -224,6 +234,35 @@ describe("artifactPanel store actions", () => {
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
     expect(s.width).toBe(DEFAULT_PANEL_WIDTH);
+  });
+});
+
+describe("context panel open/close guards", () => {
+  beforeEach(resetStore);
+
+  it("toggleContextPanel closing also clears the active artifact (no floating drawer)", () => {
+    useCopilotUIStore.getState().openContextPanelForFiles(); // isOpen true
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a")); // drawer up
+    useCopilotUIStore.getState().toggleContextPanel(); // closes the panel
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+  });
+
+  it("closeArtifactPanel suppresses subsequent files auto-open", () => {
+    useCopilotUIStore.getState().openContextPanelForFiles();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+    useCopilotUIStore.getState().closeArtifactPanel(); // explicit user close
+    useCopilotUIStore.getState().openContextPanelForFiles(); // now a no-op
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("openContextPanelForProgress respects an explicit user close", () => {
+    useCopilotUIStore.getState().openContextPanelForProgress();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+    useCopilotUIStore.getState().closeArtifactPanel(); // sets the closed flag
+    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });
 

@@ -275,11 +275,19 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   closeArtifactPanel: () =>
     set((state) => {
       if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      // Closing via the panel's X is an explicit user close — suppress files
+      // auto-open for the rest of the session, consistent with toggleContextPanel.
+      _autoOpenUserClosed = true;
       return {
+        // Clear the preview too: the drawer is gated solely on activeArtifact,
+        // so leaving it set would float a drawer with no panel behind it (and
+        // a later openArtifact would wrongly treat the closed artifact as
+        // back-stack history).
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: false,
           isMinimized: false,
+          activeArtifact: null,
           history: [],
         },
       };
@@ -369,18 +377,19 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       const nextOpen = !state.artifactPanel.isOpen;
       if (isClient)
         storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, String(nextOpen));
-      // Persist the new open state. Opening always clears any previous
-      // preview so the toggle lands on the tabs view (closeArtifactPanel /
-      // the preview's X button leave activeArtifact set); closing counts as
-      // an explicit close for files auto-open.
+      // Persist the new open state. Either direction clears any open preview:
+      // opening lands on the tabs view, and closing must also drop
+      // activeArtifact so the artifact drawer (gated solely on activeArtifact)
+      // can't stay floating after its parent panel is hidden. Closing also
+      // counts as an explicit close for files auto-open.
       if (!nextOpen) _autoOpenUserClosed = true;
       return {
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: nextOpen,
           isMinimized: false,
-          activeArtifact: nextOpen ? null : state.artifactPanel.activeArtifact,
-          history: nextOpen ? [] : state.artifactPanel.history,
+          activeArtifact: null,
+          history: [],
         },
       };
     }),
@@ -402,6 +411,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }));
   },
   openContextPanelForProgress: () => {
+    if (_autoOpenUserClosed) return;
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
