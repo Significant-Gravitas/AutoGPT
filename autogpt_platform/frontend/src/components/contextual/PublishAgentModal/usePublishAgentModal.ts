@@ -11,7 +11,7 @@ import {
 import { okData } from "@/app/api/helpers";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 const defaultTargetState: PublishState = {
   isOpen: false,

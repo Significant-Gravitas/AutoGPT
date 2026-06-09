@@ -7,7 +7,7 @@ import { useGetV2GetAgentByStoreId } from "@/app/api/__generated__/endpoints/lib
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 export const useMainAgentPage = ({
   params,

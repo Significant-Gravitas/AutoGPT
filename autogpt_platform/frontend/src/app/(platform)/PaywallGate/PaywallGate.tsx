@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { environment } from "@/services/environment";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { PaywallModal } from "./PaywallModal";
 
 // Routes that bypass the paywall regardless of subscription state — primarily

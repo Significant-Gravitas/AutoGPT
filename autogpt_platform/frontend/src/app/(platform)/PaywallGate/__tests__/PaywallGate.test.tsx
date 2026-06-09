@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
 
 // Mock the auth hook — toggle logged-in vs logged-out per test.
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: () => ({ isLoggedIn: mockIsLoggedIn }),
 }));
 

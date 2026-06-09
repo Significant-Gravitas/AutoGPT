@@ -5,7 +5,7 @@ import { ProfileInfoForm } from "@/components/__legacy__/ProfileInfoForm";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { ProfileLoading } from "./ProfileLoading";
 
 export default function UserProfilePage() {

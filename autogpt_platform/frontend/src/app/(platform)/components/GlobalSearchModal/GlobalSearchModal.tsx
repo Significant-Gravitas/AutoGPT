@@ -1,7 +1,7 @@
 import type { SearchResultItem } from "@/app/api/__generated__/models/searchResultItem";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { SearchCommandModal } from "@/components/organisms/SearchCommandModal/SearchCommandModal";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ACTIONS_BUCKET_KEY, COPY_USER_ID_ACTION } from "./actions";

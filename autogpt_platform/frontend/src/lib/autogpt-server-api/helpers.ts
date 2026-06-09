@@ -2,7 +2,7 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { cache } from "react";

@@ -2,7 +2,7 @@
 
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
@@ -36,7 +36,15 @@ export async function signup(
       };
     }
 
-    const { data, error } = await supabase.auth.signUp(parsed.data);
+    const { data, error } = await supabase.auth.signUp({
+      email: parsed.data.email,
+      password: parsed.data.password,
+      options: {
+        data: {
+          agree_to_terms: parsed.data.agreeToTerms,
+        },
+      },
+    });
 
     if (error) {
       if (isWaitlistError(error?.code, error?.message)) {

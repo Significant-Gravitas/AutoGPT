@@ -6,7 +6,7 @@ import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +23,7 @@ function ResetPasswordContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [showExpiredMessage, setShowExpiredMessage] = useState(false);
+  const resetToken = searchParams.get("token");
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -128,7 +129,7 @@ function ResetPasswordContent() {
         return;
       }
 
-      const error = await changePassword(data.password);
+      const error = await changePassword(data.password, resetToken);
       setIsLoading(false);
       if (error) {
         toast({
@@ -144,7 +145,7 @@ function ResetPasswordContent() {
         variant: "default",
       });
     },
-    [changePasswordForm, toast],
+    [changePasswordForm, resetToken, toast],
   );
 
   if (isUserLoading) {
@@ -159,8 +160,9 @@ function ResetPasswordContent() {
     );
   }
 
-  // Show expired link message if detected
-  if (showExpiredMessage && !user) {
+  const isResetFlow = Boolean(resetToken);
+
+  if (showExpiredMessage && !isResetFlow && !user) {
     return (
       <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
         <AuthCard title="Reset Password">
@@ -173,7 +175,7 @@ function ResetPasswordContent() {
   return (
     <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
       <AuthCard title="Reset Password">
-        {user ? (
+        {isResetFlow || user ? (
           <form
             onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
             className="flex w-full flex-col gap-1"

@@ -4,7 +4,7 @@ import { render } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: () => ({ isLoggedIn: true }),
 }));
 

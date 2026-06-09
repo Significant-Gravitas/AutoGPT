@@ -19,7 +19,7 @@ const mockSupabaseClient = {
 };
 
 export const mockSupabaseRequest = () => {
-  vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
+  vi.mock("@/lib/auth/server/getServerSupabase", () => ({
     getServerSupabase: vi.fn().mockResolvedValue(mockSupabaseClient),
   }));
 };

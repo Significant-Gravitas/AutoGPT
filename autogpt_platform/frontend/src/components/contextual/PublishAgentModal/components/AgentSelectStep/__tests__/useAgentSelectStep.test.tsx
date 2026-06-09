@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: () => ({ isLoggedIn: true }),
 }));
 

@@ -1,7 +1,9 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { NextResponse } from "next/server";
 import { LoginProvider } from "@/types/auth";
 import { isWaitlistError, logWaitlistError } from "../utils";
+
+const ALLOWED_PROVIDERS: LoginProvider[] = ["google", "github", "discord"];
 
 export async function POST(request: Request) {
   try {
@@ -9,7 +11,7 @@ export async function POST(request: Request) {
     const provider: LoginProvider | undefined = body?.provider;
     const redirectTo: string | undefined = body?.redirectTo;
 
-    if (!provider) {
+    if (!provider || !ALLOWED_PROVIDERS.includes(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
 

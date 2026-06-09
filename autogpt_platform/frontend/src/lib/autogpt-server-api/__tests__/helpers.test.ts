@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/supabase/server/getServerSupabase", () => ({
+vi.mock("@/lib/auth/server/getServerSupabase", () => ({
   getServerSupabase: vi.fn(),
 }));
 

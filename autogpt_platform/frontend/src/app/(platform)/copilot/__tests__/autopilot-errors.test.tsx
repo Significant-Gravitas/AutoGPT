@@ -33,7 +33,7 @@ vi.mock("../helpers", async (importActual) => {
   };
 });
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 

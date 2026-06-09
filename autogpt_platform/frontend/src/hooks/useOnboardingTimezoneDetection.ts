@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { usePostV1UpdateUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 /**

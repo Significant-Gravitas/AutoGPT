@@ -14,7 +14,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 import {
   INITIAL_FILTER_STATE,

@@ -9,7 +9,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { useSupabaseStore } from "@/lib/auth/hooks/useSupabaseStore";
 import { okData } from "@/app/api/helpers";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";

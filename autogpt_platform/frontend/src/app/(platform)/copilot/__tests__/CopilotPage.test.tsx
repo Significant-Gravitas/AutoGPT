@@ -83,7 +83,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 // Auth check moved into CopilotPage directly — default to a logged-in
 // user so the page renders past its loading gate.
 const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: () => mockSupabase(),
 }));
 

@@ -12,7 +12,7 @@ import {
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 import {
   isFormDirty,

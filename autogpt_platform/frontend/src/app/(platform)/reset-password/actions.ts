@@ -1,7 +1,8 @@
 "use server";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { auth } from "@/lib/auth/auth";
 import * as Sentry from "@sentry/nextjs";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 export async function sendResetEmail(email: string) {
   return await Sentry.withServerActionInstrumentation(
@@ -11,42 +12,44 @@ export async function sendResetEmail(email: string) {
       const supabase = await getServerSupabase();
       const origin =
         process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
-
-      if (!supabase) {
-        redirect("/error");
-      }
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/api/auth/callback/reset-password`,
-      });
-
-      if (error) {
+      try {
+        await auth.api.requestPasswordReset({
+          body: {
+            email,
+            redirectTo: `${origin}/api/auth/callback/reset-password`,
+          },
+          headers: new Headers(await headers()),
+        });
+      } catch (error) {
         console.error("Error sending reset email", error);
-        return error.message;
+        return error instanceof Error ? error.message : "Failed to send reset email";
       }
     },
   );
 }
 
-export async function changePassword(password: string) {
+export async function changePassword(password: string, token?: string | null) {
   return await Sentry.withServerActionInstrumentation(
     "changePassword",
     {},
     async () => {
-      const supabase = await getServerSupabase();
-
-      if (!supabase) {
-        redirect("/error");
+      if (!token) {
+        return "Missing password reset token";
       }
 
-      const { error } = await supabase.auth.updateUser({ password });
-
-      if (error) {
+      try {
+        await auth.api.resetPassword({
+          body: {
+            newPassword: password,
+            token,
+          },
+          headers: new Headers(await headers()),
+        });
+      } catch (error) {
         console.error("Error changing password", error);
-        return error.message;
+        return error instanceof Error ? error.message : "Failed to change password";
       }
 
-      await supabase.auth.signOut({ scope: "global" });
       redirect("/login");
     },
   );

@@ -1,13 +1,12 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getWebSocketToken } from "@/lib/auth/actions";
+import { authClient } from "@/lib/auth/hooks/helpers";
+import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -113,16 +112,16 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient ? ensureSupabaseClient() : await getServerSupabase();
-  }
-
   async isAuthenticated(): Promise<boolean> {
-    const supabaseClient = await this.getSupabaseClient();
-    if (!supabaseClient) return false;
+    if (isClient) {
+      const { data } = await authClient.getSession();
+      return data?.session != null;
+    }
+
+    const serverAuth = await getServerSupabase();
     const {
       data: { session },
-    } = await supabaseClient.auth.getSession();
+    } = await serverAuth.auth.getSession();
     return session != null;
   }
 

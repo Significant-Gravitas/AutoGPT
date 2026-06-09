@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 // Renders the right-slot CTAs on every ``/share/...`` viewer:
 //

@@ -4,7 +4,7 @@ import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/sto
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 
 export interface Agent {
   name: string;

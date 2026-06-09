@@ -1,7 +1,7 @@
 "use server";
 
 import BackendAPI from "@/lib/autogpt-server-api";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { getOnboardingStatus } from "../../api/helpers";

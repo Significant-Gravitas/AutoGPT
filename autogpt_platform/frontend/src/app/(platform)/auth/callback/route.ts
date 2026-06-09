@@ -1,92 +1,69 @@
 import { getOnboardingStatus } from "@/app/api/helpers";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getServerAuthSession } from "@/lib/auth/auth";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-
   let next = "/copilot";
+  const session = await getServerAuthSession();
 
-  if (code) {
-    const supabase = await getServerSupabase();
-
-    if (!supabase) {
-      return NextResponse.redirect(`${origin}/error`);
-    }
-
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      try {
-        const api = new BackendAPI();
-        await api.createUser();
-
-        const { shouldShowOnboarding } = await getOnboardingStatus();
-        next = shouldShowOnboarding ? "/onboarding" : "/copilot";
-        revalidatePath(next, "layout");
-      } catch (createUserError) {
-        console.error("Error creating user:", createUserError);
-
-        // Handle ApiError from the backend API client
-        if (
-          createUserError &&
-          typeof createUserError === "object" &&
-          "status" in createUserError
-        ) {
-          const apiError = createUserError as any;
-
-          if (apiError.status === 401) {
-            // Authentication issues - token missing/invalid
-            return NextResponse.redirect(
-              `${origin}/error?message=auth-token-invalid`,
-            );
-          } else if (apiError.status >= 500) {
-            // Server/database errors
-            return NextResponse.redirect(
-              `${origin}/error?message=server-error`,
-            );
-          } else if (apiError.status === 429) {
-            // Rate limiting
-            return NextResponse.redirect(
-              `${origin}/error?message=rate-limited`,
-            );
-          }
-        }
-
-        // Handle network/fetch errors
-        if (
-          createUserError instanceof TypeError &&
-          createUserError.message.includes("fetch")
-        ) {
-          return NextResponse.redirect(`${origin}/error?message=network-error`);
-        }
-
-        // Generic user creation failure
-        return NextResponse.redirect(
-          `${origin}/error?message=user-creation-failed`,
-        );
-      }
-
-      // Get redirect destination from 'next' query parameter
-      next = searchParams.get("next") || next;
-
-      const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
-      const isLocalEnv = process.env.NODE_ENV === "development";
-      if (isLocalEnv) {
-        // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
-    }
+  if (!session) {
+    return NextResponse.redirect(`${origin}/auth/auth-code-error`);
   }
 
-  // return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+  try {
+    const api = new BackendAPI();
+    await api.createUser();
+
+    const { shouldShowOnboarding } = await getOnboardingStatus();
+    next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+    revalidatePath(next, "layout");
+  } catch (createUserError) {
+    console.error("Error creating user:", createUserError);
+
+    if (
+      createUserError &&
+      typeof createUserError === "object" &&
+      "status" in createUserError
+    ) {
+      const apiError = createUserError as { status?: number };
+
+      if (apiError.status === 401) {
+        return NextResponse.redirect(`${origin}/error?message=auth-token-invalid`);
+      }
+      if (typeof apiError.status === "number" && apiError.status >= 500) {
+        return NextResponse.redirect(`${origin}/error?message=server-error`);
+      }
+      if (apiError.status === 429) {
+        return NextResponse.redirect(`${origin}/error?message=rate-limited`);
+      }
+    }
+
+    if (
+      createUserError instanceof TypeError &&
+      createUserError.message.includes("fetch")
+    ) {
+      return NextResponse.redirect(`${origin}/error?message=network-error`);
+    }
+
+    return NextResponse.redirect(`${origin}/error?message=user-creation-failed`);
+  }
+
+  next = searchParams.get("next") || next;
+
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const isLocalEnv = process.env.NODE_ENV === "development";
+
+  if (isLocalEnv) {
+    return NextResponse.redirect(`${origin}${next}`);
+  }
+
+  if (forwardedHost) {
+    return NextResponse.redirect(`https://${forwardedHost}${next}`);
+  }
+
+  return NextResponse.redirect(`${origin}${next}`);
 }

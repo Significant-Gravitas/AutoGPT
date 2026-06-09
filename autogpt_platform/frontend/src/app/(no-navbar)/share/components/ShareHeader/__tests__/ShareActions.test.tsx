@@ -10,7 +10,7 @@ import { ShareActions } from "../ShareActions";
 
 const mockUseSupabase = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: mockUseSupabase,
 }));
 

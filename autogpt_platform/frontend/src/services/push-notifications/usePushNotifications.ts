@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { useEffect, useRef, useState } from "react";
 import { setupPushSubscription, teardownPushSubscription } from "./helpers";
 import type { PushSWMessage } from "./types";

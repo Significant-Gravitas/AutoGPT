@@ -9,7 +9,7 @@ import {
 import { okData } from "@/app/api/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { useEffect } from "react";
 import SettingsLoading from "./loading";
 

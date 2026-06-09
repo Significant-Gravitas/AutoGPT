@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 const updateSessionMock = vi.fn();
 
-vi.mock("@/lib/supabase/middleware", () => ({
+vi.mock("@/lib/auth/middleware", () => ({
   updateSession: (...args: unknown[]) => updateSessionMock(...args),
 }));
 

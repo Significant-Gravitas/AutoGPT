@@ -30,7 +30,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockUser = { id: "user-1", email: "test@test.com" };
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+vi.mock("@/lib/auth/hooks/useSupabase", () => ({
   useSupabase: vi.fn(() => ({ user: mockUser })),
 }));
 
@@ -148,7 +148,7 @@ describe("PushNotificationProvider", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("sessionId=A"));
     notificationsEnabledMock.mockReturnValue(true);
 
-    const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+    const { useSupabase } = await import("@/lib/auth/hooks/useSupabase");
     vi.mocked(useSupabase).mockReturnValue({
       user: mockUser,
     } as ReturnType<typeof useSupabase>);
@@ -239,7 +239,7 @@ describe("PushNotificationProvider", () => {
     });
 
     it("skips when no user is authenticated", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+      const { useSupabase } = await import("@/lib/auth/hooks/useSupabase");
       vi.mocked(useSupabase).mockReturnValue({
         user: null,
       } as ReturnType<typeof useSupabase>);
@@ -316,7 +316,7 @@ describe("PushNotificationProvider", () => {
     });
 
     it("unsubscribes on logout after having been authenticated", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+      const { useSupabase } = await import("@/lib/auth/hooks/useSupabase");
       const { rerender } = render(<PushNotificationProvider />);
 
       await waitFor(() => {
@@ -337,7 +337,7 @@ describe("PushNotificationProvider", () => {
     });
 
     it("does not call teardown when user is null from the start", async () => {
-      const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+      const { useSupabase } = await import("@/lib/auth/hooks/useSupabase");
       vi.mocked(useSupabase).mockReturnValue({
         user: null,
       } as ReturnType<typeof useSupabase>);

@@ -15,7 +15,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { providerIcons } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useSupabase } from "@/lib/auth/hooks/useSupabase";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { Trash2Icon } from "lucide-react";
