@@ -177,10 +177,15 @@ async def handle_dream_batch_result(
             "Dream batch handler missing user_id/pass_id/phase — payload=%s",
             payload,
         )
+        # The batch path disowned the dream lock to this callback; release it
+        # on this dead-end so the user isn't locked out until the 24h TTL.
+        if user_id:
+            await release_dream_lock(user_id)
         return
 
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
+        await release_dream_lock(user_id)
         return
 
     if not rows:

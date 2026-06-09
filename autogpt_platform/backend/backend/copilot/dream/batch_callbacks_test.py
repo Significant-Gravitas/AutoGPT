@@ -421,17 +421,27 @@ class TestErrorPaths:
 
 class TestMalformedPayload:
     @pytest.mark.asyncio
-    async def test_missing_pass_id_drops_silently(self, fake_redis):
+    async def test_missing_pass_id_releases_lock(self, fake_redis):
+        """Malformed payload (missing pass_id) early-returns but, since the
+        user_id is known, releases the disowned dream lock — otherwise the
+        user is locked out until the 24h TTL."""
+        release = AsyncMock()
         entry = _entry()
         entry.payload["pass_id"] = ""
-        # Should NOT crash even though payload is malformed
-        await handle_dream_batch_result(
-            entry,
-            [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
-        )
+        with patch("backend.copilot.dream.batch_callbacks.release_dream_lock", release):
+            await handle_dream_batch_result(
+                entry,
+                [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
+            )
+        release.assert_awaited_once_with("u1")
 
     @pytest.mark.asyncio
-    async def test_unknown_phase_label_drops_silently(self, fake_redis):
+    async def test_unknown_phase_label_releases_lock(self, fake_redis):
+        """An unknown phase early-returns but must still release the dream
+        lock the orchestrator disowned to this callback."""
+        release = AsyncMock()
         entry = _entry()
         entry.payload["phase"] = "some_fake_phase"
-        await handle_dream_batch_result(entry, [_row(custom_id="x", content="y")])
+        with patch("backend.copilot.dream.batch_callbacks.release_dream_lock", release):
+            await handle_dream_batch_result(entry, [_row(custom_id="x", content="y")])
+        release.assert_awaited_once_with("u1")
