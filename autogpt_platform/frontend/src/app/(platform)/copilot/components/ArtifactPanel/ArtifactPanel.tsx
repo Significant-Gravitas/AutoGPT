@@ -14,7 +14,6 @@ interface Props {
 
 export function ArtifactPanel({ mobile }: Props) {
   const {
-    isOpen,
     isMinimized,
     isMaximized,
     activeArtifact,
@@ -53,7 +52,7 @@ export function ArtifactPanel({ mobile }: Props) {
     onSourceToggle: setIsSourceView,
   };
 
-  if (isOpen && isMinimized) {
+  if (isMinimized) {
     return (
       <div className="fixed right-0 top-[72px] z-[60] h-[calc(100vh-72px)]">
         <ArtifactMinimizedStrip
@@ -67,7 +66,7 @@ export function ArtifactPanel({ mobile }: Props) {
 
   return (
     <Drawer.Root
-      open={isOpen}
+      open={!!activeArtifact}
       onOpenChange={(open) => !open && clearArtifactPreview()}
       direction="right"
       handleOnly

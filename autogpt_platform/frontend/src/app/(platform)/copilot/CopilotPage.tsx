@@ -79,7 +79,7 @@ export function CopilotPage() {
       {isMobile && isContextPanelEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} mobile />
       )}
-      {isArtifactsEnabled && !isContextPanelEnabled && (
+      {(isArtifactsEnabled || isContextPanelEnabled) && (
         <ArtifactPanel mobile={isMobile} />
       )}
       {isMobile && <MobileDrawer />}

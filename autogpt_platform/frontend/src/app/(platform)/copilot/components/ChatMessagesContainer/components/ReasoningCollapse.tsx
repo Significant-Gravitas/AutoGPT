@@ -7,7 +7,7 @@ import {
   AccordionItem,
 } from "@/components/molecules/Accordion/Accordion";
 import { cn } from "@/lib/utils";
-import { LightbulbIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, LightbulbIcon } from "@phosphor-icons/react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { useState } from "react";
 
@@ -37,11 +37,21 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
         <AccordionPrimitive.Header className="flex">
           <AccordionPrimitive.Trigger
             className={cn(
-              "flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-700 focus-visible:outline-none",
+              "group flex items-center gap-1.5 py-1 font-sans text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-700 focus-visible:outline-none",
               isActive && "animate-pulse",
             )}
           >
-            <LightbulbIcon size={14} weight="bold" className="shrink-0" />
+            {isActive ? (
+              <LightbulbIcon size={14} weight="bold" className="shrink-0" />
+            ) : (
+              // Once reasoning has finished streaming, swap the bulb for a
+              // caret that rotates to reflect the expanded/collapsed state.
+              <CaretRightIcon
+                size={14}
+                weight="bold"
+                className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
+              />
+            )}
             Reasoning
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>

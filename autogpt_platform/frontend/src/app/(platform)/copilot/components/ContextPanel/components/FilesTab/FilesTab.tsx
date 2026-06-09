@@ -52,15 +52,6 @@ export function FilesTab({ sessionId }: Props) {
     });
 
   function handleOpen(file: SessionFile) {
-    if (file.messageID) {
-      const el = document.querySelector(
-        `[data-message-id="${file.messageID}"]`,
-      );
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-    }
     openArtifact(fileItemToArtifactRef(file.item));
   }
 

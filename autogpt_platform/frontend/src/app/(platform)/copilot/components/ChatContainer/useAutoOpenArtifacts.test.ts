@@ -79,7 +79,11 @@ describe("useAutoOpenArtifacts (card-based)", () => {
 
   it("clears artifact preview on unmount (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+    // openArtifact drives the preview drawer via activeArtifact and leaves
+    // `isOpen` (the context sidebar's flag) untouched.
+    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
+      A_ID,
+    );
 
     const { unmount } = renderHook(() => useAutoOpenArtifacts(defaultProps));
     act(() => {

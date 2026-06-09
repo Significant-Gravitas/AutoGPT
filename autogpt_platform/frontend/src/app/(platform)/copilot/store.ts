@@ -248,10 +248,12 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
+      // A non-null activeArtifact already means the preview drawer is showing,
+      // so push the current one onto history when switching. We no longer gate
+      // on `isOpen`: that flag belongs solely to the context sidebar now (see
+      // toggleContextPanel / openContextPanelForFiles).
       const shouldPushHistory =
-        state.artifactPanel.isOpen &&
-        activeArtifact != null &&
-        activeArtifact.id !== ref.id;
+        activeArtifact != null && activeArtifact.id !== ref.id;
       const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
@@ -259,9 +261,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
       return {
+        // The preview drawer (ArtifactPanel) is driven by `activeArtifact`.
+        // We deliberately leave `isOpen` untouched so opening a preview never
+        // forces the context sidebar open — the drawer overlays it instead.
         artifactPanel: {
           ...state.artifactPanel,
-          isOpen: true,
           isMinimized: false,
           activeArtifact: ref,
           history,

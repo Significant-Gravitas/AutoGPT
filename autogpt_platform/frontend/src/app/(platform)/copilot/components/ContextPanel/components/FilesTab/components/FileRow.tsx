@@ -32,7 +32,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
         type="button"
         onClick={() => onOpen(file)}
         className="flex min-w-0 flex-1 flex-col text-left"
-        title={file.messageID ? "Jump to chat" : item.name}
+        title={item.name}
       >
         <span className="flex min-w-0 items-center gap-2">
           <Icon size={16} className="shrink-0 text-black" />
