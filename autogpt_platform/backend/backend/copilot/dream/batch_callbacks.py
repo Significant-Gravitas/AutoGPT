@@ -527,6 +527,10 @@ async def _finalize_complete(
                 entity_invalidation_count=_count("entity_invalidation_count"),
                 dream_session_id=session_id,
                 operations=snapshot,
+                # Carry the user-facing narrative like the sync path does —
+                # without it the Memory Visualizer renders a blank summary for
+                # batch-completed dreams even though the session message exists.
+                summary_for_user=ops.summary_for_user,
             )
             await mark_complete(kind="dream_pass", job_id=job_id, result=pass_result)
         except Exception:

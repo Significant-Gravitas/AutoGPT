@@ -252,6 +252,9 @@ class TestPhaseChaining:
 
         apply.assert_awaited_once()
         mark_complete.assert_awaited_once()
+        # The sanitizer's user-facing narrative must ride on the result so the
+        # Memory Visualizer isn't blank for batch-completed dreams.
+        assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
         # The batch path disowned the dream lock to this callback; the
         # terminal handler must release it so the next dream can run.
         release_lock.assert_awaited_once_with("u1")
