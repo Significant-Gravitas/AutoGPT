@@ -44,7 +44,7 @@ async def search(
     Searches across agents, blocks, and documentation. Results are ranked
     by a combination of keyword matching and semantic similarity.
     """
-    search_limiter.check(auth.user_id)
+    await search_limiter.check(auth.user_id)
 
     results, total_count = await unified_hybrid_search(
         query=query,

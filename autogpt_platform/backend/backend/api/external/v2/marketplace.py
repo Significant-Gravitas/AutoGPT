@@ -416,7 +416,7 @@ async def upload_submission_media(
     ),
 ) -> MarketplaceMediaUploadResponse:
     """Upload an image or video for a marketplace submission. Max size: 10MB."""
-    media_upload_limiter.check(auth.user_id)
+    await media_upload_limiter.check(auth.user_id)
 
     max_size = 10 * 1024 * 1024  # 10MB limit for external API
 

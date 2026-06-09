@@ -24,7 +24,7 @@ from ..models import (
     LibraryAgentListResponse,
     LibraryAgentUpdateRequest,
 )
-from ..rate_limit import execute_limiter
+from ..rate_limit import graph_exec_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ async def execute_agent(
     ),
 ) -> AgentGraphRun:
     """Execute an agent from the library."""
-    execute_limiter.check(auth.user_id)
+    await graph_exec_limiter.check(auth.user_id)
 
     # Check credit balance
     user_credit_model = await get_user_credit_model(auth.user_id)

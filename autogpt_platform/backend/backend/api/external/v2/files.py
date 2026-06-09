@@ -197,7 +197,7 @@ async def upload_file(
     Returns a `file_uri` that can be passed to agent graph/node file inputs.
     Uploaded files are virus-scanned before storage.
     """
-    file_upload_limiter.check(auth.user_id)
+    await file_upload_limiter.check(auth.user_id)
 
     # Check file size limit
     max_size_mb = settings.config.upload_file_size_limit_mb
