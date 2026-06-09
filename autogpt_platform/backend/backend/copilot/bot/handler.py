@@ -12,6 +12,10 @@ from typing import Any
 from urllib.parse import quote
 
 from backend.data.redis_client import get_redis_async
+from backend.data.sharing.workspace_refs import (
+    WorkspaceArtifactLink,
+    extract_artifact_links,
+)
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -20,7 +24,7 @@ from backend.util.exceptions import (
 from backend.util.settings import Settings
 
 from . import sessions, threads
-from .adapters.base import MessageContext, PlatformAdapter
+from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
 from .bot_backend import BotBackend
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
@@ -157,6 +161,125 @@ class MessageHandler:
             if not state.pending:
                 self._targets.pop(target_id, None)
 
+    async def _send_text_and_artifacts(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        text: str,
+        ctx: MessageContext,
+        session_id: str | None,
+    ) -> bool:
+        """Send a finished chunk of text, then any workspace artifacts it
+        referenced. Returns True if anything was sent to the channel.
+
+        Each artifact gets its own platform message — files attach inline
+        when small enough, otherwise we drop a link button pointing at the
+        chat on the platform so the user can grab it from there.
+        """
+        stripped, artifacts = extract_artifact_links(text)
+        sent_any = False
+        if stripped:
+            await adapter.send_message(
+                target_id, stripped, mentionable_users=ctx.mentionable_users
+            )
+            sent_any = True
+        for artifact in artifacts:
+            sent = await self._deliver_artifact(
+                adapter, target_id, artifact, session_id
+            )
+            sent_any = sent_any or sent
+        return sent_any
+
+    async def _deliver_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str | None,
+    ) -> bool:
+        """Attach the file inline when possible; otherwise drop a link to
+        the chat on the platform. Returns whether anything was sent."""
+        if session_id is None:
+            # Can't fetch or build a link button without a session id. Surface
+            # the artifact name as plain text so the user knows something was
+            # produced, even if they can't grab it from here.
+            logger.warning(
+                "Workspace artifact %s referenced before session id known",
+                artifact.file_id,
+            )
+            await self._send_artifact_note(adapter, target_id, artifact)
+            return True
+        if await self._attach_artifact(adapter, target_id, artifact, session_id):
+            return True
+        await self._send_artifact_fallback(adapter, target_id, artifact, session_id)
+        return True
+
+    async def _attach_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> bool:
+        """Fetch and inline-attach the file. Returns False when it's missing,
+        unowned, too large, or the fetch errored."""
+        try:
+            fetched = await self._api.fetch_workspace_artifact(
+                session_id=session_id,
+                file_id=artifact.file_id,
+                max_bytes=adapter.max_attachment_bytes,
+            )
+        except Exception:
+            logger.exception("Failed to fetch workspace artifact %s", artifact.file_id)
+            return False
+        if fetched is None:
+            return False
+        await adapter.send_file(
+            target_id,
+            text="",
+            file=FileAttachment(
+                filename=artifact.display_name or fetched.filename,
+                mime_type=fetched.mime_type,
+                content=fetched.content,
+            ),
+        )
+        return True
+
+    async def _send_artifact_fallback(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> None:
+        """Link the user to the chat when the file can't be attached here —
+        covers missing, unavailable, errored and too-large cases alike."""
+        session_url = _copilot_session_url(session_id)
+        if session_url is None:
+            logger.warning(
+                "No base URL configured; can't render fallback link for %s",
+                artifact.file_id,
+            )
+            await self._send_artifact_note(adapter, target_id, artifact)
+            return
+        await adapter.send_link(
+            target_id,
+            f"Open AutoGPT to download `{artifact.display_name}`.",
+            link_label="Open in AutoGPT",
+            link_url=session_url,
+        )
+
+    async def _send_artifact_note(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+    ) -> None:
+        await adapter.send_message(
+            target_id,
+            f"_(produced `{artifact.display_name}` — open the chat to download)_",
+        )
+
     async def _stream_batch(
         self,
         batch: list[tuple[str, str, str]],
@@ -193,16 +316,21 @@ class MessageHandler:
             setup_output: dict[str, Any],
             _tool_name: str | None,
         ) -> None:
-            nonlocal buffer, sent_any_content, setup_prompt_sent
+            nonlocal active_session_id, buffer, sent_any_content, setup_prompt_sent
             if setup_prompt_sent:
                 return
             setup_prompt_sent = True
+            # This callback carries the authoritative session id — adopt it so
+            # buffered workspace artifacts resolve instead of falling back to
+            # the "no session" plain-text note.
+            active_session_id = session_id
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
-                await adapter.send_message(
-                    target_id, buffer, mentionable_users=ctx.mentionable_users
-                )
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
                 buffer = ""
             sent_any_content = True
             session_url = _copilot_session_url(session_id)
@@ -239,13 +367,10 @@ class MessageHandler:
                 buffer += chunk
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
-                    if post:
-                        await adapter.send_message(
-                            target_id,
-                            post,
-                            mentionable_users=ctx.mentionable_users,
-                        )
-                        if post.strip():
+                    if post and post.strip():
+                        if await self._send_text_and_artifacts(
+                            adapter, target_id, post, ctx, active_session_id
+                        ):
                             sent_any_content = True
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
@@ -276,10 +401,10 @@ class MessageHandler:
             await adapter.stop_typing(target_id)
 
         if buffer.strip():
-            await adapter.send_message(
-                target_id, buffer, mentionable_users=ctx.mentionable_users
-            )
-            sent_any_content = True
+            if await self._send_text_and_artifacts(
+                adapter, target_id, buffer, ctx, active_session_id
+            ):
+                sent_any_content = True
 
         if not sent_any_content:
             await adapter.send_message(
