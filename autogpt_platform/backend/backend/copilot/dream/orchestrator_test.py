@@ -119,6 +119,15 @@ def _stub_billing(mocker):
     mocker.patch.object(orchestrator_mod, "record_phase_cost", AsyncMock())
 
 
+@pytest.fixture(autouse=True)
+def _stub_batch_flag(mocker):
+    """Default the batch-path LD flag off so tests stay on sync + hermetic
+    (no LaunchDarkly calls). The wiring test re-patches to assert flag flow."""
+    mocker.patch.object(
+        orchestrator_mod, "is_feature_enabled", AsyncMock(return_value=False)
+    )
+
+
 @pytest.mark.asyncio
 async def test_empty_input_returns_skipped(mocker):
     """No episodes AND no facts ⇒ skipped, no LLM calls."""
@@ -140,6 +149,35 @@ async def test_empty_input_returns_skipped(mocker):
     assert result.skip_reason == "no_input"
     structured.assert_not_called()
     apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag_on", [True, False])
+async def test_batch_path_gated_by_flag_not_key(mocker, flag_on):
+    """The Anthropic batch path is gated by DREAM_PASS_BATCH_ENABLED — the
+    flag value (not mere direct-key presence) is what flows to routing's
+    ``batch_processing_enabled``, so the batch path can ship dark."""
+    resolve = mocker.patch.object(
+        orchestrator_mod,
+        "resolve_dream_execution_path",
+        return_value="sync_baseline",
+    )
+    flag = mocker.patch.object(
+        orchestrator_mod,
+        "is_feature_enabled",
+        AsyncMock(return_value=flag_on),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    await orchestrator_mod.execute_dream_pass("u")
+
+    flag.assert_awaited_once()
+    assert flag.await_args.args[0] is orchestrator_mod.Flag.DREAM_PASS_BATCH_ENABLED
+    assert resolve.call_args.kwargs["batch_processing_enabled"] is flag_on
 
 
 @pytest.mark.asyncio

@@ -115,6 +115,17 @@ class Flag(str, Enum):
     # is how good edges caught in the cascade get re-promoted.
     DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity"
 
+    # Rollout gate for the async Anthropic batch path (P0.1). When on AND a
+    # direct Anthropic API key is configured, the dream pass routes through
+    # Anthropic's Batch API (~50% cheaper, async, up to 24h) and runs its
+    # memory writeback in the batch callback; when off, dreams run on the
+    # synchronous baseline regardless of key presence. A direct key is a hard
+    # requirement — the native Batch API can't be reached via
+    # OpenRouter/subscription — so this flag gates rollout on top of
+    # key-presence, not instead of it. Defaults False so the batch path ships
+    # dark and is enabled per-cohort.
+    DREAM_PASS_BATCH_ENABLED = "dream-pass-batch-enabled"
+
     # Note: there is intentionally no DREAM_PASS_LOCAL_TRANSPORT
     # flag. Whether to run on local-LLM transport is a CODE decision
     # — ``resolve_dream_execution_path()`` in
