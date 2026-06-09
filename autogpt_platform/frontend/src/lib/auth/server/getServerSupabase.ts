@@ -152,12 +152,9 @@ export const getServerSupabase = cache(async () => {
       }) {
         try {
           if (payload.password) {
-            await auth.api.resetPassword({
-              body: {
-                newPassword: payload.password,
-              },
-              headers: await getRequestHeaders(),
-            });
+            throw new Error(
+              "Password updates must use the dedicated reset-password flow",
+            );
           }
 
           let emailResult: unknown = null;

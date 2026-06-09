@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export type LoginProvider = "google" | "github" | "discord";
+export const LOGIN_PROVIDERS = ["google", "github", "discord"] as const;
 
 export const loginFormSchema = z.object({
   email: z

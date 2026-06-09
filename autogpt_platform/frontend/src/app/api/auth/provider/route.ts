@@ -1,9 +1,26 @@
 import { getServerSupabase } from "@/lib/auth/server/getServerSupabase";
 import { NextResponse } from "next/server";
-import { LoginProvider } from "@/types/auth";
+import { LOGIN_PROVIDERS, LoginProvider } from "@/types/auth";
 import { isWaitlistError, logWaitlistError } from "../utils";
 
-const ALLOWED_PROVIDERS: LoginProvider[] = ["google", "github", "discord"];
+function isProviderConfigured(provider: LoginProvider) {
+  switch (provider) {
+    case "google":
+      return Boolean(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+      );
+    case "github":
+      return Boolean(
+        process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET,
+      );
+    case "discord":
+      return Boolean(
+        process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET,
+      );
+    default:
+      return false;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -11,8 +28,15 @@ export async function POST(request: Request) {
     const provider: LoginProvider | undefined = body?.provider;
     const redirectTo: string | undefined = body?.redirectTo;
 
-    if (!provider || !ALLOWED_PROVIDERS.includes(provider)) {
+    if (!provider || !LOGIN_PROVIDERS.includes(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+
+    if (!isProviderConfigured(provider)) {
+      return NextResponse.json(
+        { error: `${provider} login is not configured` },
+        { status: 400 },
+      );
     }
 
     const supabase = await getServerSupabase();

@@ -112,13 +112,23 @@ async function findExistingPlatformUser(email: string) {
 }
 
 function getAuthSecret() {
-  return (
+  const secret =
     process.env.BETTER_AUTH_SECRET ||
     process.env.JWT_VERIFY_KEY ||
     process.env.JWT_SECRET ||
-    process.env.SUPABASE_JWT_SECRET ||
-    "better-auth-secret-123456789012345678901234"
-  );
+    process.env.SUPABASE_JWT_SECRET;
+
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Missing Better Auth/JWT secret configuration in production",
+    );
+  }
+
+  return "better-auth-secret-123456789012345678901234";
 }
 
 function getProviderConfig(clientId?: string, clientSecret?: string) {
