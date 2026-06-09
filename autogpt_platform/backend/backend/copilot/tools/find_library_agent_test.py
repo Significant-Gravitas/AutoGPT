@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
-from backend.copilot.tools.models import AgentsFoundResponse, NoResultsResponse
+from backend.copilot.tools.models import (
+    AgentsFoundResponse,
+    ErrorResponse,
+    NoResultsResponse,
+)
 from backend.util.exceptions import DatabaseError
 
 from ._test_data import make_session
@@ -198,3 +202,88 @@ async def test_default_mode_still_uses_substring_search(tool, session):
     mock_search.assert_awaited_once()
     assert mock_search.call_args.kwargs["source"] == "library"
     assert mock_search.call_args.kwargs["query"] == "email"
+
+
+@pytest.mark.asyncio
+async def test_agent_id_resolves_by_direct_lookup(tool, session):
+    """agent_id resolves to a single agent via direct by-id lookup."""
+    lib_db = MagicMock()
+    lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    lib_db.get_library_agent = AsyncMock(
+        return_value=_mock_library_agent("lib-1", "Weather Bot")
+    )
+
+    with patch(
+        "backend.copilot.tools.agent_search.library_db",
+        return_value=lib_db,
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="lib-1",
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert result.count == 1
+    assert result.agents[0].id == "lib-1"
+    assert result.agents[0].name == "Weather Bot"
+
+
+@pytest.mark.asyncio
+async def test_agent_id_missing_returns_no_results(tool, session):
+    """An agent_id that resolves to nothing returns NoResults — never a fuzzy
+    name-search fallback."""
+    lib_db = MagicMock()
+    lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    lib_db.get_library_agent = AsyncMock(return_value=None)
+
+    with patch(
+        "backend.copilot.tools.agent_search.library_db",
+        return_value=lib_db,
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="does-not-exist",
+        )
+
+    assert isinstance(result, NoResultsResponse)
+
+
+@pytest.mark.asyncio
+async def test_agent_id_does_not_fall_back_to_query_search(tool, session):
+    """When agent_id is provided, the substring search path is never taken —
+    a missing id must not silently degrade into a fuzzy name search."""
+    lib_db = MagicMock()
+    lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    lib_db.get_library_agent = AsyncMock(return_value=None)
+    list_all = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.tools.agent_search.library_db",
+            return_value=lib_db,
+        ),
+    ):
+        lib_db.list_library_agents = list_all
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="does-not-exist",
+            query="weather",
+        )
+
+    assert isinstance(result, NoResultsResponse)
+    list_all.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_user_returns_error(tool, session):
+    """An unauthenticated by-id lookup is an error, not a search."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        agent_id="lib-1",
+    )
+
+    assert isinstance(result, ErrorResponse)

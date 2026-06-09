@@ -5,13 +5,14 @@ import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
-import { PLAN_KEYS, PLANS } from "@/components/molecules/PlanCard/plans";
+import { PLAN_KEYS } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionStep } from "./useSubscriptionStep";
 
 export function SubscriptionStep() {
   const {
     billing,
     setBilling,
+    plans,
     country,
     isYearly,
     handlePlanSelect,
@@ -72,7 +73,7 @@ export function SubscriptionStep() {
 
         <div className="relative mt-2 w-full max-w-[75.625rem]">
           <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
-            {PLANS.map((plan) => (
+            {plans.map((plan) => (
               <PlanCard
                 key={plan.key}
                 plan={plan}
