@@ -22579,6 +22579,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Source Episode Uuids"
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids"
           }
         },
         "type": "object",
