@@ -1,7 +1,12 @@
 "use server";
 
 import * as Sentry from "@sentry/nextjs";
-import { auth, getServerAuthSession, getServerBackendToken, toLegacyAuthUser } from "@/lib/auth/auth";
+import {
+  auth,
+  getServerAuthSession,
+  getServerBackendToken,
+  toLegacyAuthUser,
+} from "@/lib/auth/auth";
 import { headers } from "next/headers";
 import { getRedirectPath } from "./helpers";
 
@@ -105,7 +110,7 @@ export type ServerLogoutOptions = {
   globalLogout?: boolean;
 };
 
-export async function serverLogout() {
+export async function serverLogout(_options?: ServerLogoutOptions) {
   return await Sentry.withServerActionInstrumentation(
     "serverLogout",
     {},

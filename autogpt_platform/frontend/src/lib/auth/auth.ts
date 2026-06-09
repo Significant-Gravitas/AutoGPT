@@ -46,7 +46,14 @@ type BetterAuthSession = {
   };
 };
 
-let poolSingleton: Pool | null = null;
+function createPool() {
+  return new Pool({
+    connectionString: getDatabaseUrl(),
+    max: 5,
+  });
+}
+
+let poolSingleton: ReturnType<typeof createPool> | null = null;
 
 function getDatabaseUrl() {
   return (
@@ -61,10 +68,7 @@ function getPool() {
     return poolSingleton;
   }
 
-  poolSingleton = new Pool({
-    connectionString: getDatabaseUrl(),
-    max: 5,
-  });
+  poolSingleton = createPool();
 
   return poolSingleton;
 }
@@ -74,13 +78,12 @@ function getBaseUrl() {
     process.env.BETTER_AUTH_URL ||
     process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
     process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-    'http://localhost:3000'
+    "http://localhost:3000"
   );
 }
 
 function getTrustedOrigins() {
-  const configured = process.env.BETTER_AUTH_TRUSTED_ORIGINS
-    ?.split(',')
+  const configured = process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
 
@@ -92,16 +95,18 @@ function getRole(email?: string, explicitRole?: string | null) {
 }
 
 async function findExistingPlatformUser(email: string) {
-  const result = await getPool().query<{
-    id: string;
-    name: string | null;
-    emailVerified: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  }>(
+  const result = (await getPool().query(
     'SELECT id, name, "emailVerified", "createdAt", "updatedAt" FROM platform."User" WHERE email = $1 LIMIT 1',
     [email],
-  );
+  )) as {
+    rows: Array<{
+      id: string;
+      name: string | null;
+      emailVerified: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+  };
 
   return result.rows[0] ?? null;
 }
@@ -112,7 +117,7 @@ function getAuthSecret() {
     process.env.JWT_VERIFY_KEY ||
     process.env.JWT_SECRET ||
     process.env.SUPABASE_JWT_SECRET ||
-    'better-auth-secret-123456789012345678901234'
+    "better-auth-secret-123456789012345678901234"
   );
 }
 
@@ -150,15 +155,15 @@ function getSocialProviders() {
 }
 
 export const auth = betterAuth({
-  appName: 'AutoGPT',
+  appName: "AutoGPT",
   baseURL: getBaseUrl(),
-  basePath: '/api/auth',
+  basePath: "/api/auth",
   secret: getAuthSecret(),
   database: {
     dialect: new PostgresDialect({
       pool: getPool(),
     }),
-    type: 'postgres',
+    type: "postgres",
   },
   trustedOrigins: getTrustedOrigins(),
   emailAndPassword: {
@@ -182,10 +187,10 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: {
-        type: 'string',
+        type: "string",
         required: false,
         input: false,
-        defaultValue: 'authenticated',
+        defaultValue: "authenticated",
       },
     },
     changeEmail: {
@@ -203,14 +208,18 @@ export const auth = betterAuth({
           }
 
           const existing = await findExistingPlatformUser(user.email);
-          const role = getRole(user.email, typeof user.role === 'string' ? user.role : null);
+          const role = getRole(
+            user.email,
+            typeof user.role === "string" ? user.role : null,
+          );
 
           return {
             data: {
               ...user,
               id: existing?.id ?? user.id,
-              name: user.name || existing?.name || user.email.split('@')[0],
-              emailVerified: existing?.emailVerified ?? Boolean(user.emailVerified),
+              name: user.name || existing?.name || user.email.split("@")[0],
+              emailVerified:
+                existing?.emailVerified ?? Boolean(user.emailVerified),
               role,
               createdAt: existing?.createdAt ?? user.createdAt,
               updatedAt: existing?.updatedAt ?? user.updatedAt,
@@ -222,7 +231,9 @@ export const auth = betterAuth({
   },
 });
 
-export function toLegacyAuthUser(session: BetterAuthSession["user"]): LegacyAuthUser {
+export function toLegacyAuthUser(
+  session: BetterAuthSession["user"],
+): LegacyAuthUser {
   const role = getRole(session.email, session.role);
 
   return {
@@ -232,7 +243,7 @@ export function toLegacyAuthUser(session: BetterAuthSession["user"]): LegacyAuth
     name: session.name,
     image: session.image ?? null,
     app_metadata: {
-      provider: 'better-auth',
+      provider: "better-auth",
       role,
     },
     user_metadata: {
@@ -254,9 +265,9 @@ async function signBackendJwt(session: BetterAuthSession) {
   return new SignJWT({
     role,
     email: session.user.email,
-    aud: 'authenticated',
+    aud: "authenticated",
   })
-    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(session.user.id)
     .setIssuedAt(now)
     .setExpirationTime(now + 60 * 60)
@@ -295,7 +306,7 @@ export async function getServerBackendToken() {
 }
 
 export function toAuthError(error: unknown) {
-  const fallback = 'Authentication failed';
+  const fallback = "Authentication failed";
 
   if (error instanceof Error) {
     return {
@@ -304,13 +315,13 @@ export function toAuthError(error: unknown) {
     };
   }
 
-  if (typeof error === 'object' && error !== null) {
-    const maybeMessage = 'message' in error ? error.message : undefined;
-    const maybeCode = 'code' in error ? error.code : undefined;
+  if (typeof error === "object" && error !== null) {
+    const maybeMessage = "message" in error ? error.message : undefined;
+    const maybeCode = "code" in error ? error.code : undefined;
 
     return {
-      message: typeof maybeMessage === 'string' ? maybeMessage : fallback,
-      code: typeof maybeCode === 'string' ? maybeCode : undefined,
+      message: typeof maybeMessage === "string" ? maybeMessage : fallback,
+      code: typeof maybeCode === "string" ? maybeCode : undefined,
     };
   }
 

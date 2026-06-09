@@ -1,4 +1,10 @@
-import { auth, getServerAuthSession, toAuthError, toLegacyAuthSession, toLegacyAuthUser } from "@/lib/auth/auth";
+import {
+  auth,
+  getServerAuthSession,
+  toAuthError,
+  toLegacyAuthSession,
+  toLegacyAuthUser,
+} from "@/lib/auth/auth";
 import { headers } from "next/headers";
 import { cache } from "react";
 
@@ -154,13 +160,28 @@ export const getServerSupabase = cache(async () => {
             });
           }
 
-          const result = await auth.api.updateUser({
-            body: {
-              email: payload.email,
-              name: payload.data?.full_name,
-            },
-            headers: await getRequestHeaders(),
-          });
+          let emailResult: unknown = null;
+          if (payload.email) {
+            emailResult = await auth.api.changeEmail({
+              body: {
+                newEmail: payload.email,
+              },
+              headers: await getRequestHeaders(),
+            });
+          }
+
+          const updateBody: Record<string, unknown> = {};
+          if (payload.data?.full_name) {
+            updateBody.name = payload.data.full_name;
+          }
+
+          const result =
+            Object.keys(updateBody).length > 0
+              ? await auth.api.updateUser({
+                  body: updateBody,
+                  headers: await getRequestHeaders(),
+                })
+              : emailResult;
 
           return {
             data: result,

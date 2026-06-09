@@ -32,7 +32,9 @@ export async function GET(request: Request) {
       const apiError = createUserError as { status?: number };
 
       if (apiError.status === 401) {
-        return NextResponse.redirect(`${origin}/error?message=auth-token-invalid`);
+        return NextResponse.redirect(
+          `${origin}/error?message=auth-token-invalid`,
+        );
       }
       if (typeof apiError.status === "number" && apiError.status >= 500) {
         return NextResponse.redirect(`${origin}/error?message=server-error`);
@@ -49,7 +51,9 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/error?message=network-error`);
     }
 
-    return NextResponse.redirect(`${origin}/error?message=user-creation-failed`);
+    return NextResponse.redirect(
+      `${origin}/error?message=user-creation-failed`,
+    );
   }
 
   next = searchParams.get("next") || next;

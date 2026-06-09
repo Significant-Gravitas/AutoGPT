@@ -9,7 +9,6 @@ export async function sendResetEmail(email: string) {
     "sendResetEmail",
     {},
     async () => {
-      const supabase = await getServerSupabase();
       const origin =
         process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
       try {
@@ -22,7 +21,9 @@ export async function sendResetEmail(email: string) {
         });
       } catch (error) {
         console.error("Error sending reset email", error);
-        return error instanceof Error ? error.message : "Failed to send reset email";
+        return error instanceof Error
+          ? error.message
+          : "Failed to send reset email";
       }
     },
   );
@@ -47,7 +48,9 @@ export async function changePassword(password: string, token?: string | null) {
         });
       } catch (error) {
         console.error("Error changing password", error);
-        return error instanceof Error ? error.message : "Failed to change password";
+        return error instanceof Error
+          ? error.message
+          : "Failed to change password";
       }
 
       redirect("/login");

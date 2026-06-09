@@ -43,7 +43,10 @@ export function clearWebSocketDisconnectIntent(): void {
   storage.clean(Key.WEBSOCKET_DISCONNECT_INTENT);
 }
 
-export function getRedirectPath(path: string, userRole?: string): string | null {
+export function getRedirectPath(
+  path: string,
+  userRole?: string,
+): string | null {
   if (shouldRedirectOnLogout(path)) {
     return `/login?next=${encodeURIComponent(path)}`;
   }

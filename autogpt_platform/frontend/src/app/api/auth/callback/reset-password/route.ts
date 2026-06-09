@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error");
 
     if (error) {
-      const normalizedError = error === "INVALID_TOKEN" ? "link_expired" : error;
+      const normalizedError =
+        error === "INVALID_TOKEN" ? "link_expired" : error;
       return NextResponse.redirect(
         `${origin}/reset-password?error=${encodeURIComponent(normalizedError)}`,
       );

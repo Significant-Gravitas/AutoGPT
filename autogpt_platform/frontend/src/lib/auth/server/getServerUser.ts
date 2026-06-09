@@ -11,7 +11,7 @@ export async function getServerUser() {
     return {
       user: null,
       role: null,
-      error: error?.message || 'No user found in the response',
+      error: error?.message || "No user found in the response",
     };
   }
 

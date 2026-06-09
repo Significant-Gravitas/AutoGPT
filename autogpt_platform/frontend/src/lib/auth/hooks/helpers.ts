@@ -68,7 +68,7 @@ export async function fetchUser() {
 
 export async function validateSession(params: {
   path: string;
-  currentUser: { id: string } | null;
+  currentUser: { id?: string } | null;
 }) {
   try {
     const result = await validateSessionAction(params.path);
