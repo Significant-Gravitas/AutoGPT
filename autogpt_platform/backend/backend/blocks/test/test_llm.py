@@ -10,6 +10,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+from backend.util.exceptions import BlockUserCredentialsInvalidError
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1022,9 +1023,19 @@ class TestUserErrorStatusCodeHandling:
     and are logged as warnings, while server errors (500) trigger retries."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("status_code", [401, 403, 429])
-    async def test_anthropic_user_error_breaks_retry_loop(self, status_code: int):
-        """401/403/429 Anthropic errors should break immediately, not retry."""
+    @pytest.mark.parametrize(
+        "status_code,expected_exc",
+        [
+            (401, "BlockUserCredentialsInvalidError"),
+            (403, "BlockUserCredentialsInvalidError"),
+            (429, "RuntimeError"),
+        ],
+    )
+    async def test_anthropic_user_error_breaks_retry_loop(
+        self, status_code: int, expected_exc: str
+    ):
+        """401/403/429 Anthropic errors should break immediately, not retry.
+        401/403 are tagged as credentials-invalid; 429 is a generic user error."""
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
@@ -1044,7 +1055,12 @@ class TestUserErrorStatusCodeHandling:
                 retry=3,
             )
 
-            with pytest.raises(RuntimeError):
+            exc_type = (
+                BlockUserCredentialsInvalidError
+                if expected_exc == "BlockUserCredentialsInvalidError"
+                else RuntimeError
+            )
+            with pytest.raises(exc_type):
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
@@ -1053,9 +1069,19 @@ class TestUserErrorStatusCodeHandling:
         ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("status_code", [401, 403, 429])
-    async def test_openai_user_error_breaks_retry_loop(self, status_code: int):
-        """401/403/429 OpenAI errors should break immediately, not retry."""
+    @pytest.mark.parametrize(
+        "status_code,expected_exc",
+        [
+            (401, "BlockUserCredentialsInvalidError"),
+            (403, "BlockUserCredentialsInvalidError"),
+            (429, "RuntimeError"),
+        ],
+    )
+    async def test_openai_user_error_breaks_retry_loop(
+        self, status_code: int, expected_exc: str
+    ):
+        """401/403/429 OpenAI errors should break immediately, not retry.
+        401/403 are tagged as credentials-invalid; 429 is a generic user error."""
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
@@ -1075,7 +1101,12 @@ class TestUserErrorStatusCodeHandling:
                 retry=3,
             )
 
-            with pytest.raises(RuntimeError):
+            exc_type = (
+                BlockUserCredentialsInvalidError
+                if expected_exc == "BlockUserCredentialsInvalidError"
+                else RuntimeError
+            )
+            with pytest.raises(exc_type):
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
@@ -1134,7 +1165,7 @@ class TestUserErrorStatusCodeHandling:
             with (
                 patch.object(llm.logger, "warning") as mock_warning,
                 patch.object(llm.logger, "exception") as mock_exception,
-                pytest.raises(RuntimeError),
+                pytest.raises(BlockUserCredentialsInvalidError),
             ):
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
