@@ -25,6 +25,8 @@ from backend.copilot.response_model import (
 )
 from backend.platform_linking.models import (
     BotChatRequest,
+    BotEventInput,
+    BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
     Platform,
@@ -44,8 +46,22 @@ STREAM_CHUNK_TIMEOUT_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
+
+class BotStreamError(Exception):
+    """A copilot stream couldn't produce a successful reply.
+
+    Carries a bounded ``error_kind`` so the handler can attribute analytics
+    accurately instead of guessing from the inline text.
+    """
+
+    def __init__(self, error_kind: str, message: str):
+        super().__init__(message)
+        self.error_kind = error_kind
+
+
 __all__ = [
     "BotBackend",
+    "BotStreamError",
     "ChatSummary",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
@@ -84,11 +100,103 @@ class BotBackend:
 
     def __init__(self):
         self._client = get_platform_linking_manager_client()
+        self._analytics_tasks: set[asyncio.Task] = set()
 
     async def close(self) -> None:
         # The client's lifecycle is owned by the thread-cached factory; nothing
         # to close here. Kept for API compatibility with older bot code.
         pass
+
+    # ── Analytics (fire-and-forget) ──────────────────────────────────────
+    # Usage telemetry must never block or break a user's reply, so every
+    # write is scheduled as a background task that swallows its own errors.
+    # No message content is ever sent — only counts, enums and metrics.
+
+    def _fire_and_forget(self, coro: Awaitable[None]) -> None:
+        task = asyncio.ensure_future(coro)
+        self._analytics_tasks.add(task)
+        task.add_done_callback(self._on_analytics_done)
+
+    def _on_analytics_done(self, task: asyncio.Task) -> None:
+        self._analytics_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.warning("Bot analytics write failed: %s", exc)
+
+    # NOTE: each track method defers Platform() and Pydantic construction into
+    # the background coroutine — that way a bad platform string or validation
+    # error fails the analytics task (which is swallowed) instead of leaking
+    # back into the caller's reply path.
+
+    def track_event(
+        self,
+        *,
+        platform: str,
+        event_type: str,
+        server_id: str | None = None,
+        channel_type: str | None = None,
+        command_name: str | None = None,
+        error_kind: str | None = None,
+        char_count: int | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        async def _send() -> None:
+            await self._client.record_bot_event(
+                event=BotEventInput(
+                    platform=Platform(platform.upper()),
+                    event_type=event_type,
+                    server_id=server_id,
+                    channel_type=channel_type,
+                    command_name=command_name,
+                    error_kind=error_kind,
+                    char_count=char_count,
+                    duration_ms=duration_ms,
+                )
+            )
+
+        self._fire_and_forget(_send())
+
+    def track_guild_joined(
+        self, platform: str, server_id: str, name: str | None = None
+    ) -> None:
+        async def _send() -> None:
+            await self._client.record_guild_joined(
+                guild=BotGuildInput(
+                    platform=Platform(platform.upper()),
+                    server_id=server_id,
+                    name=name,
+                )
+            )
+
+        self._fire_and_forget(_send())
+
+    def track_guild_left(self, platform: str, server_id: str) -> None:
+        async def _send() -> None:
+            await self._client.mark_guild_left(
+                platform=Platform(platform.upper()),
+                server_id=server_id,
+            )
+
+        self._fire_and_forget(_send())
+
+    def sync_guilds(self, platform: str, guilds: list[tuple[str, str | None]]) -> None:
+        async def _send() -> None:
+            platform_enum = Platform(platform.upper())
+            await self._client.sync_guild_presence(
+                platform=platform_enum,
+                guilds=[
+                    BotGuildInput(
+                        platform=platform_enum,
+                        server_id=server_id,
+                        name=name,
+                    )
+                    for server_id, name in guilds
+                ],
+            )
+
+        self._fire_and_forget(_send())
 
     async def resolve_server(
         self, platform: str, platform_server_id: str
@@ -234,8 +342,10 @@ class BotBackend:
             last_message_id=handle.subscribe_from,
         )
         if queue is None:
-            yield "\n[Error: failed to subscribe to response stream]"
-            return
+            raise BotStreamError(
+                "subscribe_failed",
+                "failed to subscribe to response stream",
+            )
 
         setup_notified = False
 
@@ -251,8 +361,10 @@ class BotBackend:
                         STREAM_CHUNK_TIMEOUT_SECONDS,
                         handle.session_id,
                     )
-                    yield "\n[Error: response timed out]"
-                    return
+                    raise BotStreamError(
+                        "stream_timeout",
+                        "response timed out",
+                    )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
                         yield chunk.delta
@@ -269,8 +381,10 @@ class BotBackend:
                     return
                 elif isinstance(chunk, StreamError):
                     logger.error("Stream error from backend: %s", chunk.errorText)
-                    yield f"\n[Error: {chunk.errorText}]"
-                    return
+                    raise BotStreamError(
+                        "backend_stream_error",
+                        chunk.errorText,
+                    )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
                 # aren't useful for the plain-text bot transcript.

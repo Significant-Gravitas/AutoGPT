@@ -224,3 +224,24 @@ class WorkspaceArtifact(BaseModel):
     mime_type: str
     size_bytes: int
     content: bytes
+
+
+class BotEventInput(BaseModel):
+    """A single bot usage event. Never carries message content."""
+
+    platform: Platform
+    event_type: str
+    server_id: str | None = None
+    channel_type: str | None = None
+    command_name: str | None = None
+    error_kind: str | None = None
+    char_count: int | None = None
+    duration_ms: int | None = None
+
+
+class BotGuildInput(BaseModel):
+    """Presence of the bot in a single server."""
+
+    platform: Platform
+    server_id: str
+    name: str | None = None
