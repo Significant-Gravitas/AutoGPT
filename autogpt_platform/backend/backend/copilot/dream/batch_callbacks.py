@@ -401,7 +401,13 @@ async def _finalize_complete(
 
     # Enforce the same per-pass operation caps the sync path applies
     # before writing — the model can over-emit past the prompt's limits.
-    ops = _clamp_operations(ops)
+    # The 5%-of-active-facts demotion ceiling needs the original fact
+    # count; the persisted input bundle still exists here (deleted only
+    # after apply below). A missing bundle (-1) falls back to the
+    # absolute demotion cap rather than zeroing all demotions.
+    input_bundle = await read_input_bundle(pass_id)
+    active_fact_count = len(input_bundle.facts) if input_bundle is not None else -1
+    ops = _clamp_operations(ops, active_fact_count)
 
     try:
         apply_stats = await apply_operations(user_id, pass_id, ops)

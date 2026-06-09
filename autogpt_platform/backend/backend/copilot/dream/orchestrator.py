@@ -85,17 +85,27 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
-def _clamp_operations(ops: DreamOperations) -> DreamOperations:
+def _clamp_operations(ops: DreamOperations, active_fact_count: int) -> DreamOperations:
     """Hard-trim oversized phase 3 outputs.
 
     Phase 3's prompt asks for these caps but the model can still
     over-emit. The orchestrator enforces them in code so apply.py
     never writes more than the policy allows.
+
+    Demotions carry a second ceiling — 5% of the active fact set — so a
+    single pass can never wipe a meaningful fraction of a user's memory
+    even if the absolute ``MAX_DEMOTIONS_PER_PASS`` cap would allow it.
+    ``active_fact_count < 0`` means the count is unknown (the batch path
+    lost its persisted input bundle); fall back to the absolute cap only
+    rather than silently dropping every demotion.
     """
+    demotion_cap = MAX_DEMOTIONS_PER_PASS
+    if active_fact_count >= 0:
+        demotion_cap = min(MAX_DEMOTIONS_PER_PASS, active_fact_count * 5 // 100)
     return DreamOperations(
         writes=ops.writes[:MAX_WRITES_PER_PASS],
         proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
-        demotions=ops.demotions[:MAX_DEMOTIONS_PER_PASS],
+        demotions=ops.demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations,
         summary_for_user=ops.summary_for_user,
     )
@@ -394,7 +404,7 @@ async def _execute_dream_pass_async(
             )
             sanitized = sanitize_completion.value
 
-            ops = _clamp_operations(sanitized)
+            ops = _clamp_operations(sanitized, len(input_bundle.facts))
             apply_stats = await apply_operations(user_id, pass_id, ops)
 
             completed_at = datetime.now(timezone.utc)

@@ -266,10 +266,12 @@ async def test_consolidate_llm_failure_surfaces_error_and_skips_apply(mocker):
 @pytest.mark.asyncio
 async def test_clamps_oversized_sanitizer_output(mocker):
     """The sanitizer model can over-emit; orchestrator must enforce caps."""
+    # 1000 active facts -> 5% ceiling (50) sits above MAX_DEMOTIONS_PER_PASS,
+    # so the absolute cap is the binding one for this assertion.
     mocker.patch.object(
         orchestrator_mod,
         "gather_dream_input",
-        AsyncMock(return_value=_build_input()),
+        AsyncMock(return_value=_build_input(facts=1000)),
     )
     consolidated = ConsolidationOutput(facts=[])
     recombined = RecombinationOutput(proposals=[])
@@ -324,6 +326,80 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     assert len(captured["ops"].writes) == MAX_WRITES_PER_PASS
     assert len(captured["ops"].proposals) == MAX_PROPOSALS_PER_PASS
     assert len(captured["ops"].demotions) == MAX_DEMOTIONS_PER_PASS
+
+
+@pytest.mark.asyncio
+async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
+    """A small active-fact set caps demotions below the absolute limit so
+    one pass can't wipe a meaningful fraction of memory: 5% of 100 = 5,
+    well under MAX_DEMOTIONS_PER_PASS (10)."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(facts=100)),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(
+                    DreamOperations(
+                        demotions=[
+                            DreamDemotion(edge_uuid=f"e{i}", reason="r")
+                            for i in range(50)
+                        ],
+                        summary_for_user="ok",
+                    )
+                ),
+            ]
+        ),
+    )
+
+    captured: dict[str, DreamOperations] = {}
+
+    async def fake_apply(user_id, pass_id, ops):
+        captured["ops"] = ops
+        return {
+            "session_id": "s",
+            "consolidated_count": 0,
+            "proposal_count": 0,
+            "demotion_count": len(ops.demotions),
+            "demotion_failed_count": 0,
+            "entity_invalidation_count": 0,
+        }
+
+    mocker.patch.object(orchestrator_mod, "apply_operations", fake_apply)
+
+    await orchestrator_mod.execute_dream_pass("u")
+
+    assert len(captured["ops"].demotions) == 5
+
+
+def test_clamp_operations_demotion_cap_rules():
+    """Unit-level coverage of the demotion ceiling: min(absolute, 5%), with
+    an unknown count (-1) falling back to the absolute cap."""
+    from .prompts import MAX_DEMOTIONS_PER_PASS
+
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
+    )
+    # 5% of 100 = 5 (below the absolute cap)
+    assert len(orchestrator_mod._clamp_operations(ops, 100).demotions) == 5
+    # 5% of 1000 = 50, so the absolute cap binds
+    assert (
+        len(orchestrator_mod._clamp_operations(ops, 1000).demotions)
+        == MAX_DEMOTIONS_PER_PASS
+    )
+    # Unknown active-fact count -> absolute cap only, never zero
+    assert (
+        len(orchestrator_mod._clamp_operations(ops, -1).demotions)
+        == MAX_DEMOTIONS_PER_PASS
+    )
+    # A tiny fact set floors the 5% ceiling at zero demotions
+    assert len(orchestrator_mod._clamp_operations(ops, 10).demotions) == 0
 
 
 @pytest.mark.asyncio
