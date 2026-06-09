@@ -366,20 +366,17 @@ class TestAdminGating:
     """Non-admin callers must get 403 on every route."""
 
     def test_non_admin_gets_403(self, mock_jwt_user) -> None:
-        # Swap to the non-admin user fixture
+        # Swap to the non-admin user fixture; the autouse setup_app_admin_auth
+        # fixture restores admin auth (clears overrides) on teardown, so no
+        # manual reset is needed.
         app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
-        try:
-            for path in [
-                "/admin/memory/abc/overview",
-                "/admin/memory/abc/entities",
-                "/admin/memory/abc/facts",
-                "/admin/memory/abc/communities",
-            ]:
-                resp = client.get(path)
-                assert resp.status_code == 403, path
-            resp = client.post("/admin/memory/abc/communities/rebuild")
-            assert resp.status_code == 403
-        finally:
-            app.dependency_overrides[get_jwt_payload] = pytest.importorskip(
-                "conftest", reason="reset to admin"
-            ).mock_jwt_admin
+        for path in [
+            "/admin/memory/abc/overview",
+            "/admin/memory/abc/entities",
+            "/admin/memory/abc/facts",
+            "/admin/memory/abc/communities",
+        ]:
+            resp = client.get(path)
+            assert resp.status_code == 403, path
+        resp = client.post("/admin/memory/abc/communities/rebuild")
+        assert resp.status_code == 403
