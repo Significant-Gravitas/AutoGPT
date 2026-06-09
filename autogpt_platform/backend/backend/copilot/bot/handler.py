@@ -7,6 +7,7 @@ persistent typing indicator.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
@@ -25,7 +26,7 @@ from backend.util.settings import Settings
 
 from . import sessions, threads
 from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
-from .bot_backend import BotBackend
+from .bot_backend import BotBackend, BotStreamError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
@@ -89,6 +90,14 @@ class MessageHandler:
         target_id = await self._resolve_target(ctx, adapter)
         if not target_id:
             return  # Thread not subscribed, ignore silently
+
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="message_received",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=len(ctx.text),
+        )
 
         message_text = self._message_text(ctx) if include_thread_history else ctx.text
         await self._enqueue_and_process(ctx, adapter, target_id, message_text)
@@ -353,6 +362,8 @@ class MessageHandler:
                 link_url=session_url,
             )
 
+        started_at = time.monotonic()
+        reply_chars = 0
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
             async for chunk in self._api.stream_chat(
@@ -365,6 +376,7 @@ class MessageHandler:
                 on_setup_required=_on_setup_required,
             ):
                 buffer += chunk
+                reply_chars += len(chunk)
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
                     if post and post.strip():
@@ -377,8 +389,25 @@ class MessageHandler:
             # stay quiet so the user doesn't get a double response.
             logger.info("Duplicate message dropped for target %s", target_id)
             return
+        except BotStreamError as exc:
+            # Stream couldn't complete (timeout, subscribe fail, backend stream
+            # error). Track the specific kind, surface a generic message, and
+            # do NOT fire reply_sent below.
+            logger.warning(
+                "Stream failed for target %s: %s (%s)",
+                target_id,
+                exc,
+                exc.error_kind,
+            )
+            self._track_stream_error(ctx, exc.error_kind)
+            await adapter.send_message(
+                target_id,
+                "AutoPilot ran into an error. Try again in a moment.",
+            )
+            return
         except NotFoundError:
             logger.exception("Chat turn rejected")
+            self._track_stream_error(ctx, "chat_turn_rejected")
             await adapter.send_message(
                 target_id, "AutoPilot ran into an error. Try again later."
             )
@@ -387,6 +416,7 @@ class MessageHandler:
             logger.exception(
                 "Unexpected error during streaming for target %s", target_id
             )
+            self._track_stream_error(ctx, "stream_exception")
             await adapter.send_message(
                 target_id,
                 "Something went wrong. Try again in a moment.",
@@ -411,6 +441,17 @@ class MessageHandler:
                 target_id,
                 "AutoPilot didn't produce a response. Try rephrasing your question.",
             )
+            self._track_stream_error(ctx, "empty_reply")
+            return
+
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="reply_sent",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=reply_chars,
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+        )
 
         if (
             ctx.channel_type == "channel"
@@ -449,6 +490,15 @@ class MessageHandler:
                 return
             if attempt < TITLE_RENAME_ATTEMPTS - 1:
                 await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
+
+    def _track_stream_error(self, ctx: MessageContext, error_kind: str) -> None:
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="stream_error",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            error_kind=error_kind,
+        )
 
     # -- Linking --
 

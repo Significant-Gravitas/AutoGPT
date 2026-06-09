@@ -211,6 +211,13 @@ class DiscordAdapter(PlatformAdapter):
             # rows that pre-date name capture. Cheap: in-memory cache only,
             # no Discord API calls.
             await self._refresh_known_server_names()
+            # Reconcile presence analytics: record every server we're currently
+            # in and mark any we've left while disconnected. Drives the admin
+            # server-count / sharding-prediction charts.
+            self._api.sync_guilds(
+                "discord",
+                [(str(guild.id), guild.name) for guild in self._client.guilds],
+            )
             # Sync slash commands once per process — on_ready fires on every
             # gateway reconnect, but the command tree only needs uploading once.
             if self._commands_synced:
@@ -225,6 +232,7 @@ class DiscordAdapter(PlatformAdapter):
         @self._client.event
         async def on_guild_join(guild: discord.Guild) -> None:
             await self._refresh_server_name(guild)
+            self._api.track_guild_joined("discord", str(guild.id), guild.name)
             channel = intro.pick_intro_channel(guild)
             if channel is None:
                 logger.info(
@@ -244,6 +252,12 @@ class DiscordAdapter(PlatformAdapter):
         async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
             if before.name != after.name:
                 await self._refresh_server_name(after)
+
+        @self._client.event
+        async def on_guild_remove(guild: discord.Guild) -> None:
+            # Bot was kicked or the server was deleted — mark presence as left
+            # so the live server count and sharding prediction stay accurate.
+            self._api.track_guild_left("discord", str(guild.id))
 
         @self._client.event
         async def on_thread_remove(thread: discord.Thread) -> None:

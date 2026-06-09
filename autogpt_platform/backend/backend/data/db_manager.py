@@ -35,6 +35,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.data import bot_analytics as bot_analytics_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -395,6 +396,12 @@ class DatabaseManager(AppService):
     )
     fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
 
+    # ============ Bot Analytics ============ #
+    record_bot_event = _(bot_analytics_db.record_bot_event)
+    record_guild_joined = _(bot_analytics_db.record_guild_joined)
+    mark_guild_left = _(bot_analytics_db.mark_guild_left)
+    sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -641,6 +648,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
     fetch_workspace_artifact = d.fetch_workspace_artifact
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = d.record_bot_event
+    record_guild_joined = d.record_guild_joined
+    mark_guild_left = d.mark_guild_left
+    sync_guild_presence = d.sync_guild_presence
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
