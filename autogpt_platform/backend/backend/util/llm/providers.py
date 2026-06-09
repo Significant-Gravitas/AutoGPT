@@ -1026,6 +1026,38 @@ async def _submit_anthropic_batch(
     )
 
 
+async def cancel_batch(
+    *, provider: ProviderLiteral, provider_batch_id: str, api_key: str
+) -> bool:
+    """Best-effort cancel of an in-flight provider batch.
+
+    Used when local bookkeeping fails *after* the provider already
+    accepted a batch submission (e.g. the BatchExecutor pending-queue
+    write fails): without a cancel the provider would run the paid batch
+    to completion with no callback to consume it, orphaning the spend.
+    Never raises — returns ``True`` only when the provider acknowledged
+    the cancel.
+    """
+    try:
+        if provider == "anthropic":
+            client = anthropic.AsyncAnthropic(api_key=api_key)
+            await client.messages.batches.cancel(provider_batch_id)
+            return True
+        logger.warning(
+            "cancel_batch: no cancel path for provider=%s (batch=%s)",
+            provider,
+            provider_batch_id,
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "cancel_batch: failed to cancel provider=%s batch=%s",
+            provider,
+            provider_batch_id,
+        )
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Batch poll + download (used by the BatchExecutor service)
 # ---------------------------------------------------------------------------

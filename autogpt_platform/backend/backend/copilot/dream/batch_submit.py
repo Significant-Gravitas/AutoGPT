@@ -33,6 +33,7 @@ from backend.util.llm.providers import (
     BatchSubmissionRef,
     ProviderResponse,
     call_provider,
+    cancel_batch,
 )
 from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
 
@@ -215,7 +216,28 @@ async def submit_phase(
             "phase_for_custom_id": {custom_id: phase},
         },
     )
-    await enqueue_pending(entry)
+    try:
+        await enqueue_pending(entry)
+    except Exception:
+        # The provider already accepted (and will bill for) this batch, but
+        # the BatchExecutor now has no pending entry to poll it — left as-is
+        # it would run to completion with no callback, orphaning the spend
+        # and stalling the pass. Best-effort cancel the provider batch before
+        # surfacing the failure so the orchestrator releases the lock + marks
+        # the job failed without leaving a paid, un-pollable batch behind.
+        logger.exception(
+            "Dream pass=%s phase=%s: enqueue failed after batch=%s submitted — "
+            "cancelling orphaned provider batch",
+            pass_id,
+            phase,
+            submission.provider_batch_id,
+        )
+        await cancel_batch(
+            provider="anthropic",
+            provider_batch_id=submission.provider_batch_id,
+            api_key=api_key,
+        )
+        raise
     logger.info(
         "Dream pass=%s submitted %s batch=%s",
         pass_id,

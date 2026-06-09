@@ -1208,3 +1208,51 @@ class TestCallProviderOpenAICompatSync:
                 messages=[_msg("user", "hi")],
                 max_tokens=20,
             )
+
+
+class TestCancelBatch:
+    @pytest.mark.asyncio
+    async def test_anthropic_cancel_calls_sdk_and_returns_true(self):
+        from backend.util.llm.providers import cancel_batch
+
+        async_cancel = AsyncMock(return_value=SimpleNamespace(id="msgbatch_x"))
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(cancel=async_cancel))
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            ok = await cancel_batch(
+                provider="anthropic",
+                provider_batch_id="msgbatch_x",
+                api_key="sk-test",
+            )
+        assert ok is True
+        async_cancel.assert_awaited_once_with("msgbatch_x")
+
+    @pytest.mark.asyncio
+    async def test_non_anthropic_provider_returns_false(self):
+        from backend.util.llm.providers import cancel_batch
+
+        ok = await cancel_batch(
+            provider="openai", provider_batch_id="b1", api_key="sk-test"
+        )
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_cancel_swallows_sdk_error_returns_false(self):
+        from backend.util.llm.providers import cancel_batch
+
+        async_cancel = AsyncMock(side_effect=RuntimeError("boom"))
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(cancel=async_cancel))
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            ok = await cancel_batch(
+                provider="anthropic", provider_batch_id="b1", api_key="sk-test"
+            )
+        assert ok is False
