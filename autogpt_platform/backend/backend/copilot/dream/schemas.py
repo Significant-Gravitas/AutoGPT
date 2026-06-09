@@ -202,6 +202,7 @@ class WriteSummary(BaseModel):
     confidence: float | None = None
     status: Literal["active", "tentative"] = "active"
     source_episode_uuids: list[str] = Field(default_factory=list)
+    source_fact_uuids: list[str] = Field(default_factory=list)
 
 
 class DemotionSummary(BaseModel):

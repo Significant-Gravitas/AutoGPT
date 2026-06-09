@@ -339,6 +339,7 @@ async def apply_operations(
                     confidence=prop.confidence,
                     status="tentative",
                     source_episode_uuids=list(prop.source_episode_uuids),
+                    source_fact_uuids=list(prop.source_fact_uuids),
                 )
             )
 

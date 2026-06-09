@@ -326,6 +326,8 @@ async def test_apply_operations_returns_snapshot_with_per_op_detail(mocker):
     assert snap.writes[0].source_episode_uuids == ["ep-1", "ep-2"]
     assert len(snap.proposals) == 1
     assert snap.proposals[0].status == "tentative"
+    # Proposal provenance must carry BOTH episode + fact source uuids.
+    assert snap.proposals[0].source_fact_uuids == ["f1"]
     assert len(snap.demotions) == 1
     assert snap.demotions[0].edge_uuid == "d1"
     assert snap.demotions[0].new_status == "superseded"
