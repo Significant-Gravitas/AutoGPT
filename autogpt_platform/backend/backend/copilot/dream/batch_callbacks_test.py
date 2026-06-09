@@ -418,6 +418,45 @@ class TestErrorPaths:
         # by Anthropic; apply failing afterward doesn't refund those tokens.
         assert record_cost.await_count == 3
 
+    @pytest.mark.asyncio
+    async def test_unexpected_crash_releases_disowned_lock(self, fake_redis):
+        """An unexpected raise OUTSIDE the handler's own _fail_pass guards
+        (here phase-chaining blows up) must still release the disowned dream
+        lock and mark the job errored. BatchExecutor._dispatch swallows
+        handler exceptions, so without the crash guard this would strand the
+        user behind the lock until its extended TTL."""
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+        )
+
+        chain = AsyncMock(side_effect=RuntimeError("redis exploded mid-chain"))
+        mark_errored = AsyncMock()
+        record_cost = AsyncMock()
+        release_lock = AsyncMock()
+        with patch(
+            "backend.copilot.dream.batch_callbacks._chain_next_phase", chain
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        ):
+            # Must not propagate — the crash guard finalizes and swallows.
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
+            )
+
+        mark_errored.assert_awaited_once()
+        assert "handler crashed" in mark_errored.call_args.kwargs["error"]
+        release_lock.assert_awaited_once_with("u1")
+
 
 class TestMalformedPayload:
     @pytest.mark.asyncio

@@ -188,6 +188,62 @@ async def handle_dream_batch_result(
         await release_dream_lock(user_id)
         return
 
+    try:
+        await _handle_phase_result(
+            rows=rows,
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            phase_models=phase_models,
+            phase=phase,
+        )
+    except Exception:
+        # The batch path disowned the per-user dream lock to this callback,
+        # and BatchExecutor._dispatch swallows handler exceptions — so without
+        # this guard an unexpected error here would strand the user behind the
+        # disowned lock until its extended TTL expired and leave the admin
+        # JobStatus row stuck. Route the crash through _fail_pass (releases the
+        # lock + marks the job errored); if even that fails, release the lock
+        # directly so the user is never blocked on a leaked lock.
+        logger.exception(
+            "Dream batch handler crashed for pass=%s phase=%s", pass_id, phase
+        )
+        try:
+            await _fail_pass(
+                user_id=user_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error=f"{phase}: handler crashed",
+            )
+        except Exception:
+            logger.exception("Dream batch _fail_pass also failed for pass=%s", pass_id)
+            try:
+                await release_dream_lock(user_id)
+            except Exception:
+                logger.exception(
+                    "Dream batch lock release failed for user=%s", user_id[:12]
+                )
+
+
+async def _handle_phase_result(
+    *,
+    rows: list["BatchResultRow"],
+    user_id: str,
+    pass_id: str,
+    job_id: str,
+    phase_models: dict[str, str],
+    phase: DreamPhase,
+) -> None:
+    """Validate one finished phase batch, then chain to the next phase or
+    finalize.
+
+    Split out from ``handle_dream_batch_result`` so the latter can wrap
+    this in a single crash guard that always releases the disowned dream
+    lock — every early-return below already finalizes via ``_fail_pass``,
+    but an *unexpected* raise (Redis blip, apply bug) must not leak the
+    lock either.
+    """
     if not rows:
         logger.warning("Dream batch handler got empty rows for pass=%s", pass_id)
         await _fail_pass(
