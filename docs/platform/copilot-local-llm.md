@@ -80,7 +80,7 @@ CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 # so the advanced toggle never sends a cloud-only slug to Ollama. Set
 # it explicitly only if you want a bigger model for the advanced tier
 # and have the VRAM for it.
-CHAT_FAST_ADVANCED_MODEL=qwen3:14b-instruct-q4_K_M
+CHAT_FAST_ADVANCED_MODEL=qwen3:14b-q4_K_M
 ```
 
 ## Picking a model
@@ -93,7 +93,7 @@ model that handles all three.
 | --- | --- | --- | --- |
 | **Default** | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` | Unsloth-recommended; solid OpenAI-shim tool-calling at 4B; 256 k native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~3.4 GB resident; runs on a 16 GB laptop, GPU-accelerated |
 | **Tight RAM** | `qwen3:4b` | Smaller; native tools; set `think: false` to avoid the unclosed-`<think>` tool-call render bug | ~3-4 GB resident |
-| **GPU / advanced** | `qwen3:14b-instruct-q4_K_M` | Best tool-selection accuracy in this size class | ~12 GB VRAM |
+| **GPU / advanced** | `qwen3:14b-q4_K_M` | Best tool-selection accuracy in this size class | ~12 GB VRAM |
 
 Pull whichever you choose:
 
