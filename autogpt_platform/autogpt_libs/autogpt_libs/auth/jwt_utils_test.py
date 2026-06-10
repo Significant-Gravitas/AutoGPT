@@ -8,8 +8,10 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from jwt.algorithms import ECAlgorithm
 from pytest_mock import MockerFixture
 
 from autogpt_libs.auth import config, jwt_utils
@@ -17,6 +19,7 @@ from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.models import User
 
 MOCK_JWT_SECRET = "test-secret-key-with-at-least-32-characters"
+MOCK_JWKS_URL = "http://localhost:3000/api/auth/jwks"
 TEST_USER_PAYLOAD = {
     "sub": "test-user-id",
     "role": "user",
@@ -35,6 +38,7 @@ TEST_ADMIN_PAYLOAD = {
 def mock_config(mocker: MockerFixture):
     mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": MOCK_JWT_SECRET}, clear=True)
     mocker.patch.object(config, "_settings", Settings())
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
     yield
 
 
@@ -306,3 +310,104 @@ def test_jwt_with_different_algorithms():
         with pytest.raises(ValueError) as exc_info:
             jwt_utils.parse_jwt_token(token)
         assert "Invalid token" in str(exc_info.value)
+
+
+# ==================== JWKS (ASYMMETRIC) VERIFICATION ==================== #
+
+
+def make_es256_keypair(kid: str = "test-key-1"):
+    """Generate an EC P-256 keypair and the matching JWK set document."""
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    jwk = ECAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+    jwk.update({"kid": kid, "alg": "ES256", "use": "sig"})
+    return private_key, {"keys": [jwk]}
+
+
+def create_es256_token(payload, private_key, kid: str = "test-key-1") -> str:
+    return jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": kid})
+
+
+@pytest.fixture
+def jwks_config(mocker: MockerFixture):
+    """Configure both the legacy shared secret and a JWKS endpoint."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_VERIFY_KEY": MOCK_JWT_SECRET, "JWT_JWKS_URL": MOCK_JWKS_URL},
+        clear=True,
+    )
+    mocker.patch.object(config, "_settings", Settings())
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+
+    private_key, jwk_set = make_es256_keypair()
+    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value=jwk_set)
+    yield private_key
+
+
+def test_parse_jwt_token_es256_via_jwks(jwks_config):
+    """An asymmetric token signed by the JWKS key is accepted."""
+    token = create_es256_token(TEST_USER_PAYLOAD, jwks_config)
+    result = jwt_utils.parse_jwt_token(token)
+
+    assert result["sub"] == "test-user-id"
+    assert result["role"] == "user"
+
+
+def test_parse_jwt_token_hs256_still_works_alongside_jwks(jwks_config):
+    """Legacy shared-secret tokens remain valid while JWKS is configured."""
+    token = create_token(TEST_USER_PAYLOAD)
+    result = jwt_utils.parse_jwt_token(token)
+
+    assert result["sub"] == "test-user-id"
+
+
+def test_parse_jwt_token_es256_expired(jwks_config):
+    """An expired asymmetric token is rejected as expired."""
+    expired_payload = {
+        **TEST_USER_PAYLOAD,
+        "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+    }
+    token = create_es256_token(expired_payload, jwks_config)
+
+    with pytest.raises(ValueError, match="Token has expired"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_es256_wrong_audience(jwks_config):
+    """An asymmetric token without the expected audience is rejected."""
+    wrong_aud_payload = {**TEST_USER_PAYLOAD, "aud": "wrong-audience"}
+    token = create_es256_token(wrong_aud_payload, jwks_config)
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_es256_wrong_key(jwks_config):
+    """A token signed by a key that is not in the JWK set is rejected."""
+    other_private_key, _ = make_es256_keypair(kid="other-key")
+    token = create_es256_token(TEST_USER_PAYLOAD, other_private_key, kid="other-key")
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_asymmetric_rejected_without_jwks_url():
+    """Asymmetric tokens are rejected when no JWKS endpoint is configured."""
+    private_key, _ = make_es256_keypair()
+    token = create_es256_token(TEST_USER_PAYLOAD, private_key)
+
+    with pytest.raises(ValueError, match="asymmetric tokens are not accepted"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_symmetric_rejected_without_shared_secret(
+    mocker: MockerFixture,
+):
+    """Symmetric tokens are rejected when only JWKS verification is configured."""
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": MOCK_JWKS_URL}, clear=True)
+    mocker.patch.object(config, "_settings", Settings())
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+
+    token = create_token(TEST_USER_PAYLOAD)
+
+    with pytest.raises(ValueError, match="symmetric tokens are not accepted"):
+        jwt_utils.parse_jwt_token(token)

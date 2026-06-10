@@ -304,3 +304,70 @@ def test_algorithm_asymmetric_no_warning(
         # Should not contain the symmetric algorithm warning
         assert "symmetric shared-key signature algorithm" not in caplog.text
         assert settings.JWT_ALGORITHM == algorithm
+
+
+def test_jwks_url_alone_is_sufficient(mocker: MockerFixture):
+    """Test that JWT_JWKS_URL without a shared secret passes validation."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=True,
+    )
+
+    settings = Settings()
+    assert settings.JWT_JWKS_URL == "http://localhost:3000/api/auth/jwks"
+    assert settings.JWT_VERIFY_KEY == ""
+
+
+def test_jwks_algorithms_default(mocker: MockerFixture):
+    """Test the default JWKS algorithm allow-list."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=True,
+    )
+
+    settings = Settings()
+    assert settings.JWT_JWKS_ALGORITHMS == ["ES256", "RS256", "EdDSA"]
+
+
+def test_jwks_algorithms_custom(mocker: MockerFixture):
+    """Test overriding the JWKS algorithm allow-list."""
+    mocker.patch.dict(
+        os.environ,
+        {
+            "JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks",
+            "JWT_JWKS_ALGORITHMS": "ES256",
+        },
+        clear=True,
+    )
+
+    settings = Settings()
+    assert settings.JWT_JWKS_ALGORITHMS == ["ES256"]
+
+
+@pytest.mark.parametrize("algorithm", ["HS256", "none", "INVALID"])
+def test_jwks_algorithms_rejects_unsafe_entries(mocker: MockerFixture, algorithm: str):
+    """Test that symmetric/invalid algorithms are rejected for JWKS use."""
+    mocker.patch.dict(
+        os.environ,
+        {
+            "JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks",
+            "JWT_JWKS_ALGORITHMS": algorithm,
+        },
+        clear=True,
+    )
+
+    with pytest.raises(AuthConfigError) as exc_info:
+        Settings()
+    assert "JWT_JWKS_ALGORITHMS" in str(exc_info.value)
+
+
+def test_neither_key_nor_jwks_raises_error(mocker: MockerFixture):
+    """Test that missing both verification mechanisms raises AuthConfigError."""
+    mocker.patch.dict(os.environ, {}, clear=True)
+
+    with pytest.raises(AuthConfigError) as exc_info:
+        Settings()
+    assert "JWT_JWKS_URL" in str(exc_info.value)
+    assert "JWT_VERIFY_KEY" in str(exc_info.value)

@@ -81,6 +81,87 @@ model User {
   PlatformUserLinks PlatformUserLink[]
 }
 
+// ============ Auth service (Better Auth) tables ============ //
+// Owned by Prisma migrations, but read/written at runtime by the Better Auth
+// service embedded in the frontend (via its pg adapter). Table and column
+// names must match Better Auth's expected model/field names exactly.
+
+model AuthUser {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String?
+  banned        Boolean?
+  banReason     String?
+  banExpires    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now())
+
+  sessions AuthSession[]
+  accounts AuthAccount[]
+
+  @@map("user")
+}
+
+model AuthSession {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now())
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model AuthJwks {
+  id         String   @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime @default(now())
+
+  @@map("jwks")
+}
+
 enum ChatSessionStatus {
   idle
   queued

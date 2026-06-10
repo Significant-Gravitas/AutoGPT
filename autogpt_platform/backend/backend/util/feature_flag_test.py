@@ -176,33 +176,47 @@ class TestEnvFlagOverride:
 
 class TestUserContext:
     @staticmethod
-    def _stub_supabase(mocker, *, created_at, role="authenticated", email="x@y.com"):
-        user = mocker.MagicMock(role=role, email=email, created_at=created_at)
-        response = mocker.MagicMock(user=user)
-        supabase = mocker.MagicMock()
-        supabase.auth.admin.get_user_by_id.return_value = response
-        mocker.patch("backend.util.clients.get_supabase", return_value=supabase)
-        return supabase
+    def _stub_auth_user(mocker, *, created_at, role=None, email="x@y.com"):
+        user = mocker.MagicMock(role=role, email=email, createdAt=created_at)
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.authuser.find_unique = mocker.AsyncMock(return_value=user)
+        return mock_prisma
 
     @pytest.mark.asyncio
     async def test_context_includes_created_at_iso_string(self, mocker):
         created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        supabase = self._stub_supabase(mocker, created_at=created)
+        mock_prisma = self._stub_auth_user(mocker, created_at=created)
         user_id = str(uuid.uuid4())
 
         ctx = await _fetch_user_context_data(user_id)
 
         assert ctx.get("created_at") == created.isoformat()
         assert ctx.get("email") == "x@y.com"
-        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+        mock_prisma.authuser.find_unique.assert_called_once_with(where={"id": user_id})
 
     @pytest.mark.asyncio
     async def test_context_skips_created_at_when_missing(self, mocker):
-        supabase = self._stub_supabase(mocker, created_at=None)
+        mock_prisma = self._stub_auth_user(mocker, created_at=None)
         user_id = str(uuid.uuid4())
 
         ctx = await _fetch_user_context_data(user_id)
 
         assert "created_at" not in ctx.custom_attributes
         assert ctx.get("email") == "x@y.com"
-        supabase.auth.admin.get_user_by_id.assert_called_once_with(user_id)
+        mock_prisma.authuser.find_unique.assert_called_once_with(where={"id": user_id})
+
+    @pytest.mark.asyncio
+    async def test_context_maps_admin_role_through(self, mocker):
+        self._stub_auth_user(mocker, created_at=None, role="admin")
+
+        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+
+        assert ctx.get("role") == "admin"
+
+    @pytest.mark.asyncio
+    async def test_context_normalizes_non_admin_role_to_authenticated(self, mocker):
+        self._stub_auth_user(mocker, created_at=None, role="user")
+
+        ctx = await _fetch_user_context_data(str(uuid.uuid4()))
+
+        assert ctx.get("role") == "authenticated"

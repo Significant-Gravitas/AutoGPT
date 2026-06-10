@@ -126,7 +126,7 @@ def shutdown_launchdarkly() -> None:
 @cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
-    Fetch user context for LaunchDarkly from Supabase.
+    Fetch user context for LaunchDarkly from the auth user table.
 
     Args:
         user_id: The user ID to fetch data for
@@ -139,28 +139,29 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     try:
         uuid.UUID(user_id)
     except ValueError:
-        # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
+        # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
         return builder.build()
 
     try:
-        from backend.util.clients import get_supabase
+        # Local import to avoid a util <-> data import cycle.
+        from backend.data.db import prisma
 
-        # If we have user data, update context
-        response = get_supabase().auth.admin.get_user_by_id(user_id)
-        if response and response.user:
-            user = response.user
+        user = await prisma.authuser.find_unique(where={"id": user_id})
+        if user:
             builder.anonymous(False)
-            if user.role:
-                builder.set("role", user.role)
-                # It's weird, I know, but it is what it is.
-                builder.set("custom", {"role": user.role})
+            # Keep the same role values previously issued in JWTs so existing
+            # LaunchDarkly targeting rules keep matching.
+            role = "admin" if user.role == "admin" else "authenticated"
+            builder.set("role", role)
+            # It's weird, I know, but it is what it is.
+            builder.set("custom", {"role": role})
             if user.email:
                 builder.set("email", user.email)
                 builder.set("email_domain", user.email.split("@")[-1])
-            if user.created_at:
+            if user.createdAt:
                 # ISO-8601 string — LD supports RFC3339 date targeting on
                 # this attribute (e.g. cohort users by signup window).
-                builder.set("created_at", user.created_at.isoformat())
+                builder.set("created_at", user.createdAt.isoformat())
 
     except Exception as e:
         logger.warning(f"Failed to fetch user context for {user_id}: {e}")

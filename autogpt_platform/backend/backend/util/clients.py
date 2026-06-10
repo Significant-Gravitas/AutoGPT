@@ -13,7 +13,6 @@ settings = Settings()
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
-    from supabase import AClient, Client
 
     from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
@@ -154,29 +153,6 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
     return IntegrationCredentialsStore()
-
-
-# ============ Supabase Clients ============ #
-
-
-@cached(ttl_seconds=3600)
-def get_supabase() -> "Client":
-    """Get a process-cached synchronous Supabase client instance."""
-    from supabase import create_client
-
-    return create_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
-
-
-@cached(ttl_seconds=3600)
-async def get_async_supabase() -> "AClient":
-    """Get a process-cached asynchronous Supabase client instance."""
-    from supabase import create_async_client
-
-    return await create_async_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
 
 
 # ============ OpenAI Client ============ #

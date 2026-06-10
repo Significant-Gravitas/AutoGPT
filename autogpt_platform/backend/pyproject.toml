@@ -16,6 +16,7 @@ agentmail = "^0.4.5"
 anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
+bcrypt = "^5.0.0"
 bleach = { extras = ["css"], version = "^6.2.0" }
 cachetools = "^5.5.0"
 claude-agent-sdk = "^0.1.64"  # bundled CLI 2.1.116 -- 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 env var strips the broken context-management beta. See sdk_compat_test.py.
@@ -72,7 +73,6 @@ sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlal
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
-supabase = "2.28.0"
 tenacity = "^9.1.4"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"

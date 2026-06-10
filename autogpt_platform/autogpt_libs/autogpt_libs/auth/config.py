@@ -16,7 +16,8 @@ ALGO_RECOMMENDATION = (
     "We highly recommend using an asymmetric algorithm such as ES256, "
     "because when leaked, a shared secret would allow anyone to "
     "forge valid tokens and impersonate users. "
-    "More info: https://supabase.com/docs/guides/auth/signing-keys#choosing-the-right-signing-algorithm"  # noqa
+    "Configure JWT_JWKS_URL to verify asymmetric tokens issued by the "
+    "platform auth service."
 )
 
 
@@ -26,17 +27,23 @@ class Settings:
             "JWT_VERIFY_KEY", os.getenv("SUPABASE_JWT_SECRET", "")
         ).strip()
         self.JWT_ALGORITHM: str = os.getenv("JWT_SIGN_ALGORITHM", "HS256").strip()
+        self.JWT_JWKS_URL: str = os.getenv("JWT_JWKS_URL", "").strip()
+        self.JWT_JWKS_ALGORITHMS: list[str] = [
+            algo.strip()
+            for algo in os.getenv("JWT_JWKS_ALGORITHMS", "ES256,RS256,EdDSA").split(",")
+            if algo.strip()
+        ]
 
         self.validate()
 
     def validate(self):
-        if not self.JWT_VERIFY_KEY:
+        if not self.JWT_VERIFY_KEY and not self.JWT_JWKS_URL:
             raise AuthConfigError(
-                "JWT_VERIFY_KEY must be set. "
-                "An empty JWT secret would allow anyone to forge valid tokens."
+                "Either JWT_JWKS_URL or JWT_VERIFY_KEY must be set. "
+                "Without a verification key, anyone could forge valid tokens."
             )
 
-        if len(self.JWT_VERIFY_KEY) < 32:
+        if self.JWT_VERIFY_KEY and len(self.JWT_VERIFY_KEY) < 32:
             logger.warning(
                 "⚠️ JWT_VERIFY_KEY appears weak (less than 32 characters). "
                 "Consider using a longer, cryptographically secure secret."
@@ -45,6 +52,11 @@ class Settings:
         supported_algorithms = get_default_algorithms().keys()
 
         if not has_crypto:
+            if self.JWT_JWKS_URL:
+                raise AuthConfigError(
+                    "JWT_JWKS_URL is set but the 'cryptography' package is not "
+                    "installed, so asymmetric JWT verification is unavailable."
+                )
             logger.warning(
                 "⚠️ Asymmetric JWT verification is not available "
                 "because the 'cryptography' package is not installed. "
@@ -61,7 +73,18 @@ class Settings:
                 "https://pyjwt.readthedocs.io/en/stable/algorithms.html"
             )
 
-        if self.JWT_ALGORITHM.startswith("HS"):
+        for algo in self.JWT_JWKS_ALGORITHMS:
+            if (
+                algo not in supported_algorithms
+                or algo == "none"
+                or algo.startswith("HS")
+            ):
+                raise AuthConfigError(
+                    f"Invalid JWT_JWKS_ALGORITHMS entry: '{algo}'. "
+                    "JWKS verification only supports asymmetric algorithms."
+                )
+
+        if self.JWT_VERIFY_KEY and self.JWT_ALGORITHM.startswith("HS"):
             logger.warning(
                 f"⚠️ JWT_SIGN_ALGORITHM is set to '{self.JWT_ALGORITHM}', "
                 "a symmetric shared-key signature algorithm. " + ALGO_RECOMMENDATION
