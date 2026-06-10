@@ -5,11 +5,12 @@ INCR/read paths the ratification pass consults. Kept in its own
 module so ``ratification.py`` stays focused on the pass logic and
 fits the file-length budget.
 
-Wiring note: ``record_memory_hit`` is provided here, but the call
-sites in warm-context retrieval (``graphiti/context.py``) are NOT
-wired in this task. That wiring is a follow-up; without it the
-ratification pass will only ever supersede past-grace tentatives,
-which is the safer of the two failure modes.
+Wiring note: warm-context retrieval (``graphiti/context.py``) fires
+``ratification.try_ratify_on_hit`` for every retrieved edge, which
+both bumps the counter here (via ``record_memory_hit``) and promotes
+tentative edges inline. The nightly ratification sweep therefore
+rarely promotes — it primarily owns grace-period supersession of
+tentatives that never earned a hit.
 """
 
 from __future__ import annotations
@@ -21,9 +22,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Grace period a tentative edge has to earn a warm-context hit before
-# being superseded. Spec §5 calls for a multi-day window so users get
-# a few sessions worth of opportunities to retrieve the memory.
-RATIFICATION_GRACE_PERIOD = timedelta(days=7)
+# being superseded. Spec §5 mandates 30 days so even low-cadence users
+# get several sessions worth of opportunities to retrieve the memory.
+RATIFICATION_GRACE_PERIOD = timedelta(days=30)
 
 # Redis key prefix for warm-context hit tracking. One key per
 # (user, edge) so we can INCR without contention and let TTL clean up
@@ -50,11 +51,13 @@ async def record_memory_hit(user_id: str, edge_uuid: str) -> None:
         redis = await get_redis_async()
         key = hit_key(user_id, edge_uuid)
         ttl_seconds = int(RATIFICATION_GRACE_PERIOD.total_seconds())
-        # SET with NX + EX seeds the key with TTL, then INCR. Doing
-        # INCR alone on a missing key would lose the TTL on subsequent
-        # hits (Redis only applies EXPIRE when explicitly set).
+        # SET with NX + EX seeds the key with TTL, then INCR (which
+        # never touches TTL), then EXPIRE so every hit refreshes the
+        # window to the full grace period. All three are single-key
+        # commands, so this stays cluster-safe.
         await redis.set(key, 0, nx=True, ex=ttl_seconds)
         await redis.incr(key)
+        await redis.expire(key, ttl_seconds)
     except Exception:
         logger.debug(
             "record_memory_hit failed for user %s edge %s",

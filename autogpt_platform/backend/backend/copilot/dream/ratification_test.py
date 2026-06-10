@@ -21,6 +21,7 @@ from .ratification import (
     RatificationResult,
     run_ratification_pass,
 )
+from .ratification_hits import hit_key, record_memory_hit
 
 
 def _make_driver(records_for_list: list[dict], records_for_promote=None):
@@ -83,6 +84,7 @@ def fake_redis(mocker):
     class FakeRedis:
         def __init__(self):
             self.hits: dict[str, int] = {}
+            self.expire_calls: list[tuple[str, int]] = []
 
         async def get(self, key: str):
             # Keys are ``mem:hits:{user_id}:{edge_uuid}`` — split off the uuid.
@@ -97,6 +99,10 @@ def fake_redis(mocker):
             edge_uuid = key.rsplit(":", 1)[-1]
             self.hits[edge_uuid] = self.hits.get(edge_uuid, 0) + 1
             return self.hits[edge_uuid]
+
+        async def expire(self, key: str, ttl_seconds: int):
+            self.expire_calls.append((key, ttl_seconds))
+            return True
 
     redis = FakeRedis()
     mocker.patch(
@@ -192,6 +198,38 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
     assert promote_calls == []
 
 
+def test_grace_period_is_thirty_days_per_spec():
+    """Spec §5: tentative edges get 30 days to earn a hit before they
+    are superseded. Pin the constant so a shorter window (which would
+    silently drop correct memories for low-cadence users) can't sneak
+    back in."""
+    assert RATIFICATION_GRACE_PERIOD == timedelta(days=30)
+
+
+@pytest.mark.asyncio
+async def test_unhit_edge_just_inside_grace_window_is_untouched(
+    mocker, fake_redis, stub_mark_superseded
+):
+    """Boundary: zero hits with one hour of grace left → still a no-op.
+    Derived from RATIFICATION_GRACE_PERIOD so the boundary moves with
+    the constant rather than re-encoding a day count."""
+    created_at = datetime.now(timezone.utc) - (
+        RATIFICATION_GRACE_PERIOD - timedelta(hours=1)
+    )
+    edge = {"uuid": "edge-near-boundary", "created_at": created_at}
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
+    )
+
+    result = await run_ratification_pass("u-near-boundary")
+
+    assert result.ratified_count == 0
+    assert result.superseded_count == 0
+    assert result.examined_count == 1
+    stub_mark_superseded.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_already_active_edges_are_not_in_scope_of_the_listing_query(
     mocker, fake_redis, stub_mark_superseded
@@ -238,7 +276,10 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     edges = [
         {"uuid": "edge-good-hot", "created_at": _hours_ago(2)},
         {"uuid": "edge-poison", "created_at": _hours_ago(2)},
-        {"uuid": "edge-good-stale", "created_at": _days_ago(30)},
+        {
+            "uuid": "edge-good-stale",
+            "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+        },
     ]
     driver = _make_driver(records_for_list=edges)
     mocker.patch.object(
@@ -267,6 +308,43 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+
+
+# ---------------------------------------------------------------------------
+# record_memory_hit — Redis hit tracker (ratification_hits.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hit_refreshes_ttl_to_full_grace_period(fake_redis):
+    """Every hit — not just the first — must reset the counter's TTL to
+    the full grace period. Without the EXPIRE after INCR, the TTL set
+    by the initial SET NX EX runs out mid-window and the nightly sweep
+    falsely reads zero hits for an edge that was being used."""
+    grace_seconds = int(RATIFICATION_GRACE_PERIOD.total_seconds())
+
+    await record_memory_hit("u-ttl", "edge-busy")
+    await record_memory_hit("u-ttl", "edge-busy")
+    await record_memory_hit("u-ttl", "edge-busy")
+
+    key = hit_key("u-ttl", "edge-busy")
+    assert fake_redis.expire_calls == [(key, grace_seconds)] * 3
+    assert fake_redis.hits["edge-busy"] == 3
+
+
+@pytest.mark.asyncio
+async def test_record_memory_hit_swallows_ttl_refresh_failure(fake_redis):
+    """A failing EXPIRE must not propagate to the chat path — the hit
+    itself was still counted, and the next call site refreshes the TTL."""
+
+    async def exploding_expire(key: str, ttl_seconds: int):
+        raise RuntimeError("simulated redis explosion")
+
+    fake_redis.expire = exploding_expire
+
+    await record_memory_hit("u-ttl", "edge-busy")
+
+    assert fake_redis.hits["edge-busy"] == 1
 
 
 # ---------------------------------------------------------------------------
