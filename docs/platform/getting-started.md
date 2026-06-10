@@ -120,6 +120,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
+| `make init-env`        | Create `.env` files from `.env.default` (root, backend, and frontend)         |
 | `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
@@ -130,10 +131,15 @@ Inside the `autogpt_platform` directory, you can use:
 
 *Example usage:*
 ```sh
+make init-env
 make start-core
 make run-backend
 make run-frontend
 ```
+
+> `make init-env` matters when running the frontend outside Docker: Next.js
+> only reads `.env` (not `.env.default`), and the frontend's embedded auth
+> service needs `DATABASE_URL` and `BETTER_AUTH_SECRET` from it.
 
 You can always check available Makefile recipes by running:
 ```sh
@@ -154,6 +160,33 @@ By default the application for different services run on the following ports:
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
 Execution API Rest Server: 8006
+
+### Upgrading an existing (Supabase-based) installation
+
+Older versions of the platform ran authentication on a bundled Supabase
+stack. If you self-hosted before the switch to the built-in auth service,
+three things changed:
+
+1. **Environment files**: refresh your `.env` files against the new
+   `.env.default`s (`make init-env` creates missing ones; merge your secrets
+   back in). The `SUPABASE_*` URL/key variables are gone; the frontend now
+   uses `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+2. **Database location**: the database now lives in a plain Postgres
+   container with its data in `autogpt_platform/volumes/db/data`. Your old
+   data is untouched at `autogpt_platform/db/docker/volumes/db/data` but is
+   no longer mounted. To carry your data over, dump it from the old volume
+   and restore it into the new `db` service before starting the rest of the
+   stack (`pg_dump`/`psql` against a temporary container using the old
+   volume), then run `docker compose run --rm migrate`.
+3. **User accounts**: after restoring, run the one-time auth migration so
+   existing logins keep working:
+   ```sh
+   cd frontend && DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npx tsx scripts/migrate-supabase-auth.ts
+   ```
+   Keep `SUPABASE_JWT_SECRET` set in `frontend/.env` for a while so users
+   with old sessions are signed in automatically on their next visit.
+
+A fresh install (empty database) needs none of this.
 
 ### Additional Notes
 

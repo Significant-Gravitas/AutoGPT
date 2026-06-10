@@ -31,7 +31,13 @@ export const auth = betterAuth({
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({
-    connectionString: process.env.DATABASE_URL,
+    // Fallback matches the docker-compose db service so `make run-frontend`
+    // works against `make start-core` without a frontend/.env, mirroring the
+    // localhost fallbacks in services/environment. Production must set
+    // DATABASE_URL explicitly.
+    connectionString:
+      process.env.DATABASE_URL ||
+      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres",
     // Better Auth shares the platform Postgres; its tables live in the same
     // schema as the Prisma-managed ones (created by the backend migrations).
     options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
