@@ -188,6 +188,10 @@ async def mark_complete(
     Accepts either a Pydantic model (preferred — preserves typed
     fields through JSON serialization) or a plain dict for legacy
     callers that build the payload by hand.
+
+    Refuses terminal→terminal transitions (symmetric with
+    ``mark_errored``): once a row is complete or errored, its result
+    is authoritative and later writers must not rewrite it.
     """
     existing = await read_status(kind=kind, job_id=job_id)
     if existing is None:
@@ -197,6 +201,15 @@ async def mark_complete(
             job_id[:12],
         )
         return None
+    if existing.state in ("complete", "errored"):
+        logger.warning(
+            "mark_complete: refusing to overwrite terminal job kind=%s "
+            "job_id=%s state=%s",
+            kind,
+            job_id[:12],
+            existing.state,
+        )
+        return existing
     serialized = result.model_dump() if isinstance(result, BaseModel) else result
     now = datetime.now(timezone.utc)
     updated = existing.model_copy(

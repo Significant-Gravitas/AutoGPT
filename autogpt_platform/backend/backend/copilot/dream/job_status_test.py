@@ -159,6 +159,18 @@ class TestMarkComplete:
         result = await mark_complete(kind="nightly", job_id="ghost", result={})
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_refuses_to_overwrite_errored_job(self, fake_redis):
+        """Terminal→terminal is rejected: a late mark_complete must not
+        rewrite a job that already failed (symmetric with mark_errored's
+        complete guard)."""
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u")
+        await mark_errored(kind="dream_pass", job_id="j1", error="boom")
+        result = await mark_complete(kind="dream_pass", job_id="j1", result={"n": 1})
+        assert result is not None
+        assert result.state == "errored"
+        assert result.error == "boom"
+
 
 class TestMarkErrored:
     @pytest.mark.asyncio
@@ -180,6 +192,18 @@ class TestMarkErrored:
         assert updated is not None
         assert updated.error is not None
         assert len(updated.error) == 2000
+
+    @pytest.mark.asyncio
+    async def test_refuses_to_overwrite_completed_job(self, fake_redis):
+        """A transient error routed through a crash guard after the success
+        tail must not rewrite a completed job (whose writes landed) as
+        errored."""
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u")
+        await mark_complete(kind="dream_pass", job_id="j1", result={"n": 1})
+        result = await mark_errored(kind="dream_pass", job_id="j1", error="late blip")
+        assert result is not None
+        assert result.state == "complete"
+        assert result.result == {"n": 1}
 
 
 class TestReadStatus:
