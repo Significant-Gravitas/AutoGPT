@@ -784,12 +784,20 @@ async def trigger_dream_pass(
     response_model=DreamJobStatus,
 )
 async def get_dream_pass_status(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> DreamJobStatus:
     """Read the current status of a fire-and-forget dream pass job."""
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     status = await read_status(kind="dream_pass", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -906,12 +914,20 @@ async def trigger_nightly_batch(
     response_model=NightlyJobStatus,
 )
 async def get_nightly_batch_status(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> NightlyJobStatus:
     """Read the current status of a fire-and-forget nightly batch job."""
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     status = await read_status(kind="nightly", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -998,12 +1014,20 @@ async def rebuild_communities(
     response_model=CommunityRebuildJobStatus,
 )
 async def get_community_rebuild_status(
+    request: Request,
     user_id: Annotated[str, Path(description="User id or 'me'")],
     job_id: Annotated[str, Path(description="Job id returned by the POST")],
     caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> CommunityRebuildJobStatus:
     """Read the current status of a fire-and-forget community rebuild job."""
     target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
     status = await read_status(kind="rebuild", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")
