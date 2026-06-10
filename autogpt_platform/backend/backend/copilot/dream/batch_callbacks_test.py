@@ -466,6 +466,50 @@ class TestPhaseChaining:
 
 class TestErrorPaths:
     @pytest.mark.asyncio
+    async def test_malformed_payload_marks_job_errored_not_stuck(self, fake_redis):
+        """A payload missing pass_id/phase is a dead end the normal fail
+        path can't reach — the admin row must still go terminal instead of
+        sitting queued/submitted until its TTL."""
+        from backend.copilot.dream.job_status import read_status, write_initial_status
+
+        await write_initial_status(kind="dream_pass", job_id="j-dead", user_id="u1")
+        entry = _entry(phase="consolidate")
+        entry.payload = {"user_id": "u1", "job_id": "j-dead"}
+
+        with patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        final = await read_status(kind="dream_pass", job_id="j-dead")
+        assert final is not None
+        assert final.state == "errored"
+        assert "missing" in (final.error or "")
+
+    @pytest.mark.asyncio
+    async def test_unknown_phase_marks_job_errored_not_stuck(self, fake_redis):
+        from backend.copilot.dream.job_status import read_status, write_initial_status
+
+        await write_initial_status(kind="dream_pass", job_id="j-odd", user_id="u1")
+        entry = _entry(phase="consolidate")
+        entry.payload = {
+            "user_id": "u1",
+            "pass_id": "p1",
+            "job_id": "j-odd",
+            "phase": "daydream",
+        }
+
+        with patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        final = await read_status(kind="dream_pass", job_id="j-odd")
+        assert final is not None
+        assert final.state == "errored"
+        assert "unknown batch phase" in (final.error or "")
+
+    @pytest.mark.asyncio
     async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
         mark_errored = AsyncMock()
         record_cost = AsyncMock()
@@ -813,7 +857,10 @@ class TestLockTokenWiring:
         assert final is not None
         assert final.state == "complete"
         assert final.result is not None
-        assert final.result["summary_for_user"] == "ok"
+        # Counts are attempted ops, not confirmed apply results — the
+        # summary must say so.
+        assert final.result["summary_for_user"].endswith("ok")
+        assert "duplicate delivery" in final.result["summary_for_user"]
 
     @pytest.mark.asyncio
     async def test_duplicate_dispatch_leaves_terminal_job_untouched(self, fake_redis):

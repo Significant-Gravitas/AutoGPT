@@ -150,6 +150,20 @@ def _phase_models_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+async def _mark_job_errored_best_effort(job_id: str, error: str) -> None:
+    """Close the admin job row on a dead-end the normal fail path can't
+    reach (malformed payload). Best-effort: status write failures are
+    logged, never raised."""
+    if not job_id:
+        return
+    try:
+        from .job_status import mark_errored
+
+        await mark_errored(kind="dream_pass", job_id=job_id, error=error)
+    except Exception:
+        logger.exception("Failed to mark dead-end job %s errored", job_id[:12])
+
+
 async def _finalize_stuck_duplicate(
     *, user_id: str, pass_id: str, job_id: str, ops: DreamOperations
 ) -> None:
@@ -175,6 +189,14 @@ async def _finalize_stuck_duplicate(
             job_id[:12],
             existing.state,
         )
+        # The first delivery's per-edge outcomes (and dream session id)
+        # died with it, so the counts here are the clamped *attempted*
+        # ops — annotate the summary so the admin UI doesn't present
+        # them as confirmed apply results.
+        note = (
+            "[finalized after duplicate delivery — counts reflect attempted "
+            "operations; writes landed with the original delivery] "
+        )
         await mark_complete(
             kind="dream_pass",
             job_id=job_id,
@@ -186,7 +208,7 @@ async def _finalize_stuck_duplicate(
                 proposal_count=len(ops.proposals),
                 demotion_count=len(ops.demotions),
                 entity_invalidation_count=len(ops.entity_invalidations),
-                summary_for_user=ops.summary_for_user,
+                summary_for_user=note + (ops.summary_for_user or ""),
             ),
         )
     except Exception:
@@ -265,14 +287,19 @@ async def handle_dream_batch_result(
             "Dream batch handler missing user_id/pass_id/phase — payload=%s",
             payload,
         )
-        # The batch path disowned the dream lock to this callback; release it
-        # on this dead-end so the user isn't locked out until the 24h TTL.
+        # Dead-end payload: close the admin job row (it would otherwise sit
+        # queued/submitted until its TTL) and release the disowned lock so
+        # the user isn't locked out until the 24h TTL.
+        await _mark_job_errored_best_effort(
+            job_id, "batch payload missing user_id/pass_id/phase"
+        )
         if user_id:
             await _release_lock(user_id, pass_id)
         return
 
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
+        await _mark_job_errored_best_effort(job_id, f"unknown batch phase {phase!r}")
         await _release_lock(user_id, pass_id)
         return
 
