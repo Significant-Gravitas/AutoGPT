@@ -271,6 +271,127 @@ class TestExecuteNightlyBatchSyncRuntimeGate:
         fanout_mock.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# JobStatus transitions for the admin-triggered nightly fan-out wrapper
+# ---------------------------------------------------------------------------
+
+
+def _nightly_result(**overrides):
+    from backend.copilot.dream.nightly_batch import NightlyBatchResult
+
+    defaults = {
+        "user_id": "abc",
+        "nightly_id": "nightly-1",
+        "started_at": datetime.now(timezone.utc),
+        "completed_at": datetime.now(timezone.utc),
+        "elapsed_seconds": 1.0,
+    }
+    defaults.update(overrides)
+    return NightlyBatchResult(**defaults)
+
+
+def _dream_result(**overrides):
+    from backend.copilot.dream.schemas import DreamPassResult
+
+    defaults = {"user_id": "abc", "pass_id": "pass-1"}
+    defaults.update(overrides)
+    return DreamPassResult(**defaults)
+
+
+def _run_nightly_wrapper(result):
+    """Invoke the wrapper with the work body + status writers mocked out.
+
+    ``mark_*`` / ``update_status_phase`` are imported inside the wrapper,
+    so patching them at their definition module intercepts the call-time
+    import. ``run_async`` is stubbed so the (mocked, non-coroutine)
+    status writes don't hit an event loop.
+    """
+    from backend.executor.scheduler import execute_nightly_batch_with_status
+
+    with (
+        patch("backend.executor.scheduler.run_async"),
+        patch(
+            "backend.executor.scheduler.execute_nightly_batch_sync",
+            return_value=result,
+        ),
+        patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
+        patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
+        patch("backend.copilot.dream.job_status.update_status_phase") as phase_mock,
+    ):
+        execute_nightly_batch_with_status("abc", "job-1")
+    return complete_mock, errored_mock, phase_mock
+
+
+class TestExecuteNightlyBatchWithStatus:
+    def test_clean_sync_result_marks_complete(self) -> None:
+        result = _nightly_result(dream=_dream_result())
+        complete_mock, errored_mock, phase_mock = _run_nightly_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+        # Only the initial 'running' transition — never 'submitted'.
+        phase_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", state="running"
+        )
+
+    def test_error_result_marks_errored_not_complete(self) -> None:
+        """``run_nightly_batch_submit`` never raises — a crashed dream
+        submitter surfaces in ``result.error``. The admin row must read
+        'errored', not 'complete'."""
+        result = _nightly_result(error="dream: boom")
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", error="dream: boom"
+        )
+        complete_mock.assert_not_called()
+
+    def test_in_flight_anthropic_batch_flips_to_submitted_not_complete(self) -> None:
+        """With DREAM_PASS_BATCH_ENABLED on, the dream submitter returns
+        as soon as the batch is ENQUEUED — the row must read 'submitted'
+        while the provider batch runs, not a premature 'complete'."""
+        result = _nightly_result(dream=_dream_result(execution_path="anthropic_batch"))
+        complete_mock, errored_mock, phase_mock = _run_nightly_wrapper(result)
+
+        phase_mock.assert_any_call(kind="nightly", job_id="job-1", state="submitted")
+        complete_mock.assert_not_called()
+        errored_mock.assert_not_called()
+
+    def test_ratification_error_wins_over_in_flight_dream_batch(self) -> None:
+        """A ratification-sweep failure alongside an in-flight dream
+        batch surfaces as errored — error visibility beats the
+        'submitted' bookkeeping for the in-flight batch."""
+        result = _nightly_result(
+            dream=_dream_result(execution_path="anthropic_batch"),
+            error="ratification: boom",
+        )
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", error="ratification: boom"
+        )
+        complete_mock.assert_not_called()
+
+    def test_skipped_dream_batch_result_still_marks_complete(self) -> None:
+        """A batch-path dream that was SKIPPED (lock held, no input)
+        has nothing in flight — the nightly row closes out as complete."""
+        result = _nightly_result(
+            dream=_dream_result(
+                execution_path="anthropic_batch",
+                skipped=True,
+                skip_reason="no_input",
+            )
+        )
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+
+
 class TestExecuteCommunityRebuildRuntimeGate:
     def test_flag_off_short_circuits_before_rebuild_runs(self) -> None:
         from backend.executor.scheduler import execute_community_rebuild

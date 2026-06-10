@@ -631,6 +631,54 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             skip_reason="dream_pass_disabled_runtime",
         )
 
+    if result.error:
+        # ``run_nightly_batch_submit`` never raises — submitter failures
+        # are captured in ``NightlyBatchResult.error``. Surface them as
+        # errored, not complete, mirroring the dream-pass wrapper below.
+        try:
+            run_async(
+                mark_errored(kind="nightly", job_id=job_id, error=result.error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark nightly batch %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
+    # When the dream submitter went down the Anthropic batch path the
+    # nightly result only proves the batch was ENQUEUED — the apply
+    # step lands via the BatchExecutor's callback chain up to ~24h
+    # later. Record 'submitted' instead of a premature 'complete' so
+    # the admin row doesn't claim a terminal state for an in-flight
+    # batch (same contract as the dream-pass wrapper below).
+    if (
+        result.dream is not None
+        and result.dream.execution_path == "anthropic_batch"
+        and not result.dream.skipped
+        and not result.dream.error
+    ):
+        try:
+            run_async(
+                update_status_phase(
+                    kind="nightly",
+                    job_id=job_id,
+                    state="submitted",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to flip nightly batch %s to submitted for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="nightly", job_id=job_id, result=result),
