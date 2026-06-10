@@ -10,6 +10,7 @@ from urllib.parse import quote_plus
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
 from prisma.models import User as PrismaUser
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 
@@ -93,17 +94,23 @@ async def _ensure_default_profile(user_id: str, user_email: str) -> None:
     if not username:
         raise DatabaseError("Unable to generate a unique profile username")
 
-    await prisma.profile.create(
-        data={
-            "id": user_id,
-            "userId": user_id,
-            "name": user_email.split("@")[0],
-            "username": username,
-            "description": "I'm new here",
-            "links": [],
-            "avatarUrl": "",
-        }
-    )
+    try:
+        await prisma.profile.create(
+            data={
+                "id": user_id,
+                "userId": user_id,
+                "name": user_email.split("@")[0],
+                "username": username,
+                "description": "I'm new here",
+                "links": [],
+                "avatarUrl": "",
+            }
+        )
+    except UniqueViolationError:
+        # Concurrent first requests (e.g. the signup action and the
+        # onboarding page both triggering get-or-create) can race here;
+        # either winner's profile is fine.
+        pass
 
 
 @cache_user_lookup
