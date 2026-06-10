@@ -353,10 +353,19 @@ async def _walk_entry(
                 "Batch %s already dispatched — skipping",
                 entry.provider_batch_id,
             )
+            # Refused claim = the per-batch tombstone exists, so this
+            # pending row is a zombie (same reasoning as the timeout
+            # path in _handle_timeout). Clear it — left alone it would
+            # be re-polled AND its results re-downloaded on every walk
+            # until the lifetime timeout finally reaps it.
+            await remove_pending(entry.provider_batch_id)
             return
         await _dispatch(entry, rows)
     elif status == "failed":
         if not await _claim_dispatch(entry.provider_batch_id):
+            # Refused claim = zombie row — clear without dispatching,
+            # same as the ended / timeout paths.
+            await remove_pending(entry.provider_batch_id)
             return
         await _dispatch_error(entry, error="provider reported failed")
     else:

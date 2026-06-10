@@ -298,6 +298,14 @@ def _dream_result(**overrides):
     return DreamPassResult(**defaults)
 
 
+def _ratification_result(**overrides):
+    from backend.copilot.dream.ratification import RatificationResult
+
+    defaults = {"user_id": "abc", "started_at": datetime.now(timezone.utc)}
+    defaults.update(overrides)
+    return RatificationResult(**defaults)
+
+
 def _run_nightly_wrapper(result):
     """Invoke the wrapper with the work body + status writers mocked out.
 
@@ -348,23 +356,83 @@ class TestExecuteNightlyBatchWithStatus:
         )
         complete_mock.assert_not_called()
 
-    def test_in_flight_anthropic_batch_flips_to_submitted_not_complete(self) -> None:
-        """With DREAM_PASS_BATCH_ENABLED on, the dream submitter returns
-        as soon as the batch is ENQUEUED — the row must read 'submitted'
-        while the provider batch runs, not a premature 'complete'."""
-        result = _nightly_result(dream=_dream_result(execution_path="anthropic_batch"))
-        complete_mock, errored_mock, phase_mock = _run_nightly_wrapper(result)
+    def test_dream_error_result_marks_errored_not_complete(self) -> None:
+        """A dream submitter that ran but returned an error RESULT
+        (``result.dream.error`` set, top-level error unset) must also
+        surface as errored — otherwise the admin row reads 'complete'
+        for a run whose dream pass entirely failed."""
+        result = _nightly_result(dream=_dream_result(error="phase 1 LLM down"))
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
 
-        phase_mock.assert_any_call(kind="nightly", job_id="job-1", state="submitted")
+        errored_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", error="dream: phase 1 LLM down"
+        )
         complete_mock.assert_not_called()
-        errored_mock.assert_not_called()
 
-    def test_ratification_error_wins_over_in_flight_dream_batch(self) -> None:
-        """A ratification-sweep failure alongside an in-flight dream
-        batch surfaces as errored — error visibility beats the
-        'submitted' bookkeeping for the in-flight batch."""
+    def test_ratification_error_result_marks_errored_not_complete(self) -> None:
+        """Same contract for the ratification sub-result — an error
+        result from the sweep must not be swallowed by mark_complete."""
+        result = _nightly_result(
+            dream=_dream_result(),
+            ratification=_ratification_result(error="graph down"),
+        )
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", error="ratification: graph down"
+        )
+        complete_mock.assert_not_called()
+
+    def test_crash_and_error_result_errors_are_joined(self) -> None:
+        """A top-level crash capture and a submitter error result can
+        coexist (e.g. dream error result + ratification crash) — both
+        must surface on the errored row."""
+        result = _nightly_result(
+            dream=_dream_result(error="phase 1 LLM down"),
+            error="ratification: boom",
+        )
+        complete_mock, errored_mock, _ = _run_nightly_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="nightly",
+            job_id="job-1",
+            error="ratification: boom | dream: phase 1 LLM down",
+        )
+        complete_mock.assert_not_called()
+
+    def test_in_flight_anthropic_batch_marks_complete_with_dream_in_flight(
+        self,
+    ) -> None:
+        """With DREAM_PASS_BATCH_ENABLED on, the dream submitter returns
+        as soon as the batch is ENQUEUED. The nightly fan-out is still
+        complete — its dream step handed off to the BatchExecutor, whose
+        callbacks only ever finalize ``dream_pass`` rows, never this
+        nightly row. The row must close out 'complete' (with
+        ``dream_in_flight`` on the persisted envelope as the async
+        marker), NOT park at 'submitted' until the 6h TTL reaps it."""
         result = _nightly_result(
             dream=_dream_result(execution_path="anthropic_batch"),
+            dream_in_flight=True,
+        )
+        complete_mock, errored_mock, phase_mock = _run_nightly_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", result=result
+        )
+        assert result.dream_in_flight is True
+        errored_mock.assert_not_called()
+        # Only the initial 'running' transition — never 'submitted'.
+        phase_mock.assert_called_once_with(
+            kind="nightly", job_id="job-1", state="running"
+        )
+
+    def test_ratification_error_wins_over_in_flight_dream_batch(self) -> None:
+        """A ratification-sweep crash alongside an in-flight dream
+        batch surfaces as errored — error visibility beats the
+        in-flight bookkeeping."""
+        result = _nightly_result(
+            dream=_dream_result(execution_path="anthropic_batch"),
+            dream_in_flight=True,
             error="ratification: boom",
         )
         complete_mock, errored_mock, _ = _run_nightly_wrapper(result)

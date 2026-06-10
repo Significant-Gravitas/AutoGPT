@@ -195,12 +195,17 @@ class TestWalkOnceDispatch:
         assert await list_pending() == []
 
     @pytest.mark.asyncio
-    async def test_redispatch_after_claim_is_silently_skipped(self, fake_redis):
+    async def test_redispatch_after_claim_is_skipped_and_zombie_cleared(
+        self, fake_redis
+    ):
         """Second walk that races on the same provider_batch_id must
         not re-invoke the namespace handler — the atomic claim is the
         only thing standing between "BatchExecutor saw the same ended
         batch twice" and "user's billing/apply/phase-chain side effects
         re-fire". Regression for the double-sanitize incident in prod.
+        The refused-claim zombie row must also be cleared — left alone
+        it would be re-polled AND re-downloaded every walk until the
+        lifetime timeout reaps it (up to ~24h).
         """
         seen_rows: list[list[BatchResultRow]] = []
 
@@ -234,6 +239,39 @@ class TestWalkOnceDispatch:
         assert (
             len(seen_rows) == 1
         ), "handler should fire exactly once even on re-dispatch"
+        # The refused-claim zombie row is removed without dispatching
+        # so subsequent walks don't keep re-polling + re-downloading.
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
+    async def test_failed_batch_refused_claim_clears_zombie_without_dispatch(
+        self, fake_redis
+    ):
+        """Same zombie cleanup on the failed path: a refused claim
+        proves the batch already dispatched once, so the resurrected
+        pending row is cleared instead of being re-polled every walk
+        until the lifetime timeout."""
+        captured: list[list[BatchResultRow]] = []
+
+        async def fake_handler(entry, rows):
+            captured.append(list(rows))
+
+        register_handler("dream_pass", fake_handler)
+        await enqueue_pending(_entry())
+
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            new=AsyncMock(return_value="failed"),
+        ):
+            # First walk: claim wins, synthetic error dispatches once.
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+            # Crash-replay resurrects the entry; the claim must refuse
+            # and the zombie row must be cleared without dispatching.
+            await enqueue_pending(_entry())
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        assert len(captured) == 1, "error handler must fire exactly once"
+        assert await list_pending() == []
 
     @pytest.mark.asyncio
     async def test_processing_batch_bumps_delay_and_keeps_entry(self, fake_redis):

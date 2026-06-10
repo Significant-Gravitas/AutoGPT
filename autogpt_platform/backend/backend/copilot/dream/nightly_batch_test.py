@@ -19,6 +19,7 @@ Contracts pinned here:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,12 +32,17 @@ from .nightly_batch import run_nightly_batch_submit
 
 
 def _dream_result(
-    *, error: str | None = None, skipped: bool = False
+    *,
+    error: str | None = None,
+    skipped: bool = False,
+    execution_path: Literal[
+        "sync_baseline", "anthropic_batch", "openai_batch"
+    ] = "sync_baseline",
 ) -> DreamPassResult:
     return DreamPassResult(
         user_id="u",
         pass_id="dream-1",
-        execution_path="sync_baseline",
+        execution_path=execution_path,
         started_at=datetime.now(timezone.utc),
         completed_at=datetime.now(timezone.utc),
         elapsed_seconds=0.5,
@@ -130,6 +136,7 @@ async def test_happy_path_runs_dream_then_ratification_sharing_nightly_id():
 
     assert result.skipped is False
     assert result.error is None
+    assert result.dream_in_flight is False
     assert result.dream is not None
     assert result.dream.consolidated_count == 2
     assert result.ratification is not None
@@ -241,8 +248,65 @@ async def test_dream_internal_error_propagates_via_result_dream_error_not_top_le
         result = await run_nightly_batch_submit("u")
 
     # Top-level error stays None — submitter reported its own error.
+    # The admin ``*_with_status`` wrapper folds sub-result errors into
+    # the JobStatus row at status-write time.
     assert result.error is None
     assert result.dream is not None
     assert result.dream.error == "phase 1 LLM down"
     # Ratification still ran.
     assert result.ratification is not None
+
+
+# ---------------------------------------------------------------------------
+# Async batch-path handoff
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_batch_path_dream_sets_dream_in_flight():
+    """A dream submitter that took a provider batch path only ENQUEUED
+    its pass — ``dream_in_flight`` flags that the apply step lands
+    asynchronously via the BatchExecutor, so envelope consumers (the
+    admin wrapper marks the row complete with this envelope) don't
+    read the dream counts as final."""
+    dream_spy = AsyncMock(return_value=_dream_result(execution_path="anthropic_batch"))
+    rat_spy = AsyncMock(return_value=_ratification_result())
+    with patch.object(
+        nightly_batch,
+        "check_dream_budget",
+        new=AsyncMock(return_value=(True, None)),
+    ), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
+        result = await run_nightly_batch_submit("u")
+
+    assert result.dream_in_flight is True
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_skipped_or_errored_batch_path_dream_is_not_in_flight():
+    """A batch-path dream that was SKIPPED (lock held, no input) or
+    returned an error result has nothing pending with the provider —
+    the in-flight flag must stay unset."""
+    for dream in (
+        _dream_result(execution_path="anthropic_batch", skipped=True),
+        _dream_result(execution_path="anthropic_batch", error="submit failed"),
+    ):
+        with patch.object(
+            nightly_batch,
+            "check_dream_budget",
+            new=AsyncMock(return_value=(True, None)),
+        ), patch(
+            "backend.copilot.dream.orchestrator.execute_dream_pass",
+            new=AsyncMock(return_value=dream),
+        ), patch.object(
+            nightly_batch,
+            "run_ratification_pass",
+            new=AsyncMock(return_value=_ratification_result()),
+        ):
+            result = await run_nightly_batch_submit("u")
+
+        assert result.dream_in_flight is False

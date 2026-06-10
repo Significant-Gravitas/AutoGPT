@@ -631,13 +631,37 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             skip_reason="dream_pass_disabled_runtime",
         )
 
-    if result.error:
-        # ``run_nightly_batch_submit`` never raises — submitter failures
-        # are captured in ``NightlyBatchResult.error``. Surface them as
-        # errored, not complete, mirroring the dream-pass wrapper below.
+    # ``run_nightly_batch_submit`` never raises — a submitter CRASH is
+    # captured in ``NightlyBatchResult.error``, while a submitter that
+    # ran but reported its own failure carries it on its sub-result
+    # (``dream.error`` / ``ratification.error``) with the top-level
+    # error left unset. The admin row must read errored for all of
+    # these — otherwise the Memory Visualizer renders a failed dream
+    # as a successful nightly run (same contract as the dream-pass
+    # wrapper below).
+    error_parts = [
+        part
+        for part in (
+            result.error,
+            (
+                f"dream: {result.dream.error}"
+                if result.dream is not None and result.dream.error
+                else None
+            ),
+            (
+                f"ratification: {result.ratification.error}"
+                if result.ratification is not None and result.ratification.error
+                else None
+            ),
+        )
+        if part
+    ]
+    if error_parts:
         try:
             run_async(
-                mark_errored(kind="nightly", job_id=job_id, error=result.error),
+                mark_errored(
+                    kind="nightly", job_id=job_id, error=" | ".join(error_parts)
+                ),
                 timeout=10,
             )
         except Exception:
@@ -649,36 +673,15 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
             )
         return
 
-    # When the dream submitter went down the Anthropic batch path the
-    # nightly result only proves the batch was ENQUEUED — the apply
-    # step lands via the BatchExecutor's callback chain up to ~24h
-    # later. Record 'submitted' instead of a premature 'complete' so
-    # the admin row doesn't claim a terminal state for an in-flight
-    # batch (same contract as the dream-pass wrapper below).
-    if (
-        result.dream is not None
-        and result.dream.execution_path == "anthropic_batch"
-        and not result.dream.skipped
-        and not result.dream.error
-    ):
-        try:
-            run_async(
-                update_status_phase(
-                    kind="nightly",
-                    job_id=job_id,
-                    state="submitted",
-                ),
-                timeout=10,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to flip nightly batch %s to submitted for user %s",
-                job_id[:12],
-                user_id[:12],
-                exc_info=True,
-            )
-        return
-
+    # The nightly fan-out is complete once every submitter has run —
+    # even when the dream submitter took a provider batch path and only
+    # ENQUEUED its pass (``result.dream_in_flight``). The dream batch
+    # callbacks finalize ``dream_pass`` JobStatus rows only, never this
+    # nightly row, so parking it at 'submitted' would leave it stuck
+    # with nothing ever writing a terminal state until the 6h TTL
+    # reaps it. Close it out as complete; ``dream_in_flight`` on the
+    # persisted envelope tells consumers the dream's apply step is
+    # still landing asynchronously via the BatchExecutor.
     try:
         run_async(
             mark_complete(kind="nightly", job_id=job_id, result=result),

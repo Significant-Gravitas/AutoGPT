@@ -77,6 +77,15 @@ class NightlyBatchResult(BaseModel):
     dream: DreamPassResult | None = None
     ratification: RatificationResult | None = None
 
+    # True when the dream submitter took a provider batch path: the
+    # submit pass only ENQUEUED phase 1, and the dream's apply step
+    # lands asynchronously via the BatchExecutor's dream callbacks up
+    # to ~24h later (correlated by ``dream.pass_id``). The fan-out
+    # itself is complete — this envelope is the terminal record of the
+    # SUBMIT pass, so consumers must not read the dream counts as
+    # final when this flag is set.
+    dream_in_flight: bool = False
+
     # Top-level outcome.
     skipped: bool = False
     skip_reason: str | None = None
@@ -151,6 +160,10 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
                 user_id[:12],
                 result.dream.error,
             )
+        elif (
+            not result.dream.skipped and result.dream.execution_path != "sync_baseline"
+        ):
+            result.dream_in_flight = True
     except Exception as exc:
         logger.exception(
             "Nightly batch %s: dream submitter crashed for user %s",
