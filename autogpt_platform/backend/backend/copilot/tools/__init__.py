@@ -18,6 +18,7 @@ from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
+from .discord_output import ListDiscordChannelsTool, PostToDiscordTool
 from .edit_agent import EditAgentTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
@@ -93,6 +94,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
     "schedule_followup": ScheduleFollowupTool(),
+    # Proactive Discord output (post message / open thread on the user's behalf)
+    "post_to_discord": PostToDiscordTool(),
+    "list_discord_channels": ListDiscordChannelsTool(),
     # Trigger discovery (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),
     "run_block": RunBlockTool(),
