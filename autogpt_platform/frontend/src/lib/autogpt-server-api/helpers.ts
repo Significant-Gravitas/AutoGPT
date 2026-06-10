@@ -2,7 +2,6 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getBackendAuthToken } from "@/lib/auth/server/token";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { cache } from "react";
@@ -111,9 +110,102 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
   );
 }
 
-export const getServerAuthToken = cache(async (): Promise<string | null> => {
+// JWT-per-session cache so every proxied backend call doesn't re-request a
+// token. Entries expire 5 minutes before the JWT itself does.
+const TOKEN_EXPIRY_MARGIN_MS = 5 * 60 * 1000;
+const MAX_TOKEN_CACHE_ENTRIES = 1000;
+const serverTokenCache = new Map<
+  string,
+  { token: string; expiresAt: number }
+>();
+
+export function readJwtExpiryMs(token: string): number {
   try {
-    return await getBackendAuthToken();
+    const payload = JSON.parse(
+      Buffer.from(token.split(".")[1], "base64url").toString("utf-8"),
+    );
+    if (typeof payload.exp === "number") return payload.exp * 1000;
+  } catch {
+    // fall through to a conservative default
+  }
+  return Date.now() + TOKEN_EXPIRY_MARGIN_MS * 2;
+}
+
+export function cacheServerToken(sessionCookie: string, token: string): void {
+  if (serverTokenCache.size >= MAX_TOKEN_CACHE_ENTRIES) {
+    const oldestKey = serverTokenCache.keys().next().value;
+    if (oldestKey) serverTokenCache.delete(oldestKey);
+  }
+  serverTokenCache.set(sessionCookie, {
+    token,
+    expiresAt: readJwtExpiryMs(token) - TOKEN_EXPIRY_MARGIN_MS,
+  });
+}
+
+export function getCachedServerToken(sessionCookie: string): string | null {
+  const cached = serverTokenCache.get(sessionCookie);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+  return null;
+}
+
+/**
+ * Mints (or returns a cached) backend-API JWT for the current request's
+ * session by calling the Better Auth token endpoint on this same server.
+ * The Python backend validates the JWT against /api/auth/jwks.
+ *
+ * Deliberately uses an HTTP call instead of importing the Better Auth server
+ * instance: this module is part of the client component graph (via the orval
+ * mutator), where transitively importing pg/nodemailer breaks the browser
+ * bundle. Cookies are read via next/headers `cookies()` (lazily required, as
+ * the previous Supabase client did here) so that a session cookie set
+ * earlier in the SAME server action — e.g. right after sign-in — is visible
+ * immediately, not just on the next request.
+ */
+export const getServerAuthToken = cache(async (): Promise<string | null> => {
+  if (environment.isClientSide()) {
+    // Browser requests go through /api/proxy, which attaches the token
+    // server-side; there is no client-side token.
+    return null;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { cookies } =
+      require("next/headers") as typeof import("next/headers");
+    const cookieStore = await cookies();
+
+    const sessionCookie = cookieStore
+      .getAll()
+      .find(
+        ({ name }) =>
+          name === "better-auth.session_token" ||
+          name === "__Secure-better-auth.session_token",
+      );
+    if (!sessionCookie) return null;
+
+    const cached = getCachedServerToken(sessionCookie.value);
+    if (cached) return cached;
+
+    const cookieHeader = cookieStore
+      .getAll()
+      .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
+      .join("; ");
+
+    const baseURL =
+      process.env.BETTER_AUTH_URL ||
+      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+      "http://localhost:3000";
+    const response = await fetch(`${baseURL}/api/auth/token`, {
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+
+    const { token } = (await response.json()) as { token?: string };
+    if (!token) return null;
+
+    cacheServerToken(sessionCookie.value, token);
+    return token;
   } catch (error) {
     console.error("Failed to get auth token:", error);
     return null;

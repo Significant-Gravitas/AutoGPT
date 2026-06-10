@@ -1,10 +1,10 @@
 "use server";
+import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 import { headers } from "next/headers";
 import { auth } from "./auth";
 import { getRedirectPath } from "./helpers";
 import { getServerSession } from "./server/getServerSession";
-import { getBackendAuthToken } from "./server/token";
 import { mapSessionUser, type User } from "./types";
 
 export interface SessionValidationResult {
@@ -80,7 +80,7 @@ export async function getWebSocketToken(): Promise<{
     {},
     async () => {
       try {
-        const token = await getBackendAuthToken();
+        const token = await getServerAuthToken();
         return { token };
       } catch (error) {
         console.error("Get WebSocket token error:", error);

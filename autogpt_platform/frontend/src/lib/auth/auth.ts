@@ -57,6 +57,10 @@ export const auth = betterAuth({
     // GoTrue's minimum was 6; raising this would lock out existing users at
     // sign-in. The signup form enforces 12+ client- and server-side.
     minPasswordLength: 6,
+    // A password reset kicks every active session, matching the previous
+    // flow's signOut({ scope: "global" }) — the standard defense when a
+    // user resets their password to evict a stolen session.
+    revokeSessionsOnPasswordReset: true,
     requireEmailVerification:
       process.env.AUTH_REQUIRE_EMAIL_VERIFICATION === "true",
     password: {

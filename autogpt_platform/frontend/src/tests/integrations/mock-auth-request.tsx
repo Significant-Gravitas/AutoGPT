@@ -17,7 +17,4 @@ export function mockAuthRequest() {
   vi.mock("@/lib/auth/server/getServerSession", () => ({
     getServerSession: vi.fn().mockResolvedValue(null),
   }));
-  vi.mock("@/lib/auth/server/token", () => ({
-    getBackendAuthToken: vi.fn().mockResolvedValue(null),
-  }));
 }
