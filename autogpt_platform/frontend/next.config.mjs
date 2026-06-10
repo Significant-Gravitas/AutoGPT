@@ -1,8 +1,19 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
 // Defaults to true so Vercel/local builds are unaffected.
 const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
+
+// The backend-JWT helper transitively imports the Better Auth server
+// instance (pg, nodemailer), which must never reach a browser bundle. It is
+// imported from request-path modules shared with client components (the
+// orval mutator), so swap it for a no-op stub in browser builds.
+const SERVER_TOKEN_MODULE = "@/lib/auth/server/token";
+const SERVER_TOKEN_BROWSER_STUB = "./src/lib/auth/server/token.browser.ts";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -14,6 +25,13 @@ const nextConfig = {
     "import-in-the-middle",
     "require-in-the-middle",
   ],
+  turbopack: {
+    resolveAlias: {
+      [SERVER_TOKEN_MODULE]: {
+        browser: SERVER_TOKEN_BROWSER_STUB,
+      },
+    },
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "256mb",
@@ -25,7 +43,16 @@ const nextConfig = {
   // Work around cssnano "Invalid array length" bug in Next.js's bundled
   // cssnano-simple comment parser when processing very large CSS chunks.
   // CSS is still bundled correctly; gzip handles most of the size savings anyway.
-  webpack: (config, { dev }) => {
+  webpack: (config, { dev, isServer }) => {
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        [`${SERVER_TOKEN_MODULE}$`]: path.resolve(
+          __dirname,
+          SERVER_TOKEN_BROWSER_STUB,
+        ),
+      };
+    }
     if (!dev) {
       // Next.js adds CssMinimizerPlugin internally (after user config), so we
       // can't filter it from config.plugins. Instead, intercept the webpack

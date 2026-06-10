@@ -1,6 +1,3 @@
-import { auth } from "@/lib/auth/auth";
-import { headers } from "next/headers";
-
 const SESSION_COOKIE_PATTERN =
   /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/;
 
@@ -25,8 +22,22 @@ function readJwtExpiryMs(token: string): number {
 /**
  * Mints (or returns a cached) backend-API JWT for the current request's
  * session. The Python backend validates it against /api/auth/jwks.
+ *
+ * This module is reachable from request-path modules that are part of the
+ * client component graph (the orval mutator), where static imports of
+ * `next/headers` and the Better Auth server instance are not allowed. The
+ * browser bundle swaps this file for ./token.browser.ts (see
+ * next.config.mjs); for the server layers the imports are deferred to call
+ * time, mirroring the lazy-require pattern the Supabase client used here
+ * before the migration.
  */
 export async function getBackendAuthToken(): Promise<string | null> {
+  if (typeof window !== "undefined") return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { headers } = require("next/headers") as typeof import("next/headers");
+  const { auth } = await import("../auth");
+
   const requestHeaders = await headers();
   const cookieHeader = requestHeaders.get("cookie") || "";
   const sessionCookie = cookieHeader.match(SESSION_COOKIE_PATTERN)?.[1];
