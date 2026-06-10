@@ -41,7 +41,7 @@ four chat transports. When `CHAT_USE_LOCAL=true`:
 | Routes the baseline (fast) path to `CHAT_BASE_URL` over OpenAI-compatible HTTP | ✅ |
 | Supports the SDK / extended-thinking path (Claude Agent SDK) | ❌ — auto-downgrades to fast |
 | `api_key` falls back to `OPEN_ROUTER_API_KEY` / `OPENAI_API_KEY` if `CHAT_API_KEY` is unset | ❌ — explicit `CHAT_API_KEY` only |
-| Auxiliary models (`title_model`, `simulation_model`) inherit `fast_standard_model` if left at default | ✅ |
+| Aux + advanced models (`title_model`, `simulation_model`, `fast_advanced_model`) inherit `fast_standard_model` if left at a cloud default | ✅ |
 | Allows non-`anthropic/*` SDK model slugs (vendor validator skipped) | ✅ |
 
 The downgrade is logged at WARNING when an `extended_thinking` request
@@ -73,12 +73,14 @@ CHAT_API_KEY=ollama
 # resolve them. See "Picking a model" below.
 CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 
-# Optional — overrides for advanced tier and aux models. If you leave
-# them out, the local transport derives title_model and simulation_model
-# from CHAT_FAST_STANDARD_MODEL automatically; CHAT_FAST_ADVANCED_MODEL
-# stays at its cloud default and you should set it to the same Ollama
-# slug (or a bigger one if you have the VRAM).
-CHAT_FAST_ADVANCED_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+# Optional — override for the advanced tier. If you leave it out, the
+# local transport derives title_model, simulation_model, AND
+# CHAT_FAST_ADVANCED_MODEL from CHAT_FAST_STANDARD_MODEL automatically
+# (see _apply_local_aux_models in backend/backend/copilot/config.py),
+# so the advanced toggle never sends a cloud-only slug to Ollama. Set
+# it explicitly only if you want a bigger model for the advanced tier
+# and have the VRAM for it.
+CHAT_FAST_ADVANCED_MODEL=qwen3:14b-instruct-q4_K_M
 ```
 
 ## Picking a model
@@ -335,11 +337,11 @@ request, which can take 5-15 s for 8 B models on CPU. Subsequent
 requests are much faster while the model stays resident.
 
 **Every AutoPilot turn takes minutes on CPU** — expected on CPU-only
-hosts, not a hang. AutoPilot ships a ~3 k-token system prompt and the
+hosts, not a hang. AutoPilot ships an ~8 k-token system prompt and the
 model must *prefill* (compute KV-cache state for) every token of that
 prompt before the first output token is emitted. On 4 CPU cores an
 8 B Q4 model prefills at roughly **3-4 tokens/sec**, so a fresh turn
-takes ~10-15 min just to start generating. Title generation (~70-token
+takes ~35-45 min just to start generating. Title generation (~70-token
 prompt) finishes in seconds because there's almost nothing to prefill.
 A consumer GPU brings this down to seconds. If you're CPU-only and
 just want to validate the install end-to-end, tail the Ollama server
