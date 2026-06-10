@@ -62,6 +62,7 @@ For end-to-end implementation work, use the pipeline skills instead of ad-hoc ed
 
 - `/feature-implementer` — plan → plan-review → implement → impl-review → commit, each step in a fresh agent, review loops run until clean. Supporting skills: `/feature-planner`, `/review-feature-plan`, `/review-impl`.
 - `/block-implementer` — the same pipeline specialized for new blocks; works from a plain-language description. Domain checklist: `/add-block`.
+- `contribute-block` workflow (`.claude/workflows/contribute-block.js`) — batch automation of the block pipeline: one branch + PR per request, bounded review loops, unclean items ship as draft PRs. Auto-picks from open `platform/blocks` issues when invoked with a bare count.
 
 ## Pull requests
 
