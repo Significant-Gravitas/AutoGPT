@@ -37,6 +37,7 @@ from backend.copilot.tools.graphiti_forget import (
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
 
+from .batch_submit import read_input_bundle
 from .schemas import (
     ConsolidatedFact,
     DemotionSummary,
@@ -127,6 +128,59 @@ async def _write_proposed_finding(
     )
 
 
+async def _filter_demotions_to_known_facts(
+    pass_id: str,
+    demotions: list[DreamDemotion],
+    known_fact_uuids: set[str] | None,
+) -> list[DreamDemotion]:
+    """Code-level pre-flight for LLM-proposed demotion targets.
+
+    The sanitize prompt tells the model only ``known_fact_uuids`` are
+    valid demotion targets, but prompt text isn't enforcement — a
+    hallucinated or injected uuid would otherwise reach Cypher and
+    could demote edges the dream pass never fetched. Both the sync
+    orchestrator and the batch callback converge on
+    ``apply_operations``, so this is the one chokepoint that covers
+    both paths.
+
+    The sync path passes ``known_fact_uuids`` from its in-memory
+    ``DreamInput``; the batch path calls ``apply_operations`` without
+    it, so we fall back to the input bundle persisted at submit time.
+    If neither source exists (bundle expired/corrupted) we keep the
+    demotions rather than zeroing the pass — the same fail-open
+    posture as the clamp's unknown-fact-count fallback — and log that
+    validation was skipped.
+
+    Entity invalidations are NOT filtered here: the input bundle
+    carries no entity-uuid allowlist (``FactRow.source``/``target``
+    are entity *names*), so there is nothing to validate against.
+    """
+    if not demotions:
+        return demotions
+    if known_fact_uuids is None:
+        bundle = await read_input_bundle(pass_id)
+        if bundle is None:
+            logger.warning(
+                "Dream pass %s: no input bundle available — skipping "
+                "known-fact validation for %d demotion(s)",
+                pass_id,
+                len(demotions),
+            )
+            return demotions
+        known_fact_uuids = bundle.known_fact_uuids
+    kept = [d for d in demotions if d.edge_uuid in known_fact_uuids]
+    dropped = len(demotions) - len(kept)
+    if dropped:
+        logger.warning(
+            "Dream pass %s: dropped %d demotion(s) targeting edge uuids "
+            "outside the pass's known_fact_uuids (prompt-only constraint "
+            "violated by the model)",
+            pass_id,
+            dropped,
+        )
+    return kept
+
+
 async def _apply_demotions(
     user_id: str,
     group_id: str,
@@ -166,6 +220,11 @@ async def _apply_demotions(
                 reason=reason,
                 new_status=new_status,  # type: ignore[arg-type]
                 user_id=user_id,
+                # Defense-in-depth: the driver is already opened against
+                # the per-user database, but the group_id predicate keeps
+                # a future wrong-driver caller from touching another
+                # user's edges.
+                group_id=group_id,
             )
             succeeded += len(ok)
             failed += len(bad)
@@ -282,6 +341,8 @@ async def apply_operations(
     user_id: str,
     pass_id: str,
     ops: DreamOperations,
+    *,
+    known_fact_uuids: set[str] | None = None,
 ) -> dict[str, int | str | DreamOperationsSnapshot]:
     """Apply a sanitized DreamOperations to Graphiti + Postgres.
 
@@ -289,6 +350,13 @@ async def apply_operations(
     ``DreamPassResult``. Includes a ``snapshot`` key carrying the
     detailed ``DreamOperationsSnapshot`` payload for consumers that
     need per-operation rollups (eval, admin UI, future P9 SSE event).
+
+    ``known_fact_uuids`` is the set of edge uuids the dream pass
+    actually fetched (``DreamInput.known_fact_uuids``); demotions
+    targeting anything outside it are dropped before any Cypher runs
+    (see ``_filter_demotions_to_known_facts``). ``None`` means "look
+    up the persisted input bundle by pass_id" — the batch path's
+    callbacks rely on that fallback.
 
     Postgres writes route through ``chat_db()`` / equivalent
     accessors. The dream pass runs in the Scheduler subprocess where
@@ -344,8 +412,11 @@ async def apply_operations(
                 )
             )
 
+    demotions = await _filter_demotions_to_known_facts(
+        pass_id, ops.demotions, known_fact_uuids
+    )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
-        user_id, group_id, ops.demotions
+        user_id, group_id, demotions
     )
     # Entity invalidation single-hop demotes every edge around the
     # entity — the most destructive op in the pass — so it stays behind

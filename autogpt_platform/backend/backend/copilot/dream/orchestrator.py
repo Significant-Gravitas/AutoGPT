@@ -80,6 +80,17 @@ CONSOLIDATE_MAX_TOKENS = 4096
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
+# Entity invalidation is the most destructive op the sanitizer can emit:
+# each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
+# hub entity multiplies the blast radius far past the demotion caps. We
+# cap the *count* of invalidations per pass here; the per-entity edge
+# blast radius is bounded by the ``DREAM_PASS_INVALIDATE_ENTITY`` LD flag
+# (staged rollout, off by default) plus the single-hop-only guarantee in
+# ``invalidate_entity_direct_neighbors`` (no multi-hop propagation).
+# Deliberately NOT degree-aware — fetching entity degrees is async graph
+# work that doesn't belong in this sync clamp.
+MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
+
 
 def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
@@ -95,18 +106,30 @@ def _clamp_operations(ops: DreamOperations, active_fact_count: int) -> DreamOper
     Demotions carry a second ceiling — 5% of the active fact set — so a
     single pass can never wipe a meaningful fraction of a user's memory
     even if the absolute ``MAX_DEMOTIONS_PER_PASS`` cap would allow it.
+    The 5% ceiling floors at 1 when there is at least one active fact:
+    small graphs (< 20 facts) would otherwise round to a cap of 0 and
+    never get even a single contradicted fact demoted.
     ``active_fact_count < 0`` means the count is unknown (the batch path
     lost its persisted input bundle); fall back to the absolute cap only
     rather than silently dropping every demotion.
+
+    Entity invalidations are count-capped at
+    ``MAX_ENTITY_INVALIDATIONS_PER_PASS``; see the constant's comment
+    for why the per-entity edge blast radius is bounded elsewhere (LD
+    flag + single-hop guarantee), not here.
     """
     demotion_cap = MAX_DEMOTIONS_PER_PASS
-    if active_fact_count >= 0:
-        demotion_cap = min(MAX_DEMOTIONS_PER_PASS, active_fact_count * 5 // 100)
+    if active_fact_count == 0:
+        demotion_cap = 0
+    elif active_fact_count > 0:
+        demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
     return DreamOperations(
         writes=ops.writes[:MAX_WRITES_PER_PASS],
         proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
         demotions=ops.demotions[:demotion_cap],
-        entity_invalidations=ops.entity_invalidations,
+        entity_invalidations=ops.entity_invalidations[
+            :MAX_ENTITY_INVALIDATIONS_PER_PASS
+        ],
         summary_for_user=ops.summary_for_user,
     )
 
@@ -405,7 +428,12 @@ async def _execute_dream_pass_async(
             sanitized = sanitize_completion.value
 
             ops = _clamp_operations(sanitized, len(input_bundle.facts))
-            apply_stats = await apply_operations(user_id, pass_id, ops)
+            apply_stats = await apply_operations(
+                user_id,
+                pass_id,
+                ops,
+                known_fact_uuids=input_bundle.known_fact_uuids,
+            )
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")

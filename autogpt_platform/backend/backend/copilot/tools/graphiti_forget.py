@@ -363,6 +363,7 @@ async def mark_edges_superseded(
     reason: str,
     new_status: Literal["superseded", "contradicted"] = "superseded",
     user_id: str | None = None,
+    group_id: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Retract edges AND set the custom audit-trail ``status`` property.
 
@@ -372,26 +373,41 @@ async def mark_edges_superseded(
     ``expiration_reason=<reason>`` so the demotion is queryable from
     search (``WHERE e.status = 'superseded'``).
 
+    ``group_id`` adds defense-in-depth: the driver is normally opened
+    against the per-user FalkorDB database, but when provided the
+    Cypher predicate also requires the edge's ``group_id`` to match so
+    a future caller holding the wrong driver can't touch another
+    user's edges. ``None`` keeps the unscoped match (current
+    ratification behavior).
+
     Returns ``(succeeded_uuids, failed_uuids)``.
     """
     deleted = []
     failed = []
     user_log = (user_id or "?")[:12]
-    for uuid in uuids:
-        try:
-            records, _, _ = await driver.execute_query(
-                """
-                MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+    edge_match = (
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
+        if group_id is not None
+        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
+    )
+    query = f"""
+                {edge_match}
                 SET e.expired_at = $now,
                     e.status = $new_status,
                     e.expiration_reason = $reason
                 RETURN e.uuid AS uuid
-                """,
-                uuid=uuid,
-                new_status=new_status,
-                reason=reason,
-                now=_now_iso(),
-            )
+                """
+    for uuid in uuids:
+        try:
+            params: dict[str, str] = {
+                "uuid": uuid,
+                "new_status": new_status,
+                "reason": reason,
+                "now": _now_iso(),
+            }
+            if group_id is not None:
+                params["group_id"] = group_id
+            records, _, _ = await driver.execute_query(query, **params)
             if records:
                 deleted.append(uuid)
             else:
@@ -421,7 +437,11 @@ async def invalidate_entity_direct_neighbors(
     spec). Keep the single-hop discipline; ratification (P0.4) re-promotes
     good facts that get caught in the cascade.
 
-    Returns the list of edge UUIDs that were demoted.
+    Returns the list of edge UUIDs that were demoted. ``DISTINCT``
+    matters: the undirected ``-[r]-`` pattern can yield the same edge
+    from both traversal directions, and duplicate uuids inflate the
+    demotion counts reported in ``DreamPassResult`` / the admin UI
+    (the ``SET`` itself is idempotent).
     """
     query = """
     MATCH (e:Entity {uuid: $entity_uuid, group_id: $group_id})
@@ -429,7 +449,7 @@ async def invalidate_entity_direct_neighbors(
     SET r.expired_at = $now,
         r.status = 'superseded',
         r.expiration_reason = $reason
-    RETURN r.uuid AS edge_uuid
+    RETURN DISTINCT r.uuid AS edge_uuid
     """
     try:
         records, _, _ = await driver.execute_query(

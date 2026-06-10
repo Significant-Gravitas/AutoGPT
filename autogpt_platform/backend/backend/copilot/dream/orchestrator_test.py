@@ -22,6 +22,7 @@ from .schemas import (
     ConsolidationOutput,
     DreamDemotion,
     DreamOperations,
+    EntityInvalidation,
     ProposedFinding,
     RecombinationOutput,
 )
@@ -301,7 +302,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops):
+    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -360,7 +361,7 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
 
     captured: dict[str, DreamOperations] = {}
 
-    async def fake_apply(user_id, pass_id, ops):
+    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
         captured["ops"] = ops
         return {
             "session_id": "s",
@@ -398,8 +399,92 @@ def test_clamp_operations_demotion_cap_rules():
         len(orchestrator_mod._clamp_operations(ops, -1).demotions)
         == MAX_DEMOTIONS_PER_PASS
     )
-    # A tiny fact set floors the 5% ceiling at zero demotions
-    assert len(orchestrator_mod._clamp_operations(ops, 10).demotions) == 0
+
+
+def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
+    """A small graph (< 20 active facts, where 5% rounds to 0) still gets
+    a demotion budget of 1 — early-stage users must be able to demote a
+    contradicted fact. Zero active facts means zero demotion budget:
+    there is nothing legitimate to demote."""
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
+    )
+    assert len(orchestrator_mod._clamp_operations(ops, 10).demotions) == 1
+    assert len(orchestrator_mod._clamp_operations(ops, 1).demotions) == 1
+    assert len(orchestrator_mod._clamp_operations(ops, 19).demotions) == 1
+    # 20 facts crosses the 5% threshold back to the proportional cap
+    assert len(orchestrator_mod._clamp_operations(ops, 20).demotions) == 1
+    assert len(orchestrator_mod._clamp_operations(ops, 40).demotions) == 2
+    # No active facts at all -> no demotion budget
+    assert len(orchestrator_mod._clamp_operations(ops, 0).demotions) == 0
+
+
+def test_clamp_operations_caps_entity_invalidations():
+    """Entity invalidations are the highest-blast-radius op (each one
+    demotes every edge on the entity), so the clamp must bound their
+    count at MAX_ENTITY_INVALIDATIONS_PER_PASS — they used to pass
+    through entirely uncapped."""
+    ops = DreamOperations(
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid=f"ent{i}", reason="r") for i in range(25)
+        ],
+    )
+    clamped = orchestrator_mod._clamp_operations(ops, 100)
+    assert (
+        len(clamped.entity_invalidations)
+        == orchestrator_mod.MAX_ENTITY_INVALIDATIONS_PER_PASS
+    )
+    # The first N proposed invalidations survive, in order
+    assert [e.entity_uuid for e in clamped.entity_invalidations] == [
+        "ent0",
+        "ent1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_path_passes_known_fact_uuids_to_apply(mocker):
+    """The sync orchestrator must thread the input bundle's
+    known_fact_uuids into apply_operations so the demotion pre-flight
+    filter (apply.py) can reject hallucinated edge uuids."""
+    input_bundle = _build_input(facts=3)
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=input_bundle),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(DreamOperations(summary_for_user="ok")),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(
+            return_value={
+                "session_id": "s",
+                "consolidated_count": 0,
+                "proposal_count": 0,
+                "demotion_count": 0,
+                "demotion_failed_count": 0,
+                "entity_invalidation_count": 0,
+            }
+        ),
+    )
+
+    await orchestrator_mod.execute_dream_pass("u")
+
+    apply_mock.assert_awaited_once()
+    assert (
+        apply_mock.await_args.kwargs["known_fact_uuids"]
+        == input_bundle.known_fact_uuids
+    )
 
 
 @pytest.mark.asyncio

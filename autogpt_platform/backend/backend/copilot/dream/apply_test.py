@@ -10,11 +10,13 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 
 from . import apply as apply_mod
+from .fetch import DreamInput
 from .schemas import (
     ConsolidatedFact,
     DreamDemotion,
@@ -22,6 +24,16 @@ from .schemas import (
     EntityInvalidation,
     ProposedFinding,
 )
+
+
+def _bundle_with_known_facts(*uuids: str) -> DreamInput:
+    return DreamInput(
+        user_id="u-bundle",
+        group_id="u-bundle",
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        known_fact_uuids=set(uuids),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +70,10 @@ def _stub_boundaries(mocker):
     # the flag ON so the existing entity tests exercise the apply path; the
     # flag-off behavior has its own dedicated test below.
     mocker.patch.object(apply_mod, "is_feature_enabled", AsyncMock(return_value=True))
+    # No persisted input bundle by default — the demotion pre-flight filter
+    # fails open (keeps all demotions) so tests that don't care about uuid
+    # validation behave as before. Filter tests re-patch with a bundle.
+    mocker.patch.object(apply_mod, "read_input_bundle", AsyncMock(return_value=None))
     # derive_group_id is deterministic; let it run.
 
 
@@ -129,6 +145,108 @@ async def test_demotions_group_by_status_and_reason():
     ]
     # One bucket has 2 uuids, the other has 1
     assert sorted(len(b) for b in bucket_args) == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_demotions_pass_group_id_to_mark_edges_superseded():
+    """The Cypher group_id predicate (defense-in-depth against a
+    wrong-driver caller) only works if apply.py threads the derived
+    group_id into every mark_edges_superseded call."""
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="a", reason="stale")],
+    )
+    await apply_mod.apply_operations(user_id="u-gid", pass_id="p-gid", ops=ops)
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    # derive_group_id prefixes user ids with "user_"
+    assert apply_mod.mark_edges_superseded.await_args.kwargs["group_id"] == "user_u-gid"
+
+
+@pytest.mark.asyncio
+async def test_hallucinated_demotion_uuids_dropped_before_cypher():
+    """Sync path: demotions targeting edge uuids outside the pass's
+    known_fact_uuids are a prompt-constraint violation (hallucination or
+    injection) and must never reach mark_edges_superseded."""
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="known-1", reason="stale"),
+            DreamDemotion(edge_uuid="hallucinated", reason="stale"),
+        ],
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-filter",
+        pass_id="p-filter",
+        ops=ops,
+        known_fact_uuids={"known-1", "known-2"},
+    )
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    sent_uuids = apply_mod.mark_edges_superseded.await_args.args[1]
+    assert sent_uuids == ["known-1"]
+    # The rejected demotion never reaches the snapshot either
+    assert [d.edge_uuid for d in stats["snapshot"].demotions] == ["known-1"]
+    # The caller supplied the allowlist — no Redis bundle lookup needed
+    apply_mod.read_input_bundle.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batch_path_demotions_validated_against_persisted_bundle(mocker):
+    """Batch path: apply_operations is called without known_fact_uuids
+    (batch_callbacks doesn't have the in-memory DreamInput), so the
+    filter must fall back to the bundle persisted at submit time."""
+    mocker.patch.object(
+        apply_mod,
+        "read_input_bundle",
+        AsyncMock(return_value=_bundle_with_known_facts("known-1")),
+    )
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="known-1", reason="stale"),
+            DreamDemotion(edge_uuid="ghost", reason="stale"),
+        ],
+    )
+    await apply_mod.apply_operations(user_id="u-batch", pass_id="p-batch", ops=ops)
+
+    apply_mod.read_input_bundle.assert_awaited_once_with("p-batch")
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["known-1"]
+
+
+@pytest.mark.asyncio
+async def test_missing_input_bundle_fails_open_and_keeps_demotions():
+    """When neither the caller nor Redis can supply known_fact_uuids
+    (bundle expired/corrupted), the filter fails open — demotions are
+    kept rather than zeroing the pass, matching the clamp's
+    unknown-fact-count posture. The autouse fixture's
+    read_input_bundle stub returns None."""
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="unverifiable", reason="stale")],
+    )
+    await apply_mod.apply_operations(user_id="u-open", pass_id="p-open", ops=ops)
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
+
+
+@pytest.mark.asyncio
+async def test_entity_invalidations_not_filtered_by_known_fact_uuids():
+    """The input bundle carries no entity-uuid allowlist (FactRow
+    source/target are entity names), so entity invalidations are NOT
+    subject to the known-fact pre-flight — they rely on the LD flag +
+    count clamp + single-hop guarantee instead."""
+    ops = DreamOperations(
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="ent-unlisted", reason="r"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-ent",
+        pass_id="p-ent",
+        ops=ops,
+        known_fact_uuids={"some-fact"},
+    )
+
+    apply_mod.invalidate_entity_direct_neighbors.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -175,6 +175,43 @@ class TestMarkEdgesSuperseded:
         )
         assert driver.execute_query.call_args.kwargs["new_status"] == "contradicted"
 
+    @pytest.mark.asyncio
+    async def test_group_id_scopes_the_match_predicate(self) -> None:
+        """Defense-in-depth: when the caller supplies group_id, the Cypher
+        MATCH must require it alongside the uuid so a wrong-driver caller
+        can't touch another user's edges."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        deleted, failed = await mark_edges_superseded(
+            driver,
+            ["u1"],
+            reason="stale_fact",
+            user_id="abc",
+            group_id="user_abc",
+        )
+
+        assert deleted == ["u1"]
+        assert failed == []
+        query = driver.execute_query.call_args.args[0]
+        assert "{uuid: $uuid, group_id: $group_id}" in query
+        assert driver.execute_query.call_args.kwargs["group_id"] == "user_abc"
+
+    @pytest.mark.asyncio
+    async def test_no_group_id_keeps_unscoped_match_for_ratification(self) -> None:
+        """Omitting group_id preserves the original uuid-only predicate —
+        ratification.py still calls without it (per-group driver), so the
+        param must stay optional and default to no group filter."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        await mark_edges_superseded(driver, ["u1"], reason="unratified")
+
+        query = driver.execute_query.call_args.args[0]
+        assert "{uuid: $uuid}" in query
+        assert "group_id" not in query
+        assert "group_id" not in driver.execute_query.call_args.kwargs
+
 
 class TestInvalidateEntityDirectNeighbors:
     """Single-hop demotion. The instinct to write [r:RELATES_TO*1..N] is
@@ -203,6 +240,21 @@ class TestInvalidateEntityDirectNeighbors:
         # MUST set status + reason for audit trail
         assert "r.status = 'superseded'" in query
         assert "r.expiration_reason = $reason" in query
+
+    @pytest.mark.asyncio
+    async def test_returns_distinct_edge_uuids(self) -> None:
+        """The undirected -[r]- pattern can yield the same edge from both
+        traversal directions; without DISTINCT the duplicate uuids inflate
+        the demotion counts in DreamPassResult / the admin UI."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"edge_uuid": "e1"}], None, None)
+
+        await invalidate_entity_direct_neighbors(
+            driver, group_id="user_x", entity_uuid="entity-1", reason="dup_check"
+        )
+
+        query = driver.execute_query.call_args.args[0]
+        assert "RETURN DISTINCT r.uuid AS edge_uuid" in query
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_error(self) -> None:
