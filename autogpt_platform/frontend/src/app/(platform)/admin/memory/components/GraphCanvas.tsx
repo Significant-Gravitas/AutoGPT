@@ -62,6 +62,40 @@ type CanvasLink = {
   name?: string | null;
 };
 
+// force-graph hands tooltip labels to float-tooltip, which injects them
+// via innerHTML. Node/edge names are LLM-extracted from conversation
+// content (which can carry attacker-controlled material), so everything
+// that reaches a label accessor must be HTML-escaped first.
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function getNodeTooltipLabel(n: GraphNode): string {
+  return escapeHtml(`${n.type ?? n.label}: ${n.name ?? n.uuid.slice(0, 8)}`);
+}
+
+export function getLinkTooltipLabel(l: CanvasLink): string {
+  return escapeHtml(l.name ? `${l.label}: ${l.name}` : l.label);
+}
+
+// d3-force replaces link ``source``/``target`` string ids with node
+// object references once the simulation initializes, so both shapes
+// must be handled when matching a link against the selected node.
+export function linkTouchesNode(
+  l: CanvasLink,
+  selectedUuid: string | null,
+): boolean {
+  if (!selectedUuid) return false;
+  const sourceId = typeof l.source === "object" ? l.source.uuid : l.source;
+  const targetId = typeof l.target === "object" ? l.target.uuid : l.target;
+  return sourceId === selectedUuid || targetId === selectedUuid;
+}
+
 export function GraphCanvas({
   nodes,
   edges,
@@ -124,10 +158,7 @@ export function GraphCanvas({
         height={size.height}
         graphData={data as never}
         nodeId="uuid"
-        nodeLabel={
-          ((n: CanvasNode) =>
-            `${n.type ?? n.label}: ${n.name ?? n.uuid.slice(0, 8)}`) as never
-        }
+        nodeLabel={getNodeTooltipLabel as never}
         nodeRelSize={4}
         nodeVal={
           ((n: CanvasNode) => (n.uuid === selectedUuid ? 6 : 3)) as never
@@ -163,11 +194,10 @@ export function GraphCanvas({
         linkColor={
           ((l: CanvasLink) => EDGE_COLORS[l.label] ?? "#94a3b8") as never
         }
+        linkLabel={getLinkTooltipLabel as never}
         linkWidth={
           ((l: CanvasLink) =>
-            l.source === selectedUuid || l.target === selectedUuid
-              ? 2
-              : 0.6) as never
+            linkTouchesNode(l, selectedUuid) ? 2 : 0.6) as never
         }
         linkDirectionalArrowLength={3}
         linkDirectionalArrowRelPos={0.95}

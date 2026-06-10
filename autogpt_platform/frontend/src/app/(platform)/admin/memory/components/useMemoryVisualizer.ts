@@ -356,8 +356,11 @@ function useTerminalEffect(
 
     // GET /status itself failed (5xx, auth drop, network) — clear the
     // active job id so the button reactivates and the user can retry,
-    // rather than spinning forever on a broken endpoint.
-    if (queryError && !status) {
+    // rather than spinning forever on a broken endpoint. This must fire
+    // even when a stale (non-terminal) status from an earlier successful
+    // poll is still cached: refetchInterval stops on query error, so
+    // without this branch nothing would ever clear the active job id.
+    if (queryError) {
       toast({
         title: `${label} status unavailable`,
         description: String(

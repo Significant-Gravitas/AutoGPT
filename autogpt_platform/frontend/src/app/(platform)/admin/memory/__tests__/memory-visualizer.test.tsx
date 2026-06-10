@@ -148,4 +148,61 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
       { timeout: 5_000 },
     );
   });
+
+  test(
+    "status poll failing AFTER a successful poll still reactivates the dream button",
+    { timeout: 20_000 },
+    async () => {
+      setupBaseHandlers();
+      let statusCalls = 0;
+      server.use(
+        getPostV2TriggerDreamPassMockHandler202({
+          ...getPostV2TriggerDreamPassResponseMock202(),
+          job_id: "job-dream-stale",
+          state: "queued",
+        }),
+        // First poll succeeds (running), every later poll 500s. React
+        // Query keeps the stale running status while flipping the query
+        // into error state — the terminal handler must treat the error
+        // as terminal even though stale data exists, or the button is
+        // stuck on "Dreaming…" forever with polling stopped.
+        http.get("*/api/admin/memory/:userId/dream/:jobId", () => {
+          statusCalls += 1;
+          if (statusCalls === 1) {
+            return HttpResponse.json({
+              ...getGetV2GetDreamPassStatusResponseMock200(),
+              job_id: "job-dream-stale",
+              kind: "dream_pass",
+              state: "running",
+              current_phase: "consolidate",
+            });
+          }
+          return HttpResponse.json({ error: "boom" }, { status: 500 });
+        }),
+      );
+      render(<MemoryVisualizer />);
+      const btn = await screen.findByRole("button", { name: /dream pass/i });
+      await userEvent.click(btn);
+
+      // First poll lands → phase-aware label proves status data is cached.
+      await screen.findByRole(
+        "button",
+        { name: /consolidate…/i },
+        { timeout: 5_000 },
+      );
+
+      // Second poll (one POLL_INTERVAL_MS later) errors → active job id
+      // must clear and the idle label must come back.
+      await waitFor(
+        async () => {
+          const idle = await screen.findByRole("button", {
+            name: /dream pass/i,
+          });
+          expect(idle.textContent?.trim()).toBe("Dream pass");
+        },
+        { timeout: 10_000 },
+      );
+      expect(statusCalls).toBeGreaterThanOrEqual(2);
+    },
+  );
 });

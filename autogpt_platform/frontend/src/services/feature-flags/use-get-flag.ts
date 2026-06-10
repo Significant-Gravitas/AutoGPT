@@ -20,9 +20,11 @@ export enum Flag {
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
-  // dream-system roadmap); they default true below so local-dev and
-  // Playwright runs without a LaunchDarkly key exercise the full
-  // memory + dream stack end-to-end.
+  // dream-system roadmap). They default false below to match the
+  // backend's fail-closed gating (default=False, opt-in only) — a
+  // LaunchDarkly outage or missing flag key must not switch the
+  // feature on. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env overrides to
+  // enable the stack for local-dev / Playwright runs.
   GRAPHITI_MEMORY = "graphiti-memory",
   GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
   DREAM_PASS_ENABLED = "dream-pass-enabled",
@@ -44,11 +46,11 @@ const defaultFlags = {
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
-  [Flag.GRAPHITI_MEMORY]: true,
-  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: true,
-  [Flag.DREAM_PASS_ENABLED]: true,
-  [Flag.DREAM_PASS_WEB_FACT_CHECK]: true,
-  [Flag.DREAM_PASS_INVALIDATE_ENTITY]: true,
+  [Flag.GRAPHITI_MEMORY]: false,
+  [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
+  [Flag.DREAM_PASS_ENABLED]: false,
+  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
+  [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
 };
 
 type FlagValues = typeof defaultFlags;
