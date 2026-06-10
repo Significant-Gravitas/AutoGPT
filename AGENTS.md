@@ -56,6 +56,13 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+## Implementation loops
+
+For end-to-end implementation work, use the pipeline skills instead of ad-hoc edit-and-commit:
+
+- `/feature-implementer` — plan → plan-review → implement → impl-review → commit, each step in a fresh agent, review loops run until clean. Supporting skills: `/feature-planner`, `/review-feature-plan`, `/review-impl`.
+- `/block-implementer` — the same pipeline specialized for new blocks; works from a plain-language description. Domain checklist: `/add-block`.
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.

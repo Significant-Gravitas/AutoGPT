@@ -33,6 +33,17 @@ Every PR should have a Why / What / How structure. If any of these are missing, 
 gh pr diff {N}
 ```
 
+## Build the evidence map
+
+Do not judge from diff hunks alone — most real findings live in the code the diff *didn't* touch. For each substantively changed function, read:
+
+- the full function (not just the changed lines) and its **callers and callees**,
+- **sibling implementations** of the same pattern (did they need the same change?),
+- the **tests** that cover it (do they exercise the new failure path?),
+- for dependency-backed behavior, the dependency's actual contract — not what the code assumes.
+
+Every verdict must answer: **is this the best fix, or merely plausible?** If a sibling solves the same problem more simply, or the change patches a symptom whose cause lives one layer down, that is a finding even when the diff "works."
+
 ## Fetch existing review comments
 
 Before posting anything, fetch existing inline comments to avoid duplicates:
