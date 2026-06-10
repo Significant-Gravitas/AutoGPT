@@ -1,12 +1,48 @@
 """Unit tests for helpers in backend.data.user."""
 
+import re
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.data import user as user_module
-from backend.data.user import update_user_timezone
+from backend.data.user import get_or_create_user, update_user_timezone
 from backend.util.exceptions import DatabaseError
+
+
+class TestGetOrCreateUserProfile:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_new_user_gets_default_marketplace_profile(self, server):
+        """A first-time user must get a Profile row, like the old auth.users
+        trigger provided — without one, store submissions are rejected."""
+        from backend.data.db import prisma
+
+        user_id = str(uuid.uuid4())
+        email = f"profile-test-{user_id[:8]}@example.com"
+
+        await get_or_create_user({"sub": user_id, "email": email})
+
+        profile = await prisma.profile.find_first(where={"userId": user_id})
+        assert profile is not None
+        assert profile.name == email.split("@")[0]
+        assert re.fullmatch(r"[a-z]+-[a-z]+-\d{5}", profile.username)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_existing_user_without_profile_is_backfilled(self, server):
+        """Users created before the profile fix get one on their next request."""
+        from backend.data.db import prisma
+
+        user_id = str(uuid.uuid4())
+        email = f"profile-backfill-{user_id[:8]}@example.com"
+
+        await prisma.user.create(data={"id": user_id, "email": email})
+        get_or_create_user.cache_clear()
+
+        await get_or_create_user({"sub": user_id, "email": email})
+
+        profile = await prisma.profile.find_first(where={"userId": user_id})
+        assert profile is not None
 
 
 class TestUpdateUserTimezone:

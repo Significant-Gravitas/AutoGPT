@@ -214,7 +214,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/e2e_test_data.sql
-          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
+          key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/backend/data/user.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
 
       - name: Set up Platform - Start database
         run: |
