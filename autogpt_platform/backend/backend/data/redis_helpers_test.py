@@ -28,7 +28,7 @@ class _Fake:
         self.counters: dict[str, int] = {}
         self.lists: dict[str, list[str]] = {}
         self.hashes: dict[str, dict[str, str]] = {}
-        self.sets: dict[str, set[str]] = {}
+        self.strings: dict[str, str] = {}
         self.ttls: dict[str, int] = {}
         self.expire_calls: list[tuple[str, int, bool]] = []
 
@@ -61,17 +61,16 @@ class _Fake:
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
         # Discriminate by script content — the helpers all use distinct
         # Lua so we can route on a unique substring per script.
-        if "SISMEMBER" in script:
+        if "HDEL" in script:
             # ``claim_batch_dispatch_atomic`` shape:
-            #   KEYS[1]=pending hash, KEYS[2]=dispatched set,
+            #   KEYS[1]=pending hash, KEYS[2]=per-batch tombstone key,
             #   ARGV[1]=batch_id, ARGV[2]=ttl_seconds
-            pending_key, dispatched_key = args[0], args[1]
+            pending_key, tombstone_key = args[0], args[1]
             batch_id, ttl_seconds = args[2], args[3]
-            members = self.sets.setdefault(dispatched_key, set())
-            if batch_id in members:
+            if tombstone_key in self.strings:
                 return 0
-            members.add(batch_id)
-            await self.expire(dispatched_key, int(ttl_seconds))
+            self.strings[tombstone_key] = "1"
+            await self.expire(tombstone_key, int(ttl_seconds))
             self.hashes.setdefault(pending_key, {}).pop(batch_id, None)
             return 1
 
@@ -303,8 +302,8 @@ async def test_hash_cas_no_swap_when_expected_differs() -> None:
 
 @pytest.mark.asyncio
 async def test_claim_batch_dispatch_first_call_wins() -> None:
-    """First call against an empty dispatched set must win, must add the
-    tombstone, and must HDEL the pending entry."""
+    """First call must win, must SET the per-batch tombstone key with
+    its own TTL, and must HDEL the pending entry."""
     r = _Fake()
     r.hashes["{llm:batch}:pending"] = {
         "msgbatch_x": "entry-body",
@@ -314,17 +313,17 @@ async def test_claim_batch_dispatch_first_call_wins() -> None:
     claimed = await claim_batch_dispatch_atomic(
         r,  # type: ignore[arg-type]
         pending_key="{llm:batch}:pending",
-        dispatched_key="{llm:batch}:dispatched",
+        dispatched_key_prefix="{llm:batch}:dispatched",
         batch_id="msgbatch_x",
         ttl_seconds=7 * 24 * 60 * 60,
     )
 
     assert claimed is True
-    assert "msgbatch_x" in r.sets["{llm:batch}:dispatched"]
+    assert r.strings["{llm:batch}:dispatched:msgbatch_x"] == "1"
     # Pending entry removed for the claimed batch, others untouched.
     assert "msgbatch_x" not in r.hashes["{llm:batch}:pending"]
     assert r.hashes["{llm:batch}:pending"]["msgbatch_other"] == "untouched"
-    assert r.ttls["{llm:batch}:dispatched"] == 7 * 24 * 60 * 60
+    assert r.ttls["{llm:batch}:dispatched:msgbatch_x"] == 7 * 24 * 60 * 60
 
 
 @pytest.mark.asyncio
@@ -338,7 +337,7 @@ async def test_claim_batch_dispatch_second_call_loses() -> None:
     first = await claim_batch_dispatch_atomic(
         r,  # type: ignore[arg-type]
         pending_key="{llm:batch}:pending",
-        dispatched_key="{llm:batch}:dispatched",
+        dispatched_key_prefix="{llm:batch}:dispatched",
         batch_id="msgbatch_x",
         ttl_seconds=60,
     )
@@ -349,7 +348,7 @@ async def test_claim_batch_dispatch_second_call_loses() -> None:
     second = await claim_batch_dispatch_atomic(
         r,  # type: ignore[arg-type]
         pending_key="{llm:batch}:pending",
-        dispatched_key="{llm:batch}:dispatched",
+        dispatched_key_prefix="{llm:batch}:dispatched",
         batch_id="msgbatch_x",
         ttl_seconds=60,
     )
@@ -364,27 +363,63 @@ async def test_claim_batch_dispatch_second_call_loses() -> None:
 
 @pytest.mark.asyncio
 async def test_claim_batch_dispatch_distinct_batch_ids_dont_collide() -> None:
-    """Tombstones are per-batch_id — claiming batch A must not block
-    a later claim for batch B."""
+    """Tombstones are per-batch_id keys — claiming batch A must not
+    block a later claim for batch B."""
     r = _Fake()
     r.hashes["{llm:batch}:pending"] = {"a": "body-a", "b": "body-b"}
 
     a = await claim_batch_dispatch_atomic(
         r,  # type: ignore[arg-type]
         pending_key="{llm:batch}:pending",
-        dispatched_key="{llm:batch}:dispatched",
+        dispatched_key_prefix="{llm:batch}:dispatched",
         batch_id="a",
         ttl_seconds=60,
     )
     b = await claim_batch_dispatch_atomic(
         r,  # type: ignore[arg-type]
         pending_key="{llm:batch}:pending",
-        dispatched_key="{llm:batch}:dispatched",
+        dispatched_key_prefix="{llm:batch}:dispatched",
         batch_id="b",
         ttl_seconds=60,
     )
 
     assert a is True
     assert b is True
-    assert r.sets["{llm:batch}:dispatched"] == {"a", "b"}
+    assert set(r.strings) == {
+        "{llm:batch}:dispatched:a",
+        "{llm:batch}:dispatched:b",
+    }
     assert r.hashes["{llm:batch}:pending"] == {}
+
+
+@pytest.mark.asyncio
+async def test_claim_tombstones_age_out_individually() -> None:
+    """Each tombstone key carries its own TTL — a later claim for a
+    different batch must not refresh an earlier tombstone's TTL. (The
+    old shared-set design re-EXPIREd the whole set on every claim, so
+    members never aged out under continuous traffic and the set grew
+    without bound.)"""
+    r = _Fake()
+    r.hashes["{llm:batch}:pending"] = {"a": "body-a", "b": "body-b"}
+
+    await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key_prefix="{llm:batch}:dispatched",
+        batch_id="a",
+        ttl_seconds=60,
+    )
+    await claim_batch_dispatch_atomic(
+        r,  # type: ignore[arg-type]
+        pending_key="{llm:batch}:pending",
+        dispatched_key_prefix="{llm:batch}:dispatched",
+        batch_id="b",
+        ttl_seconds=60,
+    )
+
+    # Exactly one EXPIRE per tombstone, each on its own key — nothing
+    # shared, nothing refreshed by the other batch's claim.
+    assert [key for key, _, _ in r.expire_calls] == [
+        "{llm:batch}:dispatched:a",
+        "{llm:batch}:dispatched:b",
+    ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -14,6 +15,7 @@ from backend.executor.batch_executor import (
     MAX_POLL_DELAY_SECONDS,
     PendingEntry,
     _bump_delay,
+    _dispatch_error,
     _next_poll_at,
     clear_handlers_for_test,
     enqueue_pending,
@@ -32,11 +34,11 @@ def fake_redis():
 
     Also fakes the Lua ``eval`` path so the BatchExecutor's atomic
     ``claim_batch_dispatch_atomic`` works under test — the real script
-    runs SISMEMBER + SADD + HDEL on the dispatched set + pending hash
-    in one indivisible step; the fake replays the same effects.
+    SETs a per-batch tombstone key (``NX EX``) + HDELs the pending
+    entry in one indivisible step; the fake replays the same effects.
     """
     store: dict[str, dict[str, str]] = {}
-    sets: dict[str, set[str]] = {}
+    tombstones: dict[str, str] = {}
 
     async def fake_hset(key, field, value):
         store.setdefault(key, {})[field] = value
@@ -61,13 +63,12 @@ def fake_redis():
         # Only the claim_batch_dispatch_atomic shape is used by the
         # BatchExecutor today. Branch on content so we don't pretend
         # to know how to evaluate arbitrary Lua.
-        if "SISMEMBER" in script:
-            pending_key, dispatched_key = args[0], args[1]
+        if "HDEL" in script:
+            pending_key, tombstone_key = args[0], args[1]
             batch_id = args[2]
-            members = sets.setdefault(dispatched_key, set())
-            if batch_id in members:
+            if tombstone_key in tombstones:
                 return 0
-            members.add(batch_id)
+            tombstones[tombstone_key] = "1"
             store.setdefault(pending_key, {}).pop(batch_id, None)
             return 1
         raise NotImplementedError(f"fake_redis.eval: unknown script: {script!r}")
@@ -310,6 +311,35 @@ class TestWalkOnceDispatch:
         assert await list_pending() == []
 
     @pytest.mark.asyncio
+    async def test_timeout_dispatch_fires_exactly_once_across_replays(self, fake_redis):
+        """The timeout path must claim atomically before dispatching —
+        a crash-replay (entry re-added after the first dispatch) or a
+        racing second walker must not re-fire the handler. A double
+        fire would release the user's dream lock twice, potentially
+        deleting a NEWER pass's lock acquired after the first release.
+        """
+        captured: list[list[BatchResultRow]] = []
+
+        async def fake_handler(entry, rows):
+            captured.append(list(rows))
+
+        register_handler("dream_pass", fake_handler)
+        long_ago = datetime.now(timezone.utc) - timedelta(
+            seconds=MAX_BATCH_LIFETIME_SECONDS + 1
+        )
+        await enqueue_pending(_entry(submitted_at=long_ago))
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+        # Crash-replay: the same entry reappears in pending after the
+        # first timeout dispatch already claimed the batch.
+        await enqueue_pending(_entry(submitted_at=long_ago))
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        assert len(captured) == 1, "timeout handler must fire exactly once"
+        # The replayed zombie row is cleared without dispatching so it
+        # can't be re-walked until the tombstone expires.
+        assert await list_pending() == []
+
+    @pytest.mark.asyncio
     async def test_no_api_key_leaves_entry_in_queue(self, fake_redis):
         """When the api_key_for factory returns None (rotation in
         progress, key removed), we MUST leave the entry alone so the
@@ -341,32 +371,159 @@ class TestWalkOnceDispatch:
 
 class TestUnknownNamespace:
     @pytest.mark.asyncio
-    async def test_no_handler_drops_results_logs_warning(self, fake_redis):
-        """An ended batch whose namespace nobody registered for must
-        NOT crash the walk — it logs + drops so the rest of the queue
-        still progresses."""
-        await enqueue_pending(_entry(namespace="orphan_namespace"))
+    async def test_no_handler_leaves_entry_pending_for_recovery(self, fake_redis):
+        """A batch whose namespace nobody registered for must NOT be
+        claimed + dropped — the tombstone would make the results
+        irrecoverable even though the provider retains them for weeks.
+        Leave the entry pending (with backoff) so a deploy that fixes
+        the handler registration can still dispatch it."""
+        await enqueue_pending(_entry(namespace="orphan_namespace", delay=30))
+        poll_mock = AsyncMock(return_value="ended")
+        download_mock = AsyncMock(return_value=[])
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            poll_mock,
+        ), patch(
+            "backend.executor.batch_executor.download_batch_results",
+            download_mock,
+        ):
+            await walk_once(api_key_for=lambda p: "sk-ant-test")
+
+        # We don't even poll: there's nobody to deliver results to.
+        poll_mock.assert_not_awaited()
+        download_mock.assert_not_awaited()
+        entries = await list_pending()
+        assert len(entries) == 1
+        # Backed off, not hot-looping the error every walk.
+        assert entries[0].poll_delay_seconds == 60
+
+    @pytest.mark.asyncio
+    async def test_no_handler_entry_is_reaped_by_lifetime_timeout(self, fake_redis):
+        """Leaving handler-less entries pending can't loop forever:
+        once the entry crosses MAX_BATCH_LIFETIME_SECONDS the timeout
+        path claims + removes it even with no handler registered
+        (_dispatch_error no-ops when the handler is absent)."""
+        long_ago = datetime.now(timezone.utc) - timedelta(
+            seconds=MAX_BATCH_LIFETIME_SECONDS + 1
+        )
+        await enqueue_pending(
+            _entry(namespace="orphan_namespace", submitted_at=long_ago)
+        )
+        await walk_once(api_key_for=lambda p: "sk-ant-test")
+        assert await list_pending() == []
+
+
+class TestWalkCrashGuard:
+    @pytest.mark.asyncio
+    async def test_crash_on_one_entry_does_not_starve_later_entries(self, fake_redis):
+        """An uncaught per-entry error (here: the api-key factory
+        blowing up) must be contained to that entry — entries after it
+        in hash order still get polled and dispatched, and the bad
+        entry stays pending for the next walk instead of aborting the
+        whole queue forever."""
+        dispatched: list[str] = []
+
+        async def fake_handler(entry, rows):
+            dispatched.append(entry.provider_batch_id)
+
+        register_handler("dream_pass", fake_handler)
+        await enqueue_pending(_entry(provider_batch_id="msgbatch_poison"))
+        await enqueue_pending(_entry(provider_batch_id="msgbatch_healthy"))
+
+        calls = {"count": 0}
+
+        def flaky_api_key_for(provider):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("settings backend exploded")
+            return "sk-ant-test"
+
+        fake_row = BatchResultRow(
+            custom_id="passid-1:consolidate",
+            content='{"facts": []}',
+            input_tokens=1,
+            output_tokens=1,
+        )
         with patch(
             "backend.executor.batch_executor.poll_batch",
             new=AsyncMock(return_value="ended"),
         ), patch(
             "backend.executor.batch_executor.download_batch_results",
-            new=AsyncMock(
-                return_value=[
-                    BatchResultRow(
-                        custom_id="x",
-                        content="x",
-                        input_tokens=1,
-                        output_tokens=1,
-                    )
-                ]
-            ),
+            new=AsyncMock(return_value=[fake_row]),
+        ):
+            await walk_once(api_key_for=flaky_api_key_for)
+
+        assert dispatched == ["msgbatch_healthy"]
+        # The poisoned entry is untouched, ready for the next walk.
+        remaining = [e.provider_batch_id for e in await list_pending()]
+        assert remaining == ["msgbatch_poison"]
+
+    @pytest.mark.asyncio
+    async def test_naive_submitted_at_in_redis_is_coerced_and_walked(self, fake_redis):
+        """A producer that wrote naive isoformat timestamps must not
+        poison the walk — PendingEntry coerces naive datetimes to UTC
+        on rehydration, so ``now - submitted_at`` can't raise TypeError
+        and brick every entry behind it in hash order."""
+        stub, store = fake_redis
+        naive_iso = (
+            (datetime.now(timezone.utc) - timedelta(seconds=60))
+            .replace(tzinfo=None)
+            .isoformat()
+        )
+        store["{llm:batch}:pending"] = {
+            "msgbatch_naive": json.dumps(
+                {
+                    "provider": "anthropic",
+                    "provider_batch_id": "msgbatch_naive",
+                    "callback_namespace": "dream_pass",
+                    "submitted_at": naive_iso,
+                    "next_poll_at": naive_iso,
+                    "poll_delay_seconds": 30,
+                    "payload": {"custom_ids": ["x"]},
+                }
+            )
+        }
+        register_handler("dream_pass", AsyncMock())
+
+        entries = await list_pending()
+        assert entries[0].submitted_at.tzinfo == timezone.utc
+        assert entries[0].next_poll_at.tzinfo == timezone.utc
+
+        with patch(
+            "backend.executor.batch_executor.poll_batch",
+            new=AsyncMock(return_value="processing"),
         ):
             await walk_once(api_key_for=lambda p: "sk-ant-test")
-        # The entry was processed (downloaded) and removed even with
-        # no handler — caller couldn't have known the namespace would
-        # be unbound at result time.
-        assert await list_pending() == []
+
+        # Walked normally: still pending with the delay backed off.
+        assert (await list_pending())[0].poll_delay_seconds == 60
+
+    def test_naive_datetimes_are_coerced_to_utc_on_construction(self):
+        naive = datetime(2026, 1, 1, 12, 0, 0)
+        entry = PendingEntry(
+            provider="anthropic",
+            provider_batch_id="msgbatch_x",
+            callback_namespace="dream_pass",
+            submitted_at=naive,
+            next_poll_at=naive,
+        )
+        assert entry.submitted_at.tzinfo == timezone.utc
+        assert entry.next_poll_at.tzinfo == timezone.utc
+
+
+class TestDispatchErrorGuard:
+    @pytest.mark.asyncio
+    async def test_malformed_custom_ids_payload_is_contained(self):
+        """``payload`` is an open contract — junk ``custom_ids`` (here
+        an int instead of a list) must be caught inside _dispatch_error
+        rather than escaping after the batch was already claimed."""
+        handler = AsyncMock()
+        register_handler("dream_pass", handler)
+        entry = _entry(payload={"custom_ids": 123})
+
+        await _dispatch_error(entry, error="provider reported failed")
+
+        handler.assert_not_awaited()
 
 
 class TestBackoffMath:

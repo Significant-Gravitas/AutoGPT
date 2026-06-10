@@ -32,7 +32,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.util.llm.providers import (
     BatchResultRow,
@@ -55,11 +55,16 @@ config = Config()
 # multi-key Lua script. Don't add or rename either without also updating
 # the tag on the other.
 PENDING_KEY = "{llm:batch}:pending"
-# Tombstones for batches we've already started dispatching. 7-day TTL is
-# the dedup window: longer than any realistic Anthropic in-flight
-# lifetime (24h SLA, our MAX_BATCH_LIFETIME_SECONDS cap is also 24h),
-# short enough not to grow unbounded.
-DISPATCHED_KEY = "{llm:batch}:dispatched"
+# Tombstones for batches we've already started dispatching: one STRING
+# key per batch — ``{llm:batch}:dispatched:<batch_id>`` — each with its
+# own 7-day TTL so tombstones self-expire instead of accumulating in a
+# shared set forever. 7 days is the dedup window: longer than any
+# realistic Anthropic in-flight lifetime (24h SLA, our
+# MAX_BATCH_LIFETIME_SECONDS cap is also 24h). The ``{llm:batch}``
+# hash tag keeps every tombstone on the same cluster slot as the
+# pending hash — required by ``claim_batch_dispatch_atomic``'s
+# multi-key Lua script.
+DISPATCHED_KEY_PREFIX = "{llm:batch}:dispatched"
 DISPATCHED_TTL_SECONDS = 7 * 24 * 60 * 60
 
 # 24h hard ceiling — Anthropic's promised SLA. Beyond this we mark the
@@ -97,6 +102,18 @@ class PendingEntry(BaseModel):
     next_poll_at: datetime
     poll_delay_seconds: int = INITIAL_POLL_DELAY_SECONDS
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("submitted_at", "next_poll_at")
+    @classmethod
+    def _coerce_naive_to_utc(cls, value: datetime) -> datetime:
+        """Naive datetimes poison the walk: comparing them against an
+        aware ``now`` raises TypeError on every walk, forever, because
+        the bad entry is never removed. Coerce at the model boundary so
+        a careless producer (the queue is an open contract) can't write
+        the poison — and ``_deserialize`` can't re-hydrate it."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 async def enqueue_pending(entry: PendingEntry) -> None:
@@ -144,13 +161,14 @@ async def update_pending(entry: PendingEntry) -> None:
 
 
 async def remove_pending(provider_batch_id: str) -> None:
-    """Drop a finished or expired entry from the queue.
+    """Drop an entry from the queue without dispatching.
 
-    Reserved for terminal paths that bypass dispatch (e.g. lifetime
-    timeout). Normal end / failed dispatches go through
-    ``_claim_dispatch`` which atomically tombstones + HDELs in one
-    Lua script — see the walk loop in :func:`walk_once` for the
-    rationale.
+    Never used to *bypass* the dispatch claim: ended, failed, and
+    lifetime-timeout all go through ``_claim_dispatch``, which
+    atomically tombstones + HDELs in one Lua script so concurrent
+    walkers (or a crash-replay) can never double-dispatch. The walk
+    loop's only caller is the timeout path's zombie cleanup — clearing
+    a pending row whose batch already carries a dispatch tombstone.
     """
     from backend.data.redis_client import get_redis_async
 
@@ -164,9 +182,10 @@ async def _claim_dispatch(provider_batch_id: str) -> bool:
     Returns True when the caller won the claim (must dispatch); False
     when another walker already claimed it (must skip silently — the
     other walker is responsible for the callback). The Lua script
-    inside :func:`claim_batch_dispatch_atomic` SADDs the tombstone +
-    HDELs the pending entry in one indivisible step, closing the
-    race we'd otherwise have between ``_dispatch`` and a separate
+    inside :func:`claim_batch_dispatch_atomic` SETs a per-batch
+    tombstone key (``NX EX`` so each one self-expires) + HDELs the
+    pending entry in one indivisible step, closing the race we'd
+    otherwise have between ``_dispatch`` and a separate
     ``remove_pending``.
     """
     from backend.data.redis_client import get_redis_async
@@ -176,7 +195,7 @@ async def _claim_dispatch(provider_batch_id: str) -> bool:
     return await claim_batch_dispatch_atomic(
         redis,
         pending_key=PENDING_KEY,
-        dispatched_key=DISPATCHED_KEY,
+        dispatched_key_prefix=DISPATCHED_KEY_PREFIX,
         batch_id=provider_batch_id,
         ttl_seconds=DISPATCHED_TTL_SECONDS,
     )
@@ -227,7 +246,8 @@ async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> Non
         (exponential backoff, capped at ``MAX_POLL_DELAY_SECONDS``)
         and write back.
       * If past ``MAX_BATCH_LIFETIME_SECONDS``: dispatch a timeout
-        error, remove from queue.
+        error, remove from queue (claimed atomically, exactly like the
+        ended / failed paths).
 
     The API key is looked up by provider via the caller-supplied
     factory so this module doesn't need to know how settings are
@@ -236,89 +256,148 @@ async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> Non
     now = datetime.now(timezone.utc)
     entries = await list_pending()
     for entry in entries:
-        if (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS:
-            logger.warning(
-                "Batch %s for namespace=%s exceeded %ds — dispatching timeout",
-                entry.provider_batch_id,
-                entry.callback_namespace,
-                MAX_BATCH_LIFETIME_SECONDS,
-            )
-            await _dispatch_error(
-                entry,
-                error="exceeded MAX_BATCH_LIFETIME_SECONDS without completion",
-            )
-            await remove_pending(entry.provider_batch_id)
-            continue
-
-        if entry.next_poll_at > now:
-            continue
-
-        api_key = api_key_for(entry.provider)
-        if not api_key:
-            logger.warning(
-                "No API key for provider=%s — leaving batch %s in queue",
-                entry.provider,
-                entry.provider_batch_id,
-            )
-            entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
-            await update_pending(entry)
-            continue
-
         try:
-            status = await poll_batch(
+            await _walk_entry(entry, now=now, api_key_for=api_key_for)
+        except Exception:
+            # One poisoned entry must not starve the rest of the queue:
+            # without this guard an uncaught per-entry error aborts the
+            # walk, and every entry after it in hash order is never
+            # polled again — the bad entry is still pending next walk.
+            logger.exception(
+                "Failed processing pending batch %s — skipping this walk",
+                entry.provider_batch_id,
+            )
+
+
+async def _walk_entry(
+    entry: PendingEntry,
+    *,
+    now: datetime,
+    api_key_for: Callable[[ProviderLiteral], str | None],
+) -> None:
+    """Process a single pending entry — gates, poll, then dispatch."""
+    if (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS:
+        await _handle_timeout(entry)
+        return
+
+    if entry.next_poll_at > now:
+        return
+
+    if entry.callback_namespace not in _HANDLERS:
+        # Never claim (= tombstone + irrecoverably drop) results we
+        # cannot deliver. An unregistered namespace usually means a
+        # deploy whose callback module failed to import (_bootstrap_
+        # callbacks swallows import errors) — leave the entry pending
+        # with backoff so a fixed deploy can still dispatch it within
+        # the provider's retention window. This can't loop forever:
+        # an entry whose handler never shows up eventually crosses
+        # MAX_BATCH_LIFETIME_SECONDS and the timeout path above claims
+        # + removes it.
+        logger.error(
+            "No handler registered for namespace=%s — leaving batch %s pending",
+            entry.callback_namespace,
+            entry.provider_batch_id,
+        )
+        await _push_back(entry)
+        return
+
+    api_key = api_key_for(entry.provider)
+    if not api_key:
+        logger.warning(
+            "No API key for provider=%s — leaving batch %s in queue",
+            entry.provider,
+            entry.provider_batch_id,
+        )
+        entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
+        await update_pending(entry)
+        return
+
+    try:
+        status = await poll_batch(
+            provider=entry.provider,
+            provider_batch_id=entry.provider_batch_id,
+            api_key=api_key,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Poll failed for batch %s: %s — will retry",
+            entry.provider_batch_id,
+            exc,
+            exc_info=True,
+        )
+        await _push_back(entry)
+        return
+
+    if status == "ended":
+        try:
+            rows = await download_batch_results(
                 provider=entry.provider,
                 provider_batch_id=entry.provider_batch_id,
                 api_key=api_key,
             )
-        except Exception as exc:
-            logger.warning(
-                "Poll failed for batch %s: %s — will retry",
+        except Exception:
+            logger.exception(
+                "Download failed for batch %s — will retry once",
                 entry.provider_batch_id,
-                exc,
-                exc_info=True,
             )
-            entry.poll_delay_seconds = _bump_delay(entry.poll_delay_seconds)
-            entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
-            await update_pending(entry)
-            continue
+            await _push_back(entry)
+            return
+        # Atomic claim: only one walker dispatches each batch.
+        # Without this, a slow remove_pending or a crash between
+        # _dispatch and remove_pending re-fires the whole callback
+        # chain (re-submits phases, re-runs apply, etc). The Lua
+        # script tombstones the batch_id and HDELs the pending
+        # entry in one indivisible step.
+        if not await _claim_dispatch(entry.provider_batch_id):
+            logger.info(
+                "Batch %s already dispatched — skipping",
+                entry.provider_batch_id,
+            )
+            return
+        await _dispatch(entry, rows)
+    elif status == "failed":
+        if not await _claim_dispatch(entry.provider_batch_id):
+            return
+        await _dispatch_error(entry, error="provider reported failed")
+    else:
+        await _push_back(entry)
 
-        if status == "ended":
-            try:
-                rows = await download_batch_results(
-                    provider=entry.provider,
-                    provider_batch_id=entry.provider_batch_id,
-                    api_key=api_key,
-                )
-            except Exception:
-                logger.exception(
-                    "Download failed for batch %s — will retry once",
-                    entry.provider_batch_id,
-                )
-                entry.poll_delay_seconds = _bump_delay(entry.poll_delay_seconds)
-                entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
-                await update_pending(entry)
-                continue
-            # Atomic claim: only one walker dispatches each batch.
-            # Without this, a slow remove_pending or a crash between
-            # _dispatch and remove_pending re-fires the whole callback
-            # chain (re-submits phases, re-runs apply, etc). The Lua
-            # script tombstones the batch_id and HDELs the pending
-            # entry in one indivisible step.
-            if not await _claim_dispatch(entry.provider_batch_id):
-                logger.info(
-                    "Batch %s already dispatched — skipping",
-                    entry.provider_batch_id,
-                )
-                continue
-            await _dispatch(entry, rows)
-        elif status == "failed":
-            if not await _claim_dispatch(entry.provider_batch_id):
-                continue
-            await _dispatch_error(entry, error="provider reported failed")
-        else:
-            entry.poll_delay_seconds = _bump_delay(entry.poll_delay_seconds)
-            entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
-            await update_pending(entry)
+
+async def _handle_timeout(entry: PendingEntry) -> None:
+    """Terminal path for entries past ``MAX_BATCH_LIFETIME_SECONDS``."""
+    logger.warning(
+        "Batch %s for namespace=%s exceeded %ds — dispatching timeout",
+        entry.provider_batch_id,
+        entry.callback_namespace,
+        MAX_BATCH_LIFETIME_SECONDS,
+    )
+    # Claim before dispatching — the same atomic tombstone + HDEL as
+    # the ended / failed paths — so a racing walker or a crash-replay
+    # can never fire the timeout callback twice (the dream handler
+    # releases the user's dream lock on error; a double fire could
+    # delete a NEWER pass's lock acquired after the first release).
+    # This path is also the backstop for entries whose namespace never
+    # got a handler registered: the claim still removes the entry, and
+    # _dispatch_error no-ops when the handler is absent.
+    if not await _claim_dispatch(entry.provider_batch_id):
+        # Refused claim = this batch already dispatched once, so the
+        # pending row is a zombie (e.g. re-enqueued by a buggy
+        # producer). Clear it WITHOUT dispatching — left alone it
+        # would be re-walked until the tombstone expires, after which
+        # the claim would win and fire a week-late duplicate dispatch.
+        await remove_pending(entry.provider_batch_id)
+        return
+    await _dispatch_error(
+        entry,
+        error="exceeded MAX_BATCH_LIFETIME_SECONDS without completion",
+    )
+
+
+async def _push_back(entry: PendingEntry) -> None:
+    """Re-queue *entry* with exponential backoff for a later walk."""
+    entry.poll_delay_seconds = _bump_delay(entry.poll_delay_seconds)
+    entry.next_poll_at = _next_poll_at(entry.poll_delay_seconds)
+    await update_pending(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -479,18 +558,21 @@ async def _dispatch_error(entry: PendingEntry, *, error: str) -> None:
     handler = _HANDLERS.get(entry.callback_namespace)
     if handler is None:
         return
-    custom_ids: list[str] = entry.payload.get("custom_ids") or []
-    rows = [
-        BatchResultRow(
-            custom_id=cid,
-            content="",
-            input_tokens=0,
-            output_tokens=0,
-            error=error,
-        )
-        for cid in custom_ids
-    ]
     try:
+        # Row construction stays inside the guard: ``payload`` is an
+        # open contract, so malformed ``custom_ids`` (wrong types, junk
+        # values) must be logged here rather than escape into the walk.
+        custom_ids: list[str] = entry.payload.get("custom_ids") or []
+        rows = [
+            BatchResultRow(
+                custom_id=cid,
+                content="",
+                input_tokens=0,
+                output_tokens=0,
+                error=error,
+            )
+            for cid in custom_ids
+        ]
         await handler(entry, rows)
     except Exception:
         logger.exception(

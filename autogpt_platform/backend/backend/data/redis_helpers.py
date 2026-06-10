@@ -77,32 +77,36 @@ return redis.call('LLEN', KEYS[2])
 #                                      #    leaves the batch in pending,
 #                                      #    next walk re-dispatches.
 #
-# The atomic claim sets a tombstone in the dispatched set BEFORE the
+# The atomic claim SETs a per-batch tombstone STRING key BEFORE the
 # walker calls _dispatch, so a re-entry will be refused even when the
-# pending hash hasn't been HDEL'd yet. The TTL on the dispatched set
-# bounds memory growth and matches Anthropic's 29-day batch result
-# retention window so a stale tombstone can't accidentally let a
-# 30-day-old batch re-dispatch.
+# pending hash hasn't been HDEL'd yet. One tombstone key per batch_id
+# (``SET ... NX EX ttl``) means each tombstone self-expires its own
+# TTL after its own dispatch. The previous design — one shared SET
+# whose TTL was re-applied on every claim — never aged members out:
+# as long as one batch dispatched within the window, the whole set
+# lived forever and grew unbounded.
 #
-# Both keys MUST share a Redis Cluster hash tag (e.g. both prefixed
-# with ``{llm:batch}:``) so they land on the same slot — required for
-# multi-key Lua under cluster mode.
+# Cluster safety: this script touches two keys (pending hash +
+# tombstone), so both MUST share a Redis Cluster hash tag (e.g. both
+# prefixed with ``{llm:batch}:``) to land on the same slot — required
+# for multi-key Lua under cluster mode. The pending hash is a
+# single-slot structure anyway, so colocating the small, self-expiring
+# tombstones on its slot costs nothing and buys full claim+HDEL
+# atomicity (no claimed-but-still-pending window for walkers to skip).
 #
 # Returns 1 when this caller won the claim (proceed with dispatch),
 # 0 when another walker already dispatched (skip silently).
 #
 #   KEYS[1]  pending hash key
-#   KEYS[2]  dispatched set key
-#   ARGV[1]  batch_id (field on hash, member of set)
-#   ARGV[2]  TTL seconds applied to the dispatched set
+#   KEYS[2]  per-batch tombstone key
+#   ARGV[1]  batch_id (field on the pending hash)
+#   ARGV[2]  TTL seconds applied to the tombstone key
 _CLAIM_BATCH_DISPATCH_LUA = """
-if redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1 then
-    return 0
+if redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
+    redis.call('HDEL', KEYS[1], ARGV[1])
+    return 1
 end
-redis.call('SADD', KEYS[2], ARGV[1])
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[2]))
-redis.call('HDEL', KEYS[1], ARGV[1])
-return 1
+return 0
 """
 
 
@@ -268,7 +272,7 @@ async def claim_batch_dispatch_atomic(
     redis: AsyncRedisClient,
     *,
     pending_key: str,
-    dispatched_key: str,
+    dispatched_key_prefix: str,
     batch_id: str,
     ttl_seconds: int,
 ) -> bool:
@@ -280,15 +284,22 @@ async def claim_batch_dispatch_atomic(
         await remove_pending(batch_id)      # gap → re-dispatch on
                                             #     crash / contention
 
-    The Lua script tests ``SISMEMBER(dispatched_key, batch_id)`` and,
-    only when absent, ``SADDs`` the tombstone + ``HDELs`` the pending
-    entry, all in one indivisible step. Returns ``True`` when this
-    caller won the claim (proceed with dispatch), ``False`` when
-    another walker already dispatched (skip silently).
+    The tombstone is one STRING key per batch —
+    ``f"{dispatched_key_prefix}:{batch_id}"`` — set with ``NX EX`` so
+    each tombstone expires individually ``ttl_seconds`` after its own
+    dispatch (a shared set with one refreshed TTL would never age
+    members out and grow unbounded). The Lua script SETs the tombstone
+    and, only when it won, HDELs the pending entry, all in one
+    indivisible step. Returns ``True`` when this caller won the claim
+    (proceed with dispatch), ``False`` when another walker already
+    dispatched (skip silently).
 
-    ``pending_key`` and ``dispatched_key`` MUST share a Redis Cluster
-    hash tag (e.g. both prefixed with ``"{llm:batch}:"``) so they land
-    on the same slot — required for multi-key Lua under cluster mode.
+    ``pending_key`` and ``dispatched_key_prefix`` MUST share a Redis
+    Cluster hash tag (e.g. both prefixed with ``"{llm:batch}:"``) so
+    the pending hash and every tombstone land on the same slot —
+    required for multi-key Lua under cluster mode. Same-slot keys keep
+    the claim + HDEL fully atomic, so a crash can never leave a
+    claimed-but-still-pending entry.
 
     ``ttl_seconds`` should comfortably exceed the longest possible
     in-flight batch lifetime so stale tombstones cannot let a very
@@ -302,7 +313,7 @@ async def claim_batch_dispatch_atomic(
             _CLAIM_BATCH_DISPATCH_LUA,
             2,
             pending_key,
-            dispatched_key,
+            f"{dispatched_key_prefix}:{batch_id}",
             batch_id,
             str(ttl_seconds),
         ),
