@@ -150,6 +150,49 @@ def _phase_models_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+async def _finalize_stuck_duplicate(
+    *, user_id: str, pass_id: str, job_id: str, ops: DreamOperations
+) -> None:
+    """On a duplicate delivery, finalize the job row iff the first
+    delivery crashed between apply and ``mark_complete`` and left it
+    non-terminal. An already-terminal row is left untouched so the
+    first delivery's real apply stats are never overwritten.
+
+    Best-effort: a status read/write failure here must not crash the
+    duplicate tail (lock release + cleanup still need to run)."""
+    if not job_id:
+        return
+    try:
+        from .job_status import mark_complete, read_status
+        from .schemas import DreamPassResult
+
+        existing = await read_status(kind="dream_pass", job_id=job_id)
+        if existing is None or existing.state in ("complete", "errored"):
+            return
+        logger.warning(
+            "Duplicate dispatch found job %s stuck in state=%s — "
+            "finalizing with the clamped op counts",
+            job_id[:12],
+            existing.state,
+        )
+        await mark_complete(
+            kind="dream_pass",
+            job_id=job_id,
+            result=DreamPassResult(
+                user_id=user_id,
+                pass_id=pass_id,
+                execution_path="anthropic_batch",
+                consolidated_count=len(ops.writes),
+                proposal_count=len(ops.proposals),
+                demotion_count=len(ops.demotions),
+                entity_invalidation_count=len(ops.entity_invalidations),
+                summary_for_user=ops.summary_for_user,
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to finalize stuck duplicate for job %s", job_id[:12])
+
+
 async def _best_effort_cleanup(pass_id: str) -> None:
     """Delete the per-pass state + input bundle without letting a Redis
     blip propagate. These deletes run AFTER ``mark_complete`` on the
@@ -583,6 +626,14 @@ async def _finalize_complete(
             "Duplicate dispatch for pass=%s — operations already applied; "
             "preserving the first delivery's job result",
             pass_id,
+        )
+        # Normally the first delivery wrote the terminal status. If it
+        # crashed between apply and mark_complete, the row is stuck in
+        # 'submitted' — finalize it here WITHOUT clobbering an existing
+        # terminal result (the apply counts are this pass's clamped ops;
+        # the writes themselves landed with the first delivery).
+        await _finalize_stuck_duplicate(
+            user_id=user_id, pass_id=pass_id, job_id=job_id, ops=ops
         )
         await _log_all_phase_costs(
             user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models

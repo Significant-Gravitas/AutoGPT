@@ -777,6 +777,69 @@ class TestLockTokenWiring:
         mark_errored.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_duplicate_dispatch_finalizes_job_stuck_before_mark_complete(
+        self, fake_redis
+    ):
+        """First delivery crashed between apply and mark_complete: the gate
+        is claimed but the job row never went terminal. The duplicate must
+        finalize the row (with the clamped op counts) instead of leaving it
+        stuck in 'submitted' until the row TTL."""
+        from backend.copilot.dream.job_status import (
+            read_status,
+            update_status_phase,
+            write_initial_status,
+        )
+
+        _, _, string_store = fake_redis
+        await self._seed_terminal_pass()
+        # Gate already claimed by the crashed first delivery.
+        string_store["dream:applied:p1"] = "1"
+        await write_initial_status(kind="dream_pass", job_id="j1", user_id="u1")
+        await update_status_phase(kind="dream_pass", job_id="j1", state="submitted")
+
+        apply = AsyncMock()
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        apply.assert_not_awaited()
+        final = await read_status(kind="dream_pass", job_id="j1")
+        assert final is not None
+        assert final.state == "complete"
+        assert final.result is not None
+        assert final.result["summary_for_user"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_dispatch_leaves_terminal_job_untouched(self, fake_redis):
+        """A duplicate against an already-completed row must not rewrite it
+        — the first delivery's real apply stats stay authoritative."""
+        _, _, string_store = fake_redis
+        await self._seed_terminal_pass()
+        string_store["dream:applied:p1"] = "1"
+
+        mark_complete = AsyncMock()
+        read_existing = AsyncMock(return_value=MagicMock(state="complete"))
+        with patch("backend.copilot.dream.apply.apply_operations", AsyncMock()), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch("backend.copilot.dream.job_status.read_status", read_existing), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        mark_complete.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_terminal_release_leaves_lock_reacquired_by_newer_pass(
         self, fake_redis
     ):
