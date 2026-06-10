@@ -16,6 +16,7 @@ from fastapi import (
     Body,
     Depends,
     File,
+    Header,
     HTTPException,
     Path,
     Query,
@@ -648,10 +649,22 @@ async def get_user_credits(
     dependencies=[Security(requires_user)],
 )
 async def request_top_up(
-    request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
+    request: RequestTopUp,
+    user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ):
     user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
+    checkout_url = await user_credit_model.top_up_intent(
+        user_id,
+        request.credit_amount,
+        datafast_visitor_id=x_datafast_visitor_id,
+        datafast_session_id=x_datafast_session_id,
+    )
     return {"checkout_url": checkout_url}
 
 
@@ -1016,6 +1029,12 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
+    x_datafast_visitor_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
+    x_datafast_session_id: Annotated[
+        str | None, Header(include_in_schema=False)
+    ] = None,
 ) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
@@ -1275,6 +1294,8 @@ async def update_subscription_tier(
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             billing_cycle=request.billing_cycle,
+            datafast_visitor_id=x_datafast_visitor_id,
+            datafast_session_id=x_datafast_session_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

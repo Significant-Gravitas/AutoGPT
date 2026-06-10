@@ -82,6 +82,382 @@
         }
       }
     },
+    "/api/admin/bot-analytics/command-usage": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Command Usage Breakdown",
+        "operationId": "getV2Command usage breakdown",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BotCommandUsage" },
+                  "title": "Response Getv2Command Usage Breakdown"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bot-analytics/guilds": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Bot Server Roster",
+        "operationId": "getV2Bot server roster",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "include_left",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Left"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BotGuildInfo" },
+                  "title": "Response Getv2Bot Server Roster"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bot-analytics/server-timeseries": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Bot Server-Count Timeseries (sharding curve)",
+        "operationId": "getV2Bot server-count timeseries (sharding curve)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BotServerCountPoint"
+                  },
+                  "title": "Response Getv2Bot Server-Count Timeseries (Sharding Curve)"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bot-analytics/summary": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Bot Usage Summary",
+        "operationId": "getV2Bot usage summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BotAnalyticsSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bot-analytics/timeseries": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Bot Message Timeseries",
+        "operationId": "getV2Bot message timeseries",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BotTimeseriesPoint"
+                  },
+                  "title": "Response Getv2Bot Message Timeseries"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bot-analytics/top-servers": {
+      "get": {
+        "tags": ["v2", "admin", "bot-analytics"],
+        "summary": "Top Servers by Activity",
+        "operationId": "getV2Top servers by activity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/Platform" },
+                { "type": "null" }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BotServerActivity" },
+                  "title": "Response Getv2Top Servers By Activity"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -9338,6 +9714,18 @@
               "$ref": "#/components/schemas/MyAgentsSortBy",
               "default": "most_recent"
             }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
           }
         ],
         "responses": {
@@ -9527,6 +9915,50 @@
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 100 },
+                { "type": "null" }
+              ],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Statuses"
+            }
+          },
+          {
+            "name": "sort_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "enum": ["submitted", "runs"], "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Sort Key"
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["asc", "desc"],
+              "type": "string",
+              "default": "desc",
+              "title": "Sort Dir"
             }
           }
         ],
@@ -9966,6 +10398,64 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}/preview": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Preview file by ID",
+        "description": "Return a cheap preview of a file.\n\nImages/PDFs/Office docs are returned as a small WebP thumbnail; text-like\nfiles return only their first ``bytes`` bytes. Used by the Artifacts page so\na grid of files no longer downloads every file in full.",
+        "operationId": "getWorkspaceFilePreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          },
+          {
+            "name": "w",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1024,
+              "minimum": 16,
+              "default": 400,
+              "title": "W"
+            }
+          },
+          {
+            "name": "bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 131072,
+              "minimum": 256,
+              "default": 4096,
+              "title": "Bytes"
+            }
           }
         ],
         "responses": {
@@ -11404,6 +11894,87 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "BotAnalyticsSummary": {
+        "properties": {
+          "platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform"
+          },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "live_servers": {
+            "type": "integer",
+            "title": "Live Servers",
+            "description": "Current count of servers the bot is in right now. Point-in-time gauge — intentionally ignores window_days. Use the server-count timeseries endpoint for the windowed growth curve."
+          },
+          "messages_received": {
+            "type": "integer",
+            "title": "Messages Received"
+          },
+          "replies_sent": { "type": "integer", "title": "Replies Sent" },
+          "commands_used": { "type": "integer", "title": "Commands Used" },
+          "stream_errors": { "type": "integer", "title": "Stream Errors" },
+          "avg_reply_ms": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Avg Reply Ms"
+          },
+          "error_rate": { "type": "number", "title": "Error Rate" }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "window_days",
+          "live_servers",
+          "messages_received",
+          "replies_sent",
+          "commands_used",
+          "stream_errors",
+          "avg_reply_ms",
+          "error_rate"
+        ],
+        "title": "BotAnalyticsSummary"
+      },
+      "BotCommandUsage": {
+        "properties": {
+          "command": { "type": "string", "title": "Command" },
+          "uses": { "type": "integer", "title": "Uses" }
+        },
+        "type": "object",
+        "required": ["command", "uses"],
+        "title": "BotCommandUsage"
+      },
+      "BotGuildInfo": {
+        "properties": {
+          "platform": { "type": "string", "title": "Platform" },
+          "server_id": { "type": "string", "title": "Server Id" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "left_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Left At"
+          },
+          "active": { "type": "boolean", "title": "Active" }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "server_id",
+          "name",
+          "joined_at",
+          "left_at",
+          "active"
+        ],
+        "title": "BotGuildInfo"
+      },
       "BotPlatformInfo": {
         "properties": {
           "platform": { "type": "string", "title": "Platform" },
@@ -11429,6 +12000,40 @@
         "required": ["platform", "display_name", "icon"],
         "title": "BotPlatformInfo",
         "description": "A bot platform enabled on this deployment plus the caller's links to it.\n\nPlatforms whose adapter isn't configured (missing token/credentials) are\nomitted from the response entirely — the Bots settings page hides them."
+      },
+      "BotServerActivity": {
+        "properties": {
+          "server_id": { "type": "string", "title": "Server Id" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "messages": { "type": "integer", "title": "Messages" },
+          "commands": { "type": "integer", "title": "Commands" }
+        },
+        "type": "object",
+        "required": ["server_id", "name", "messages", "commands"],
+        "title": "BotServerActivity"
+      },
+      "BotServerCountPoint": {
+        "properties": {
+          "date": { "type": "string", "format": "date-time", "title": "Date" },
+          "server_count": { "type": "integer", "title": "Server Count" }
+        },
+        "type": "object",
+        "required": ["date", "server_count"],
+        "title": "BotServerCountPoint"
+      },
+      "BotTimeseriesPoint": {
+        "properties": {
+          "date": { "type": "string", "format": "date-time", "title": "Date" },
+          "messages": { "type": "integer", "title": "Messages" },
+          "replies": { "type": "integer", "title": "Replies" },
+          "errors": { "type": "integer", "title": "Errors" }
+        },
+        "type": "object",
+        "required": ["date", "messages", "replies", "errors"],
+        "title": "BotTimeseriesPoint"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -15388,6 +15993,20 @@
         "required": ["access_token"],
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "DISCORD",
+          "TELEGRAM",
+          "SLACK",
+          "TEAMS",
+          "WHATSAPP",
+          "GITHUB",
+          "LINEAR"
+        ],
+        "title": "Platform",
+        "description": "Mirror of the Prisma PlatformType enum."
       },
       "PlatformCostDashboard": {
         "properties": {
@@ -20130,7 +20749,13 @@
             "type": "integer",
             "title": "Weekly Cost Used Microdollars"
           },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "default": {}
+          }
         },
         "type": "object",
         "required": [

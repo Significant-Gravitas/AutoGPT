@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
@@ -180,6 +181,35 @@ async def download_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return await create_file_download_response(file)
+
+
+@router.get(
+    "/files/{file_id}/preview",
+    summary="Preview file by ID",
+    operation_id="getWorkspaceFilePreview",
+)
+async def preview_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+    w: int = Query(default=400, ge=16, le=1024),
+    bytes_: int = Query(default=4096, ge=256, le=131072, alias="bytes"),
+) -> Response:
+    """
+    Return a cheap preview of a file.
+
+    Images/PDFs/Office docs are returned as a small WebP thumbnail; text-like
+    files return only their first ``bytes`` bytes. Used by the Artifacts page so
+    a grid of files no longer downloads every file in full.
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    return await build_preview_response(file, width=w, max_bytes=bytes_)
 
 
 @router.delete(

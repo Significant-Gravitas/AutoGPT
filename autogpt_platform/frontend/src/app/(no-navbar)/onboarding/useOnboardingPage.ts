@@ -13,7 +13,12 @@ import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { normalizeOnboardingProfile } from "./helpers";
-import { Step, useOnboardingWizardStore } from "./store";
+import {
+  NO_PAYWALL_STEPS,
+  PAYWALL_FIRST_STEPS,
+  Step,
+  useOnboardingWizardStore,
+} from "./store";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
@@ -103,7 +108,8 @@ export function useOnboardingPage() {
 
   const isPaymentEnabled =
     (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
-  const preparingStep: Step = isPaymentEnabled ? 5 : 4;
+  const steps = isPaymentEnabled ? PAYWALL_FIRST_STEPS : NO_PAYWALL_STEPS;
+  const preparingStep: Step = steps.preparing;
   const totalSteps = isPaymentEnabled ? 4 : 3;
 
   // Wait for auth too — without !isUserLoading, LD can resolve while
@@ -127,19 +133,21 @@ export function useOnboardingPage() {
     if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    // A successful Stripe checkout return is a trusted intent to advance to
-    // Preparing — without this, the highestStep ceiling (capped at 4 before
-    // redirect) clamps the user back to step 4 and onboarding deadlocks.
+    // The paywall is the first step, so a successful Stripe checkout return is
+    // a trusted intent to advance past it onto Welcome and start the actual
+    // onboarding — without this, the highestStep ceiling (capped at the
+    // subscription step before redirect) would clamp the user back onto the
+    // paywall they just paid through.
     const isSubscriptionSuccess =
       searchParams.get("subscription") === "success";
     const ceiling = isSubscriptionSuccess
-      ? preparingStep
+      ? steps.welcome
       : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-  }, [isReady, searchParams, goToStep, preparingStep]);
+  }, [isReady, searchParams, goToStep, preparingStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
@@ -189,15 +197,11 @@ export function useOnboardingPage() {
       useOnboardingWizardStore.getState(),
     );
 
-    // Profile is submitted before the Stripe Checkout redirect (defence in
-    // depth: persist keeps the store across the round-trip, but submitting
-    // pre-redirect ensures the backend has the data even if the user
-    // closes the tab during checkout). Skip the resubmit on return to
-    // avoid overwriting saved data with empties — belt-and-suspenders:
-    // also skip when `name` is empty so that even if the success query
-    // param gets stripped (manual edit, share link, upstream proxy
-    // normalising URLs), we don't blank the saved profile.
-    if (searchParams.get("subscription") === "success" || !name.trim()) return;
+    // The paywall now runs first (before any profile data is collected), so
+    // the profile is only ever submitted here, once, on reaching Preparing.
+    // Guard against an empty name so a stray Preparing visit can't blank a
+    // previously-saved profile.
+    if (!name.trim()) return;
 
     postV1SubmitOnboardingProfile({
       user_name: name,
@@ -206,7 +210,7 @@ export function useOnboardingPage() {
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep, searchParams]);
+  }, [currentStep, preparingStep]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -230,6 +234,7 @@ export function useOnboardingPage() {
     isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    steps,
     preparingStep,
     totalSteps,
   };

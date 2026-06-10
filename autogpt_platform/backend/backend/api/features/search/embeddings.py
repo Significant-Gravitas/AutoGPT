@@ -24,11 +24,18 @@ from backend.api.features.search.content_handlers import CONTENT_HANDLERS
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# OpenAI embedding model configuration
-EMBEDDING_MODEL = "text-embedding-3-small"
+_settings = Settings()
+
+# Embedding model — overridable via STORE_EMBEDDING_MODEL so deployments
+# with a compatible backend (vLLM, LiteLLM proxy, Ollama with an
+# embedding model pulled, Azure OpenAI, ...) can swap models without a
+# code change. Default keeps the historical OpenAI
+# ``text-embedding-3-small`` so existing pgvector columns still match.
+EMBEDDING_MODEL = _settings.config.store_embedding_model
 # Embedding dimension for the model above
 # text-embedding-3-small: 1536, text-embedding-3-large: 3072
 EMBEDDING_DIM = 1536
@@ -83,8 +90,16 @@ def build_searchable_text(
 
 # Cached at module load: ``encoding_for_model`` loads a tokenizer file
 # from disk on every call (~10–20 ms). At backfill scale we run this on
-# every row, so amortising it module-level is a meaningful win.
-_ENCODER = encoding_for_model(EMBEDDING_MODEL)
+# every row, so amortising it module-level is a meaningful win. Falls
+# back to ``cl100k_base`` (the OpenAI ada/embedding-3 tokenizer) when
+# the configured model name is unknown to tiktoken — e.g. Ollama tags
+# like ``nomic-embed-text``.
+try:
+    _ENCODER = encoding_for_model(EMBEDDING_MODEL)
+except KeyError:
+    from tiktoken import get_encoding
+
+    _ENCODER = get_encoding("cl100k_base")
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -95,7 +110,21 @@ async def generate_embedding(text: str) -> list[float]:
     """
     client = get_openai_client()
     if not client:
-        raise RuntimeError("openai_internal_api_key not set, cannot generate embedding")
+        # ``get_openai_client`` already honors ``CHAT_USE_LOCAL`` first, so
+        # reaching None here means *no* embedding backend is configured at
+        # all. Hybrid search wraps this in try/except and degrades to
+        # lexical-only — the raise is still useful so direct callers
+        # (uploads, reindex jobs) get a clear "wire something up" signal
+        # instead of a silent ``None`` cascade.
+        raise RuntimeError(
+            "No embedding-capable LLM client configured. Set ONE of: "
+            "OPENAI_INTERNAL_API_KEY, OPEN_ROUTER_API_KEY, or "
+            "CHAT_USE_LOCAL=true with a CHAT_BASE_URL that exposes "
+            "/v1/embeddings (vLLM / LiteLLM proxy / Azure OpenAI / "
+            "Ollama with an embedding model pulled). Override the model "
+            "via STORE_EMBEDDING_MODEL (must emit 1536-dim vectors to "
+            "match the pgvector column)."
+        )
 
     # Truncate text to token limit using tiktoken
     # Character-based truncation is insufficient because token ratios vary by content type
