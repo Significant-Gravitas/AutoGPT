@@ -24,6 +24,7 @@ For new blocks or provider integrations, use `/block-implementer` instead — it
 | 4. Spot-check verification | This thread | Re-run anything the executor skipped |
 | 5. Review implementation | **Spawned `general-purpose` agent** invoking `/review-impl` | Independent reviewer, not the implementer |
 | 6. Commit | This thread | Owner of the working tree decides what gets staged |
+| 7. Ship (when requested) | This thread, invoking `/open-pr` then `/pr-polish` | `/pr-polish` must run in the foreground — spawned agents can't invoke child skills |
 
 The orchestrator never authors content itself. Its only jobs are: spawn agents, route their output to the next step, loop review steps until clean, and own the commit.
 
@@ -109,7 +110,19 @@ git diff --stat
 git commit <paths> -m "<type>(<scope>): <summary>"   # conventional commit, repo scopes
 ```
 
-Verify HEAD is on a branch (not detached) before any push. Do not push or open a PR unless asked — when asked, hand off to `/open-pr` (PRs target `dev`).
+Verify HEAD is on a branch (not detached) before any push. Do not push or open a PR unless asked — when asked, proceed to Step 7.
+
+### Step 7 — Ship (when requested)
+
+The pipeline's review loops gate the **working tree**; the PR surface has its own review stack. Chain into it rather than duplicating it:
+
+1. For security-sensitive diffs (auth, credentials, schema broadening, file handling), run `/security-review` against the branch first — cheaper to fix before reviewers and bots see it.
+2. Invoke `/open-pr` — it owns pre-flight checks, the PR template, and the `dev` base.
+3. Invoke `/pr-polish` on the new PR — it alternates `/pr-review` and `/pr-address` until merge-ready (zero new findings, all threads resolved, CI green, two clean polls).
+
+Both `/open-pr` and `/pr-polish` run **inline in this thread** — never spawn `/pr-polish` into a background or sub-agent; spawned agents don't inherit the skill registry, so its child `Skill()` calls silently fail (documented in `/pr-polish` itself).
+
+Division of labor: `/review-impl` (Step 5) is the pre-commit gate on the diff; `/pr-review` is the PR-surface gate layered with bot reviews; `/pr-polish` loops the latter with `/pr-address`. If a `/pr-review` round surfaces a plan-level problem (wrong approach, missing class coverage), don't patch it in the address loop — return to Step 1 with the finding as a new constraint.
 
 ## Final Report
 
@@ -121,6 +134,7 @@ Return after the commit:
 4. Verification commands run and results (executor's + spot-checks).
 5. Implementation-review rounds (count) and final clean result.
 6. Commit hash and staged file list.
-7. Deviations from the plan with reasons.
+7. If shipped: PR URL and `/pr-polish` outcome (rounds, final state).
+8. Deviations from the plan with reasons.
 8. Self-flagged risks and judgement calls (yours + executor's).
 9. Remaining items, if any, with reasons.

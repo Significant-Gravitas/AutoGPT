@@ -2,7 +2,7 @@ export const meta = {
   name: 'contribute-block',
   description: 'Implement AutoGPT block(s) end-to-end and open a PR per request: select → plan → implement → review → verify → PR',
   whenToUse:
-    'Maintainer-facing batch automation of the block pipeline. Pass a block request (plain language is fine), a list of requests, or a bare {count: N} to auto-pick from open `platform/blocks` issues. One branch + one PR per request, run sequentially. Interactive single-block work should use the /block-implementer skill instead (unbounded review loops); this workflow bounds its loops and ships unclean items as draft PRs so one stuck item cannot stall the batch.',
+    'Maintainer-facing batch automation of the block pipeline. Pass a block request (plain language is fine), a list of requests, or a bare {count: N} to auto-pick from open `platform/blocks` issues. One branch + one PR per request, run sequentially. Interactive single-block work should use the /block-implementer skill instead (unbounded review loops); this workflow bounds its loops and ships unclean items as draft PRs so one stuck item cannot stall the batch. The workflow ends with a /pr-polish handoff list — run /pr-polish per PR in the foreground afterward (it cannot run inside workflow agents).',
   phases: [
     { title: 'Select', detail: 'resolve explicit request(s) or auto-pick from open platform/blocks issues' },
     { title: 'Plan', detail: 'feature-planner + add-block checklist, review-feature-plan loop (max 3 rounds)' },
@@ -10,6 +10,7 @@ export const meta = {
     { title: 'Review', detail: 'review-impl loop (max 3) + fresh-context block cross-check (max 2)' },
     { title: 'Verify', detail: 'format, lint, per-block test, full block registry test — serialized' },
     { title: 'PR', detail: 'pathspec commit, push, PR against dev; draft when any gate is unclean' },
+    { title: 'Status', detail: 'read-only CI sweep across opened PRs; emit /pr-polish handoff list' },
   ],
 }
 
@@ -147,6 +148,27 @@ const PR_SCHEMA = {
     opened: { type: 'boolean' },
     prUrl: { type: 'string' },
     draft: { type: 'boolean' },
+  },
+}
+
+const STATUS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['statuses'],
+  properties: {
+    statuses: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['prUrl', 'ci'],
+        properties: {
+          prUrl: { type: 'string' },
+          ci: { type: 'string', enum: ['pass', 'fail', 'pending', 'mixed', 'unknown'] },
+          notes: { type: 'string', description: 'Failing/pending check names, early bot findings' },
+        },
+      },
+    },
   },
 }
 
@@ -473,4 +495,32 @@ for (const item of items) {
   }
 }
 
-return summary
+// Read-only CI sweep. By the time the last item's PR is open, CI on the
+// earlier PRs has had time to run — one cheap status pass makes the summary
+// actionable without blocking on CI inside the per-item loop.
+phase('Status')
+const opened = summary.filter((s) => s.prUrl)
+let statuses = []
+if (opened.length) {
+  const res = await agent(
+    `For each of these PRs, run \`gh pr checks <url> --repo ${REPO} --json name,state,bucket\` ` +
+      `and \`gh pr view <url> --repo ${REPO} --json reviews --jq '[.reviews[] | select(.body != "")] | length'\`. ` +
+      `READ-ONLY — do not push, comment, or modify anything. Report ci as: pass ` +
+      `(all buckets pass/skipping), fail (any fail/cancel), pending (any pending, ` +
+      `none failing), mixed (failing + pending), unknown (query failed). Put ` +
+      `failing/pending check names and any early bot-review count in notes.\n\nPRs:\n` +
+      opened.map((s) => `- ${s.prUrl}`).join('\n'),
+    { label: 'ci-sweep', phase: 'Status', schema: STATUS_SCHEMA },
+  )
+  statuses = (res && res.statuses) || []
+}
+
+// /pr-polish (which loops /pr-review + /pr-address to merge-ready) cannot run
+// inside workflow agents — they don't inherit the Skill registry, and pr-polish
+// itself documents it must run in the foreground main thread. Hand it off.
+const nextSteps = opened.map((s) => `/pr-polish ${s.prUrl}`)
+if (nextSteps.length) {
+  log(`Polish handoff — run in the foreground, one at a time: ${nextSteps.join(' ; ')}`)
+}
+
+return { summary, ciStatuses: statuses, nextSteps }

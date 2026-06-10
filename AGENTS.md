@@ -62,7 +62,9 @@ For end-to-end implementation work, use the pipeline skills instead of ad-hoc ed
 
 - `/feature-implementer` — plan → plan-review → implement → impl-review → commit, each step in a fresh agent, review loops run until clean. Supporting skills: `/feature-planner`, `/review-feature-plan`, `/review-impl`.
 - `/block-implementer` — the same pipeline specialized for new blocks; works from a plain-language description. Domain checklist: `/add-block`.
-- `contribute-block` workflow (`.claude/workflows/contribute-block.js`) — batch automation of the block pipeline: one branch + PR per request, bounded review loops, unclean items ship as draft PRs. Auto-picks from open `platform/blocks` issues when invoked with a bare count.
+- `contribute-block` workflow (`.claude/workflows/contribute-block.js`) — batch automation of the block pipeline: one branch + PR per request, bounded review loops, unclean items ship as draft PRs. Auto-picks from open `platform/blocks` issues when invoked with a bare count. Ends with a `/pr-polish` handoff list.
+
+The full lifecycle chains into the PR review stack: implementation loop → `/open-pr` → `/pr-polish` (alternates `/pr-review` + `/pr-address` until merge-ready). `/pr-polish` always runs in the foreground main thread — never inside a spawned agent. `/review-impl` gates the working tree pre-commit; `/pr-review` gates the PR surface.
 
 ## Pull requests
 

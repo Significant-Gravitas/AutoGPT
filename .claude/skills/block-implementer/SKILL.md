@@ -66,7 +66,15 @@ Reviewer invokes `/review-impl`; the Blocks surface lens is mandatory, with extr
 
 ### Step 6 — Commit
 
-Conventional commit with the blocks scope: `feat(blocks): add <Provider> <action> block`. New env vars get documented in `backend/.env.default` in the same commit. Hand off to `/open-pr` (target `dev`) only when asked.
+Conventional commit with the blocks scope: `feat(blocks): add <Provider> <action> block`. New env vars get documented in `backend/.env.default` in the same commit.
+
+### Step 7 — Ship (when requested)
+
+As `/feature-implementer` Step 7: `/open-pr` (target `dev`), then `/pr-polish` to drive the PR to merge-ready — both **inline in this thread**, never in a spawned agent. Block-specific additions:
+
+- When real provider credentials are available locally, run `/pr-test` before or alongside polish: bring the stack up via docker compose and exercise the new block end-to-end (build a small graph using it, run it, check the output) — the unit harness mocks the provider, so this is the only gate that touches the real API.
+- New OAuth providers warrant a `/security-review` pass before the PR (credential handling, token storage, scope breadth).
+- Tell the requester the PR URL with a plain-language one-liner of what their block does — they may not read GitHub fluently.
 
 ## Final Report
 
