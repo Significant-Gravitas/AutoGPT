@@ -28,6 +28,47 @@ class TestGetOrCreateUserProfile:
         assert profile.name == email.split("@")[0]
         assert re.fullmatch(r"[a-z]+-[a-z]+-\d{5}", profile.username)
 
+    @pytest.mark.asyncio
+    async def test_username_collision_retries_instead_of_skipping_profile(self):
+        """A username collision at insert time must not be mistaken for a
+        concurrent same-user insert — the user would end up with no Profile."""
+        from prisma.errors import UniqueViolationError
+
+        create_mock = AsyncMock(
+            side_effect=[UniqueViolationError(MagicMock()), MagicMock()]
+        )
+        # No profile exists for the user at any point; only the generated
+        # username collides on first insert.
+        find_first_mock = AsyncMock(return_value=None)
+
+        with patch.object(user_module, "prisma") as mock_prisma:
+            mock_prisma.profile.find_first = find_first_mock
+            mock_prisma.profile.create = create_mock
+            await user_module._ensure_default_profile("user-1", "x@example.com")
+
+        assert create_mock.await_count == 2
+        first_username = create_mock.await_args_list[0].kwargs["data"]["username"]
+        second_username = create_mock.await_args_list[1].kwargs["data"]["username"]
+        assert first_username != second_username
+
+    @pytest.mark.asyncio
+    async def test_concurrent_profile_insert_is_tolerated(self):
+        """If another request created the user's profile mid-insert, the
+        violation is benign and must not raise."""
+        from prisma.errors import UniqueViolationError
+
+        create_mock = AsyncMock(side_effect=UniqueViolationError(MagicMock()))
+        # First check (pre-insert): no profile. Username check: free.
+        # Post-violation check: profile now exists.
+        find_first_mock = AsyncMock(side_effect=[None, None, MagicMock()])
+
+        with patch.object(user_module, "prisma") as mock_prisma:
+            mock_prisma.profile.find_first = find_first_mock
+            mock_prisma.profile.create = create_mock
+            await user_module._ensure_default_profile("user-1", "x@example.com")
+
+        assert create_mock.await_count == 1
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_existing_user_without_profile_is_backfilled(self, server):
         """Users created before the profile fix get one on their next request."""

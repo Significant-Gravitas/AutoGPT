@@ -77,11 +77,35 @@ _USERNAME_ANIMALS = [
 
 
 async def _ensure_default_profile(user_id: str, user_email: str) -> None:
-    profile = await prisma.profile.find_first(where={"userId": user_id})
-    if profile:
+    if await prisma.profile.find_first(where={"userId": user_id}):
         return
 
-    username = ""
+    # A UniqueViolationError on insert is ambiguous: either a concurrent
+    # request created this user's profile (done), or the generated username
+    # collided with another user's (retry with a fresh one).
+    for _ in range(3):
+        username = await _generate_unique_username()
+        try:
+            await prisma.profile.create(
+                data={
+                    "id": user_id,
+                    "userId": user_id,
+                    "name": user_email.split("@")[0],
+                    "username": username,
+                    "description": "I'm new here",
+                    "links": [],
+                    "avatarUrl": "",
+                }
+            )
+            return
+        except UniqueViolationError:
+            if await prisma.profile.find_first(where={"userId": user_id}):
+                return
+
+    raise DatabaseError(f"Failed to create default profile for user {user_id}")
+
+
+async def _generate_unique_username() -> str:
     for _ in range(10):
         candidate = (
             f"{secrets.choice(_USERNAME_ADJECTIVES)}"
@@ -89,28 +113,8 @@ async def _ensure_default_profile(user_id: str, user_email: str) -> None:
             f"-{secrets.randbelow(90000) + 10000}"
         )
         if not await prisma.profile.find_first(where={"username": candidate}):
-            username = candidate
-            break
-    if not username:
-        raise DatabaseError("Unable to generate a unique profile username")
-
-    try:
-        await prisma.profile.create(
-            data={
-                "id": user_id,
-                "userId": user_id,
-                "name": user_email.split("@")[0],
-                "username": username,
-                "description": "I'm new here",
-                "links": [],
-                "avatarUrl": "",
-            }
-        )
-    except UniqueViolationError:
-        # Concurrent first requests (e.g. the signup action and the
-        # onboarding page both triggering get-or-create) can race here;
-        # either winner's profile is fine.
-        pass
+            return candidate
+    raise DatabaseError("Unable to generate a unique profile username")
 
 
 @cache_user_lookup
