@@ -458,7 +458,7 @@ def test_request_top_up_forwards_datafast_headers(
         return_value="https://checkout.example.com/session123"
     )
     mocker.patch(
-        "backend.api.features.v1.get_user_credit_model",
+        "backend.api.features.v1.get_credit_model",
         return_value=mock_credit_model,
     )
 
