@@ -959,11 +959,7 @@ async def create_store_submission(
                                 # field is mixed in ("Field does not exist
                                 # in enclosing type").
                                 **(
-                                    {
-                                        "OwningOrg": {
-                                            "connect": {"id": organization_id}
-                                        }
-                                    }
+                                    {"OwningOrg": {"connect": {"id": organization_id}}}
                                     if organization_id
                                     else {}
                                 ),
