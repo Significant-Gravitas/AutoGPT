@@ -16,6 +16,9 @@ Contracts pinned here:
      always re-registers.
   6. Shared per-call caching — timezone resolution happens at most
      once per invocation.
+  7. Timezone lookup failure is "unknown", not "UTC" — a transient
+     DB blip must never re-register the user's local-time crons onto
+     UTC; the cycle is skipped and the existing cron left untouched.
 """
 
 from __future__ import annotations
@@ -316,6 +319,104 @@ async def test_redis_read_failure_treats_as_first_registration():
 
     assert result["community_rebuild"]["id"] == "community_rebuild_abc"
     assert result["dream_nightly_batch"]["id"] == "dream_nightly_batch_abc"
+
+
+# ---------------------------------------------------------------------------
+# Timezone lookup failure — "unknown" must not become "UTC"
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_timezone_lookup_failure_leaves_existing_crons_untouched():
+    """A transient DB failure during tz resolution must NOT be read as
+    'user is in UTC' — that would re-register the 03:00-local crons
+    onto 03:00 UTC and overwrite the stored tz. Skip the cycle: no
+    scheduler RPC, no Redis write."""
+    client = _mock_scheduler_client()
+    write_spy = AsyncMock()
+    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
+        _PATH_TZ, new=AsyncMock(return_value=None)
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/Chicago")), patch(
+        _PATH_WRITE_TZ, new=write_spy
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
+        result = await ensure_dream_system_scheduled("abc")
+
+    assert result["community_rebuild"] == {
+        "skipped": True,
+        "reason": "timezone_lookup_failed",
+    }
+    assert result["dream_nightly_batch"] == {
+        "skipped": True,
+        "reason": "timezone_lookup_failed",
+    }
+    client.add_community_rebuild_schedule.assert_not_called()
+    client.add_nightly_batch_schedule.assert_not_called()
+    write_spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_timezone_lookup_failure_attempted_once_not_per_job():
+    """A failed lookup is cached for the invocation like a successful
+    one — two enabled crons must not trigger a second DB round-trip."""
+    tz_mock = AsyncMock(return_value=None)
+    client = _mock_scheduler_client()
+    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
+        _PATH_TZ, new=tz_mock
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
+        _PATH_WRITE_TZ, new=AsyncMock()
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
+        await ensure_dream_system_scheduled("abc")
+
+    tz_mock.assert_awaited_once_with("abc")
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_with_failed_tz_lookup_still_skips_re_registration():
+    """Even the eager path (timezone-update endpoint) must not
+    re-register onto UTC when it can't read the new timezone back —
+    the lazy drift-detection path recovers once the DB is healthy."""
+    client = _mock_scheduler_client()
+    with patch(_PATH_FLAG, new=_flag_mock(_all_flags_on())), patch(
+        _PATH_TZ, new=AsyncMock(return_value=None)
+    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
+        _PATH_WRITE_TZ, new=AsyncMock()
+    ), patch(
+        _PATH_CLIENT, return_value=client
+    ):
+        result = await ensure_dream_system_scheduled("abc", force_refresh=True)
+
+    assert result["community_rebuild"] == {
+        "skipped": True,
+        "reason": "timezone_lookup_failed",
+    }
+    client.add_community_rebuild_schedule.assert_not_called()
+    client.add_nightly_batch_schedule.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_user_timezone_returns_none_when_db_lookup_fails():
+    """The resolver distinguishes 'lookup failed' (None) from
+    'genuinely unset' (UTC)."""
+    with patch("prisma.models.User.prisma", side_effect=RuntimeError("db down")):
+        assert await scheduling._resolve_user_timezone("abc") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
+    """A user whose timezone was never set legitimately defaults to
+    UTC — only lookup FAILURES return None."""
+    from backend.data.model import USER_TIMEZONE_NOT_SET
+
+    prisma_stub = MagicMock()
+    prisma_stub.find_unique = AsyncMock(
+        return_value=MagicMock(timezone=USER_TIMEZONE_NOT_SET)
+    )
+    with patch("prisma.models.User.prisma", return_value=prisma_stub):
+        assert await scheduling._resolve_user_timezone("abc") == "UTC"
 
 
 # ---------------------------------------------------------------------------

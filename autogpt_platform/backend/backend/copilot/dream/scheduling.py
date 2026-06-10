@@ -159,8 +159,14 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
 ]
 
 
-async def _resolve_user_timezone(user_id: str) -> str:
-    """Look up the user's IANA timezone from Postgres, falling back to UTC.
+async def _resolve_user_timezone(user_id: str) -> str | None:
+    """Look up the user's IANA timezone from Postgres.
+
+    Returns ``"UTC"`` only when the answer is authoritative (user
+    missing or timezone genuinely unset) and ``None`` when the lookup
+    itself failed — a transient DB blip is "unknown", not "UTC", and
+    must never silently re-register the user's local-time crons onto
+    UTC.
 
     Single DB call — cached at the helper level for the duration of
     one ``ensure_dream_system_scheduled`` invocation so registering
@@ -180,12 +186,13 @@ async def _resolve_user_timezone(user_id: str) -> str:
             return "UTC"
         return tz
     except Exception:
-        logger.debug(
-            "Could not resolve timezone for user %s; defaulting to UTC",
+        logger.warning(
+            "Could not resolve timezone for user %s; leaving existing "
+            "dream-system schedules untouched this cycle",
             user_id[:12],
             exc_info=True,
         )
-        return "UTC"
+        return None
 
 
 async def _read_registration_tz(user_id: str, key_prefix: str) -> str | None:
@@ -270,6 +277,9 @@ async def ensure_dream_system_scheduled(
       * ``None`` — already registered with the current timezone; no
         RPC made. (Lazy path's happy case.)
       * ``{"skipped": True, "reason": "<flag>_disabled"}`` — flag off.
+      * ``{"skipped": True, "reason": "timezone_lookup_failed"}`` —
+        timezone resolution failed; the existing cron and stored tz
+        are left untouched until a later call succeeds.
       * ``{"skipped": True, "reason": "registration_failed"}`` — RPC
         raised; logged.
       * Anything else — the scheduler's own result dict (job id,
@@ -282,6 +292,7 @@ async def ensure_dream_system_scheduled(
 
     results: dict[str, Any] = {}
     tz_cached: str | None = None
+    tz_lookup_failed = False
     client_cached: SchedulerLike | None = None
 
     for job in DREAM_SYSTEM_JOBS:
@@ -297,8 +308,20 @@ async def ensure_dream_system_scheduled(
 
             # Resolve current timezone once per invocation (single DB
             # call shared across enabled crons).
-            if tz_cached is None:
+            if tz_cached is None and not tz_lookup_failed:
                 tz_cached = await _resolve_user_timezone(user_id)
+                tz_lookup_failed = tz_cached is None
+
+            if tz_cached is None:
+                # Lookup failed — "unknown" is not "UTC". Re-registering
+                # would silently rebind the user's 03:00-local crons to
+                # UTC; keep the existing cron and stored tz untouched
+                # until a later call resolves the real timezone.
+                results[job.job_id_prefix] = {
+                    "skipped": True,
+                    "reason": "timezone_lookup_failed",
+                }
+                continue
 
             # Drift detection (unless caller explicitly forced refresh).
             if not force_refresh:
