@@ -2,6 +2,7 @@ import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const signUpEmailMock = vi.fn();
+const rollbackSessionMock = vi.fn();
 const postV1GetOrCreateUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const isWaitlistErrorMock = vi.fn();
@@ -14,6 +15,10 @@ vi.mock("@/lib/auth/auth", () => ({
       signUpEmail: (...args: unknown[]) => signUpEmailMock(...args),
     },
   },
+}));
+
+vi.mock("@/lib/auth/server/rollbackSession", () => ({
+  rollbackSession: (...args: unknown[]) => rollbackSessionMock(...args),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
@@ -53,6 +58,7 @@ function signupWithValidPayload() {
 
 beforeEach(() => {
   signUpEmailMock.mockReset();
+  rollbackSessionMock.mockReset();
   postV1GetOrCreateUserMock.mockReset();
   getOnboardingStatusMock.mockReset();
   isWaitlistErrorMock.mockReset().mockReturnValue(false);
@@ -149,6 +155,7 @@ describe("signup", () => {
     const result = await signupWithValidPayload();
 
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+    expect(rollbackSessionMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       success: false,
       error: "Failed to complete account setup. Please try again.",

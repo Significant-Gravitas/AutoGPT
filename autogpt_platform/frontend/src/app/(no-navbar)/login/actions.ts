@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/lib/auth/auth";
+import { rollbackSession } from "@/lib/auth/server/rollbackSession";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -37,8 +38,15 @@ export async function login(email: string, password: string) {
       throw error;
     }
 
-    const api = new BackendAPI();
-    await api.createUser();
+    try {
+      const api = new BackendAPI();
+      await api.createUser();
+    } catch (createUserError) {
+      // The session cookie is already set; revoke it so the browser's auth
+      // state matches the failure the UI is about to show.
+      await rollbackSession();
+      throw createUserError;
+    }
 
     const { shouldShowOnboarding } = await getOnboardingStatus();
 

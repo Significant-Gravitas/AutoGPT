@@ -2,6 +2,7 @@ import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const signInEmailMock = vi.fn();
+const rollbackSessionMock = vi.fn();
 const createUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const captureExceptionMock = vi.fn();
@@ -12,6 +13,10 @@ vi.mock("@/lib/auth/auth", () => ({
       signInEmail: (...args: unknown[]) => signInEmailMock(...args),
     },
   },
+}));
+
+vi.mock("@/lib/auth/server/rollbackSession", () => ({
+  rollbackSession: (...args: unknown[]) => rollbackSessionMock(...args),
 }));
 
 vi.mock("@/lib/autogpt-server-api", () => ({
@@ -38,6 +43,7 @@ import { login } from "../actions";
 
 beforeEach(() => {
   signInEmailMock.mockReset();
+  rollbackSessionMock.mockReset();
   createUserMock.mockReset();
   getOnboardingStatusMock.mockReset();
   captureExceptionMock.mockReset();
@@ -117,9 +123,21 @@ describe("login", () => {
     const result = await login("user@example.com", "hunter2-password");
 
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+    expect(rollbackSessionMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       success: false,
       error: "Failed to login. Please try again.",
     });
+  });
+
+  it("does not roll back the session when login succeeds end to end", async () => {
+    signInEmailMock.mockResolvedValue({ user: { id: "user-1" } });
+    createUserMock.mockResolvedValue({});
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    const result = await login("user@example.com", "hunter2-password");
+
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, next: "/copilot" });
   });
 });
