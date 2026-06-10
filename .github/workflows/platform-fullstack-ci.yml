@@ -156,7 +156,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Platform - Copy default supabase .env
+      - name: Set up Platform - Copy default platform .env
         run: |
           cp ../.env.default ../.env
 
@@ -216,13 +216,11 @@ jobs:
           path: /tmp/e2e_test_data.sql
           key: e2e-test-data-${{ hashFiles('autogpt_platform/backend/test/e2e_test_data.py', 'autogpt_platform/backend/migrations/**', '.github/workflows/platform-fullstack-ci.yml') }}
 
-      - name: Set up Platform - Start Supabase DB + Auth
+      - name: Set up Platform - Start database
         run: |
-          docker compose -f ../docker-compose.resolved.yml up -d db auth --no-build
+          docker compose -f ../docker-compose.resolved.yml up -d db --no-build
           echo "Waiting for database to be ready..."
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-          echo "Waiting for auth service to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db psql -U postgres -d postgres -c "SELECT 1 FROM auth.users LIMIT 1" 2>/dev/null; do sleep 2; done' || echo "Auth schema check timeout, continuing..."
 
       - name: Set up Platform - Run migrations
         run: |
@@ -266,20 +264,16 @@ jobs:
             exit 1
           }
 
-          # Dump auth.users + platform schema for cache (two separate dumps)
+          # Dump the platform schema for cache (includes the Better Auth
+          # user/session/account tables seeded by e2e_test_data.py)
           echo "Dumping database for cache..."
-          {
-            docker compose -f ../docker-compose.resolved.yml exec -T db \
-              pg_dump -U postgres --data-only --column-inserts \
-              --table='auth.users' postgres
-            docker compose -f ../docker-compose.resolved.yml exec -T db \
-              pg_dump -U postgres --data-only --column-inserts \
-              --schema=platform \
-              --exclude-table='platform._prisma_migrations' \
-              --exclude-table='platform.apscheduler_jobs' \
-              --exclude-table='platform.apscheduler_jobs_batched_notifications' \
-              postgres
-          } > /tmp/e2e_test_data.sql
+          docker compose -f ../docker-compose.resolved.yml exec -T db \
+            pg_dump -U postgres --data-only --column-inserts \
+            --schema=platform \
+            --exclude-table='platform._prisma_migrations' \
+            --exclude-table='platform.apscheduler_jobs' \
+            --exclude-table='platform.apscheduler_jobs_batched_notifications' \
+            postgres > /tmp/e2e_test_data.sql
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 

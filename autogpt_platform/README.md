@@ -46,7 +46,7 @@ You can now run the following to enable just the core services.
 # For help
 make help
 
-# Run just Supabase + Redis + RabbitMQ
+# Run just Postgres + Redis + RabbitMQ
 make start-core
 
 # Stop core services

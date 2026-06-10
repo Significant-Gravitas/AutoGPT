@@ -169,7 +169,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 
 ### Backend & Services
 
-- [**Supabase**](https://supabase.com/) - Backend-as-a-Service (database, auth, storage)
+- [**Better Auth**](https://www.better-auth.com/) - Authentication (sessions, OAuth, JWTs) served from `/api/auth/*`
 - [**Sentry**](https://sentry.io/) - Error monitoring and performance tracking
 
 ### Package Management

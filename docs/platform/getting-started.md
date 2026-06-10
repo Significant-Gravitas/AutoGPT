@@ -57,28 +57,6 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
-<details>
- <summary>
- Raspberry Pi 5 Specific Notes
- </summary>
-    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
-    </br>
-    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
-    </br>
-    ```ini
-    kernel=kernel8.img
-    ```
-    Then reboot. You can check your page size with:
-    </br>
-    ```bash
-    getconf PAGESIZE
-    ```
-    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
-    After adjusting, <code>docker compose up -d --build</code> should work normally.
-    </br>
-    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
-</details>
-
 ## Quick Setup with Auto Setup Script (Recommended)
 If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
 
@@ -142,7 +120,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make start-core`      | Start just the core services (Supabase, Redis, RabbitMQ) in background        |
+| `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
@@ -197,7 +175,7 @@ Then, replace the existing key in the `autogpt_platform/backend/.env` file with 
 
 ### 📌 Windows Installation Note
 
-When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
+When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with the platform's containers, leading to the `db` (Postgres) container being marked as **unhealthy**.
 
 #### **Steps to enable WSL 2 for Docker:**
 1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).
