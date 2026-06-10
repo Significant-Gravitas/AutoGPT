@@ -174,6 +174,29 @@ already text, so extraction is free and lossless.
 aren't locked out — but it requires the shim-enforced consent gate (§9),
 not a platform flag.
 
+### 3.1 Route selection: probe local first, only then ask
+
+The route is **detected, not assumed.** On `START_RECORDING` the shim
+probes, in order:
+
+1. **a11y / DOM already captured** for the demonstrated steps → free
+   structured text → `extract_then_cloud` works.
+2. **OCR available** on-device (cheap, bundleable) → `extract_then_cloud`
+   works even for `kind: none` (canvas/Electron) steps.
+3. **Capable local vision model present** → offer `local_vlm` (zero
+   cloud) as the default for this machine.
+4. **None of the above** → the only way to build the skill is
+   `screenshots_to_cloud`. **This is the only route that prompts the
+   user** (see §9.1). The other three need no special prompt — they
+   either keep pixels local, or (for `extract_then_cloud`) send
+   *text/structure*, which is the same trust the user already extends by
+   letting the platform act on their machine.
+
+Matching the prompt to the actual incremental risk is deliberate.
+Prompting for routes that don't cross a new line trains users to click
+through, which buries the one prompt that matters. Silence when local
+handles it; ask only when raw screen images would leave the machine.
+
 ---
 
 ## 4. Capture adapters (universal floor + enrichment)
@@ -347,16 +370,73 @@ clarifying question or a second row.
   whether compliance needs a content manifest for data-subject requests,
   §10.)
 
+### 9.1 The cloud-fallback consent: calibrated, not loaded
+
+When the local probe (§3.1) comes up empty and `screenshots_to_cloud` is
+the only way to build the skill, the shim shows a consent dialog. Its
+copy is a **spec requirement**, not a UI detail, because the tone is the
+control: it has to give the user a real, proportionate understanding of
+the tradeoff and then get out of the way.
+
+The standard is **proportionate disclosure** — state the actual shape of
+the risk and the actual shape of the benefit, in plain words, and let the
+user decide. Both of the obvious failure registers take the decision away
+from them:
+
+- **Fear register (banned):** "⚠️ HACKERS COULD STEAL YOUR DATA." A real
+  but low-probability harm, inflated until a reasonable person declines a
+  reasonable choice.
+- **Minimizing register (banned):** "This is a totally chill thing to hit
+  yes on." Robs them of the chance to actually weigh it; trains
+  click-through.
+- **Calibrated register (required):** what leaves, why it helps, the
+  realistic scope, an honest comparison to trust already given, and the
+  local alternative — then stop.
+
+Reference copy (whoever builds the UI ships this tone, not necessarily
+these exact words):
+
+> **Build this skill using the cloud?**
+>
+> Your computer doesn't have a local model that can read these
+> screenshots, so building this skill needs AutoGPT's cloud. If you
+> continue, the screen images from this recording go to our servers, a
+> capable model reads them to write the skill, then they're deleted (or
+> kept per your data settings).
+>
+> Worth knowing:
+> - The images show whatever was on your screen while recording —
+>   including anything else that was open. You decide what's visible.
+> - They're used to build your skill, not to train models.
+> - It's the same trust you already place in AutoGPT to act on your
+>   computer, now with screen images for this one recording.
+>
+> Prefer to keep everything on your machine? Install a local model and
+> re-record — nothing leaves.
+>
+> [ Keep it on my machine ]   [ Send and build ]   ☐ Remember my choice
+> for recordings like this
+
+Notes for implementers:
+- No warning iconography (⚠️/🔒) on the calibrated path — it biases
+  toward the fear register before the user has read a word.
+- The remembered preference is per-*kind*-of-recording, not global, and
+  is revocable in settings — so we don't re-interrupt, and don't quietly
+  turn a one-time yes into a standing one.
+- This dialog appears **only** for `screenshots_to_cloud`. The default
+  `extract_then_cloud` (text/structure, no pixels) and the local routes
+  do not prompt — see §3.1.
+
 ---
 
 ## 10. Open questions (genuinely the author's / PM's call)
 
-- **Default when no local extractor/VLM exists.** `extract_then_cloud`
-  needs at least OCR + the already-captured a11y/DOM. If a machine has
-  *nothing* (no OCR, no a11y, canvas-only app), does recording (a) block
-  with `INTERPRETATION_UNAVAILABLE`, or (b) fall back to
-  `screenshots_to_cloud` behind hard consent? Affects how many users v1
-  reaches.
+- ~~**Default when no local extractor/VLM exists.**~~ **Resolved:** probe
+  local first (§3.1); if nothing local can build the skill, fall back to
+  `screenshots_to_cloud` behind the calibrated consent dialog (§9.1) —
+  not a hard block. Reaching the user with an honest choice beats locking
+  them out; `INTERPRETATION_UNAVAILABLE` is reserved for the case where
+  the user *declines* the cloud fallback and no local route exists.
 - **Parameter-confidence threshold.** What bar forces a clarifying
   question vs. accepts a confirmed-by-2-rows inference? Unenforceable
   until set.
