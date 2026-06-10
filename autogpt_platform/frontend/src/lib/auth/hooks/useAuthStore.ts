@@ -1,17 +1,16 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
 import {
   broadcastLogout,
-  setWebSocketDisconnectIntent,
   setupSessionEventListeners,
+  setWebSocketDisconnectIntent,
 } from "../helpers";
+import type { User } from "../types";
 import {
-  ensureSupabaseClient,
   fetchUser,
   handleStorageEvent as handleStorageEventHelper,
   refreshSession as refreshSessionHelper,
@@ -36,9 +35,8 @@ interface ValidateParams {
   router?: AppRouterInstance;
 }
 
-interface SupabaseStoreState {
+interface AuthStoreState {
   user: User | null;
-  supabase: SupabaseClient | null;
   isUserLoading: boolean;
   isValidating: boolean;
   hasLoadedUser: boolean;
@@ -56,7 +54,7 @@ interface SupabaseStoreState {
   cleanup: () => void;
 }
 
-export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
+export const useAuthStore = create<AuthStoreState>((set, get) => {
   function setCurrentRequestContext(params: InitializeParams): void {
     const state = get();
     if (
@@ -75,11 +73,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
   async function initialize(params: InitializeParams): Promise<void> {
     setCurrentRequestContext(params);
-
-    const supabaseClient = ensureSupabaseClient();
-    if (supabaseClient !== get().supabase) {
-      set({ supabase: supabaseClient });
-    }
 
     let initializationPromise = get().initializationPromise;
 
@@ -282,7 +275,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
   return {
     user: null,
-    supabase: null,
     isUserLoading: true,
     isValidating: false,
     hasLoadedUser: false,

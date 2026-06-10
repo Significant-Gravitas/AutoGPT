@@ -12,7 +12,7 @@ import {
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 import {
   isFormDirty,
@@ -32,7 +32,7 @@ const EMPTY_FORM: ProfileFormState = {
 };
 
 export function useProfilePage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const logoutInProgress = isLogoutInProgress();
 

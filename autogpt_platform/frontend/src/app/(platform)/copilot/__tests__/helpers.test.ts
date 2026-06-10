@@ -15,7 +15,7 @@ import {
   shouldSuppressDuplicateSend,
 } from "../helpers";
 
-vi.mock("@/lib/supabase/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(),
 }));
 
@@ -23,7 +23,7 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);

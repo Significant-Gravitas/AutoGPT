@@ -1,89 +1,77 @@
 import { getOnboardingStatus } from "@/app/api/helpers";
+import { getServerSession } from "@/lib/auth/server/getServerSession";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-// Handle the callback to complete the user session login
+// Post-OAuth landing: Better Auth has already set the session cookie before
+// redirecting here, so we only need to verify the session and finish setup.
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
 
   let next = "/copilot";
 
-  if (code) {
-    const supabase = await getServerSupabase();
+  const session = await getServerSession();
 
-    if (!supabase) {
-      return NextResponse.redirect(`${origin}/error`);
+  if (session?.user) {
+    try {
+      const api = new BackendAPI();
+      await api.createUser();
+
+      const { shouldShowOnboarding } = await getOnboardingStatus();
+      next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+      revalidatePath(next, "layout");
+    } catch (createUserError) {
+      console.error("Error creating user:", createUserError);
+
+      // Handle ApiError from the backend API client
+      if (
+        createUserError &&
+        typeof createUserError === "object" &&
+        "status" in createUserError
+      ) {
+        const apiError = createUserError as { status: number };
+
+        if (apiError.status === 401) {
+          // Authentication issues - token missing/invalid
+          return NextResponse.redirect(
+            `${origin}/error?message=auth-token-invalid`,
+          );
+        } else if (apiError.status >= 500) {
+          // Server/database errors
+          return NextResponse.redirect(`${origin}/error?message=server-error`);
+        } else if (apiError.status === 429) {
+          // Rate limiting
+          return NextResponse.redirect(`${origin}/error?message=rate-limited`);
+        }
+      }
+
+      // Handle network/fetch errors
+      if (
+        createUserError instanceof TypeError &&
+        createUserError.message.includes("fetch")
+      ) {
+        return NextResponse.redirect(`${origin}/error?message=network-error`);
+      }
+
+      // Generic user creation failure
+      return NextResponse.redirect(
+        `${origin}/error?message=user-creation-failed`,
+      );
     }
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    // Get redirect destination from 'next' query parameter
+    next = searchParams.get("next") || next;
 
-    if (!error) {
-      try {
-        const api = new BackendAPI();
-        await api.createUser();
-
-        const { shouldShowOnboarding } = await getOnboardingStatus();
-        next = shouldShowOnboarding ? "/onboarding" : "/copilot";
-        revalidatePath(next, "layout");
-      } catch (createUserError) {
-        console.error("Error creating user:", createUserError);
-
-        // Handle ApiError from the backend API client
-        if (
-          createUserError &&
-          typeof createUserError === "object" &&
-          "status" in createUserError
-        ) {
-          const apiError = createUserError as any;
-
-          if (apiError.status === 401) {
-            // Authentication issues - token missing/invalid
-            return NextResponse.redirect(
-              `${origin}/error?message=auth-token-invalid`,
-            );
-          } else if (apiError.status >= 500) {
-            // Server/database errors
-            return NextResponse.redirect(
-              `${origin}/error?message=server-error`,
-            );
-          } else if (apiError.status === 429) {
-            // Rate limiting
-            return NextResponse.redirect(
-              `${origin}/error?message=rate-limited`,
-            );
-          }
-        }
-
-        // Handle network/fetch errors
-        if (
-          createUserError instanceof TypeError &&
-          createUserError.message.includes("fetch")
-        ) {
-          return NextResponse.redirect(`${origin}/error?message=network-error`);
-        }
-
-        // Generic user creation failure
-        return NextResponse.redirect(
-          `${origin}/error?message=user-creation-failed`,
-        );
-      }
-
-      // Get redirect destination from 'next' query parameter
-      next = searchParams.get("next") || next;
-
-      const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
-      const isLocalEnv = process.env.NODE_ENV === "development";
-      if (isLocalEnv) {
-        // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+    const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
+    const isLocalEnv = process.env.NODE_ENV === "development";
+    if (isLocalEnv) {
+      // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
+      return NextResponse.redirect(`${origin}${next}`);
+    } else if (forwardedHost) {
+      return NextResponse.redirect(`https://${forwardedHost}${next}`);
+    } else {
+      return NextResponse.redirect(`${origin}${next}`);
     }
   }
 

@@ -1,6 +1,7 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth/auth";
 import { LoginProvider } from "@/types/auth";
+import { APIError } from "better-auth/api";
+import { NextResponse } from "next/server";
 import { isWaitlistError, logWaitlistError } from "../utils";
 
 export async function POST(request: Request) {
@@ -13,35 +14,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
 
-    const supabase = await getServerSupabase();
-    if (!supabase) {
-      return NextResponse.json(
-        { error: "Authentication service unavailable" },
-        { status: 500 },
-      );
-    }
+    try {
+      const { url } = await auth.api.signInSocial({
+        body: {
+          provider,
+          callbackURL:
+            redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback",
+        },
+        headers: request.headers,
+      });
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo:
-          redirectTo ||
-          process.env.AUTH_CALLBACK_URL ||
-          `http://localhost:3000/auth/callback`,
-      },
-    });
+      return NextResponse.json({ url });
+    } catch (error) {
+      if (error instanceof APIError) {
+        // Check for waitlist/allowlist error
+        if (isWaitlistError(error.body?.code, error.message)) {
+          logWaitlistError("OAuth Provider", error.message);
+          return NextResponse.json({ error: "not_allowed" }, { status: 403 });
+        }
 
-    if (error) {
-      // Check for waitlist/allowlist error
-      if (isWaitlistError(error?.code, error?.message)) {
-        logWaitlistError("OAuth Provider", error.message);
-        return NextResponse.json({ error: "not_allowed" }, { status: 403 });
+        return NextResponse.json(
+          { error: error.body?.message || error.message },
+          { status: 400 },
+        );
       }
-
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      throw error;
     }
-
-    return NextResponse.json({ url: data?.url });
   } catch {
     return NextResponse.json(
       { error: "Failed to initiate OAuth" },

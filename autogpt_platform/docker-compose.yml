@@ -5,19 +5,12 @@ networks:
     name: shared-network
 
 volumes:
-  supabase-config:
   clamav-data:
   workspace-data:
   falkordb_data:
 
 x-agpt-services:
   &agpt-services
-  networks:
-    - app-network
-    - shared-network
-
-x-supabase-services:
-  &supabase-services
   networks:
     - app-network
     - shared-network
@@ -136,70 +129,43 @@ services:
       file: ./docker-compose.platform.yml
       service: frontend
 
-  # Supabase services (minimal: auth + db + kong)
-  kong:
-    <<: *supabase-services
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: kong
-
-  auth:
-    <<: *supabase-services
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: auth
-    environment:
-      GOTRUE_MAILER_AUTOCONFIRM: true
-
   # db waits on rabbitmq:service_healthy to gate startup ordering:
   # concurrent container creation in E2B's Docker races RabbitMQ's
-  # .erlang.cookie write, producing `eacces` at broker boot. Supabase's
-  # auth/meta/studio + migrate all depends_on db:service_healthy
-  # upstream, so gating db alone cascades to the rest of the stack.
+  # .erlang.cookie write, producing `eacces` at broker boot. migrate and the
+  # backend services all depends_on db:service_healthy, so gating db alone
+  # cascades to the rest of the stack.
   db:
-    <<: *supabase-services
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: db
+    <<: *agpt-services
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
     ports:
-      - 5432:5432 # We don't use Supavisor locally, so we expose the db directly.
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+      POSTGRES_DB: postgres
+    volumes:
+      # Creates the platform schema + the legacy auth.users shim that
+      # historical Prisma migrations reference. Only runs on a fresh volume.
+      - ./db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./volumes/db/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
       rabbitmq:
         condition: service_healthy
 
-  # Studio and its dependencies for local development only
-  meta:
-    <<: *supabase-services
-    profiles:
-      - local
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: meta
-
-  studio:
-    <<: *supabase-services
-    profiles:
-      - local
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: studio
-    depends_on:
-      meta:
-        condition: service_healthy
-    # environment:
-    #   NEXT_PUBLIC_ENABLE_LOGS: false  # Disable analytics/logging features
-
   deps:
-    <<: *supabase-services
+    <<: *agpt-services
     profiles:
       - local
     image: busybox
     command: /bin/true
     depends_on:
-      - kong
-      - auth
       - db
-      - studio
       - redis-0
       - redis-1
       - redis-2

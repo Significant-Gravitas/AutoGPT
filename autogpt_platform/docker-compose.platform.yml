@@ -26,8 +26,11 @@ x-backend-env:
   RABBITMQ_HOST: rabbitmq
   GRAPHITI_FALKORDB_HOST: falkordb
   GRAPHITI_FALKORDB_PORT: "6379"
-  # Override Supabase URL for Docker network
-  SUPABASE_URL: http://kong:8000
+  # JWKS endpoint of the Better Auth service embedded in the frontend.
+  # Containers reach it via the compose service name, not localhost.
+  # JWT_VERIFY_KEY (legacy HS256, from backend/.env.default) stays in place
+  # for the migration window while old Supabase-issued tokens circulate.
+  JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
   DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
@@ -445,10 +448,16 @@ services:
     environment:
       # Server-side environment variables (Docker service names)
       # These override the localhost URLs from env files when running in Docker
-      AUTH_CALLBACK_URL: http://rest_server:8006/auth/callback
-      SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+      # Better Auth (embedded in this Next.js server) — talks to Postgres
+      # directly; tables live in the platform schema (Prisma migrations).
+      DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres
+      AUTH_DB_SCHEMA: platform
+      # Dev-only default. MUST be overridden with a real secret in production.
+      BETTER_AUTH_SECRET: dev-only-better-auth-secret-9f4e8c2a71b6d05e3a8f12c4b7d9e6a1
+      # Browser-facing base URL of the auth routes (/api/auth/*).
+      BETTER_AUTH_URL: http://localhost:3000
 volumes:
   workspace-data:
   falkordb_data:

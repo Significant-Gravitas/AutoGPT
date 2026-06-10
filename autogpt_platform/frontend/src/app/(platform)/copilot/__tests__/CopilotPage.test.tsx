@@ -82,9 +82,9 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 
 // Auth check moved into CopilotPage directly — default to a logged-in
 // user so the page renders past its loading gate.
-const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => mockSupabase(),
+const mockUseAuth = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => mockUseAuth(),
 }));
 
 // sessionId is read via nuqs to key the chat-host subtree; stub it so
@@ -131,8 +131,8 @@ afterEach(() => {
   cleanup();
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
-  mockSupabase.mockReset();
-  mockSupabase.mockImplementation(() => ({
+  mockUseAuth.mockReset();
+  mockUseAuth.mockImplementation(() => ({
     isUserLoading: false,
     isLoggedIn: true,
   }));
@@ -186,8 +186,8 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows loading spinner when user is loading", () => {
-    // Auth check moved to CopilotPage — mock useSupabase directly.
-    mockSupabase.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
+    // Auth check moved to CopilotPage — mock useAuth directly.
+    mockUseAuth.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();

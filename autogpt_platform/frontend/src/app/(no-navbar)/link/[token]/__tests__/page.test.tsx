@@ -19,7 +19,7 @@ import PlatformLinkPage from "../page";
 
 const mockUseParams = vi.hoisted(() => vi.fn());
 const mockUseSearchParams = vi.hoisted(() => vi.fn());
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockLogOut = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
@@ -36,12 +36,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: mockUseSearchParams,
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 function authenticate() {
-  mockUseSupabase.mockReturnValue({
+  mockUseAuth.mockReturnValue({
     user: {
       id: "user-1",
       email: "owner@example.com",
@@ -53,7 +53,6 @@ function authenticate() {
     isLoggedIn: true,
     isUserLoading: false,
     logOut: mockLogOut,
-    supabase: {},
   });
 }
 
@@ -95,12 +94,11 @@ describe("PlatformLinkPage", () => {
 
   test("asks unauthenticated users to sign in without fetching link info", () => {
     const infoHandler = vi.fn();
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
       isLoggedIn: false,
       isUserLoading: false,
       logOut: mockLogOut,
-      supabase: {},
     });
     server.use(
       getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200(() => {

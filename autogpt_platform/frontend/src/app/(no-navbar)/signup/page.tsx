@@ -43,7 +43,6 @@ export default function SignupPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable,
     handleSubmit,
     handleProviderSignup,
     handleCloseNotAllowedModal,
@@ -51,16 +50,6 @@ export default function SignupPage() {
 
   if (isUserLoading || isLoggedIn) {
     return <LoadingSignup />;
-  }
-
-  if (!isSupabaseAvailable) {
-    return (
-      <AuthSplitLayout marketing={<SignupMarketingPanel />}>
-        <Text variant="body-medium" className="text-center !text-slate-500">
-          User accounts are disabled because Supabase client is unavailable
-        </Text>
-      </AuthSplitLayout>
-    );
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;

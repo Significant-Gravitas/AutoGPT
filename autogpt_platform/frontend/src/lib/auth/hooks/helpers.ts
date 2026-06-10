@@ -1,7 +1,4 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
-import { environment } from "@/services/environment";
-import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import {
   getCurrentUser,
@@ -14,31 +11,7 @@ import {
   isLogoutEvent,
   setWebSocketDisconnectIntent,
 } from "../helpers";
-
-let supabaseSingleton: SupabaseClient | null = null;
-
-export function ensureSupabaseClient(): SupabaseClient | null {
-  if (supabaseSingleton) return supabaseSingleton;
-
-  const supabaseUrl = environment.getSupabaseUrl();
-  const supabaseKey = environment.getSupabaseAnonKey();
-
-  if (!supabaseUrl || !supabaseKey) return null;
-
-  try {
-    supabaseSingleton = createBrowserClient(supabaseUrl, supabaseKey, {
-      isSingleton: true,
-      auth: {
-        persistSession: false,
-      },
-    });
-  } catch (error) {
-    console.error("Error creating Supabase client", error);
-    supabaseSingleton = null;
-  }
-
-  return supabaseSingleton;
-}
+import type { User } from "../types";
 
 interface FetchUserResult {
   user: User | null;

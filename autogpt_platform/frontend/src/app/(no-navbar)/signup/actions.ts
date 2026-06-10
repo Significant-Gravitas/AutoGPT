@@ -2,9 +2,11 @@
 
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { auth } from "@/lib/auth/auth";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
+import { APIError } from "better-auth/api";
+import { headers } from "next/headers";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 
 export async function signup(
@@ -28,34 +30,33 @@ export async function signup(
       };
     }
 
-    const supabase = await getServerSupabase();
-    if (!supabase) {
-      return {
-        success: false,
-        error: "Authentication service unavailable",
-      };
-    }
+    try {
+      // The session cookie is set automatically by the nextCookies plugin.
+      await auth.api.signUpEmail({
+        body: {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          name: parsed.data.email.split("@")[0],
+        },
+        headers: await headers(),
+      });
+    } catch (error) {
+      if (error instanceof APIError) {
+        if (isWaitlistError(error.body?.code, error.message)) {
+          logWaitlistError("Signup", error.message);
+          return { success: false, error: "not_allowed" };
+        }
 
-    const { data, error } = await supabase.auth.signUp(parsed.data);
+        if (error.body?.code === "USER_ALREADY_EXISTS") {
+          return { success: false, error: "user_already_exists" };
+        }
 
-    if (error) {
-      if (isWaitlistError(error?.code, error?.message)) {
-        logWaitlistError("Signup", error.message);
-        return { success: false, error: "not_allowed" };
+        return {
+          success: false,
+          error: error.body?.message || error.message,
+        };
       }
-
-      if ((error as any).code === "user_already_exists") {
-        return { success: false, error: "user_already_exists" };
-      }
-
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
-    if (data.session) {
-      await supabase.auth.setSession(data.session);
+      throw error;
     }
 
     try {

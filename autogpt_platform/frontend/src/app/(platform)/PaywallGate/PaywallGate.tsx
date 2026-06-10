@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { environment } from "@/services/environment";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { PaywallModal } from "./PaywallModal";
 
 // Routes that bypass the paywall regardless of subscription state — primarily
@@ -26,7 +26,7 @@ const PAYWALL_EXEMPT_PREFIXES = [
 
 export function PaywallGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { data: subscription, isLoading } = useGetSubscriptionStatus({
     query: {

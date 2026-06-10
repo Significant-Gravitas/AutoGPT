@@ -170,7 +170,7 @@ if errorlevel 1 (
     echo Common issues:
     echo - Docker is not running
     echo - Insufficient disk space
-    echo - Port conflicts ^(check if ports 3000, 8000, etc. are in use^)
+    echo - Port conflicts ^(check if ports 3000, 8006, etc. are in use^)
     pause
     exit /b 1
 )
@@ -180,7 +180,7 @@ echo      Setup Complete!
 echo =============================
 echo.
 echo Access AutoGPT at: http://localhost:3000
-echo API available at: http://localhost:8000
+echo API available at: http://localhost:8006
 if "%WITH_OLLAMA%"=="1" (
     echo.
     echo AutoPilot wired to Ollama ^(model: %OLLAMA_MODEL%^)

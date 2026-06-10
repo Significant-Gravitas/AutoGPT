@@ -6,9 +6,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ServerLogoutOptions } from "../actions";
-import { useSupabaseStore } from "./useSupabaseStore";
+import { useAuthStore } from "./useAuthStore";
 
-export function useSupabase() {
+export function useAuth() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -19,17 +19,15 @@ export function useSupabase() {
 
   const {
     user,
-    supabase,
     isUserLoading,
     initialize,
     setCurrentRequestContext,
     logOut,
     validateSession,
     refreshSession,
-  } = useSupabaseStore(
+  } = useAuthStore(
     useShallow((state) => ({
       user: state.user,
-      supabase: state.supabase,
       isUserLoading: state.isUserLoading,
       initialize: state.initialize,
       setCurrentRequestContext: state.setCurrentRequestContext,
@@ -66,7 +64,6 @@ export function useSupabase() {
 
   return {
     user,
-    supabase,
     isLoggedIn: Boolean(user),
     isUserLoading,
     logOut: handleLogout,

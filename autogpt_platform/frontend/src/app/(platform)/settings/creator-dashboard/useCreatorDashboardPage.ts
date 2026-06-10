@@ -14,7 +14,7 @@ import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/
 import type { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 import {
   INITIAL_FILTER_STATE,
@@ -45,7 +45,7 @@ interface EditState {
 
 export function useCreatorDashboardPage() {
   const queryClient = getQueryClient();
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,

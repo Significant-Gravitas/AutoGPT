@@ -9,7 +9,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { updateFavoriteInQueries } from "./helpers";
 
 interface Props {
@@ -25,7 +25,7 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
   const { toast } = useToast();
   const queryClient = getQueryClient();
   const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
-  const { user, isLoggedIn } = useSupabase();
+  const { user, isLoggedIn } = useAuth();
   const logoutInProgress = isLogoutInProgress();
 
   const { data: profile } = useGetV2GetUserProfile({

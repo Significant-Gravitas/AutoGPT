@@ -2,7 +2,7 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { getBackendAuthToken } from "@/lib/auth/server/token";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import { cache } from "react";
@@ -112,14 +112,8 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
 }
 
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
-  const supabase = await getServerSupabase();
-
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    return session?.access_token ?? null;
+    return await getBackendAuthToken();
   } catch (error) {
     console.error("Failed to get auth token:", error);
     return null;

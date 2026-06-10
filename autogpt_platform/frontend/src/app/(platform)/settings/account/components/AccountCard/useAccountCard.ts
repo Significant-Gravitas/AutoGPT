@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ const emailSchema = z.object({
 
 type EmailFormValues = z.infer<typeof emailSchema>;
 
-async function updateEmailViaSupabase(email: string) {
+async function updateEmailViaAuthAPI(email: string) {
   const response = await fetch("/api/auth/user", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ export function useAccountCard({ user }: { user: User }) {
 
     try {
       await Promise.all([
-        updateEmailViaSupabase(values.email),
+        updateEmailViaAuthAPI(values.email),
         updateEmailServer.mutateAsync({ data: values.email }),
       ]);
       toast({

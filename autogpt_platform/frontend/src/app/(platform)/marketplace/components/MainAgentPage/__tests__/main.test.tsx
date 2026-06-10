@@ -9,15 +9,15 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { MainAgentPage } from "../MainAgentPage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 describe("MainAgentPage", () => {
   beforeEach(() => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
     });
   });

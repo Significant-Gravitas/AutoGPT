@@ -2,10 +2,10 @@ import type BackendAPI from "@/lib/autogpt-server-api/client";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// The store imports a chain of modules (server actions, supabase helpers,
-// react-query). Stub them so we can exercise `setCurrentRequestContext` —
-// the new behavior introduced by this PR — in isolation, without pulling
-// in next/headers or a real Supabase client at test time.
+// The store imports a chain of modules (server actions, auth helpers,
+// react-query). Stub them so we can exercise `setCurrentRequestContext`
+// in isolation, without pulling in next/headers or the Better Auth server
+// instance at test time.
 vi.mock("../../actions", () => ({
   serverLogout: vi.fn(),
 }));
@@ -15,14 +15,13 @@ vi.mock("../../helpers", () => ({
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
 }));
 vi.mock("../helpers", () => ({
-  ensureSupabaseClient: vi.fn(() => null),
   fetchUser: vi.fn(),
   handleStorageEvent: vi.fn(),
   refreshSession: vi.fn(),
   validateSession: vi.fn(),
 }));
 
-import { useSupabaseStore } from "../useSupabaseStore";
+import { useAuthStore } from "../useAuthStore";
 
 function makeRouter() {
   return {
@@ -40,13 +39,13 @@ function makeApi() {
 }
 
 function snapshot() {
-  const { routerRef, apiRef, currentPath } = useSupabaseStore.getState();
+  const { routerRef, apiRef, currentPath } = useAuthStore.getState();
   return { routerRef, apiRef, currentPath };
 }
 
-describe("useSupabaseStore.setCurrentRequestContext", () => {
+describe("useAuthStore.setCurrentRequestContext", () => {
   afterEach(() => {
-    useSupabaseStore.setState({
+    useAuthStore.setState({
       routerRef: null,
       apiRef: null,
       currentPath: "",
@@ -57,7 +56,7 @@ describe("useSupabaseStore.setCurrentRequestContext", () => {
     const router = makeRouter();
     const api = makeApi();
 
-    useSupabaseStore
+    useAuthStore
       .getState()
       .setCurrentRequestContext({ router, api, path: "/library" });
 
@@ -71,10 +70,10 @@ describe("useSupabaseStore.setCurrentRequestContext", () => {
   it("is a no-op when refs and path are identical to current state", () => {
     const router = makeRouter();
     const api = makeApi();
-    const { setCurrentRequestContext } = useSupabaseStore.getState();
+    const { setCurrentRequestContext } = useAuthStore.getState();
 
     setCurrentRequestContext({ router, api, path: "/library" });
-    const setSpy = vi.spyOn(useSupabaseStore, "setState");
+    const setSpy = vi.spyOn(useAuthStore, "setState");
 
     setCurrentRequestContext({ router, api, path: "/library" });
 
@@ -100,7 +99,7 @@ describe("useSupabaseStore.setCurrentRequestContext", () => {
     const baseApi = makeApi();
     const basePath = "/library";
 
-    const { setCurrentRequestContext } = useSupabaseStore.getState();
+    const { setCurrentRequestContext } = useAuthStore.getState();
     setCurrentRequestContext({
       router: baseRouter,
       api: baseApi,

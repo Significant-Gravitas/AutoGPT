@@ -2,5 +2,8 @@
 *.ign.*
 .application.logs
 
+# Local Postgres data (db service bind mount)
+volumes/db/data
+
 # Claude Code local settings only — the rest of .claude/ is shared (skills etc.)
 .claude/settings.local.json

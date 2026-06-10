@@ -1,5 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
 import { useMemo, useRef } from "react";
@@ -36,7 +36,7 @@ function hasAssistantTail(messages: UIMessage[]) {
 }
 
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();

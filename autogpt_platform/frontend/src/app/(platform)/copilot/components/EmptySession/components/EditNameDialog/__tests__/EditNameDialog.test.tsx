@@ -16,8 +16,8 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     refreshSession: mockRefreshSession,
   }),
 }));

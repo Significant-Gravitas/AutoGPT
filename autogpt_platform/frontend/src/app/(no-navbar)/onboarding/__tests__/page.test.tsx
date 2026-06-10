@@ -33,9 +33,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/onboarding",
 }));
 
-let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ ...mockSupabaseState, user: null }),
+let mockAuthState = { isLoggedIn: true, isUserLoading: false };
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ ...mockAuthState, user: null }),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
@@ -83,7 +83,7 @@ beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
-  mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+  mockAuthState = { isLoggedIn: true, isUserLoading: false };
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
@@ -238,7 +238,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(screen.queryByTestId("step-preparing")).toBeNull();
   });
 
-  it("waits for Supabase auth before initialising (no premature step lock)", async () => {
+  it("waits for auth before initialising (no premature step lock)", async () => {
     // Regression: LD can resolve while auth is still loading. Without
     // gating on isUserLoading, isReady flips true (the !isLoggedIn branch
     // short-circuits), init runs against the pre-tier preparingStep (5)
@@ -248,7 +248,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     // no matching step guard (blank page).
     mockFlagValue = true;
     mockSubscriptionTier = "PRO";
-    mockSupabaseState = { isLoggedIn: false, isUserLoading: true };
+    mockAuthState = { isLoggedIn: false, isUserLoading: true };
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     render(<OnboardingPage />);
     // Nothing should render while auth is still loading.

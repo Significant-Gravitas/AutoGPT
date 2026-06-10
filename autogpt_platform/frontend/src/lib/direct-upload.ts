@@ -1,4 +1,4 @@
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { environment } from "@/services/environment";
 
 interface UploadFileResponse {

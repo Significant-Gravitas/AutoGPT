@@ -1,6 +1,6 @@
 # Server-Side Session Validation with httpOnly Cookies
 
-This implementation ensures that Supabase session validation is always performed on the server side using httpOnly cookies for improved security.
+This implementation ensures that session validation is always performed on the server side using httpOnly cookies for improved security. Sessions are managed by Better Auth.
 
 ## Key Features
 
@@ -15,7 +15,7 @@ This implementation ensures that Supabase session validation is always performed
 
 All API requests made through `BackendAPI` are automatically proxied through server actions that:
 
-1. Retrieve the JWT token from server-side httpOnly cookies
+1. Retrieve the JWT token for the current Better Auth session from server-side httpOnly cookies
 2. Make the authenticated request to the backend API
 3. Return the response to the client
 
@@ -25,15 +25,15 @@ This includes both regular API calls and file uploads, all handled transparently
 
 ### Client Components
 
-No changes needed! The existing `useSupabase` hook and `useBackendAPI` continue to work:
+No changes needed! The existing `useAuth` hook and `useBackendAPI` continue to work:
 
 ```tsx
 "use client";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 function MyComponent() {
-  const { user, isLoggedIn, isUserLoading, logOut } = useSupabase();
+  const { user, isLoggedIn, isUserLoading, logOut } = useAuth();
   const api = useBackendAPI();
 
   if (isUserLoading) return <div>Loading...</div>;
@@ -76,7 +76,7 @@ function MyComponent() {
 No changes needed! Server components continue to work as before:
 
 ```tsx
-import { validateSession, getCurrentUser } from "@/lib/supabase/actions";
+import { validateSession, getCurrentUser } from "@/lib/auth/actions";
 import { redirect } from "next/navigation";
 
 async function MyServerComponent() {
@@ -96,7 +96,7 @@ No changes needed! Server actions continue to work as before:
 
 ```tsx
 "use server";
-import { validateSession } from "@/lib/supabase/actions";
+import { validateSession } from "@/lib/auth/actions";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { redirect } from "next/navigation";
 
@@ -138,8 +138,9 @@ const mediaUrl = await api.uploadStoreSubmissionMedia(file);
 
 - `validateSession(currentPath)` - Validates the current session and returns user data
 - `getCurrentUser()` - Gets the current user without path validation
+- `getWebSocketToken()` - Mints a backend JWT for WebSocket authentication
 - `serverLogout()` - Logs out the user server-side
-- `refreshSession()` - Refreshes the current session
+- `refreshSession()` - Re-reads (and slides) the current cookie session
 
 ## Internal Architecture
 
@@ -149,7 +150,7 @@ All API requests (including file uploads) follow this flow:
 
 1. **Any API call**: `api.listGraphs()` or `api.uploadStoreSubmissionMedia(file)`
 2. **Proxy server action**: `proxyApiRequest()` or `proxyFileUpload()` handles the request
-3. **Server authentication**: Gets JWT from httpOnly cookies
+3. **Server authentication**: Mints a backend JWT from the Better Auth session cookie (`better-auth.session_token`)
 4. **Backend request**: Makes authenticated request to backend API
 5. **Response**: Returns data to the calling code
 

@@ -6,7 +6,6 @@ import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,13 +15,16 @@ import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 
 function ResetPasswordContent() {
-  const { supabase, user, isUserLoading } = useSupabase();
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [showExpiredMessage, setShowExpiredMessage] = useState(false);
+
+  // Better Auth's reset link lands here with `?token=`; its presence decides
+  // whether we show the "set new password" form or the "request email" form.
+  const resetToken = searchParams.get("token");
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -31,10 +33,12 @@ function ResetPasswordContent() {
 
     if (error || errorCode) {
       // Check if this is an expired/used link error
-      // Avoid broad checks like "invalid" which can match unrelated errors (e.g., PKCE errors)
+      // Avoid broad checks like "invalid" which can match unrelated errors
       const descLower = errorDescription?.toLowerCase() || "";
       const isExpiredOrUsed =
         error === "link_expired" ||
+        error === "INVALID_TOKEN" ||
+        error === "invalid_token" ||
         errorCode === "otp_expired" ||
         descLower.includes("expired") ||
         descLower.includes("already") ||
@@ -42,7 +46,7 @@ function ResetPasswordContent() {
 
       if (isExpiredOrUsed) {
         setShowExpiredMessage(true);
-        // Also show a toast with the Supabase error detail for debugging
+        // Also show a toast with the error detail for debugging
         if (errorDescription) {
           toast({
             title: "Link Expired",
@@ -121,6 +125,8 @@ function ResetPasswordContent() {
 
   const onChangePassword = useCallback(
     async (data: z.infer<typeof changePasswordFormSchema>) => {
+      if (!resetToken) return;
+
       setIsLoading(true);
 
       if (!(await changePasswordForm.trigger())) {
@@ -128,7 +134,7 @@ function ResetPasswordContent() {
         return;
       }
 
-      const error = await changePassword(data.password);
+      const error = await changePassword(data.password, resetToken);
       setIsLoading(false);
       if (error) {
         toast({
@@ -144,23 +150,11 @@ function ResetPasswordContent() {
         variant: "default",
       });
     },
-    [changePasswordForm, toast],
+    [changePasswordForm, resetToken, toast],
   );
 
-  if (isUserLoading) {
-    return <LoadingBox className="h-[80vh]" />;
-  }
-
-  if (!supabase) {
-    return (
-      <div>
-        User accounts are disabled because Supabase client is unavailable
-      </div>
-    );
-  }
-
   // Show expired link message if detected
-  if (showExpiredMessage && !user) {
+  if (showExpiredMessage && !resetToken) {
     return (
       <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
         <AuthCard title="Reset Password">
@@ -173,7 +167,7 @@ function ResetPasswordContent() {
   return (
     <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
       <AuthCard title="Reset Password">
-        {user ? (
+        {resetToken ? (
           <form
             onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
             className="flex w-full flex-col gap-1"
