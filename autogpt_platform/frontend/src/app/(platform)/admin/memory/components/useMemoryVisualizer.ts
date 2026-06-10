@@ -420,5 +420,10 @@ function completionSummary(status: AnyJobStatus): string {
   if (typeof (result.elapsed_seconds as number | undefined) === "number") {
     parts.push(`${(result.elapsed_seconds as number).toFixed(1)}s`);
   }
+  if (result.dream_in_flight === true) {
+    parts.push(
+      "dream apply still in flight — counts land async via the dream pass job",
+    );
+  }
   return parts.length ? parts.join(" — ") : "OK";
 }

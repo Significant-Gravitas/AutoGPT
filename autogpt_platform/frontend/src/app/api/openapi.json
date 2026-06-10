@@ -16672,6 +16672,11 @@
               { "type": "null" }
             ]
           },
+          "dream_in_flight": {
+            "type": "boolean",
+            "title": "Dream In Flight",
+            "default": false
+          },
           "skipped": {
             "type": "boolean",
             "title": "Skipped",
