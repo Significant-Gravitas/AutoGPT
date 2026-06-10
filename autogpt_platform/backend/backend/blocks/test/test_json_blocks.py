@@ -30,7 +30,7 @@ async def test_json_encoder_circular_reference():
     data = {}
     data["self"] = data
 
-    with pytest.raises(ValueError, match="Circular reference detected"):
+    with pytest.raises(ValueError, match="JSON Encoding Error"):
         async for _ in block.run(JSONEncoderBlock.Input(data=data)):
             pass
 
@@ -124,13 +124,19 @@ async def test_json_decoder_primitives(json_str, expected_data):
         float("nan"),
     ],
 )
-async def test_json_encoder_invalid_floats(invalid_float):
+async def test_json_encoder_non_finite_floats_become_null(invalid_float):
     block = JSONEncoderBlock()
     data = {"invalid": invalid_float}
 
-    with pytest.raises(ValueError, match="non-finite float"):
-        async for _ in block.run(JSONEncoderBlock.Input(data=data)):
-            pass
+    outputs = []
+    async for output in block.run(JSONEncoderBlock.Input(data=data)):
+        outputs.append(output)
+
+    assert len(outputs) == 1
+    name, value = outputs[0]
+    assert name == "json_str"
+    parsed = json.loads(value)
+    assert parsed["invalid"] is None
 
 
 @pytest.mark.asyncio

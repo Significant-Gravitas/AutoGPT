@@ -1,7 +1,8 @@
 """JSON encode and decode blocks for processing structured data in workflows."""
 
-import math
 from typing import Any
+
+import orjson
 
 from backend.blocks._base import (
     Block,
@@ -14,66 +15,23 @@ from backend.data.model import SchemaField
 from backend.util.json import dumps, loads
 
 
-def _validate_json_data(obj, seen=None):
-    if seen is None:
-        seen = set()
-
-    if isinstance(obj, float) and not math.isfinite(obj):
-        raise ValueError("Cannot serialize non-finite float")
-
-    if isinstance(obj, (str, int, bool, type(None))):
-        return
-
-    obj_id = id(obj)
-
-    if obj_id in seen:
-        raise ValueError("Circular reference detected")
-
-    if isinstance(obj, (dict, list, tuple, set)):
-        seen.add(obj_id)
-
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                _validate_json_data(k, seen)
-                _validate_json_data(v, seen)
-        else:
-            for item in obj:
-                _validate_json_data(item, seen)
-
-        seen.remove(obj_id)
-
-    elif hasattr(obj, "__dict__"):
-        seen.add(obj_id)
-
-        for value in vars(obj).values():
-            _validate_json_data(value, seen)
-
-        seen.remove(obj_id)
-
-
 class JSONEncoderBlock(Block):
-    """
-    JSON Encoder Block.
-
-    Converts Python data structures such as dictionaries, lists,
-    strings, booleans, and numbers into a JSON-formatted string.
-    """
 
     class Input(BlockSchemaInput):
         data: Any = SchemaField(
-            description="The data structure (dictionary, list, string, etc.) to encode into a JSON string.",
+            description="The data structure/value (object, list, string, etc.) to encode into a JSON string.",
             placeholder='e.g., {"key": "value"}',
         )
 
     class Output(BlockSchemaOutput):
         json_str: str = SchemaField(
-            description="The resulting JSON string representation."
+            description="The JSON string representation of the input data."
         )
 
     def __init__(self):
         super().__init__(
             id="9a9d20c5-5b4d-4e94-8022-83b6cb72648a",
-            description="Encodes a Python object (dictionary, list, etc.) into a JSON string.",
+            description="Encodes any value or data structure into a JSON string.",
             categories={BlockCategory.DATA},
             input_schema=JSONEncoderBlock.Input,
             output_schema=JSONEncoderBlock.Output,
@@ -85,36 +43,29 @@ class JSONEncoderBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            _validate_json_data(input_data.data)
             json_str = dumps(input_data.data)
             yield "json_str", json_str
-        except Exception as e:
+        except (orjson.JSONEncodeError, RecursionError, TypeError, ValueError) as e:
             raise ValueError(f"JSON Encoding Error: {str(e)}") from e
 
 
 class JSONDecoderBlock(Block):
-    """
-    JSON Decoder Block.
-
-    Converts a JSON-formatted string into its corresponding
-    Python object representation such as a dictionary or list.
-    """
 
     class Input(BlockSchemaInput):
         json_str: str = SchemaField(
-            description="The JSON string to parse and convert to a Python object.",
+            description="The JSON string to decode.",
             placeholder='e.g., {"key": "value"}',
         )
 
     class Output(BlockSchemaOutput):
         data: Any = SchemaField(
-            description="The decoded Python object (dictionary, list, string, number, boolean, or null)."
+            description="The value as decoded from the JSON string."
         )
 
     def __init__(self):
         super().__init__(
             id="2b935639-65bc-48fd-9f88-823cd706fcd9",
-            description="Decodes a JSON string into a Python object (dictionary, list, etc.).",
+            description="Decodes a JSON string into the value or data structure, it represents, e.g. an object, list, string, or number.",
             categories={BlockCategory.DATA},
             input_schema=JSONDecoderBlock.Input,
             output_schema=JSONDecoderBlock.Output,
@@ -128,5 +79,5 @@ class JSONDecoderBlock(Block):
         try:
             parsed_data = loads(input_data.json_str)
             yield "data", parsed_data
-        except Exception as e:
+        except orjson.JSONDecodeError as e:
             raise ValueError(f"JSON Decoding Error: {str(e)}") from e
