@@ -121,7 +121,7 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 ## JSON Decoder
 
 ### What it is
-Decodes a JSON string into a Python object (dictionary, list, etc.).
+Decodes a JSON string into the value or data structure, it represents, e.g. an object, list, string, or number.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -134,14 +134,14 @@ If the input string is malformed or contains invalid JSON syntax (such as missin
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| json_str | The JSON string to parse and convert to a Python object. | str | Yes |
+| json_str | The JSON string to decode. | str | Yes |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| data | The decoded Python object (dictionary, list, string, number, boolean, or null). | Data |
+| data | The value as decoded from the JSON string. | Data |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -157,7 +157,7 @@ If the input string is malformed or contains invalid JSON syntax (such as missin
 ## JSON Encoder
 
 ### What it is
-Encodes a Python object (dictionary, list, etc.) into a JSON string.
+Encodes any value or data structure into a JSON string.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -170,14 +170,14 @@ Before outputting, the block validates JSON-serializability. If an unsupported t
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| data | The data structure (dictionary, list, string, etc.) to encode into a JSON string. | Data | Yes |
+| data | The data structure/value (object, list, string, etc.) to encode into a JSON string. | Data | Yes |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| json_str | The resulting JSON string representation. | str |
+| json_str | The JSON string representation of the input data. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
