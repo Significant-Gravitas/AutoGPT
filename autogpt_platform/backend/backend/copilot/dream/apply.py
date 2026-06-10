@@ -146,10 +146,14 @@ async def _filter_demotions_to_known_facts(
     The sync path passes ``known_fact_uuids`` from its in-memory
     ``DreamInput``; the batch path calls ``apply_operations`` without
     it, so we fall back to the input bundle persisted at submit time.
-    If neither source exists (bundle expired/corrupted) we keep the
-    demotions rather than zeroing the pass — the same fail-open
-    posture as the clamp's unknown-fact-count fallback — and log that
-    validation was skipped.
+    If neither source exists (bundle expired/corrupted, or the Redis
+    read itself fails) we keep the demotions rather than zeroing the
+    pass — the same fail-open posture as the clamp's
+    unknown-fact-count fallback — and log that validation was skipped.
+    The Redis error MUST NOT propagate: by the time apply runs on the
+    batch path the at-most-once apply gate is already claimed, so an
+    exception here would permanently lose the dream (a retry hits the
+    "duplicate" branch and skips apply entirely).
 
     Entity invalidations are NOT filtered here: the input bundle
     carries no entity-uuid allowlist (``FactRow.source``/``target``
@@ -158,7 +162,17 @@ async def _filter_demotions_to_known_facts(
     if not demotions:
         return demotions
     if known_fact_uuids is None:
-        bundle = await read_input_bundle(pass_id)
+        try:
+            bundle = await read_input_bundle(pass_id)
+        except Exception as exc:
+            logger.warning(
+                "Dream pass %s: input bundle read failed (%s) — failing open "
+                "and skipping known-fact validation for %d demotion(s)",
+                pass_id,
+                exc,
+                len(demotions),
+            )
+            return demotions
         if bundle is None:
             logger.warning(
                 "Dream pass %s: no input bundle available — skipping "

@@ -125,14 +125,15 @@ async def test_successful_enqueue_does_not_cancel():
 
 
 @pytest.mark.asyncio
-async def test_persist_input_bundle_carries_held_lock_token(fake_redis):
+async def test_persist_input_bundle_carries_explicit_lock_token(fake_redis):
     """The orchestrator persists the bundle while still holding the dream
-    lock; the bundle must carry the lock's ownership token so the batch
-    callback — hours later, in another process — can compare-and-delete."""
+    lock and passes its OWN handle token; the bundle must carry it so the
+    batch callback — hours later, in another process — can
+    compare-and-delete."""
     _, string_store = fake_redis
     string_store[f"{DREAM_LOCK_KEY_PREFIX}u1"] = "tok-abc"
 
-    await persist_input_bundle("p1", _bundle())
+    await persist_input_bundle("p1", _bundle(), lock_token="tok-abc")
 
     assert await read_lock_token("p1") == "tok-abc"
     # The bundle itself still round-trips untouched by the extra field.
@@ -142,10 +143,37 @@ async def test_persist_input_bundle_carries_held_lock_token(fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_persist_input_bundle_explicit_token_wins_over_live_key(fake_redis):
+    """If this pass's lock expired and a NEWER pass re-acquired the key
+    before persist runs, the live key holds the newer pass's token. The
+    bundle must store the token the caller actually owns — storing the
+    live value would let this pass's callback compare-and-delete the
+    newer pass's lock hours later."""
+    _, string_store = fake_redis
+    string_store[f"{DREAM_LOCK_KEY_PREFIX}u1"] = "tok-newer-pass"
+
+    await persist_input_bundle("p1", _bundle(), lock_token="tok-ours")
+
+    assert await read_lock_token("p1") == "tok-ours"
+
+
+@pytest.mark.asyncio
+async def test_persist_input_bundle_falls_back_to_live_key_without_token(fake_redis):
+    """Callers that don't supply a token (eval harness) fall back to
+    reading the live lock key at persist time."""
+    _, string_store = fake_redis
+    string_store[f"{DREAM_LOCK_KEY_PREFIX}u1"] = "tok-live"
+
+    await persist_input_bundle("p1", _bundle())
+
+    assert await read_lock_token("p1") == "tok-live"
+
+
+@pytest.mark.asyncio
 async def test_persist_input_bundle_omits_token_when_lock_unheld(fake_redis):
-    """No held lock at persist time (e.g. eval harness calling the batch
-    path directly) ⇒ no token stored, and the callback falls back to the
-    lock TTL instead of a blind delete."""
+    """No token supplied and no held lock at persist time ⇒ no token
+    stored, and the callback falls back to the lock TTL instead of a
+    blind delete."""
     await persist_input_bundle("p2", _bundle())
 
     assert await read_lock_token("p2") is None

@@ -96,7 +96,11 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
-def _clamp_operations(ops: DreamOperations, active_fact_count: int) -> DreamOperations:
+def _clamp_operations(
+    ops: DreamOperations,
+    active_fact_count: int,
+    known_fact_uuids: set[str] | None = None,
+) -> DreamOperations:
     """Hard-trim oversized phase 3 outputs.
 
     Phase 3's prompt asks for these caps but the model can still
@@ -113,11 +117,29 @@ def _clamp_operations(ops: DreamOperations, active_fact_count: int) -> DreamOper
     lost its persisted input bundle); fall back to the absolute cap only
     rather than silently dropping every demotion.
 
+    When ``known_fact_uuids`` is provided, demotions targeting uuids
+    outside it are dropped BEFORE the cap slice — otherwise a
+    hallucinated uuid at the head of the model's list consumes a cap
+    slot (the entire budget on a floor-of-1 small graph) and displaces
+    a valid demotion that apply.py would have accepted. ``None`` skips
+    the pre-filter; apply.py's idempotent known-uuid filter remains the
+    security chokepoint either way.
+
     Entity invalidations are count-capped at
     ``MAX_ENTITY_INVALIDATIONS_PER_PASS``; see the constant's comment
     for why the per-entity edge blast radius is bounded elsewhere (LD
     flag + single-hop guarantee), not here.
     """
+    demotions = ops.demotions
+    if known_fact_uuids is not None:
+        demotions = [d for d in demotions if d.edge_uuid in known_fact_uuids]
+        dropped = len(ops.demotions) - len(demotions)
+        if dropped:
+            logger.warning(
+                "Dream clamp: dropped %d demotion(s) targeting edge uuids "
+                "outside known_fact_uuids before applying the demotion cap",
+                dropped,
+            )
     demotion_cap = MAX_DEMOTIONS_PER_PASS
     if active_fact_count == 0:
         demotion_cap = 0
@@ -126,7 +148,7 @@ def _clamp_operations(ops: DreamOperations, active_fact_count: int) -> DreamOper
     return DreamOperations(
         writes=ops.writes[:MAX_WRITES_PER_PASS],
         proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
-        demotions=ops.demotions[:demotion_cap],
+        demotions=demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations[
             :MAX_ENTITY_INVALIDATIONS_PER_PASS
         ],
@@ -427,7 +449,11 @@ async def _execute_dream_pass_async(
             )
             sanitized = sanitize_completion.value
 
-            ops = _clamp_operations(sanitized, len(input_bundle.facts))
+            ops = _clamp_operations(
+                sanitized,
+                len(input_bundle.facts),
+                known_fact_uuids=input_bundle.known_fact_uuids,
+            )
             apply_stats = await apply_operations(
                 user_id,
                 pass_id,
@@ -570,7 +596,9 @@ async def _submit_dream_pass_batch(
     # Persist DreamInput so the per-phase callbacks can rebuild the
     # next phase's prompt without re-fetching from Postgres + FalkorDB.
     try:
-        await persist_input_bundle(pass_id, input_bundle)
+        await persist_input_bundle(
+            pass_id, input_bundle, lock_token=dream_lock_handle.token
+        )
     except Exception as exc:
         return _failure_result(
             user_id,

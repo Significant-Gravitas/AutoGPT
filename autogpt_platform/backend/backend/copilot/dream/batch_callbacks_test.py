@@ -233,7 +233,11 @@ class TestPhaseChaining:
         await persist_input_bundle(
             "p1",
             DreamInput(
-                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+                user_id="u1",
+                group_id="user_u1",
+                window_start=now,
+                window_end=now,
+                known_fact_uuids={"fact-1"},
             ),
         )
         await _write_phase_to_state(
@@ -264,6 +268,9 @@ class TestPhaseChaining:
             )
 
         apply.assert_awaited_once()
+        # The demotion allowlist is threaded from the bundle already loaded
+        # for the clamp — apply must not re-read the bundle from Redis.
+        assert apply.call_args.kwargs["known_fact_uuids"] == {"fact-1"}
         mark_complete.assert_awaited_once()
         # The sanitizer's user-facing narrative must ride on the result so the
         # Memory Visualizer isn't blank for batch-completed dreams.
@@ -346,8 +353,9 @@ class TestPhaseChaining:
         state intact. The ``dream:applied:{pass_id}`` SETNX gate must keep
         apply at-most-once — otherwise every consolidated fact and proposal
         is written to the user's graph a second time as fresh episodes —
-        while the duplicate still proceeds to mark_complete + lock release
-        + cleanup."""
+        while the duplicate skips mark_complete (preserving the first
+        delivery's job result) and still releases the lock + cleans up
+        state."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
@@ -691,6 +699,48 @@ class TestLockTokenWiring:
         await self._dispatch_sanitize()
 
         assert "dream:inflight:u1" not in string_store
+
+    @pytest.mark.asyncio
+    async def test_token_read_failure_after_complete_keeps_job_completed(
+        self, fake_redis
+    ):
+        """A Redis blip on the lock-token read in the terminal tail fires
+        AFTER mark_complete already ran. The read must stay best-effort
+        (token=None → lock TTL fallback) — letting it propagate would hit
+        the handler's crash guard, whose _fail_pass rewrites the
+        already-completed job to errored."""
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        await self._seed_terminal_pass()
+
+        mark_complete = AsyncMock()
+        mark_errored = AsyncMock()
+        release_lock = AsyncMock()
+        read_token = AsyncMock(side_effect=ConnectionError("redis blip"))
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.read_lock_token", read_token
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        mark_complete.assert_awaited_once()
+        mark_errored.assert_not_awaited()
+        # Token read failed → token-less release; release_dream_lock then
+        # defers to the lock TTL rather than blind-deleting.
+        release_lock.assert_awaited_once_with("u1", None)
 
     @pytest.mark.asyncio
     async def test_terminal_release_leaves_lock_reacquired_by_newer_pass(

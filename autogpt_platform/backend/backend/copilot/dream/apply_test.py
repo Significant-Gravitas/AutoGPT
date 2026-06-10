@@ -10,6 +10,7 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -226,6 +227,37 @@ async def test_missing_input_bundle_fails_open_and_keeps_demotions():
 
     apply_mod.mark_edges_superseded.assert_awaited_once()
     assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
+
+
+@pytest.mark.asyncio
+async def test_redis_blip_on_bundle_fallback_fails_open(mocker, caplog):
+    """A Redis error during the input-bundle fallback read must take the
+    same fail-open branch as a missing bundle (keep demotions, WARNING)
+    instead of raising out of apply_operations — on the batch path the
+    at-most-once apply gate is already claimed by the time apply runs,
+    so an exception here permanently loses the dream (a retry hits the
+    "duplicate" branch and skips apply entirely)."""
+    mocker.patch.object(
+        apply_mod,
+        "read_input_bundle",
+        AsyncMock(side_effect=ConnectionError("redis blip")),
+    )
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="unverifiable", reason="stale")],
+    )
+    with caplog.at_level(logging.WARNING, logger=apply_mod.logger.name):
+        stats = await apply_mod.apply_operations(
+            user_id="u-blip", pass_id="p-blip", ops=ops
+        )
+
+    apply_mod.mark_edges_superseded.assert_awaited_once()
+    assert apply_mod.mark_edges_superseded.await_args.args[1] == ["unverifiable"]
+    assert stats["demotion_count"] == 1
+    assert any(
+        "input bundle read failed" in record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    )
 
 
 @pytest.mark.asyncio

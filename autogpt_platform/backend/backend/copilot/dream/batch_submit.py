@@ -295,7 +295,12 @@ def input_bundle_key(pass_id: str) -> str:
 INPUT_TTL_SECONDS = 24 * 60 * 60
 
 
-async def persist_input_bundle(pass_id: str, input_bundle: DreamInput) -> None:
+async def persist_input_bundle(
+    pass_id: str,
+    input_bundle: DreamInput,
+    *,
+    lock_token: str | None = None,
+) -> None:
     """Serialize ``DreamInput`` to Redis so callbacks can rebuild prompts.
 
     DreamInput carries lists of dataclasses; we round-trip through
@@ -308,12 +313,21 @@ async def persist_input_bundle(pass_id: str, input_bundle: DreamInput) -> None:
     process — needs that token for the compare-and-delete release in
     ``release_dream_lock``. Riding on this key avoids a second per-pass
     key and keeps the batch state single-key for cluster mode.
+
+    The orchestrator passes its lock handle's own ``lock_token``
+    explicitly — reading the live lock key here instead could capture a
+    *newer* pass's token (lock expired and was re-acquired between this
+    pass's acquire and the persist), letting this pass's callback release
+    a lock it doesn't own hours later. Only when no token is supplied
+    (eval harness calling the batch path without a lock) do we fall back
+    to the live key.
     """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
     payload = _input_bundle_to_dict(input_bundle)
-    lock_token = await read_dream_lock_token(input_bundle.user_id)
+    if lock_token is None:
+        lock_token = await read_dream_lock_token(input_bundle.user_id)
     if lock_token is not None:
         payload["lock_token"] = lock_token
     await redis.set(

@@ -115,27 +115,77 @@ async def test_dream_lock_disown_skips_release_and_extends_ttl(mocker):
         await handle.extend(BATCH_LOCK_TTL_SECONDS)
         handle.disown()
 
-    # extend re-asserts OUR token with SET XX (only-if-exists) — an
-    # expired lock is never resurrected, unlike a plain SET would.
-    assert redis.set.await_count == 2
-    extend_args, extend_kwargs = redis.set.call_args
-    assert extend_args == ("dream:inflight:user-e", handle.token)
-    assert extend_kwargs == {"xx": True, "ex": BATCH_LOCK_TTL_SECONDS}
-    redis.eval.assert_not_awaited()
+    # extend is a single-key Lua compare-and-extend on OUR token — never a
+    # blind SET XX that could overwrite a newer pass's token, and never a
+    # plain SET that would resurrect an expired lock.
+    redis.set.assert_awaited_once()  # the acquire only
+    redis.eval.assert_awaited_once()  # the extend; disown skips the unlock
+    eval_args = redis.eval.call_args.args
+    assert 'redis.call("expire"' in eval_args[0]
+    assert eval_args[1] == 1  # single key — routes on Redis Cluster
+    assert eval_args[2] == "dream:inflight:user-e"
+    assert eval_args[3] == handle.token
+    assert eval_args[4] == str(BATCH_LOCK_TTL_SECONDS)
     redis.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_extend_warns_when_lock_already_expired(mocker, caplog):
-    """SET XX returns nil when the key expired — extend must surface that
-    (ownership is lost) instead of silently recreating the lock."""
-    redis = _redis_mock(set=AsyncMock(side_effect=[True, None]))
+    """The compare-and-extend returns 0 when the key expired — extend must
+    surface that (ownership is lost) instead of silently recreating the
+    lock."""
+    redis = _redis_mock(eval=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
     async with dream_lock("user-f") as handle:
         await handle.extend(BATCH_LOCK_TTL_SECONDS)
         handle.disown()
 
+    assert "expired before extend" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_extend_leaves_lock_reacquired_by_newer_pass_untouched(mocker, caplog):
+    """Our lock expired mid-pass and a NEWER pass re-acquired the key with
+    its own token. extend must leave that token AND its TTL alone — the old
+    SET XX would have clobbered both, locking the user out for the batch
+    window under a hijacked token."""
+    key = "dream:inflight:user-m"
+    store: dict[str, str] = {}
+    ttls: dict[str, int] = {}
+
+    async def fake_set(k, value, nx=False, ex=None):
+        if nx and k in store:
+            return None
+        store[k] = value
+        if ex is not None:
+            ttls[k] = ex
+        return True
+
+    async def fake_eval(script, numkeys, k, *argv):
+        if store.get(k) != argv[0]:
+            return 0
+        if 'redis.call("expire"' in script:
+            ttls[k] = int(argv[1])
+            return 1
+        store.pop(k, None)
+        return 1
+
+    redis = _redis_mock(
+        set=AsyncMock(side_effect=fake_set),
+        eval=AsyncMock(side_effect=fake_eval),
+    )
+    _patch_redis(mocker, redis)
+
+    async with dream_lock("user-m") as handle:
+        # Simulate expiry + re-acquire by a newer pass before our extend.
+        store[key] = "tok-newer-pass"
+        ttls[key] = DEFAULT_LOCK_TTL_SECONDS
+        await handle.extend(BATCH_LOCK_TTL_SECONDS)
+        handle.disown()
+
+    assert store[key] == "tok-newer-pass"  # token not clobbered
+    assert ttls[key] == DEFAULT_LOCK_TTL_SECONDS  # TTL not stretched
     assert "expired before extend" in caplog.text
 
 

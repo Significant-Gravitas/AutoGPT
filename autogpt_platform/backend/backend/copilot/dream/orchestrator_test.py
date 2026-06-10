@@ -277,7 +277,9 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     consolidated = ConsolidationOutput(facts=[])
     recombined = RecombinationOutput(proposals=[])
 
-    # Build a sanitizer output that blows past every cap.
+    # Build a sanitizer output that blows past every cap. Demotions
+    # target real known fact uuids (f0..f99) so the clamp's known-uuid
+    # pre-filter keeps them all and the cap is what binds.
     huge_sanitized = DreamOperations(
         writes=[ConsolidatedFact(content=f"w{i}", confidence=0.5) for i in range(100)],
         proposals=[
@@ -288,7 +290,7 @@ async def test_clamps_oversized_sanitizer_output(mocker):
             )
             for i in range(100)
         ],
-        demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(100)],
+        demotions=[DreamDemotion(edge_uuid=f"f{i}", reason="r") for i in range(100)],
         summary_for_user="ok",
     )
 
@@ -348,8 +350,10 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
                 _wrap(RecombinationOutput(proposals=[])),
                 _wrap(
                     DreamOperations(
+                        # Known fact uuids (f0..f49) so the clamp's
+                        # pre-filter keeps them and the 5% cap binds.
                         demotions=[
-                            DreamDemotion(edge_uuid=f"e{i}", reason="r")
+                            DreamDemotion(edge_uuid=f"f{i}", reason="r")
                             for i in range(50)
                         ],
                         summary_for_user="ok",
@@ -417,6 +421,76 @@ def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
     assert len(orchestrator_mod._clamp_operations(ops, 40).demotions) == 2
     # No active facts at all -> no demotion budget
     assert len(orchestrator_mod._clamp_operations(ops, 0).demotions) == 0
+
+
+def test_hallucinated_uuid_does_not_consume_cap_slot():
+    """On a small graph the demotion cap floors at 1 — a hallucinated
+    edge uuid at the head of the model's list must not eat that single
+    slot and displace the valid demotion behind it. The clamp filters
+    against known_fact_uuids BEFORE slicing to the cap."""
+    ops = DreamOperations(
+        demotions=[
+            DreamDemotion(edge_uuid="hallucinated", reason="r"),
+            DreamDemotion(edge_uuid="f0", reason="r"),
+        ],
+    )
+    clamped = orchestrator_mod._clamp_operations(ops, 10, known_fact_uuids={"f0"})
+    assert [d.edge_uuid for d in clamped.demotions] == ["f0"]
+
+    # Without the allowlist the clamp can't pre-filter — the cap slices
+    # the raw list and apply.py's filter remains the only defense.
+    unfiltered = orchestrator_mod._clamp_operations(ops, 10)
+    assert [d.edge_uuid for d in unfiltered.demotions] == ["hallucinated"]
+
+
+@pytest.mark.asyncio
+async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
+    """End-to-end on the sync path: 10 active facts → demotion cap 1; the
+    sanitizer leads with a hallucinated uuid but the valid demotion (f0)
+    is the one that survives clamping and reaches apply."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(facts=10)),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_completion",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                _wrap(RecombinationOutput(proposals=[])),
+                _wrap(
+                    DreamOperations(
+                        demotions=[
+                            DreamDemotion(edge_uuid="hallucinated", reason="r"),
+                            DreamDemotion(edge_uuid="f0", reason="r"),
+                        ],
+                        summary_for_user="ok",
+                    )
+                ),
+            ]
+        ),
+    )
+
+    captured: dict[str, DreamOperations] = {}
+
+    async def fake_apply(user_id, pass_id, ops, *, known_fact_uuids=None):
+        captured["ops"] = ops
+        return {
+            "session_id": "s",
+            "consolidated_count": 0,
+            "proposal_count": 0,
+            "demotion_count": len(ops.demotions),
+            "demotion_failed_count": 0,
+            "entity_invalidation_count": 0,
+        }
+
+    mocker.patch.object(orchestrator_mod, "apply_operations", fake_apply)
+
+    await orchestrator_mod.execute_dream_pass("u")
+
+    assert [d.edge_uuid for d in captured["ops"].demotions] == ["f0"]
 
 
 def test_clamp_operations_caps_entity_invalidations():

@@ -5,15 +5,17 @@ held — the caller surfaces that as ``skipped=True`` in
 ``DreamPassResult`` so the admin UI can render "another dream is
 already running" rather than failing.
 
-The lock value is a per-acquire ownership token (uuid4) and every
-release is a single-key Lua compare-and-delete on that token. A blind
-delete is NOT safe: if a pass outlives its TTL (slow sync pass, or a
-batch callback landing inside the thin margin between the batch
-lifetime and ``BATCH_LOCK_TTL_SECONDS``), the key may already belong to
-a *newer* pass — deleting it would let a third concurrent pass start.
-Prod Redis runs in cluster mode, so everything here stays single-key:
-SET NX/XX plus a single-key Lua script, no multi-key scripts and no
-cross-key transactions.
+The lock value is a per-acquire ownership token (uuid4); every release
+is a single-key Lua compare-and-delete on that token and every TTL
+extend is a single-key Lua compare-and-extend. A blind delete (or a
+blind ``SET XX``) is NOT safe: if a pass outlives its TTL (slow sync
+pass, or a batch callback landing inside the thin margin between the
+batch lifetime and ``BATCH_LOCK_TTL_SECONDS``), the key may already
+belong to a *newer* pass — deleting or overwriting it would break that
+pass's ownership and let a third concurrent pass start. Prod Redis runs
+in cluster mode, so everything here stays single-key: SET NX plus
+single-key Lua scripts, no multi-key scripts and no cross-key
+transactions.
 
 TTL is transport-aware per ``dream/p0-spec.md`` §13:
   * Cloud (OpenRouter / Anthropic direct): 1800 s (30 min)
@@ -52,6 +54,15 @@ _UNLOCK_SCRIPT = (
     'return redis.call("del", KEYS[1]) else return 0 end'
 )
 
+# Compare-and-extend: only the holder whose token still matches the stored
+# value may stretch the TTL. Same single-key Lua pattern as
+# ``_UNLOCK_SCRIPT`` — a blind ``SET XX`` would overwrite a *newer* pass's
+# token (and TTL) when our lock expired and was re-acquired mid-pass.
+_EXTEND_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
+)
+
 
 def _lock_key(user_id: str) -> str:
     return f"{DREAM_LOCK_KEY_PREFIX}{user_id}"
@@ -88,16 +99,25 @@ class DreamLockHandle:
         self.release_on_exit = False
 
     async def extend(self, ttl_seconds: int) -> None:
-        """Stretch the lock TTL, re-asserting our ownership token.
+        """Stretch the lock TTL only while the key still holds our token.
 
-        ``SET ... XX`` (only-if-exists) rather than ``EXPIRE``: EXPIRE
-        silently no-ops when the key has already expired, leaving us
-        believing we still hold a lock that's gone. SET XX also refuses to
-        recreate an expired key — an expired lock is never resurrected —
-        but returns nil so we can at least log that ownership was lost.
+        Single-key Lua compare-and-extend (mirrors ``_UNLOCK_SCRIPT``): a
+        blind ``SET XX`` succeeds against ANY existing value, so if our
+        lock expired and a newer pass re-acquired the key, it would
+        hijack that pass's token and stretch its TTL. The compare also
+        refuses to recreate an expired key — an expired lock is never
+        resurrected — and returns 0 so we can log that ownership was
+        lost.
         """
-        result = await self._redis.set(self._key, self.token, xx=True, ex=ttl_seconds)
-        if not result:
+        # ``cast`` because redis-py's stubs type ``eval`` as a bare
+        # ``str`` — same workaround as the release paths below.
+        extended = await cast(
+            "Any",
+            self._redis.eval(
+                _EXTEND_SCRIPT, 1, self._key, self.token, str(ttl_seconds)
+            ),
+        )
+        if not extended:
             logger.warning(
                 "Dream lock for user %s expired before extend — "
                 "not resurrecting it; another pass may already own the key",

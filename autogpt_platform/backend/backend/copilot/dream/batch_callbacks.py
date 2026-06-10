@@ -155,8 +155,22 @@ async def _release_lock(user_id: str, pass_id: str) -> None:
     alongside the input bundle. Must run before ``delete_input_bundle`` —
     the token rides on that key. A missing token (bundle TTL'd out,
     malformed payload) leaves the lock for its TTL to clear rather than
-    blind-deleting what may be a newer pass's lock."""
-    token = await read_lock_token(pass_id) if pass_id else None
+    blind-deleting what may be a newer pass's lock.
+
+    Best-effort like ``release_dream_lock`` itself: a Redis blip on the
+    token read must not propagate — on the success tail it would fire
+    AFTER ``mark_complete`` and the crash guard would rewrite a completed
+    job to errored. Falls back to a token-less release (lock TTL)."""
+    token: str | None = None
+    if pass_id:
+        try:
+            token = await read_lock_token(pass_id)
+        except Exception:
+            logger.exception(
+                "Failed to read dream lock token for pass=%s — "
+                "leaving the lock to its TTL",
+                pass_id,
+            )
     await release_dream_lock(user_id, token)
 
 
@@ -520,7 +534,16 @@ async def _finalize_complete(
     # absolute demotion cap rather than zeroing all demotions.
     input_bundle = await read_input_bundle(pass_id)
     active_fact_count = len(input_bundle.facts) if input_bundle is not None else -1
-    ops = _clamp_operations(ops, active_fact_count)
+    # Pass the known-fact allowlist so hallucinated demotion uuids are
+    # filtered BEFORE the cap slice — otherwise they consume cap slots
+    # and displace valid demotions (cap can floor at 1 on small graphs).
+    ops = _clamp_operations(
+        ops,
+        active_fact_count,
+        known_fact_uuids=(
+            input_bundle.known_fact_uuids if input_bundle is not None else None
+        ),
+    )
 
     # Batch results can re-dispatch (executor crash between dispatch and
     # ``remove_pending``). Billing below is gated; the memory mutation must
@@ -555,7 +578,19 @@ async def _finalize_complete(
 
     apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
     try:
-        apply_stats = await apply_operations(user_id, pass_id, ops)
+        # Thread the demotion allowlist from the bundle already in memory —
+        # letting apply re-read it would do a second Redis GET + full JSON
+        # deserialize and could fail open if the bundle's TTL lapses between
+        # the two reads. None (bundle expired) keeps apply's documented
+        # fail-open fallback.
+        apply_stats = await apply_operations(
+            user_id,
+            pass_id,
+            ops,
+            known_fact_uuids=(
+                input_bundle.known_fact_uuids if input_bundle is not None else None
+            ),
+        )
     except Exception as exc:
         logger.exception(
             "apply_operations crashed for batch pass=%s — marking errored",
