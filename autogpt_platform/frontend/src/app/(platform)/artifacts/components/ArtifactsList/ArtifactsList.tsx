@@ -74,7 +74,7 @@ export function ArtifactsList({
       >
         <FileTypeMarquee />
         <Text variant="h5" className="text-zinc-700">
-          {hasSearchTerm ? "No files match your search" : "No artifacts yet"}
+          {hasSearchTerm ? "No files match your search" : "No files yet"}
         </Text>
       </div>
     );

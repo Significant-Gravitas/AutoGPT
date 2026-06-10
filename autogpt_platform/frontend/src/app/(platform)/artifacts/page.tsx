@@ -51,7 +51,7 @@ export default function ArtifactsPage() {
   } = useArtifactsPage();
 
   useEffect(() => {
-    document.title = "Artifacts – AutoGPT Platform";
+    document.title = "Files – AutoGPT Platform";
   }, []);
 
   if (!flagReady) {
@@ -73,7 +73,7 @@ export default function ArtifactsPage() {
           animate="show"
           transition={{ delay: 0 }}
         >
-          <Text variant="h3">Artifacts</Text>
+          <Text variant="h3">Files</Text>
           <Text variant="body" className="max-w-prose text-zinc-600">
             Every file your agents generate or use in the Builder lives here —
             ready to reuse, download, or share.
