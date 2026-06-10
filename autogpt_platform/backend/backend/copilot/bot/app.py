@@ -17,11 +17,13 @@ from backend.util.service import (
 )
 from backend.util.settings import Settings
 
-from .adapters.base import PlatformAdapter
+from . import outbound
+from .adapters.base import ChannelInfo, PlatformAdapter
 from .adapters.discord import config as discord_config
 from .adapters.discord.adapter import DiscordAdapter
 from .bot_backend import BotBackend
 from .handler import MessageHandler
+from .outbound import DeliveryResult
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,12 @@ class CoPilotChatBridge(AppService):
         # for any reason. Consumed by `health_check` so orchestrators can
         # restart the pod when the bridge is dead-but-listening.
         self._adapters_healthy = False
+        # Populated by `_run_adapters` so the outbound RPC handlers can reach
+        # the live adapter (and its gateway connection) by platform name. The
+        # RPC handlers run on the same shared event loop as the adapters, so
+        # they can await adapter methods directly.
+        self._api: BotBackend | None = None
+        self._adapters_by_platform: dict[str, PlatformAdapter] = {}
 
     @classmethod
     def get_port(cls) -> int:
@@ -54,7 +62,9 @@ class CoPilotChatBridge(AppService):
 
     async def _run_adapters(self) -> None:
         api = BotBackend()
+        self._api = api
         adapters = _build_adapters(api)
+        self._adapters_by_platform = {a.platform_name: a for a in adapters}
 
         if not adapters:
             logger.info(
@@ -99,36 +109,66 @@ class CoPilotChatBridge(AppService):
             raise UnhealthyServiceError("CoPilotChatBridge adapter task is not running")
         return await super().health_check()
 
+    def _require(self, platform: Platform) -> tuple[PlatformAdapter, BotBackend]:
+        """Resolve the live adapter + backend for ``platform`` or raise.
+
+        Raises ``UnhealthyServiceError`` (a transient-shaped error) when the
+        bridge hasn't finished starting or the platform's adapter isn't
+        configured, so a retrying caller backs off instead of treating it as
+        a permanent failure.
+        """
+        adapter = self._adapters_by_platform.get(platform.value.lower())
+        if adapter is None or self._api is None:
+            raise UnhealthyServiceError(
+                f"No running adapter for platform {platform.value}"
+            )
+        return adapter, self._api
+
+    @expose
+    async def list_channels(
+        self,
+        platform: Platform,
+        user_id: str,
+    ) -> list[ChannelInfo]:
+        """List channels ``user_id`` may post to via the bot on ``platform``.
+
+        Backs channel-name resolution and the picker in the copilot tool.
+        """
+        adapter, api = self._require(platform)
+        return await outbound.list_channels(adapter, api, platform.value, user_id)
+
     @expose
     async def send_message_to_channel(
         self,
         platform: Platform,
-        channel_id: str,
+        user_id: str,
+        channel: str,
         content: str,
-    ) -> bool:
-        """Deliver a message to a channel on the given platform.
+    ) -> DeliveryResult:
+        """Post ``content`` to ``channel`` (name or ID) as a standalone message.
 
-        Stub — scaffolding for the inbound-RPC pattern (backend → chat
-        platform). Not yet wired to a concrete adapter. Callers must not use
-        ``request_retry=True`` on the client until this is implemented, since
-        ``ValueError`` crosses the RPC boundary as a client-side 4xx-ish error
-        rather than a transient 5xx.
+        ``user_id`` is the AutoGPT user the post acts on behalf of; delivery
+        is authorized against the servers that user has linked.
         """
-        raise ValueError(f"send_message_to_channel not yet wired for {platform.value}")
+        adapter, api = self._require(platform)
+        return await outbound.deliver_message(
+            adapter, api, platform.value, user_id, channel, content
+        )
 
     @expose
-    async def send_dm(
+    async def create_thread_in_channel(
         self,
         platform: Platform,
-        platform_user_id: str,
+        user_id: str,
+        channel: str,
+        thread_name: str,
         content: str,
-    ) -> bool:
-        """Deliver a DM to a user on the given platform.
-
-        Stub — scaffolding for the inbound-RPC pattern. See
-        :meth:`send_message_to_channel` for the retry caveat.
-        """
-        raise ValueError(f"send_dm not yet wired for {platform.value}")
+    ) -> DeliveryResult:
+        """Create a standalone thread in ``channel`` and post ``content`` in it."""
+        adapter, api = self._require(platform)
+        return await outbound.create_thread(
+            adapter, api, platform.value, user_id, channel, thread_name, content
+        )
 
 
 class CoPilotChatBridgeClient(AppServiceClient):
@@ -136,10 +176,13 @@ class CoPilotChatBridgeClient(AppServiceClient):
     def get_service_type(cls):
         return CoPilotChatBridge
 
+    list_channels = endpoint_to_async(CoPilotChatBridge.list_channels)
     send_message_to_channel = endpoint_to_async(
         CoPilotChatBridge.send_message_to_channel
     )
-    send_dm = endpoint_to_async(CoPilotChatBridge.send_dm)
+    create_thread_in_channel = endpoint_to_async(
+        CoPilotChatBridge.create_thread_in_channel
+    )
 
 
 def _build_adapters(api: BotBackend) -> list[PlatformAdapter]:

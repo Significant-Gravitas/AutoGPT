@@ -18,6 +18,7 @@ from .models import (
     LinkTokenStatusResponse,
     ListUserChatsResponse,
     Platform,
+    PlatformLinkInfo,
     ResolveResponse,
     WorkspaceArtifact,
 )
@@ -61,6 +62,10 @@ class PlatformLinkingManager(AppService):
     @expose
     async def get_link_token_status(self, token: str) -> LinkTokenStatusResponse:
         return await platform_linking_db().get_link_token_status(token)
+
+    @expose
+    async def list_server_links(self, user_id: str) -> list[PlatformLinkInfo]:
+        return await platform_linking_db().list_server_links(user_id)
 
     @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
@@ -127,6 +132,7 @@ class PlatformLinkingManagerClient(AppServiceClient):
     get_link_token_status = endpoint_to_async(
         PlatformLinkingManager.get_link_token_status
     )
+    list_server_links = endpoint_to_async(PlatformLinkingManager.list_server_links)
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name

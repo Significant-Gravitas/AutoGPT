@@ -214,6 +214,18 @@ class BotBackend:
         )
         return ResolveResult(linked=resp.linked)
 
+    async def list_linked_server_ids(self, platform: str, user_id: str) -> list[str]:
+        """Return the platform server (guild) IDs ``user_id`` has linked.
+
+        Backs the proactive-output authorization check: a scheduled/autopilot
+        post is only allowed into a channel whose server appears in this list.
+        """
+        plat = Platform(platform.upper())
+        links = await self._client.list_server_links(user_id=user_id)
+        return [
+            link.platform_server_id for link in links if link.platform == plat.value
+        ]
+
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
     ) -> None:

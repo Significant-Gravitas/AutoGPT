@@ -788,3 +788,122 @@ class TestLockedThread:
         await handlers["on_message"](msg)
 
         callback.assert_awaited_once()
+
+
+# ── Proactive output (backend → platform) ──────────────────────────────
+
+
+def _guild_channel(channel_id: int, name: str, can_send: bool) -> MagicMock:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = channel_id
+    channel.name = name
+    perms = MagicMock()
+    perms.send_messages = can_send
+    channel.permissions_for = MagicMock(return_value=perms)
+    return channel
+
+
+def _guild_with_channels(
+    guild_id: int, name: str, channels: list[MagicMock]
+) -> MagicMock:
+    guild = MagicMock()
+    guild.id = guild_id
+    guild.name = name
+    guild.me = MagicMock()
+    guild.text_channels = channels
+    return guild
+
+
+class TestProactiveOutput:
+    @pytest.mark.asyncio
+    async def test_list_text_channels_filters_servers_and_permissions(self):
+        adapter, client = _bare_adapter()
+        g1 = _guild_with_channels(
+            111,
+            "Guild One",
+            [
+                _guild_channel(10, "general", True),
+                _guild_channel(11, "locked", False),
+            ],
+        )
+        g2 = _guild_with_channels(222, "Guild Two", [_guild_channel(20, "other", True)])
+        client.guilds = [g1, g2]
+
+        result = await adapter.list_text_channels(("111",))
+
+        assert [(c.id, c.name, c.server_id) for c in result] == [
+            ("10", "general", "111")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_get_channel_server_id_returns_guild(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = MagicMock(id=111)
+        client.get_channel.return_value = channel
+
+        assert await adapter.get_channel_server_id("10") == "111"
+
+    @pytest.mark.asyncio
+    async def test_get_channel_server_id_none_when_missing(self):
+        adapter, client = _bare_adapter()
+        client.get_channel.return_value = None
+        client.fetch_channel = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "gone")
+        )
+        assert await adapter.get_channel_server_id("10") is None
+
+    @pytest.mark.asyncio
+    async def test_post_channel_message_returns_ref_with_url(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        sent = MagicMock(id=999, jump_url="https://discord.com/channels/1/2/999")
+        channel.send = AsyncMock(return_value=sent)
+        client.get_channel.return_value = channel
+
+        ref = await adapter.post_channel_message("10", "hello")
+
+        assert ref is not None
+        assert ref.id == "999"
+        assert ref.url == "https://discord.com/channels/1/2/999"
+
+    @pytest.mark.asyncio
+    async def test_create_channel_thread_creates_and_posts(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 555
+        thread.jump_url = "https://discord.com/channels/1/555"
+        thread.send = AsyncMock()
+        channel.create_thread = AsyncMock(return_value=thread)
+        client.get_channel.return_value = channel
+
+        ref = await adapter.create_channel_thread("10", "Monday update", "body")
+
+        assert ref is not None
+        assert ref.id == "555"
+        channel.create_thread.assert_awaited_once()
+        thread.send.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_create_channel_thread_rejects_non_text_channel(self):
+        adapter, client = _bare_adapter()
+        client.get_channel.return_value = MagicMock(spec=discord.Thread)
+
+        assert await adapter.create_channel_thread("10", "x", "body") is None
+
+    @pytest.mark.asyncio
+    async def test_send_chunked_splits_long_text(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(
+            side_effect=lambda *a, **k: MagicMock(id=1, jump_url="u")
+        )
+        client.get_channel.return_value = channel
+
+        long_text = ("word " * 1000).strip()
+        ref = await adapter.post_channel_message("10", long_text)
+
+        assert ref is not None
+        # 5000 chars at ~1900/chunk → more than one send.
+        assert channel.send.await_count >= 2
