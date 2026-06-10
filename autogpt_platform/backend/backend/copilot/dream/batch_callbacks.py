@@ -435,37 +435,39 @@ _APPLIED_GATE_PREFIX = "dream:applied"
 _APPLIED_GATE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
-async def _claim_apply_gate(pass_id: str) -> bool:
-    """Atomically claim the per-pass apply gate. Returns True when this
-    delivery is the first to run ``apply_operations`` for the pass; False
-    on a re-dispatched duplicate.
+async def _claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "error"]:
+    """Atomically claim the per-pass apply gate.
+
+    Returns ``"claimed"`` when this delivery is the first to run
+    ``apply_operations`` for the pass, ``"duplicate"`` on a re-dispatched
+    delivery whose writes already landed, and ``"error"`` when Redis is
+    unavailable and we cannot tell which of the two we are.
 
     Mirrors ``_claim_costs_logged_gate``: if the BatchExecutor crashes
     between dispatch and ``remove_pending``, the next poll re-dispatches
     the same finished batch — and ``apply_operations`` writes every
     consolidated fact and proposal to the user's graph as fresh episodes,
-    so re-running it duplicates the user's memories. Fail closed: if the
-    gate can't be claimed (Redis brown-out) skip apply rather than risk
-    double-writing under retry pressure.
+    so re-running it duplicates the user's memories. The three states must
+    stay distinct: treating a Redis brown-out as a duplicate would mark
+    the job complete with zero writes, silently dropping the dream.
     """
     from backend.data.redis_client import get_redis_async
 
     try:
         redis = await get_redis_async()
-        return bool(
-            await redis.set(
-                f"{_APPLIED_GATE_PREFIX}:{pass_id}",
-                "1",
-                nx=True,
-                ex=_APPLIED_GATE_TTL_SECONDS,
-            )
+        claimed = await redis.set(
+            f"{_APPLIED_GATE_PREFIX}:{pass_id}",
+            "1",
+            nx=True,
+            ex=_APPLIED_GATE_TTL_SECONDS,
         )
+        return "claimed" if claimed else "duplicate"
     except Exception:
         logger.exception(
-            "Failed to claim apply gate for pass=%s — skipping apply",
+            "Failed to claim apply gate for pass=%s — failing pass",
             pass_id,
         )
-        return False
+        return "error"
 
 
 async def _finalize_complete(
@@ -522,30 +524,51 @@ async def _finalize_complete(
 
     # Batch results can re-dispatch (executor crash between dispatch and
     # ``remove_pending``). Billing below is gated; the memory mutation must
-    # be too. On a duplicate delivery skip apply and proceed straight to
-    # mark_complete + lock release + cleanup — the writes already landed.
-    apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
-    if await _claim_apply_gate(pass_id):
-        try:
-            apply_stats = await apply_operations(user_id, pass_id, ops)
-        except Exception as exc:
-            logger.exception(
-                "apply_operations crashed for batch pass=%s — marking errored",
-                pass_id,
-            )
-            await _fail_pass(
-                user_id=user_id,
-                pass_id=pass_id,
-                job_id=job_id,
-                phase_models=phase_models,
-                error=f"apply: {type(exc).__name__}: {exc}",
-            )
-            return
-    else:
+    # be too. A duplicate delivery skips apply AND mark_complete — the first
+    # delivery already wrote the real stats, and overwriting them with empty
+    # ones would zero the admin-visible counts. A gate error fails the pass:
+    # we cannot tell first-vs-duplicate apart, and "complete with no writes"
+    # would silently drop the dream.
+    gate = await _claim_apply_gate(pass_id)
+    if gate == "error":
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            phase_models=phase_models,
+            error="apply: gate unavailable (redis) — cannot guarantee at-most-once",
+        )
+        return
+    if gate == "duplicate":
         logger.info(
-            "Skipping apply for pass=%s — operations already applied",
+            "Duplicate dispatch for pass=%s — operations already applied; "
+            "preserving the first delivery's job result",
             pass_id,
         )
+        await _log_all_phase_costs(
+            user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
+        )
+        await _release_lock(user_id, pass_id)
+        await _delete_state(pass_id)
+        await delete_input_bundle(pass_id)
+        return
+
+    apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
+    try:
+        apply_stats = await apply_operations(user_id, pass_id, ops)
+    except Exception as exc:
+        logger.exception(
+            "apply_operations crashed for batch pass=%s — marking errored",
+            pass_id,
+        )
+        await _fail_pass(
+            user_id=user_id,
+            pass_id=pass_id,
+            job_id=job_id,
+            phase_models=phase_models,
+            error=f"apply: {type(exc).__name__}: {exc}",
+        )
+        return
 
     # Per-phase usage log on the success path. Failure paths record the
     # same usage via ``_fail_pass`` (we incurred those provider tokens

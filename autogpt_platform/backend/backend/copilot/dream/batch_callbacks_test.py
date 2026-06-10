@@ -401,15 +401,59 @@ class TestPhaseChaining:
         apply.assert_awaited_once()
         # The gate key is what makes the dedup stick across processes.
         assert "dream:applied:p1" in string_store
-        # The duplicate still finalizes: job complete (twice is fine — the
-        # writes are idempotent at the JobStatus layer) and the lock is
-        # released with the persisted token both times.
-        assert mark_complete.await_count == 2
+        # Only the first delivery writes the job result — the duplicate
+        # must NOT call mark_complete with empty apply_stats, or it would
+        # zero the real consolidated/proposal/demotion counts and
+        # dream_session_id the first delivery recorded.
+        mark_complete.assert_awaited_once()
+        assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
+        # Both deliveries release the lock (token CAS makes the second a
+        # safe no-op) and clean up state.
         assert release_lock.await_count == 2
         for call in release_lock.await_args_list:
             assert call.args == ("u1", "tok-u1")
-        # The duplicate's result still carries the user-facing narrative.
-        assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
+
+    @pytest.mark.asyncio
+    async def test_apply_gate_redis_outage_fails_pass_not_silent_success(
+        self, fake_redis
+    ):
+        """A Redis outage while claiming the apply gate means we cannot
+        distinguish first delivery from duplicate. The pass must be marked
+        errored — completing it would report success while no memory was
+        written, silently dropping the dream."""
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="recombine",
+            row=_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT),
+        )
+
+        apply = AsyncMock()
+        mark_complete = AsyncMock()
+        mark_errored = AsyncMock()
+        gate = AsyncMock(return_value="error")
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.batch_callbacks._claim_apply_gate", gate
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        apply.assert_not_awaited()
+        mark_complete.assert_not_awaited()
+        mark_errored.assert_awaited_once()
+        assert "gate unavailable" in mark_errored.call_args.kwargs["error"]
 
 
 class TestErrorPaths:
