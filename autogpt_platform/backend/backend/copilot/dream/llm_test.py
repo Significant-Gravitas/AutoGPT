@@ -288,12 +288,18 @@ class TestStructuredCompletionDelegation:
             "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
             return_value=_anthropic_routing(api_key=""),
         ):
-            with pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY"):
+            with pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY") as exc_info:
                 await structured_completion(
                     model="anthropic/claude-sonnet-4-6",
                     messages=[{"role": "user", "content": "hi"}],
                     response_model=_SampleOutput,
                 )
+        # The hint is user-facing self-serve documentation — the anchor must
+        # match the real heading slug in docs/platform/copilot-local-llm.md
+        # ("### Subscription mode caveat").
+        assert "docs/platform/copilot-local-llm.md#subscription-mode-caveat" in str(
+            exc_info.value
+        )
 
     @pytest.mark.asyncio
     async def test_empty_content_raises_dream_llm_error(self):

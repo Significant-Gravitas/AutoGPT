@@ -281,7 +281,7 @@ def _missing_api_key_message(provider: ProviderLiteral) -> str:
             "enable the dream pass under subscription / direct-Anthropic "
             "mode. The Claude Code OAuth token cannot be used for direct "
             "Messages API calls (see "
-            "docs/platform/copilot-local-llm.md#dream-pass-and-memory)."
+            "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
         )
     if provider == "open_router":
         return "OpenRouter API key not configured — set OPEN_ROUTER_API_KEY."

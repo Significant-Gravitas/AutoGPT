@@ -51,6 +51,15 @@ def _get_loop_state() -> _LoopIngestState:
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
 
+# Hard cap on a single episode body accepted by ``enqueue_episode``.
+# Dream-pass writers queue ``MemoryEnvelope.model_dump_json()`` built from
+# unvalidated LLM output, so the only other bound is the indirect
+# whole-response token budget (~64KB). Oversized bodies are rejected (not
+# truncated) — callers already handle the ``False`` return, and a truncated
+# JSON envelope would fail parsing downstream anyway. Mirrors the read-side
+# clamp (``dream/fetch.py:MAX_SESSION_BODY_BYTES``).
+MAX_EPISODE_BODY_BYTES = 64 * 1024
+
 CUSTOM_EXTRACTION_INSTRUCTIONS = """
 - Do not extract "User", "Assistant", "AI", "System", "CoPilot", or "human" as entity nodes.
 - Do not extract software tool names, block names, API endpoint names, or internal system identifiers as entities.
@@ -223,6 +232,15 @@ async def enqueue_episode(
         group_id = derive_group_id(user_id)
     except ValueError:
         logger.warning("Invalid user_id for episode ingestion: %s", user_id[:12])
+        return False
+
+    body_bytes = len(episode_body.encode("utf-8"))
+    if body_bytes > MAX_EPISODE_BODY_BYTES:
+        logger.warning(
+            f"Episode body for user {user_id[:12]} exceeds size cap "
+            f"({body_bytes} > {MAX_EPISODE_BODY_BYTES} bytes) — "
+            f"rejecting episode {name!r}"
+        )
         return False
 
     queue = await _ensure_worker(user_id)
