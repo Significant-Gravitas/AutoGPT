@@ -150,6 +150,22 @@ def _phase_models_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+async def _best_effort_cleanup(pass_id: str) -> None:
+    """Delete the per-pass state + input bundle without letting a Redis
+    blip propagate. These deletes run AFTER ``mark_complete`` on the
+    success/duplicate tails — an exception here would route through the
+    crash guard to ``_fail_pass`` and rewrite a completed job to errored.
+    Both keys carry 24h TTLs, so a failed delete self-heals."""
+    try:
+        await _delete_state(pass_id)
+        await delete_input_bundle(pass_id)
+    except Exception:
+        logger.exception(
+            "Per-pass cleanup failed for pass=%s — keys will expire via TTL",
+            pass_id,
+        )
+
+
 async def _release_lock(user_id: str, pass_id: str) -> None:
     """Release the disowned dream lock with the ownership token persisted
     alongside the input bundle. Must run before ``delete_input_bundle`` —
@@ -572,8 +588,7 @@ async def _finalize_complete(
             user_id=user_id, pass_id=pass_id, state=state, phase_models=phase_models
         )
         await _release_lock(user_id, pass_id)
-        await _delete_state(pass_id)
-        await delete_input_bundle(pass_id)
+        await _best_effort_cleanup(pass_id)
         return
 
     apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
@@ -663,8 +678,7 @@ async def _finalize_complete(
     # The batch path disowned the dream lock to this callback; release it now
     # that the pass has terminated so the next dream for this user can run.
     await _release_lock(user_id, pass_id)
-    await _delete_state(pass_id)
-    await delete_input_bundle(pass_id)
+    await _best_effort_cleanup(pass_id)
 
 
 async def _fail_pass(
@@ -703,8 +717,7 @@ async def _fail_pass(
         )
     # Release the dream lock the batch path disowned to this callback.
     await _release_lock(user_id, pass_id)
-    await _delete_state(pass_id)
-    await delete_input_bundle(pass_id)
+    await _best_effort_cleanup(pass_id)
 
 
 # ---------------------------------------------------------------------------

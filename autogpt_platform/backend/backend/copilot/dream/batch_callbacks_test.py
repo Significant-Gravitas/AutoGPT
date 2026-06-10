@@ -743,6 +743,40 @@ class TestLockTokenWiring:
         release_lock.assert_awaited_once_with("u1", None)
 
     @pytest.mark.asyncio
+    async def test_cleanup_failure_after_complete_keeps_job_completed(self, fake_redis):
+        """A Redis blip on the post-mark_complete state/bundle deletes must
+        not route through the crash guard to _fail_pass — both keys carry
+        24h TTLs, so cleanup is best-effort and the completed job stays
+        completed."""
+        await self._seed_terminal_pass()
+
+        mark_complete = AsyncMock()
+        mark_errored = AsyncMock()
+        delete_state = AsyncMock(side_effect=ConnectionError("redis blip"))
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._delete_state", delete_state
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        delete_state.assert_awaited_once()
+        mark_complete.assert_awaited_once()
+        mark_errored.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_terminal_release_leaves_lock_reacquired_by_newer_pass(
         self, fake_redis
     ):

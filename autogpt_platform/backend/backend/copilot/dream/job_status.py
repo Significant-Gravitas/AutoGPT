@@ -214,7 +214,13 @@ async def mark_complete(
 async def mark_errored(
     *, kind: JobKind, job_id: str, error: str
 ) -> JobStatus[Any] | None:
-    """Transition to ``state='errored'`` with a short error string."""
+    """Transition to ``state='errored'`` with a short error string.
+
+    Refuses to overwrite a job already in ``state='complete'`` — the
+    batch tail runs cleanup after ``mark_complete``, and a transient
+    error routed through the crash guard must not rewrite a completed
+    job (whose writes and billing landed) as errored.
+    """
     existing = await read_status(kind=kind, job_id=job_id)
     if existing is None:
         logger.warning(
@@ -223,6 +229,15 @@ async def mark_errored(
             job_id[:12],
         )
         return None
+    if existing.state == "complete":
+        logger.warning(
+            "mark_errored: refusing to overwrite completed job kind=%s "
+            "job_id=%s (error was: %s)",
+            kind,
+            job_id[:12],
+            error[:200],
+        )
+        return existing
     now = datetime.now(timezone.utc)
     updated = existing.model_copy(
         update={
