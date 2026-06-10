@@ -1,5 +1,6 @@
 """Unit tests for helpers in backend.data.user."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -96,8 +97,52 @@ class TestUpdateUserTimezone:
             await update_user_timezone("user-tz", "Europe/Paris")
             # Yield once so the asyncio.create_task body runs before we
             # assert it was called.
-            import asyncio as _asyncio
-
-            await _asyncio.sleep(0)
+            await asyncio.sleep(0)
 
         assert captured == [("user-tz", True)]
+
+    @pytest.mark.asyncio
+    async def test_re_register_task_is_retained_and_its_failure_logged(self):
+        """The event loop holds only weak refs to tasks — an unretained
+        fire-and-forget re-register can be GC'd mid-flight and its
+        exception never observed. The spawn must keep a strong ref in
+        ``_background_tasks`` until done and log failures via the
+        done-callback instead of dropping them."""
+        from backend.copilot.dream import scheduling as dream_scheduling
+
+        prisma_user = MagicMock(id="user-tz", email="user@example.com")
+
+        async def failing_ensure(user_id: str, *, force_refresh: bool = False):
+            raise RuntimeError("scheduler unreachable")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.User, "from_db", return_value=MagicMock()),
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+            patch.object(user_module.get_user_by_email, "cache_delete"),
+            patch.object(user_module.get_or_create_user, "cache_clear"),
+            patch.object(
+                dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
+            ),
+            patch.object(user_module.logger, "warning") as warn_mock,
+        ):
+            mock_prisma_user.prisma.return_value.update = AsyncMock(
+                return_value=prisma_user
+            )
+            await update_user_timezone("user-tz", "Europe/Paris")
+
+            spawned = [
+                t
+                for t in user_module._background_tasks
+                if t.get_name() == "tz-reregister-user-tz"
+            ]
+            assert spawned, "task must be strongly referenced until it completes"
+
+            await asyncio.gather(*spawned, return_exceptions=True)
+            # One more tick so the done-callback (scheduled via
+            # call_soon) runs.
+            await asyncio.sleep(0)
+
+        assert not user_module._background_tasks & set(spawned)
+        warn_mock.assert_called_once()
+        assert isinstance(warn_mock.call_args.kwargs["exc_info"], RuntimeError)

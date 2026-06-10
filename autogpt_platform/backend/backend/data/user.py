@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -499,6 +500,22 @@ async def cleanup_user_managed_credentials(
     await cleanup_managed_credentials(user_id, store)
 
 
+# Strong refs to fire-and-forget tasks — the event loop only keeps weak
+# references, so an unretained task can be GC'd mid-flight and its
+# exception is never observed. Same pattern as
+# ``backend/copilot/chat_session_embeddings.py``.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _on_background_task_done(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("Background task %s failed", task.get_name(), exc_info=exc)
+
+
 async def update_user_timezone(user_id: str, timezone: str) -> User:
     """Update a user's timezone setting."""
     try:
@@ -527,14 +544,14 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         # fails or the user doesn't trigger a memory write within the
         # 7-day key TTL.
         try:
-            import asyncio
-
             from backend.copilot.dream.scheduling import ensure_dream_system_scheduled
 
-            asyncio.create_task(
+            task = asyncio.create_task(
                 ensure_dream_system_scheduled(user_id, force_refresh=True),
                 name=f"tz-reregister-{user_id[:12]}",
             )
+            _background_tasks.add(task)
+            task.add_done_callback(_on_background_task_done)
         except Exception:
             logger.warning(
                 "Failed to spawn dream-system re-register after timezone "
