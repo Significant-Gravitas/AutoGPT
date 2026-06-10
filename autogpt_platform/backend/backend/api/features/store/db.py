@@ -952,8 +952,18 @@ async def create_store_submission(
                                 "agentGraphId": graph_id,
                                 "OwningUser": {"connect": {"id": user_id}},
                                 "CreatorProfile": {"connect": {"userId": user_id}},
+                                # Relation-connect, NOT the raw owningOrgId
+                                # scalar: this nested create uses checked
+                                # (relation) input syntax, and Prisma
+                                # rejects the whole create when a raw FK
+                                # field is mixed in ("Field does not exist
+                                # in enclosing type").
                                 **(
-                                    {"owningOrgId": organization_id}
+                                    {
+                                        "OwningOrg": {
+                                            "connect": {"id": organization_id}
+                                        }
+                                    }
                                     if organization_id
                                     else {}
                                 ),

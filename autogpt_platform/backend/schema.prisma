@@ -1901,8 +1901,8 @@ model OrganizationSeatAssignment {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  OrgMember    OrgMember?   @relation(fields: [organizationId, userId], references: [orgId, userId])
-  Organization Organization @relation(fields: [organizationId], references: [id])
+  OrgMember    OrgMember?   @relation(fields: [organizationId, userId], references: [orgId, userId], onDelete: Cascade)
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([organizationId, status])

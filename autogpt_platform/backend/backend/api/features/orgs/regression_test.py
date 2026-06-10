@@ -2131,13 +2131,17 @@ class TestPR15MarketplaceOrg:
                 )
 
         # Verify the SLV create call's StoreListing.connect_or_create.create
-        # includes owningOrgId
+        # connects the OwningOrg relation. Must be relation-connect syntax,
+        # NOT the raw owningOrgId scalar — this nested create uses checked
+        # (relation) input and Prisma rejects the whole create when a raw
+        # FK field is mixed in (e2e publish flow 500'd on exactly this).
         self.mock_slv_actions.create.assert_called_once()
         create_data = self.mock_slv_actions.create.call_args.kwargs.get(
             "data", self.mock_slv_actions.create.call_args[1].get("data")
         )
         listing_create = create_data["StoreListing"]["connect_or_create"]["create"]
-        assert listing_create["owningOrgId"] == "org-1"
+        assert listing_create["OwningOrg"] == {"connect": {"id": "org-1"}}
+        assert "owningOrgId" not in listing_create
 
     @pytest.mark.asyncio
     async def test_create_submission_requires_org_membership(self):
