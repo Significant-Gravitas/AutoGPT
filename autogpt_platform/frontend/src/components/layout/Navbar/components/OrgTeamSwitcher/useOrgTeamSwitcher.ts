@@ -18,17 +18,18 @@ export function useOrgTeamSwitcher() {
   function switchOrg(orgID: string) {
     if (orgID === activeOrgID) return;
     setActiveOrg(orgID);
-    // Clear cache to force refetch with new org context
+    // resetQueries (not clear) — clear() strands mounted observers in a
+    // forever-pending state; resetQueries refetches on-screen queries
+    // with the new org context.
     const queryClient = getQueryClient();
-    queryClient.clear();
+    queryClient.resetQueries();
   }
 
   function switchTeam(teamID: string) {
     if (teamID === activeTeamID) return;
     setActiveTeam(teamID);
-    // Clear cache for team-scoped data
     const queryClient = getQueryClient();
-    queryClient.clear();
+    queryClient.resetQueries();
   }
 
   return {

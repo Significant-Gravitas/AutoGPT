@@ -20,7 +20,7 @@ interface Props {
  * On org/team switch: clears React Query cache to force refetch.
  */
 export default function OrgTeamProvider({ children }: Props) {
-  const { isLoggedIn, user } = useSupabase();
+  const { isLoggedIn, user, isUserLoading } = useSupabase();
   const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
     useOrgTeamStore();
 
@@ -28,6 +28,14 @@ export default function OrgTeamProvider({ children }: Props) {
 
   // Fetch orgs when logged in
   useEffect(() => {
+    // While the session is still hydrating, isLoggedIn is transiently
+    // false — clearing context here would flip activeOrgID to null and
+    // (via the effect below) wipe the query cache mid-flight, stranding
+    // every in-flight page query in a forever-pending state.
+    if (isUserLoading) {
+      return;
+    }
+
     if (!isLoggedIn || !user) {
       clearContext();
       return;
@@ -65,13 +73,16 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     loadOrgs();
-  }, [isLoggedIn, user]);
+  }, [isLoggedIn, user, isUserLoading]);
 
-  // Clear React Query cache when org switches
+  // Drop org-scoped data when the org switches. resetQueries (NOT
+  // clear) — clear() removes queries without notifying mounted
+  // observers, which leaves them pending forever; resetQueries
+  // refetches everything that's still on screen.
   useEffect(() => {
     if (prevOrgID.current !== activeOrgID && prevOrgID.current !== null) {
       const queryClient = getQueryClient();
-      queryClient.clear();
+      queryClient.resetQueries();
     }
     prevOrgID.current = activeOrgID;
   }, [activeOrgID]);

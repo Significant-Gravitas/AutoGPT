@@ -34,11 +34,24 @@ function mockLoggedIn() {
   useSupabaseMock.mockReturnValue({
     isLoggedIn: true,
     user: { id: "user-1" },
+    isUserLoading: false,
   });
 }
 
 function mockLoggedOut() {
-  useSupabaseMock.mockReturnValue({ isLoggedIn: false, user: null });
+  useSupabaseMock.mockReturnValue({
+    isLoggedIn: false,
+    user: null,
+    isUserLoading: false,
+  });
+}
+
+function mockSessionHydrating() {
+  useSupabaseMock.mockReturnValue({
+    isLoggedIn: false,
+    user: null,
+    isUserLoading: true,
+  });
 }
 
 function mockOrgsResponse(orgs: unknown, ok = true) {
@@ -156,6 +169,32 @@ describe("OrgTeamProvider", () => {
     await waitFor(() => {
       expect(useOrgTeamStore.getState().isLoaded).toBe(true);
     });
+  });
+
+  it("keeps the stored org while the session is still hydrating", async () => {
+    // Regression: isLoggedIn is transiently false during session
+    // hydration. Clearing context then flips activeOrgID to null,
+    // which wiped the query cache mid-flight and stranded every
+    // in-flight page query in a forever-pending state (e2e: api-keys
+    // list spinner never resolved).
+    window.localStorage.setItem("active-org-id", PERSONAL_ORG.id);
+    useOrgTeamStore.setState({
+      activeOrgID: PERSONAL_ORG.id,
+      orgs: [PERSONAL_ORG],
+      isLoaded: true,
+    });
+    mockSessionHydrating();
+    const fetchMock = mockOrgsResponse([]);
+
+    render(
+      <OrgTeamProvider>
+        <span>app content</span>
+      </OrgTeamProvider>,
+    );
+
+    expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    expect(useOrgTeamStore.getState().isLoaded).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("clears org/team context on logout", async () => {
