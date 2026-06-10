@@ -70,7 +70,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # the require_approval gate, and the "STOP before building" caveat the
 # model needs to halt for user approval instead of rushing into
 # create_agent.
-_CHAR_BUDGET = 40_500
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+_CHAR_BUDGET = 41_000
 
 
 @pytest.fixture(scope="module")

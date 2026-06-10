@@ -18,6 +18,7 @@ from typing import (
 
 import jsonref
 import jsonschema
+from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
@@ -255,6 +256,46 @@ class BlockSchema(BaseModel):
     @classmethod
     def get_mismatch_error(cls, data: BlockInput) -> str | None:
         return cls.validate_data(data)
+
+    # JSON-schema keywords whose violations are NOT already prevented at the
+    # widget level (number bounds and length bounds are bypassable by typing
+    # or pasting). ``enum``/``const`` come from dropdowns and ``pattern``/
+    # ``multipleOf``/``type`` are enforced by custom render rules, so leaving
+    # them out avoids surfacing errors the user can't actually trigger.
+    _INLINE_FIELD_ERROR_KEYWORDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+        }
+    )
+
+    @classmethod
+    def get_field_errors(cls, data: BlockInput) -> dict[str, str]:
+        """
+        Validate ``data`` against this schema and return per-field errors for
+        violations that are not already blocked by the form widget — i.e.
+        bound checks the user can bypass by typing/pasting. Lets these surface
+        inline on the offending block field via the standard ``node_errors``
+        path, rather than as a single string raised at execute time.
+        """
+        schema = cls.jsonschema()
+        cleaned = {k: v for k, v in data.items() if v is not None}
+        validator_cls = _jsonschema_validator_for(schema)
+        errors: dict[str, str] = {}
+        for err in validator_cls(schema).iter_errors(cleaned):
+            if err.validator not in cls._INLINE_FIELD_ERROR_KEYWORDS:
+                continue
+            if not err.absolute_path:
+                continue
+            field = str(err.absolute_path[0])
+            errors.setdefault(field, err.message)
+        return errors
 
     @classmethod
     def get_field_schema(cls, field_name: str) -> dict[str, Any]:
