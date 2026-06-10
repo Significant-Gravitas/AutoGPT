@@ -1,9 +1,10 @@
 """Tests for dream batch submission.
 
-Focused on the orphan-prevention guard: if the provider accepts a batch
-submission but the BatchExecutor enqueue fails afterwards, the paid
-provider batch must be cancelled before the error propagates — otherwise
-it runs to completion with no callback to consume it.
+Covers the orphan-prevention guard (a paid provider batch must be
+cancelled when the BatchExecutor enqueue fails afterwards — otherwise it
+runs to completion with no callback to consume it) and the dream-lock
+ownership token riding on the persisted input bundle so the batch
+callback can compare-and-delete the lock hours later.
 """
 
 from __future__ import annotations
@@ -13,8 +14,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.dream.batch_submit import submit_phase
+from backend.copilot.dream.batch_submit import (
+    input_bundle_key,
+    persist_input_bundle,
+    read_input_bundle,
+    read_lock_token,
+    submit_phase,
+)
 from backend.copilot.dream.fetch import DreamInput
+from backend.copilot.dream.locks import DREAM_LOCK_KEY_PREFIX
 from backend.util.llm.providers import BatchSubmissionRef
 
 
@@ -23,6 +31,35 @@ def _bundle() -> DreamInput:
     return DreamInput(
         user_id="u1", group_id="user_u1", window_start=now, window_end=now
     )
+
+
+@pytest.fixture
+def fake_redis():
+    """Dict-backed redis stub matching the batch_callbacks_test pattern."""
+    string_store: dict[str, str] = {}
+
+    async def fake_get(key):
+        return string_store.get(key)
+
+    async def fake_set(key, value, ex=None, nx=False):
+        if nx and key in string_store:
+            return None
+        string_store[key] = value
+        return True
+
+    async def fake_delete(key):
+        string_store.pop(key, None)
+
+    stub = AsyncMock()
+    stub.get.side_effect = fake_get
+    stub.set.side_effect = fake_set
+    stub.delete.side_effect = fake_delete
+
+    with patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=stub),
+    ):
+        yield stub, string_store
 
 
 @pytest.mark.asyncio
@@ -85,3 +122,43 @@ async def test_successful_enqueue_does_not_cancel():
     enqueue.assert_awaited_once()
     cancel.assert_not_awaited()
     assert ref.provider_batch_id == "msgbatch_ok"
+
+
+@pytest.mark.asyncio
+async def test_persist_input_bundle_carries_held_lock_token(fake_redis):
+    """The orchestrator persists the bundle while still holding the dream
+    lock; the bundle must carry the lock's ownership token so the batch
+    callback — hours later, in another process — can compare-and-delete."""
+    _, string_store = fake_redis
+    string_store[f"{DREAM_LOCK_KEY_PREFIX}u1"] = "tok-abc"
+
+    await persist_input_bundle("p1", _bundle())
+
+    assert await read_lock_token("p1") == "tok-abc"
+    # The bundle itself still round-trips untouched by the extra field.
+    bundle = await read_input_bundle("p1")
+    assert bundle is not None
+    assert bundle.user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_persist_input_bundle_omits_token_when_lock_unheld(fake_redis):
+    """No held lock at persist time (e.g. eval harness calling the batch
+    path directly) ⇒ no token stored, and the callback falls back to the
+    lock TTL instead of a blind delete."""
+    await persist_input_bundle("p2", _bundle())
+
+    assert await read_lock_token("p2") is None
+
+
+@pytest.mark.asyncio
+async def test_read_lock_token_none_when_bundle_expired(fake_redis):
+    assert await read_lock_token("p-gone") is None
+
+
+@pytest.mark.asyncio
+async def test_read_lock_token_none_when_bundle_corrupted(fake_redis):
+    _, string_store = fake_redis
+    string_store[input_bundle_key("p3")] = "not json {{{"
+
+    assert await read_lock_token("p3") is None

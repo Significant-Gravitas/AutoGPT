@@ -20,13 +20,17 @@ Per-pass state lives in two Redis keys:
 
   * ``dream:batch:input:{pass_id}`` — the serialized ``DreamInput``
     (so we can rebuild each phase's prompt without re-fetching from
-    Postgres / FalkorDB)
+    Postgres / FalkorDB) plus the dream lock's ownership token for the
+    compare-and-delete release
   * ``dream:batch:state:{pass_id}`` — accumulated phase outputs +
     per-phase token usage so the apply step has everything it needs
     and the cost log can record all three rows at once
 
 Both are TTL'd to 24h (Anthropic's batch SLA) so a forgotten pass
-naturally falls off the radar.
+naturally falls off the radar. Two SETNX gates (7-day TTL) keep the
+side effects at-most-once across batch re-dispatch:
+``dream:applied:{pass_id}`` for the memory writes and
+``dream:batch:costs_logged:{pass_id}`` for billing.
 """
 
 from __future__ import annotations
@@ -41,12 +45,13 @@ from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     delete_input_bundle,
     read_input_bundle,
+    read_lock_token,
     submit_phase,
 )
 from .billing import record_phase_cost
 from .locks import release_dream_lock
 from .model_pricing import compute_cost_usd
-from .schemas import DreamOperations, PhaseUsage
+from .schemas import DreamOperations, DreamOperationsSnapshot, PhaseUsage
 
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
@@ -145,6 +150,16 @@ def _phase_models_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+async def _release_lock(user_id: str, pass_id: str) -> None:
+    """Release the disowned dream lock with the ownership token persisted
+    alongside the input bundle. Must run before ``delete_input_bundle`` —
+    the token rides on that key. A missing token (bundle TTL'd out,
+    malformed payload) leaves the lock for its TTL to clear rather than
+    blind-deleting what may be a newer pass's lock."""
+    token = await read_lock_token(pass_id) if pass_id else None
+    await release_dream_lock(user_id, token)
+
+
 # ---------------------------------------------------------------------------
 # Handler entry point
 # ---------------------------------------------------------------------------
@@ -180,12 +195,12 @@ async def handle_dream_batch_result(
         # The batch path disowned the dream lock to this callback; release it
         # on this dead-end so the user isn't locked out until the 24h TTL.
         if user_id:
-            await release_dream_lock(user_id)
+            await _release_lock(user_id, pass_id)
         return
 
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
-        await release_dream_lock(user_id)
+        await _release_lock(user_id, pass_id)
         return
 
     try:
@@ -219,7 +234,7 @@ async def handle_dream_batch_result(
         except Exception:
             logger.exception("Dream batch _fail_pass also failed for pass=%s", pass_id)
             try:
-                await release_dream_lock(user_id)
+                await _release_lock(user_id, pass_id)
             except Exception:
                 logger.exception(
                     "Dream batch lock release failed for user=%s", user_id[:12]
@@ -413,6 +428,46 @@ def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+_APPLIED_GATE_PREFIX = "dream:applied"
+# 7 days — same window as the costs_logged gate; no realistic
+# BatchExecutor re-dispatch (poll backoff caps at 5 min, max lifetime
+# 24h) can outlive it.
+_APPLIED_GATE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+async def _claim_apply_gate(pass_id: str) -> bool:
+    """Atomically claim the per-pass apply gate. Returns True when this
+    delivery is the first to run ``apply_operations`` for the pass; False
+    on a re-dispatched duplicate.
+
+    Mirrors ``_claim_costs_logged_gate``: if the BatchExecutor crashes
+    between dispatch and ``remove_pending``, the next poll re-dispatches
+    the same finished batch — and ``apply_operations`` writes every
+    consolidated fact and proposal to the user's graph as fresh episodes,
+    so re-running it duplicates the user's memories. Fail closed: if the
+    gate can't be claimed (Redis brown-out) skip apply rather than risk
+    double-writing under retry pressure.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        return bool(
+            await redis.set(
+                f"{_APPLIED_GATE_PREFIX}:{pass_id}",
+                "1",
+                nx=True,
+                ex=_APPLIED_GATE_TTL_SECONDS,
+            )
+        )
+    except Exception:
+        logger.exception(
+            "Failed to claim apply gate for pass=%s — skipping apply",
+            pass_id,
+        )
+        return False
+
+
 async def _finalize_complete(
     *, user_id: str, pass_id: str, job_id: str, phase_models: dict[str, str]
 ) -> None:
@@ -465,21 +520,32 @@ async def _finalize_complete(
     active_fact_count = len(input_bundle.facts) if input_bundle is not None else -1
     ops = _clamp_operations(ops, active_fact_count)
 
-    try:
-        apply_stats = await apply_operations(user_id, pass_id, ops)
-    except Exception as exc:
-        logger.exception(
-            "apply_operations crashed for batch pass=%s — marking errored",
+    # Batch results can re-dispatch (executor crash between dispatch and
+    # ``remove_pending``). Billing below is gated; the memory mutation must
+    # be too. On a duplicate delivery skip apply and proceed straight to
+    # mark_complete + lock release + cleanup — the writes already landed.
+    apply_stats: dict[str, int | str | DreamOperationsSnapshot] = {}
+    if await _claim_apply_gate(pass_id):
+        try:
+            apply_stats = await apply_operations(user_id, pass_id, ops)
+        except Exception as exc:
+            logger.exception(
+                "apply_operations crashed for batch pass=%s — marking errored",
+                pass_id,
+            )
+            await _fail_pass(
+                user_id=user_id,
+                pass_id=pass_id,
+                job_id=job_id,
+                phase_models=phase_models,
+                error=f"apply: {type(exc).__name__}: {exc}",
+            )
+            return
+    else:
+        logger.info(
+            "Skipping apply for pass=%s — operations already applied",
             pass_id,
         )
-        await _fail_pass(
-            user_id=user_id,
-            pass_id=pass_id,
-            job_id=job_id,
-            phase_models=phase_models,
-            error=f"apply: {type(exc).__name__}: {exc}",
-        )
-        return
 
     # Per-phase usage log on the success path. Failure paths record the
     # same usage via ``_fail_pass`` (we incurred those provider tokens
@@ -492,7 +558,7 @@ async def _finalize_complete(
     if job_id:
         try:
             from .job_status import mark_complete
-            from .schemas import DreamOperationsSnapshot, DreamPassResult
+            from .schemas import DreamPassResult
 
             raw_snapshot = apply_stats.get("snapshot")
             snapshot: DreamOperationsSnapshot | None = None
@@ -538,7 +604,7 @@ async def _finalize_complete(
 
     # The batch path disowned the dream lock to this callback; release it now
     # that the pass has terminated so the next dream for this user can run.
-    await release_dream_lock(user_id)
+    await _release_lock(user_id, pass_id)
     await _delete_state(pass_id)
     await delete_input_bundle(pass_id)
 
@@ -578,7 +644,7 @@ async def _fail_pass(
             phase_models=phase_models,
         )
     # Release the dream lock the batch path disowned to this callback.
-    await release_dream_lock(user_id)
+    await _release_lock(user_id, pass_id)
     await _delete_state(pass_id)
     await delete_input_bundle(pass_id)
 

@@ -38,6 +38,7 @@ from backend.util.llm.providers import (
 from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
 
 from .fetch import DreamInput
+from .locks import read_dream_lock_token
 from .prompts import (
     build_consolidate_prompt,
     build_recombine_prompt,
@@ -300,12 +301,50 @@ async def persist_input_bundle(pass_id: str, input_bundle: DreamInput) -> None:
     DreamInput carries lists of dataclasses; we round-trip through
     ``json`` rather than pickling so the wire format stays portable +
     debuggable (`docker exec redis ... HGET ...` works).
+
+    The stored body also carries the dream lock's ownership token
+    (``lock_token``): the orchestrator persists the bundle while it still
+    holds the lock, and the batch callback — hours later, in a different
+    process — needs that token for the compare-and-delete release in
+    ``release_dream_lock``. Riding on this key avoids a second per-pass
+    key and keeps the batch state single-key for cluster mode.
     """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    body = json.dumps(_input_bundle_to_dict(input_bundle))
-    await redis.set(input_bundle_key(pass_id), body, ex=INPUT_TTL_SECONDS)
+    payload = _input_bundle_to_dict(input_bundle)
+    lock_token = await read_dream_lock_token(input_bundle.user_id)
+    if lock_token is not None:
+        payload["lock_token"] = lock_token
+    await redis.set(
+        input_bundle_key(pass_id), json.dumps(payload), ex=INPUT_TTL_SECONDS
+    )
+
+
+async def read_lock_token(pass_id: str) -> str | None:
+    """Dream-lock ownership token persisted alongside the input bundle.
+
+    None when the bundle is gone (TTL expired or already cleaned up), is
+    corrupted, or was written while no lock was held — the caller then
+    leaves the lock to its TTL rather than risking a blind delete of a
+    newer pass's lock.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    raw = await redis.get(input_bundle_key(pass_id))
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        token = json.loads(raw).get("lock_token")
+    except Exception:
+        logger.exception(
+            "Corrupted DreamInput in Redis for pass=%s — no lock token", pass_id
+        )
+        return None
+    return token if isinstance(token, str) else None
 
 
 async def read_input_bundle(pass_id: str) -> DreamInput | None:

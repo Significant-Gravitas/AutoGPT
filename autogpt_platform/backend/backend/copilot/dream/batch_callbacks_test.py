@@ -50,6 +50,14 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
+    async def fake_eval(script, numkeys, key, token):
+        # The only Lua the dream path runs is the lock's single-key
+        # compare-and-delete; mirror its semantics on the string store.
+        if string_store.get(key) == token:
+            string_store.pop(key, None)
+            return 1
+        return 0
+
     stub = AsyncMock()
     stub.hset.side_effect = fake_hset
     stub.hgetall.side_effect = fake_hgetall
@@ -57,6 +65,7 @@ def fake_redis():
     stub.set.side_effect = fake_set
     stub.expire.side_effect = fake_expire
     stub.delete.side_effect = fake_delete
+    stub.eval.side_effect = fake_eval
 
     async def fake_get_redis_async():
         return stub
@@ -216,6 +225,10 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
+        _, _, string_store = fake_redis
+        # The orchestrator holds the dream lock while persisting the bundle;
+        # the bundle captures the lock's ownership token for the callback.
+        string_store["dream:inflight:u1"] = "tok-u1"
         now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
@@ -256,8 +269,9 @@ class TestPhaseChaining:
         # Memory Visualizer isn't blank for batch-completed dreams.
         assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
         # The batch path disowned the dream lock to this callback; the
-        # terminal handler must release it so the next dream can run.
-        release_lock.assert_awaited_once_with("u1")
+        # terminal handler must release it with the ownership token the
+        # input bundle carried — compare-and-delete, never a blind DEL.
+        release_lock.assert_awaited_once_with("u1", "tok-u1")
         # One cost-log row per phase (consolidate, recombine, sanitize)
         assert record_cost.await_count == 3
         for call in record_cost.await_args_list:
@@ -276,8 +290,8 @@ class TestPhaseChaining:
     async def test_redispatch_after_charge_does_not_double_bill(self, fake_redis):
         """If the BatchExecutor crashes between charging and
         ``remove_pending``, the next walk re-dispatches the same batch.
-        The Redis dedup gate must prevent the second charge while
-        still letting apply re-run idempotently."""
+        The Redis dedup gates must prevent BOTH the second charge and a
+        second ``apply_operations`` run."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
@@ -321,6 +335,81 @@ class TestPhaseChaining:
 
         # 3 phases charged on the first call, ZERO on the re-dispatch.
         assert record_cost.await_count == 3
+        # And the memory writes ran exactly once — the apply gate ate the
+        # duplicate delivery.
+        apply.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_duplicate_batch_dispatch_skips_apply(self, fake_redis):
+        """Executor crash between ``apply_operations`` returning and the
+        state cleanup re-dispatches the sanitize batch with all per-pass
+        state intact. The ``dream:applied:{pass_id}`` SETNX gate must keep
+        apply at-most-once — otherwise every consolidated fact and proposal
+        is written to the user's graph a second time as fresh episodes —
+        while the duplicate still proceeds to mark_complete + lock release
+        + cleanup."""
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="recombine",
+            row=_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT),
+        )
+
+        apply = AsyncMock(return_value={"writes": 0, "snapshot": "..."})
+        mark_complete = AsyncMock()
+        release_lock = AsyncMock()
+        # Crash-before-cleanup simulation: state + input bundle survive the
+        # first delivery, so the re-dispatch sees a fully populated pass.
+        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._delete_state", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.delete_input_bundle", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+            # Re-dispatch of the same finished batch.
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        apply.assert_awaited_once()
+        # The gate key is what makes the dedup stick across processes.
+        assert "dream:applied:p1" in string_store
+        # The duplicate still finalizes: job complete (twice is fine — the
+        # writes are idempotent at the JobStatus layer) and the lock is
+        # released with the persisted token both times.
+        assert mark_complete.await_count == 2
+        assert release_lock.await_count == 2
+        for call in release_lock.await_args_list:
+            assert call.args == ("u1", "tok-u1")
+        # The duplicate's result still carries the user-facing narrative.
+        assert mark_complete.call_args.kwargs["result"].summary_for_user == "ok"
 
 
 class TestErrorPaths:
@@ -431,6 +520,8 @@ class TestErrorPaths:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
         now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
@@ -458,15 +549,18 @@ class TestErrorPaths:
 
         mark_errored.assert_awaited_once()
         assert "handler crashed" in mark_errored.call_args.kwargs["error"]
-        release_lock.assert_awaited_once_with("u1")
+        # Released with the ownership token the input bundle carried.
+        release_lock.assert_awaited_once_with("u1", "tok-u1")
 
 
 class TestMalformedPayload:
     @pytest.mark.asyncio
-    async def test_missing_pass_id_releases_lock(self, fake_redis):
+    async def test_missing_pass_id_releases_lock_without_token(self, fake_redis):
         """Malformed payload (missing pass_id) early-returns but, since the
-        user_id is known, releases the disowned dream lock — otherwise the
-        user is locked out until the 24h TTL."""
+        user_id is known, still attempts the lock release — with no pass_id
+        there's no persisted token to read, so the release is token-less
+        (release_dream_lock then defers to the lock TTL rather than
+        blind-deleting)."""
         release = AsyncMock()
         entry = _entry()
         entry.payload["pass_id"] = ""
@@ -475,15 +569,100 @@ class TestMalformedPayload:
                 entry,
                 [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
             )
-        release.assert_awaited_once_with("u1")
+        release.assert_awaited_once_with("u1", None)
 
     @pytest.mark.asyncio
-    async def test_unknown_phase_label_releases_lock(self, fake_redis):
+    async def test_unknown_phase_label_releases_lock_with_persisted_token(
+        self, fake_redis
+    ):
         """An unknown phase early-returns but must still release the dream
-        lock the orchestrator disowned to this callback."""
+        lock the orchestrator disowned to this callback — using the token
+        the input bundle carries for this pass."""
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+        )
+
         release = AsyncMock()
         entry = _entry()
         entry.payload["phase"] = "some_fake_phase"
         with patch("backend.copilot.dream.batch_callbacks.release_dream_lock", release):
             await handle_dream_batch_result(entry, [_row(custom_id="x", content="y")])
-        release.assert_awaited_once_with("u1")
+        release.assert_awaited_once_with("u1", "tok-u1")
+
+
+class TestLockTokenWiring:
+    """End-to-end token flow with the real ``release_dream_lock`` — the
+    fake redis implements the single-key compare-and-delete Lua."""
+
+    async def _seed_terminal_pass(self) -> None:
+        from backend.copilot.dream.batch_callbacks import _write_phase_to_state
+        from backend.copilot.dream.batch_submit import persist_input_bundle
+        from backend.copilot.dream.fetch import DreamInput
+
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="recombine",
+            row=_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT),
+        )
+
+    async def _dispatch_sanitize(self) -> None:
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"writes": 0}),
+        ), patch("backend.copilot.dream.job_status.mark_complete", AsyncMock()), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+    @pytest.mark.asyncio
+    async def test_terminal_release_deletes_lock_when_token_matches(self, fake_redis):
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        await self._seed_terminal_pass()
+
+        await self._dispatch_sanitize()
+
+        assert "dream:inflight:u1" not in string_store
+
+    @pytest.mark.asyncio
+    async def test_terminal_release_leaves_lock_reacquired_by_newer_pass(
+        self, fake_redis
+    ):
+        """The blocker scenario: this pass's lock expired mid-batch and a
+        NEWER pass re-acquired the key with its own token. The late callback
+        must not delete the new holder's lock — that would let a third
+        concurrent pass start."""
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        await self._seed_terminal_pass()
+        # Simulate expiry + re-acquire by a newer pass between submit and
+        # the (late) terminal callback.
+        string_store["dream:inflight:u1"] = "tok-newer-pass"
+
+        await self._dispatch_sanitize()
+
+        assert string_store["dream:inflight:u1"] == "tok-newer-pass"
