@@ -39,9 +39,19 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
-const mockLogOut = vi.fn();
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ logOut: mockLogOut }),
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockReplace,
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/build",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
 }));
 
 import { PaywallModal } from "../PaywallModal";
@@ -137,7 +147,7 @@ describe("PaywallModal — dynamic plan rendering", () => {
 });
 
 describe("PaywallModal — logout", () => {
-  it("logs out when the Log out button is clicked", () => {
+  it("routes to the shared /logout page when the Log out button is clicked", () => {
     setupMocks({
       subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
     });
@@ -146,7 +156,7 @@ describe("PaywallModal — logout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /log out/i }));
 
-    expect(mockLogOut).toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith("/logout");
   });
 });
 

@@ -335,7 +335,13 @@ class OrgCreditModel(UserCreditBase):
     ) -> bool:
         return False
 
-    async def top_up_intent(self, user_id: str, amount: int) -> str:
+    async def top_up_intent(
+        self,
+        user_id: str,
+        amount: int,
+        datafast_visitor_id: str | None = None,
+        datafast_session_id: str | None = None,
+    ) -> str:
         raise NotImplementedError("Org-level Stripe top-up intent not yet implemented")
 
     async def top_up_refund(

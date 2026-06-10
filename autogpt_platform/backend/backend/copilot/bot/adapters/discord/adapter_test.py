@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
     _resolve_mentions,
@@ -108,6 +110,50 @@ class TestStripMentions:
         msg = _message(content, mentions=[bot])
 
         assert adapter._strip_mentions(msg) == expected
+
+
+# ── _message_text (forwarded messages) ─────────────────────────────────
+
+
+def _snapshot(content: str = "", filenames: tuple[str, ...] = ()) -> MagicMock:
+    snapshot = MagicMock()
+    snapshot.content = content
+    snapshot.attachments = [MagicMock(filename=name) for name in filenames]
+    return snapshot
+
+
+class TestMessageText:
+    def test_plain_message_without_forward(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("hello", [])
+        msg.message_snapshots = []
+        assert adapter._message_text(msg) == "hello"
+
+    def test_forward_with_comment_includes_both(self):
+        # The dangerous case Toran hit: a forward + comment used to arrive as
+        # just the comment, losing the forwarded message entirely.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("can you make a ticket for this?", [])
+        msg.message_snapshots = [_snapshot("The original forwarded request")]
+        result = adapter._message_text(msg)
+        assert "can you make a ticket for this?" in result
+        assert "[Forwarded message]" in result
+        assert "The original forwarded request" in result
+
+    def test_forward_without_comment_uses_forwarded_content(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("", [])
+        msg.message_snapshots = [_snapshot("Just the forwarded text")]
+        result = adapter._message_text(msg)
+        assert result.startswith("[Forwarded message]")
+        assert "Just the forwarded text" in result
+
+    def test_forward_notes_attachment_filenames(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message("look at this", [])
+        msg.message_snapshots = [_snapshot("", filenames=("report.pdf",))]
+        result = adapter._message_text(msg)
+        assert "[Attached file: report.pdf]" in result
 
 
 # ── _channel_type ──────────────────────────────────────────────────────
@@ -308,6 +354,49 @@ class TestSendMethods:
         )
 
     @pytest.mark.asyncio
+    async def test_send_file_attaches_bytes_with_display_name(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        await adapter.send_file(
+            "123",
+            "here's your result",
+            FileAttachment(
+                filename="chart.png", mime_type="image/png", content=b"\x89PNG"
+            ),
+        )
+
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("here's your result",)
+        attached = kwargs["file"]
+        assert isinstance(attached, discord.File)
+        assert attached.filename == "chart.png"
+        assert kwargs["tts"] is False
+
+    @pytest.mark.asyncio
+    async def test_send_file_drops_empty_caption_to_none(self):
+        # discord.py rejects empty-string content alongside a file; we
+        # collapse `text=""` to None so the upload still succeeds.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        await adapter.send_file(
+            "123",
+            "",
+            FileAttachment(
+                filename="x.bin", mime_type="application/octet-stream", content=b"x"
+            ),
+        )
+
+        args, _ = channel.send.await_args
+        assert args == (None,)
+
+    @pytest.mark.asyncio
     async def test_send_reply_falls_back_to_send_when_message_missing(self):
         adapter, client = _bare_adapter()
         channel = MagicMock(spec=discord.TextChannel)
@@ -355,7 +444,9 @@ class TestRenameThread:
 
 class TestThreadHistory:
     @pytest.mark.asyncio
-    async def test_fetches_user_thread_history_oldest_first(self):
+    async def test_fetches_user_thread_history_chronological(self):
+        # Discord returns history newest-first; the adapter reverses it back to
+        # chronological order, dropping its own outputs.
         adapter, _ = _bare_adapter(bot_id=1000)
         bot = _mention(1000, "AutoPilot")
 
@@ -367,7 +458,8 @@ class TestThreadHistory:
         bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoPilot")
 
         channel = MagicMock(spec=discord.Thread)
-        channel.history.return_value = _AsyncHistory([prior_1, bot_msg, prior_2])
+        # newest-first as the Discord API delivers it: Bob, (bot), Alice
+        channel.history.return_value = _AsyncHistory([prior_2, bot_msg, prior_1])
         message = _message("<@1000> help", [bot])
         message.channel = channel
 
@@ -376,7 +468,7 @@ class TestThreadHistory:
         channel.history.assert_called_once_with(
             limit=THREAD_HISTORY_LIMIT,
             before=message,
-            oldest_first=True,
+            oldest_first=False,
         )
         assert [entry.username for entry in history] == ["Alice", "Bob"]
         assert [entry.user_id for entry in history] == ["2000", "3000"]
@@ -384,6 +476,74 @@ class TestThreadHistory:
             "first idea",
             "can ignore old bot ping",
         ]
+
+    @pytest.mark.asyncio
+    async def test_drops_oldest_messages_past_the_size_budget(self):
+        # A very long thread can't all fit in one copilot request. Keep the most
+        # recent messages (newest-first scan, budget cut) and drop the oldest.
+        adapter, _ = _bare_adapter(bot_id=1000)
+
+        big = "x" * 5000  # 4 fit in the 24000-char budget, the 5th overflows
+        newest_first = []
+        for i in range(6, 0, -1):  # User6 (newest) .. User1 (oldest)
+            msg = _message(big, [])
+            msg.author = MagicMock(bot=False, id=i, display_name=f"User{i}")
+            newest_first.append(msg)
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory(newest_first)
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        # Most-recent 4 kept, returned chronologically; oldest two dropped.
+        assert [entry.username for entry in history] == [
+            "User3",
+            "User4",
+            "User5",
+            "User6",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_truncates_a_single_oversized_message(self):
+        # If the latest message alone exceeds the budget, keep a truncated head
+        # rather than drop all context or emit an oversized payload.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        msg = _message(huge, [])
+        msg.author = MagicMock(bot=False, id=2000, display_name="Alice")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([msg])
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert len(history) == 1
+        assert len(history[0].text) <= THREAD_HISTORY_CHAR_BUDGET
+        assert history[0].text.endswith("[message truncated]")
+
+    @pytest.mark.asyncio
+    async def test_truncated_newest_message_stops_older_messages(self):
+        # Once the newest message is truncated to the budget, older messages
+        # must not be appended into the whitespace the truncation freed up.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        huge = "y" * (THREAD_HISTORY_CHAR_BUDGET + 6000)
+        newest = _message(huge, [])
+        newest.author = MagicMock(bot=False, id=2000, display_name="Newest")
+        older = _message("older context", [])
+        older.author = MagicMock(bot=False, id=3000, display_name="Older")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.history.return_value = _AsyncHistory([newest, older])  # newest-first
+        message = _message("help", [])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        assert [entry.username for entry in history] == ["Newest"]
 
 
 class TestProperties:
@@ -583,3 +743,48 @@ class TestOnThreadRemove:
         ):
             # Must not raise — cleanup is never critical-path.
             await handlers["on_thread_remove"](_thread(555))
+
+
+# ── on_message: locked threads ──────────────────────────────────────────
+
+
+class TestLockedThread:
+    @pytest.mark.asyncio
+    async def test_locked_thread_message_is_skipped(self):
+        # A locked thread rejects bot sends, so processing the message would
+        # just burn a turn and error on every reply. Bail before the handler.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        thread = _thread(555)
+        thread.locked = True
+        msg = MagicMock()
+        msg.author = MagicMock(id=2000, bot=False)
+        msg.channel = thread
+
+        await handlers["on_message"](msg)
+
+        callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unlocked_thread_message_is_processed(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        thread = _thread(555)
+        thread.locked = False
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = MagicMock(id=111)
+        msg.channel = thread
+        msg.content = "hi"
+        msg.mentions = []
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()

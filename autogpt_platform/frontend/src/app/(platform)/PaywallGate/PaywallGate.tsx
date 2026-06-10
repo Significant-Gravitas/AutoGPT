@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { environment } from "@/services/environment";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { PaywallModal } from "./PaywallModal";
 
 // Routes that bypass the paywall regardless of subscription state — primarily
@@ -25,6 +26,7 @@ const PAYWALL_EXEMPT_PREFIXES = [
 
 export function PaywallGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isLoggedIn } = useSupabase();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { data: subscription, isLoading } = useGetSubscriptionStatus({
     query: {
@@ -44,6 +46,10 @@ export function PaywallGate({ children }: { children: ReactNode }) {
   // change land on NO_TIER (the explicit "no active subscription" state).
   const shouldGate =
     !!isPaymentEnabled &&
+    // Never gate a logged-out user — they're on their way to /login (e.g. via
+    // the modal's own Log out button), and the modal must not linger or block
+    // that exit.
+    isLoggedIn &&
     !isLoading &&
     !isExempt &&
     // Never gate local dev — running the stack locally shouldn't require a
