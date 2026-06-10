@@ -31,13 +31,14 @@ export async function sendAuthEmail({ to, subject, text }: SendAuthEmailArgs) {
 
   if (!transport) {
     if (process.env.NODE_ENV === "production") {
-      // Never print one-time auth links into production logs; surface the
-      // misconfiguration instead.
-      console.error(
-        `[auth-email] SMTP is not configured — could not deliver "${subject}" to ${to}. ` +
+      // Fail the auth flow rather than letting "Email sent" UI lie about an
+      // undeliverable message. Never print one-time auth links into
+      // production logs. This throws for every address equally, so it leaks
+      // nothing about account existence.
+      throw new Error(
+        `SMTP is not configured — could not deliver "${subject}". ` +
           "Set SMTP_HOST (and friends) to enable auth email delivery.",
       );
-      return;
     }
     console.info(`[auth-email] SMTP not configured. ${subject} for ${to}:`);
     console.info(`[auth-email] ${text}`);

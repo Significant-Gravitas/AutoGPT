@@ -91,25 +91,21 @@ describe("sendAuthEmail", () => {
     expect(loggedLines.some((line) => line.includes(email.text))).toBe(true);
   });
 
-  it("reports the misconfiguration without leaking the link in production", async () => {
+  it("fails the auth flow without leaking the link in production", async () => {
     vi.stubEnv("SMTP_HOST", "");
     vi.stubEnv("NODE_ENV", "production");
     const infoSpy = vi
       .spyOn(console, "info")
       .mockImplementation(() => undefined);
-    const errorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
 
-    await sendAuthEmail(email);
+    // Throwing (instead of silently returning) keeps the reset-password UI
+    // from claiming "Email sent" when nothing was delivered.
+    await expect(sendAuthEmail(email)).rejects.toThrow(
+      "SMTP is not configured",
+    );
 
     expect(createTransportMock).not.toHaveBeenCalled();
-    const errorLines = errorSpy.mock.calls.map((call) => String(call[0]));
-    expect(
-      errorLines.some((line) => line.includes("SMTP is not configured")),
-    ).toBe(true);
-
-    const allLines = [...errorLines, ...infoSpy.mock.calls.map(String)];
-    expect(allLines.some((line) => line.includes(resetUrl))).toBe(false);
+    const loggedLines = infoSpy.mock.calls.map((call) => String(call[0]));
+    expect(loggedLines.some((line) => line.includes(resetUrl))).toBe(false);
   });
 });
