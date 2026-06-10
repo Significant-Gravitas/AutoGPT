@@ -63,7 +63,7 @@ export function parseSupabaseSessionCookie(cookieHeader: string): {
  * talk to. Without this tolerance only users active in the final hour before
  * cutover would keep their sessions.
  */
-async function verifyLegacyToken(token: string): Promise<string | null> {
+export async function verifyLegacyToken(token: string): Promise<string | null> {
   const secret = process.env.SUPABASE_JWT_SECRET;
   if (!secret) return null;
 

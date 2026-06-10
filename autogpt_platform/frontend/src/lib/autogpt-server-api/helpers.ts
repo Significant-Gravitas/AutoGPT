@@ -170,9 +170,9 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { cookies } =
-      require("next/headers") as typeof import("next/headers");
-    const cookieStore = await cookies();
+    const headersModule = require("next/headers");
+    const nextHeaders = headersModule as typeof import("next/headers");
+    const cookieStore = await nextHeaders.cookies();
 
     const sessionCookie = cookieStore
       .getAll()
