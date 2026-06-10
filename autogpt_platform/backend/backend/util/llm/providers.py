@@ -269,6 +269,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
             force_json_output=force_json_output,
             parallel_tool_calls=parallel_tool_calls,
@@ -292,6 +293,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
             force_json_output=force_json_output,
             timeout_seconds=timeout_seconds,
@@ -301,7 +303,9 @@ async def _dispatch_sync(
             model=model,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
+            force_json_output=force_json_output,
             ollama_host=ollama_host,
             timeout_seconds=timeout_seconds,
         )
@@ -312,6 +316,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
             force_json_output=force_json_output,
             parallel_tool_calls=parallel_tool_calls,
@@ -326,6 +331,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
             force_json_output=False,  # llama_api doesn't honor it
             parallel_tool_calls=parallel_tool_calls,
@@ -340,6 +346,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=None,  # AI/ML API path historically passes no tools
             force_json_output=False,
             parallel_tool_calls=openai.omit,
@@ -358,6 +365,7 @@ async def _dispatch_sync(
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             tools=tools,
             force_json_output=force_json_output,
             parallel_tool_calls=parallel_tool_calls,
@@ -379,6 +387,7 @@ async def _call_openai_responses(
     api_key: str,
     messages: list[dict],
     max_tokens: int,
+    temperature: float | None,
     tools: list[dict] | None,
     force_json_output: bool,
     parallel_tool_calls: bool | openai.Omit,
@@ -404,6 +413,10 @@ async def _call_openai_responses(
         input=messages,  # type: ignore[arg-type]
         tools=tools_param,  # type: ignore[arg-type]
         max_output_tokens=max_tokens,
+        # Reasoning models (o-series) reject ``temperature`` — same guard
+        # as the Anthropic path: only send the field when the caller set
+        # one, never a default.
+        temperature=temperature if temperature is not None else openai.omit,
         parallel_tool_calls=parallel_tool_calls,
         text=text_config,  # type: ignore[arg-type]
         store=False,
@@ -564,6 +577,7 @@ async def _call_groq(
     api_key: str,
     messages: list[dict],
     max_tokens: int,
+    temperature: float | None,
     tools: list[dict] | None,
     force_json_output: bool,
     timeout_seconds: float,
@@ -575,13 +589,18 @@ async def _call_groq(
 
     client = AsyncGroq(api_key=api_key)
     response_format = {"type": "json_object"} if force_json_output else None
-    response = await client.chat.completions.create(
+    create_kwargs: dict[str, Any] = dict(
         model=model,
-        messages=messages,  # type: ignore[arg-type]
-        response_format=response_format,  # type: ignore[arg-type]
+        messages=messages,
+        response_format=response_format,
         max_tokens=max_tokens,
         timeout=timeout_seconds,
     )
+    # Same guard as the Anthropic path — only send ``temperature`` when
+    # the caller set one, so models that reject it never see the field.
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+    response = await client.chat.completions.create(**create_kwargs)
     if not response.choices:
         raise ValueError("Groq returned empty choices in response")
     return ProviderResponse(
@@ -593,7 +612,7 @@ async def _call_groq(
 
 
 # ---------------------------------------------------------------------------
-# Ollama (local-runner generate API)
+# Ollama (local-runner chat API)
 # ---------------------------------------------------------------------------
 
 
@@ -602,33 +621,86 @@ async def _call_ollama(
     model: str,
     messages: list[dict],
     max_tokens: int,
+    temperature: float | None,
     tools: list[dict] | None,
+    force_json_output: bool,
     ollama_host: str,
     timeout_seconds: float,
 ) -> ProviderResponse:
     if tools:
         raise ValueError("Ollama does not support tools.")
 
-    # SSRF guard — user-supplied host must match the configured trust list.
-    await validate_url_host(
-        ollama_host, trusted_hostnames=[settings.config.ollama_host]
-    )
+    # SSRF guard — the host can be user-supplied (block-layer input
+    # field), so it must match an operator-configured trust list.
+    await validate_url_host(ollama_host, trusted_hostnames=_trusted_ollama_hostnames())
+
+    # ``num_predict`` is Ollama's OUTPUT token cap. ``num_ctx`` (the
+    # input context window) is deliberately left at the model default —
+    # setting it from ``max_tokens`` silently truncated long prompts to
+    # the output budget.
+    options: dict[str, Any] = {"num_predict": max_tokens}
+    if temperature is not None:
+        options["temperature"] = temperature
 
     client = ollama.AsyncClient(host=ollama_host, timeout=timeout_seconds)
-    sys_messages = [p["content"] for p in messages if p["role"] == "system"]
-    usr_messages = [p["content"] for p in messages if p["role"] != "system"]
-    response = await client.generate(
+    response = await client.chat(
         model=model,
-        prompt=f"{sys_messages}\n\n{usr_messages}",
+        messages=messages,
         stream=False,
-        options={"num_ctx": max_tokens},
+        format="json" if force_json_output else None,
+        options=options,
     )
     return ProviderResponse(
-        content=response.get("response") or "",
-        prompt_tokens=response.get("prompt_eval_count") or 0,
-        completion_tokens=response.get("eval_count") or 0,
-        raw_response=response.get("response") or "",
+        content=response.message.content or "",
+        prompt_tokens=response.prompt_eval_count or 0,
+        completion_tokens=response.eval_count or 0,
+        raw_response=response,
     )
+
+
+def _trusted_ollama_hostnames() -> list[str]:
+    """Hosts an Ollama call may target without IP-resolution checks.
+
+    Two operator-set config values can name the local LLM endpoint, and
+    both are equally trusted:
+
+      * ``Config.ollama_host`` — the block layer's Ollama setting.
+      * ``ChatConfig.base_url`` (``CHAT_BASE_URL``) — the copilot chat
+        endpoint, which the dream pass normalizes into ``ollama_host``
+        on the local transport.
+
+    Deriving the allowlist from only the former made every local dream
+    phase fail the SSRF check whenever the two were configured
+    differently (e.g. backend in Docker with
+    ``CHAT_BASE_URL=http://host.docker.internal:11434/v1`` while
+    ``Config.ollama_host`` sat at its ``localhost:11434`` default).
+    """
+    trusted = [settings.config.ollama_host]
+    chat_base_url = _chat_config_base_url()
+    if chat_base_url:
+        trusted.append(chat_base_url)
+    return trusted
+
+
+def _chat_config_base_url() -> str | None:
+    """Read the copilot ``ChatConfig.base_url`` for the Ollama trust list.
+
+    Lazy import: ``backend.copilot.config`` imports this module (for
+    ``ProviderLiteral``), so a top-level import here would be circular.
+    A broken chat config must not take down block-layer Ollama calls —
+    on any failure fall back to the block-layer trust list only.
+    """
+    try:
+        from backend.copilot.config import ChatConfig
+
+        return ChatConfig().base_url
+    except Exception:
+        logger.warning(
+            "Could not read ChatConfig.base_url for the Ollama trusted-host "
+            "list; falling back to Config.ollama_host only.",
+            exc_info=True,
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +715,7 @@ async def _call_openai_compat(
     api_key: str,
     messages: list[dict],
     max_tokens: int,
+    temperature: float | None,
     tools: list[dict] | None,
     force_json_output: bool,
     parallel_tool_calls: bool | openai.Omit,
@@ -670,6 +743,11 @@ async def _call_openai_compat(
         ),
         timeout=timeout_seconds,
     )
+    # Same guard as the Anthropic path — only send ``temperature`` when
+    # the caller set one, so upstreams that reject it (some reasoning
+    # models behind OpenRouter) never see the field.
+    if temperature is not None:
+        call_kwargs["temperature"] = temperature
     extra_body: dict[str, Any] = {}
     if include_openrouter_extras:
         # Ask OpenRouter to surface per-request USD cost on `usage.cost`.

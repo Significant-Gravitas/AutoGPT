@@ -9,6 +9,7 @@ fields each provider exposes.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -119,6 +120,7 @@ class TestExecutionModeStubs:
                 api_key="sk-test",
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
+                temperature=None,
                 tools=None,
                 force_json_output=False,
                 parallel_tool_calls=False,
@@ -177,6 +179,7 @@ class TestExecutionModeStubs:
                 api_key="ork-test",
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
+                temperature=None,
                 tools=None,
                 force_json_output=False,
                 parallel_tool_calls=False,
@@ -618,6 +621,53 @@ class TestAIMLAPI:
 # ---------------------------------------------------------------------------
 
 
+def _fake_ollama_chat_client(
+    captured: dict,
+    *,
+    content: str = "ok",
+    prompt_eval_count: int | None = 7,
+    eval_count: int | None = 9,
+) -> SimpleNamespace:
+    """Fake ``ollama.AsyncClient`` exposing a ``chat`` coroutine that
+    records its kwargs and returns a ChatResponse-shaped object."""
+
+    async def chat(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            message=SimpleNamespace(content=content),
+            prompt_eval_count=prompt_eval_count,
+            eval_count=eval_count,
+        )
+
+    return SimpleNamespace(chat=chat)
+
+
+@contextmanager
+def _patched_ollama_dispatch(
+    captured: dict,
+    *,
+    content: str = "ok",
+    chat_base_url: str | None = None,
+):
+    """Patch set for an Ollama dispatch test: mocked SSRF validation, a
+    stubbed copilot ``ChatConfig`` (so no real settings load happens),
+    and a fake ``ollama.AsyncClient``. Yields ``(validate_mock,
+    client_ctor_mock)``."""
+    validate_mock = AsyncMock(return_value=None)
+    client_ctor = MagicMock(
+        return_value=_fake_ollama_chat_client(captured, content=content)
+    )
+    with (
+        patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
+        patch(
+            "backend.copilot.config.ChatConfig",
+            return_value=SimpleNamespace(base_url=chat_base_url),
+        ),
+        patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
+    ):
+        yield validate_mock, client_ctor
+
+
 class TestOllama:
     @pytest.mark.asyncio
     async def test_rejects_tools_param(self):
@@ -630,6 +680,443 @@ class TestOllama:
                 max_tokens=10,
                 tools=[{"name": "x"}],
             )
+
+    @pytest.mark.asyncio
+    async def test_dispatches_via_chat_api_with_structured_messages(self):
+        """The dream prompts carry a real system + user conversation;
+        flattening them into a repr'd ``generate`` prompt fed the model
+        bracketed Python list syntax instead of a chat. The message list
+        must reach the chat API intact, roles included."""
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[
+                    _msg("system", "you are a memory consolidator"),
+                    _msg("user", "consolidate these transcripts"),
+                ],
+                max_tokens=4096,
+            )
+        assert captured["messages"] == [
+            {"role": "system", "content": "you are a memory consolidator"},
+            {"role": "user", "content": "consolidate these transcripts"},
+        ]
+        assert captured["stream"] is False
+
+    @pytest.mark.asyncio
+    async def test_force_json_output_requests_json_format(self):
+        """``structured_completion`` passes ``force_json_output=True`` for
+        every dream phase and the dream docs promise forced JSON works on
+        every transport — Ollama honors it via ``format="json"``."""
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured, content="{}"):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                force_json_output=True,
+            )
+        assert captured["format"] == "json"
+
+    @pytest.mark.asyncio
+    async def test_plain_completion_does_not_force_json_format(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert captured["format"] is None
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_caps_output_via_num_predict_not_num_ctx(self):
+        """``num_ctx`` is the INPUT context window — setting it from
+        ``max_tokens`` silently truncated the consolidate/recombine
+        prompts (whole transcripts + fact lists) at the output budget.
+        The output cap belongs on ``num_predict``; ``num_ctx`` stays at
+        the model default."""
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=4096,
+            )
+        assert captured["options"]["num_predict"] == 4096
+        assert "num_ctx" not in captured["options"]
+
+    @pytest.mark.asyncio
+    async def test_normalizes_chat_response_into_provider_response(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured, content='{"facts": []}') as (_, ctor):
+            result = await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host="http://gpu-box:11434",
+                timeout_seconds=42.0,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert result.content == '{"facts": []}'
+        assert result.prompt_tokens == 7
+        assert result.completion_tokens == 9
+        ctor.assert_called_once_with(host="http://gpu-box:11434", timeout=42.0)
+
+
+class TestOllamaTrustedHosts:
+    """SSRF trust list for the Ollama dispatch. The host can be
+    user-supplied (block input field) so it must be validated — but the
+    allowlist has to include BOTH operator-set endpoints: the block
+    layer's ``Config.ollama_host`` AND the copilot ``CHAT_BASE_URL``
+    the dream pass routes through on the local transport. Trusting only
+    the former made every local dream phase fail with a misleading
+    'blocked IP' error whenever the two were configured differently."""
+
+    @pytest.mark.asyncio
+    async def test_trust_list_includes_chat_base_url_and_block_config_host(self):
+        from backend.util.llm.providers import settings
+
+        captured: dict = {}
+        with _patched_ollama_dispatch(
+            captured,
+            chat_base_url="http://host.docker.internal:11434/v1",
+        ) as (validate_mock, _):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host="http://host.docker.internal:11434",
+            )
+        validate_mock.assert_awaited_once()
+        assert validate_mock.call_args.args[0] == "http://host.docker.internal:11434"
+        assert validate_mock.call_args.kwargs["trusted_hostnames"] == [
+            settings.config.ollama_host,
+            "http://host.docker.internal:11434/v1",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_chat_config_failure_falls_back_to_block_config_trust_list(
+        self, caplog
+    ):
+        """A misconfigured copilot ``ChatConfig`` (its validators raise at
+        construction) must not take down block-layer Ollama calls — the
+        trust list degrades to ``Config.ollama_host`` only."""
+        from backend.util.llm.providers import settings
+
+        captured: dict = {}
+        validate_mock = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.util.llm.providers.validate_url_host",
+                new=validate_mock,
+            ),
+            patch(
+                "backend.copilot.config.ChatConfig",
+                side_effect=ValueError("misconfigured transport"),
+            ),
+            patch(
+                "backend.util.llm.providers.ollama.AsyncClient",
+                return_value=_fake_ollama_chat_client(captured),
+            ),
+            caplog.at_level("WARNING"),
+        ):
+            result = await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert validate_mock.call_args.kwargs["trusted_hostnames"] == [
+            settings.config.ollama_host
+        ]
+        assert any(
+            "Could not read ChatConfig.base_url" in rec.message
+            for rec in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_lan_host_matching_chat_base_url_passes_real_ssrf_check(self):
+        """Regression for the local dream-pass failure: operator points
+        ``CHAT_BASE_URL`` at a LAN GPU box (private IP) while the block
+        layer's ``ollama_host`` stays at its localhost default. The real
+        ``validate_url_host`` must accept the host via the trust match
+        instead of rejecting the private IP."""
+        captured: dict = {}
+        client_ctor = MagicMock(return_value=_fake_ollama_chat_client(captured))
+        with (
+            patch(
+                "backend.copilot.config.ChatConfig",
+                return_value=SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+            ),
+            patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
+        ):
+            result = await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                ollama_host="http://192.168.1.50:11434",
+            )
+        assert isinstance(result, ProviderResponse)
+        client_ctor.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unconfigured_private_host_is_still_rejected(self):
+        """The widened trust list must not weaken the SSRF guard: a
+        private-IP host that appears in NEITHER config value is rejected
+        before any client is constructed."""
+        client_ctor = MagicMock()
+        with (
+            patch(
+                "backend.copilot.config.ChatConfig",
+                return_value=SimpleNamespace(base_url=None),
+            ),
+            patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
+        ):
+            with pytest.raises(ValueError, match="blocked or private IP"):
+                await call_provider(
+                    provider="ollama",
+                    model="llama3",
+                    api_key="",
+                    messages=[_msg("user", "hi")],
+                    max_tokens=10,
+                    ollama_host="http://169.254.169.254:11434",
+                )
+        client_ctor.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Temperature threading
+# ---------------------------------------------------------------------------
+
+
+class TestTemperatureThreading:
+    """The dream pass tunes temperature per phase (0.2 consolidate /
+    0.9 recombine / 0.0 sanitize) on every transport. The dispatcher
+    used to forward it only to Anthropic — every other provider
+    silently ran at its default (~1.0), degrading memory-write quality
+    with no error. Pin that each path forwards the caller's value, and
+    that ``None`` keeps the field off the wire (some reasoning models
+    reject ``temperature`` — the Anthropic-style guard applies
+    everywhere)."""
+
+    def _openai_compat_patches(self, async_create):
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        return (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openrouter_cost",
+                return_value=None,
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_openrouter_receives_recombine_temperature(self):
+        fake_response = _fake_openai_chat_response("x", prompt=1, completion=1)
+        async_create = AsyncMock(return_value=fake_response)
+        p1, p2, p3, p4 = self._openai_compat_patches(async_create)
+        with p1, p2, p3, p4:
+            await call_provider(
+                provider="open_router",
+                model="anthropic/claude-sonnet-4-6",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.9,
+            )
+        assert async_create.call_args.kwargs["temperature"] == 0.9
+
+    @pytest.mark.asyncio
+    async def test_openrouter_omits_temperature_when_caller_unset(self):
+        fake_response = _fake_openai_chat_response("x", prompt=1, completion=1)
+        async_create = AsyncMock(return_value=fake_response)
+        p1, p2, p3, p4 = self._openai_compat_patches(async_create)
+        with p1, p2, p3, p4:
+            await call_provider(
+                provider="open_router",
+                model="openai/o3",
+                api_key="sk-or-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert "temperature" not in async_create.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_openai_responses_receives_consolidate_temperature(self):
+        async_create = AsyncMock(return_value=SimpleNamespace())
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="ok",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="gpt-4o",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.2,
+            )
+        assert async_create.call_args.kwargs["temperature"] == 0.2
+
+    @pytest.mark.asyncio
+    async def test_openai_responses_omits_temperature_when_caller_unset(self):
+        """Reasoning models reject ``temperature`` — when the caller
+        doesn't set one, the SDK must receive the omit sentinel so the
+        field never reaches the wire."""
+        import openai
+
+        async_create = AsyncMock(return_value=SimpleNamespace())
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="ok",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="o3",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert async_create.call_args.kwargs["temperature"] is openai.omit
+
+    @pytest.mark.asyncio
+    async def test_groq_receives_zero_sanitize_temperature(self):
+        """0.0 is falsy but explicitly set (the sanitize phase runs
+        deterministic) — the None-guard must forward it, not drop it."""
+        fake_usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
+        fake_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="x"))],
+            usage=fake_usage,
+        )
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        with patch("groq.AsyncGroq", return_value=fake_client):
+            await call_provider(
+                provider="groq",
+                model="mixtral-8x7b",
+                api_key="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.0,
+            )
+        assert async_create.call_args.kwargs["temperature"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_groq_omits_temperature_when_caller_unset(self):
+        fake_usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1)
+        fake_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="x"))],
+            usage=fake_usage,
+        )
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        with patch("groq.AsyncGroq", return_value=fake_client):
+            await call_provider(
+                provider="groq",
+                model="mixtral-8x7b",
+                api_key="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert "temperature" not in async_create.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_ollama_receives_temperature_in_options(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.2,
+            )
+        assert captured["options"]["temperature"] == 0.2
+
+    @pytest.mark.asyncio
+    async def test_ollama_omits_temperature_when_caller_unset(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llama3",
+                api_key="",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert "temperature" not in captured["options"]
 
 
 # ---------------------------------------------------------------------------
