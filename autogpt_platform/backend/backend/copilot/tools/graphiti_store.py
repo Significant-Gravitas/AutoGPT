@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.ingest import enqueue_episode
+from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -237,11 +237,28 @@ class MemoryStoreTool(BaseTool):
             procedure=procedure_model,
         )
 
+        episode_body = envelope.model_dump_json()
+
+        # ``enqueue_episode`` returns False for BOTH the oversized-body
+        # rejection (permanent) and a full queue (transient). Pre-check
+        # the size here so the LLM gets an actionable, non-retryable
+        # message instead of the retryable queue-full one — retrying an
+        # oversized store_memory call can never succeed.
+        if len(episode_body.encode("utf-8")) > MAX_EPISODE_BODY_BYTES:
+            return ErrorResponse(
+                message=(
+                    "Memory content is too large to store. Do not retry with "
+                    "the same content — split it into smaller, more focused "
+                    "memories and store each one separately."
+                ),
+                session_id=session.session_id,
+            )
+
         queued = await enqueue_episode(
             user_id,
             session.session_id,
             name=name,
-            episode_body=envelope.model_dump_json(),
+            episode_body=episode_body,
             source_description=source_description,
             is_json=True,
         )

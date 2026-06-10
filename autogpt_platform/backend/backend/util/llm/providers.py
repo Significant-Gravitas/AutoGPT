@@ -31,6 +31,7 @@ What this module is NOT responsible for (caller wraps):
 from __future__ import annotations
 
 import asyncio
+import functools
 import json as json_module
 import logging
 from datetime import datetime, timezone
@@ -685,15 +686,13 @@ def _trusted_ollama_hostnames() -> list[str]:
 def _chat_config_base_url() -> str | None:
     """Read the copilot ``ChatConfig.base_url`` for the Ollama trust list.
 
-    Lazy import: ``backend.copilot.config`` imports this module (for
-    ``ProviderLiteral``), so a top-level import here would be circular.
     A broken chat config must not take down block-layer Ollama calls —
-    on any failure fall back to the block-layer trust list only.
+    on any failure fall back to the block-layer trust list only. The
+    failure is deliberately NOT memoized (``lru_cache`` doesn't cache
+    exceptions), so a fixed config is picked up on a later dispatch.
     """
     try:
-        from backend.copilot.config import ChatConfig
-
-        return ChatConfig().base_url
+        return _read_chat_config_base_url()
     except Exception:
         logger.warning(
             "Could not read ChatConfig.base_url for the Ollama trusted-host "
@@ -701,6 +700,24 @@ def _chat_config_base_url() -> str | None:
             exc_info=True,
         )
         return None
+
+
+@functools.lru_cache(maxsize=1)
+def _read_chat_config_base_url() -> str | None:
+    """Construct ``ChatConfig`` once and memoize its ``base_url``.
+
+    ``ChatConfig`` is a pydantic-settings class with ``env_file=".env"``,
+    so each construction does synchronous dotenv disk I/O plus the full
+    validator chain (including repeated validator warnings) — per-call
+    construction meant that ran on every Ollama dispatch for a value
+    that only changes with the environment.
+
+    Lazy import: ``backend.copilot.config`` imports this module (for
+    ``ProviderLiteral``), so a top-level import here would be circular.
+    """
+    from backend.copilot.config import ChatConfig
+
+    return ChatConfig().base_url
 
 
 # ---------------------------------------------------------------------------

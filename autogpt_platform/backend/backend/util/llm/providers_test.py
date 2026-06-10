@@ -621,6 +621,18 @@ class TestAIMLAPI:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _reset_chat_base_url_cache():
+    """The ChatConfig.base_url read is memoized module-wide; clear it so
+    each test's patched ``backend.copilot.config.ChatConfig`` is the one
+    actually constructed."""
+    from backend.util.llm.providers import _read_chat_config_base_url
+
+    _read_chat_config_base_url.cache_clear()
+    yield
+    _read_chat_config_base_url.cache_clear()
+
+
 def _fake_ollama_chat_client(
     captured: dict,
     *,
@@ -875,6 +887,83 @@ class TestOllamaTrustedHosts:
             )
         assert isinstance(result, ProviderResponse)
         client_ctor.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_chat_config_is_constructed_once_across_dispatches(self):
+        """``ChatConfig`` is a pydantic-settings class with
+        ``env_file=".env"`` — constructing it per dispatch meant dotenv
+        disk I/O and repeated validator warnings on every Ollama call.
+        The base_url read must be memoized after the first success while
+        every dispatch still gets the cached value in its trust list."""
+        captured: dict = {}
+        validate_mock = AsyncMock(return_value=None)
+        chat_config_ctor = MagicMock(
+            return_value=SimpleNamespace(
+                base_url="http://host.docker.internal:11434/v1"
+            )
+        )
+        with (
+            patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
+            patch("backend.copilot.config.ChatConfig", new=chat_config_ctor),
+            patch(
+                "backend.util.llm.providers.ollama.AsyncClient",
+                return_value=_fake_ollama_chat_client(captured),
+            ),
+        ):
+            for _ in range(3):
+                await call_provider(
+                    provider="ollama",
+                    model="llama3",
+                    api_key="",
+                    messages=[_msg("user", "hi")],
+                    max_tokens=10,
+                )
+        chat_config_ctor.assert_called_once()
+        assert validate_mock.await_count == 3
+        for call in validate_mock.call_args_list:
+            assert (
+                "http://host.docker.internal:11434/v1"
+                in call.kwargs["trusted_hostnames"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_chat_config_failure_is_not_cached_as_permanent_none(self):
+        """A transient ``ChatConfig`` construction failure degrades that
+        one dispatch to the block-layer trust list, but must not be
+        memoized — once the config is fixed, the next dispatch picks up
+        ``CHAT_BASE_URL`` again."""
+        from backend.util.llm.providers import settings
+
+        captured: dict = {}
+        validate_mock = AsyncMock(return_value=None)
+        chat_config_ctor = MagicMock(
+            side_effect=[
+                ValueError("transient misconfiguration"),
+                SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+            ]
+        )
+        with (
+            patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
+            patch("backend.copilot.config.ChatConfig", new=chat_config_ctor),
+            patch(
+                "backend.util.llm.providers.ollama.AsyncClient",
+                return_value=_fake_ollama_chat_client(captured),
+            ),
+        ):
+            for _ in range(2):
+                await call_provider(
+                    provider="ollama",
+                    model="llama3",
+                    api_key="",
+                    messages=[_msg("user", "hi")],
+                    max_tokens=10,
+                )
+        first_call, second_call = validate_mock.call_args_list
+        assert first_call.kwargs["trusted_hostnames"] == [settings.config.ollama_host]
+        assert second_call.kwargs["trusted_hostnames"] == [
+            settings.config.ollama_host,
+            "http://192.168.1.50:11434/v1",
+        ]
 
     @pytest.mark.asyncio
     async def test_unconfigured_private_host_is_still_rejected(self):
