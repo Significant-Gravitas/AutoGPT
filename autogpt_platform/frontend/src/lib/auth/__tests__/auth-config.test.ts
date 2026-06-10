@@ -51,6 +51,16 @@ interface CapturedAuthOptions {
   emailVerification: {
     sendVerificationEmail: (args: AuthEmailArgs) => Promise<void>;
   };
+  user: {
+    changeEmail: {
+      enabled: boolean;
+      sendChangeEmailVerification: (args: {
+        user: { email: string };
+        newEmail: string;
+        url: string;
+      }) => Promise<void>;
+    };
+  };
   advanced: { database: { generateId: () => string } };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
@@ -224,5 +234,26 @@ describe("auth config", () => {
       "supabase-bridge",
       "next-cookies",
     ]);
+  });
+});
+
+describe("change email", () => {
+  it("enables email change and routes the approval mail to the current address", async () => {
+    const options = await loadAuthOptions();
+
+    expect(options.user.changeEmail.enabled).toBe(true);
+
+    await options.user.changeEmail.sendChangeEmailVerification({
+      user: { email: "old@example.com" },
+      newEmail: "new@example.com",
+      url: "https://app/approve?token=t",
+    });
+
+    expect(sendAuthEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "old@example.com",
+        text: expect.stringContaining("new@example.com"),
+      }),
+    );
   });
 });

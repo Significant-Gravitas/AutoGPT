@@ -86,6 +86,30 @@ export const auth = betterAuth({
       });
     },
   },
+  user: {
+    changeEmail: {
+      // Off by default in Better Auth; the settings page's email form
+      // depends on it. Verified users approve the change via a link sent
+      // to their CURRENT address (anti-takeover), so SMTP must be
+      // configured for email changes to work in production.
+      enabled: true,
+      sendChangeEmailVerification: async ({
+        user,
+        newEmail,
+        url,
+      }: {
+        user: { email: string };
+        newEmail: string;
+        url: string;
+      }) => {
+        await sendAuthEmail({
+          to: user.email,
+          subject: "Confirm your AutoGPT Platform email change",
+          text: `Click the link to approve changing your email to ${newEmail}: ${url}`,
+        });
+      },
+    },
+  },
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
