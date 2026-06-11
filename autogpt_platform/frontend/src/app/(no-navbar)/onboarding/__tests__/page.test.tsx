@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 
@@ -16,8 +22,8 @@ vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
   SubscriptionStep: () => <div data-testid="step-subscription" />,
 }));
 vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete: _onComplete }: { onComplete: () => void }) => (
-    <div data-testid="step-preparing" />
+  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
+    <button data-testid="step-preparing" onClick={onComplete} />
   ),
 }));
 
@@ -38,13 +44,20 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: () => ({ ...mockSupabaseState, user: null }),
 }));
 
+let mockCompletedSteps: string[] = [];
+const completeOnboardingStep = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ status: 200 })),
+);
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+    Promise.resolve({
+      status: 200,
+      data: { completedSteps: mockCompletedSteps },
+    }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
-  postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
+  postV1CompleteOnboardingStep: completeOnboardingStep,
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
 
@@ -84,7 +97,9 @@ beforeEach(() => {
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
   mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+  mockCompletedSteps = [];
   routerReplace.mockClear();
+  completeOnboardingStep.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
@@ -258,6 +273,33 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     // After init defers (auth not ready), currentStep stays at the
     // store default of 1 — no premature jump to 5.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
+  });
+
+  it("redirects straight to /copilot when onboarding is already complete", async () => {
+    mockCompletedSteps = ["ONBOARDING_COMPLETE"];
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    render(<OnboardingPage />);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    // The wizard never renders and the resume ceiling is cleared.
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("marks ONBOARDING_COMPLETE and redirects when Preparing finishes", async () => {
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    expect(completeOnboardingStep).toHaveBeenCalledWith({
+      step: "ONBOARDING_COMPLETE",
+    });
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
