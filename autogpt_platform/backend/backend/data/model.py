@@ -29,7 +29,6 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
-    field_validator,
     model_validator,
 )
 from pydantic_core import (
@@ -41,7 +40,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
-from backend.data.onboarding_steps import RENAMED_STEPS, OnboardingStep
+from backend.data.onboarding_steps import OnboardingStep
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -983,12 +982,9 @@ class UserExecutionSummaryStats(BaseModel):
 class UserOnboarding(BaseModel):
     userId: str
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
-    # the frontend (the DB still stores plain strings). ``_normalize_steps``
-    # remaps renamed steps (e.g. the retired ``VISIT_COPILOT`` ->
-    # ``ONBOARDING_COMPLETE``) and drops values no longer in the enum, so reads
-    # stay correct even if the rename migration hasn't been applied yet. Boundary
-    # validation on writes lives on the completion endpoint via the
-    # ``FrontendOnboardingStep`` Literal.
+    # the frontend (the DB stores plain strings). The rename migration keeps
+    # existing rows within the enum, and writes are validated on the completion
+    # endpoint via the ``FrontendOnboardingStep`` Literal.
     completedSteps: list[OnboardingStep]
     walletShown: bool
     notified: list[OnboardingStep]
@@ -1002,14 +998,3 @@ class UserOnboarding(BaseModel):
     agentRuns: int
     lastRunAt: Optional[datetime]
     consecutiveRunDays: int
-
-    @field_validator("completedSteps", "notified", "rewardedFor", mode="before")
-    @classmethod
-    def _normalize_steps(cls, value: list[str]) -> list[str]:
-        known = {step.value for step in OnboardingStep}
-        normalized: list[str] = []
-        for step in value:
-            mapped = RENAMED_STEPS.get(step, step)
-            if mapped in known and mapped not in normalized:
-                normalized.append(mapped)
-        return normalized

@@ -59,12 +59,3 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.ONBOARDING_COMPLETE,
     OnboardingStep.BUILDER_OPEN,
 ]
-
-
-# Steps that were renamed, mapped old value -> current value. Existing rows are
-# rewritten by the SECRT-2355 migration, but the API boundary remaps them too so
-# a delayed/partially-applied migration can't make an already-onboarded user look
-# incomplete (which would re-route them through the onboarding wizard).
-RENAMED_STEPS: dict[str, OnboardingStep] = {
-    "VISIT_COPILOT": OnboardingStep.ONBOARDING_COMPLETE,
-}
