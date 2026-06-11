@@ -38,6 +38,7 @@ from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX
+from .dream_events import StreamDreamOperations
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
@@ -1165,6 +1166,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
         ResponseType.STATUS.value: StreamStatus,
+        ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     }
 
     chunk_type = chunk_data.get("type")

@@ -121,6 +121,66 @@ def _get_cache() -> TTLCache:
     return _get_loop_state().cache
 
 
+def _build_llm_config():
+    """Shared ``LLMConfig`` for graphiti's LLM + cross-encoder paths."""
+    from graphiti_core.llm_client import LLMConfig
+
+    return LLMConfig(
+        api_key=graphiti_config.resolve_llm_api_key(),
+        model=graphiti_config.llm_model,
+        small_model=graphiti_config.llm_model,  # avoid gpt-4.1-nano dedup hallucination (#760)
+        base_url=graphiti_config.resolve_llm_base_url(),
+    )
+
+
+def _build_graphiti(group_id: str, llm_client):
+    """Construct a ``Graphiti`` instance bound to a per-group FalkorDB.
+
+    Pure factory: no caching. Callers decide whether to memoize.
+    ``llm_client`` lets the caller pick the LLM-tier behavior (sync vs
+    flex) without disturbing the embedder + cross-encoder defaults.
+    """
+    from graphiti_core import Graphiti
+    from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+    from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
+    from graphiti_core.llm_client import LLMConfig
+
+    from .falkordb_driver import AutoGPTFalkorDriver
+
+    embedder_config = OpenAIEmbedderConfig(
+        api_key=graphiti_config.resolve_embedder_api_key(),
+        embedding_model=graphiti_config.embedder_model,
+        base_url=graphiti_config.resolve_embedder_base_url(),
+    )
+    embedder = OpenAIEmbedder(config=embedder_config)
+
+    # P-1.4: cross-encoder reranker for warm-context retrieval.
+    # OpenAIRerankerClient runs concurrent boolean-classifier prompts
+    # (one per candidate edge) and uses log-probabilities to rank.
+    # Cheap because the reranker model defaults to gpt-4.1-nano —
+    # the cost is one batch of small calls per session-start search.
+    reranker_config = LLMConfig(
+        api_key=graphiti_config.resolve_llm_api_key(),
+        model=graphiti_config.reranker_model,
+        base_url=graphiti_config.resolve_llm_base_url(),
+    )
+    cross_encoder = OpenAIRerankerClient(config=reranker_config)
+
+    graph_driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+    )
+    return Graphiti(
+        llm_client=llm_client,
+        embedder=embedder,
+        cross_encoder=cross_encoder,
+        graph_driver=graph_driver,
+        max_coroutines=graphiti_config.semaphore_limit,
+    )
+
+
 async def get_graphiti_client(group_id: str):
     """Return a Graphiti client scoped to the given group_id.
 
@@ -131,11 +191,7 @@ async def get_graphiti_client(group_id: str):
 
     Returns a ``graphiti_core.Graphiti`` instance.
     """
-    from graphiti_core import Graphiti
-    from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
-    from graphiti_core.llm_client import LLMConfig, OpenAIClient
-
-    from .falkordb_driver import AutoGPTFalkorDriver
+    from graphiti_core.llm_client import OpenAIClient
 
     state = _get_loop_state()
     cache = state.cache
@@ -144,36 +200,62 @@ async def get_graphiti_client(group_id: str):
         if group_id in cache:
             return cache[group_id]
 
-        llm_config = LLMConfig(
-            api_key=graphiti_config.resolve_llm_api_key(),
-            model=graphiti_config.llm_model,
-            small_model=graphiti_config.llm_model,  # avoid gpt-4.1-nano dedup hallucination (#760)
-            base_url=graphiti_config.resolve_llm_base_url(),
-        )
-        llm_client = OpenAIClient(config=llm_config)
-
-        embedder_config = OpenAIEmbedderConfig(
-            api_key=graphiti_config.resolve_embedder_api_key(),
-            embedding_model=graphiti_config.embedder_model,
-            base_url=graphiti_config.resolve_embedder_base_url(),
-        )
-        embedder = OpenAIEmbedder(config=embedder_config)
-
-        graph_driver = AutoGPTFalkorDriver(
-            host=graphiti_config.falkordb_host,
-            port=graphiti_config.falkordb_port,
-            password=graphiti_config.falkordb_password or None,
-            database=group_id,
-        )
-        client = Graphiti(
-            llm_client=llm_client,
-            embedder=embedder,
-            graph_driver=graph_driver,
-            max_coroutines=graphiti_config.semaphore_limit,
-        )
-
+        llm_client = OpenAIClient(config=_build_llm_config())
+        client = _build_graphiti(group_id, llm_client)
         cache[group_id] = client
         return client
+
+
+async def make_flex_graphiti_client(group_id: str):
+    """Return a fresh Graphiti client whose LLM calls run on the flex tier.
+
+    NOT cached: nightly community rebuild is the only caller today and
+    runs once a week per user. The returned client owns its own
+    FalkorDB driver — the caller is responsible for closing it via
+    ``close_graphiti_client(...)`` when the rebuild finishes, otherwise
+    the connection lingers until the process exits.
+
+    Transport veto: the OpenAI ``service_tier="flex"`` parameter only
+    delivers the ~50% discount through OpenRouter's pass-through to
+    OpenAI / Google upstreams. Other transports (Anthropic direct,
+    Claude Code subscription, local Ollama / vLLM) either ignore the
+    extra_body kwarg silently or — in the local case — would dispatch
+    via the OpenAI Responses API endpoint (`responses.parse`) which
+    the backend doesn't speak, returning a 404 mid-rebuild. When the
+    active ``TransportProfile.supports_flex_tier`` is ``False`` we
+    swap in the regular cached ``OpenAIClient`` so the rebuild still
+    runs — at full sync price, but it runs.
+    """
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    from .flex_client import FlexOpenAIClient
+
+    if not chat_cfg.transport.supports_flex_tier:
+        from graphiti_core.llm_client import OpenAIClient
+
+        logger.info(
+            "Graphiti community rebuild: flex tier not available on "
+            "transport=%s; falling back to sync OpenAIClient.",
+            chat_cfg.transport.name,
+        )
+        llm_client = OpenAIClient(config=_build_llm_config())
+    else:
+        llm_client = FlexOpenAIClient(config=_build_llm_config())
+    return _build_graphiti(group_id, llm_client)
+
+
+async def close_graphiti_client(client) -> None:
+    """Close a Graphiti client's graph driver (best-effort).
+
+    Safe to call on cached or uncached clients. Use after
+    ``make_flex_graphiti_client`` to release the FalkorDB connection.
+    """
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver and hasattr(driver, "close"):
+        try:
+            await driver.close()
+        except Exception:
+            logger.debug("Failed to close graphiti driver", exc_info=True)
 
 
 async def evict_client(group_id: str) -> None:

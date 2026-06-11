@@ -535,7 +535,10 @@ def _persist_activity_status_cost(
                 model=model_name,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
-                metadata={"source": "activity_status_generator"},
+                metadata={
+                    "source": "activity_status_generator",
+                    "execution_path": "sync",
+                },
             ),
         )
     except Exception:
