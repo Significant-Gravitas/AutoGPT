@@ -26,7 +26,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations
 from .billing import check_dream_budget, record_phase_cost
-from .fetch import DreamInput, gather_dream_input
+from .fetch import DreamInput, EpisodeRow, gather_dream_input, parse_episode_timestamp
 from .llm import (
     CompletionUsage,
     DreamLLMError,
@@ -90,6 +90,16 @@ SANITIZE_MAX_TOKENS = 16384
 # Deliberately NOT degree-aware — fetching entity degrees is async graph
 # work that doesn't belong in this sync clamp.
 MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
+
+# Per-user marker stamped after a successful (non-skipped) sync apply so
+# the next nightly pass can skip all three LLM phases when no new episode
+# landed since. Single key — prod Redis runs in cluster mode (see
+# locks.py), so no multi-key primitives. The 35-day TTL comfortably
+# outlives the 14-day episode window; an expired or missing marker just
+# means one extra full pass (fail-open). The batch path does NOT stamp
+# this marker yet — batch users simply never benefit from the skip.
+LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
+LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
 
 
 def _resolve_lock_ttl(transport_is_local: bool) -> int:
@@ -265,6 +275,84 @@ def _aggregate_usage(
     )
 
 
+def _last_completed_key(user_id: str) -> str:
+    return f"{LAST_COMPLETED_KEY_PREFIX}{user_id}"
+
+
+async def _read_last_completed_marker(user_id: str) -> datetime | None:
+    """When the user's last dream pass completed, or ``None``.
+
+    Best-effort: a Redis error or an unparseable value fails open
+    (``None`` ⇒ the pass runs) — the marker only exists to save LLM
+    spend, so it must never block a dream.
+    """
+    # Lazy import matching locks.py — keeps the module cheap to import
+    # in tests that mock redis.
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_last_completed_key(user_id))
+    except Exception:
+        logger.warning(
+            "Failed to read dream last-completed marker for user %s — "
+            "running the pass",
+            user_id[:12],
+            exc_info=True,
+        )
+        return None
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        marker = datetime.fromisoformat(str(raw))
+    except ValueError:
+        logger.warning(
+            "Unparseable dream last-completed marker for user %s — running the pass",
+            user_id[:12],
+        )
+        return None
+    return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
+
+
+async def _stamp_last_completed_marker(user_id: str) -> None:
+    """Record "a dream pass applied for this user just now".
+
+    Best-effort: a failed stamp only costs one extra full pass on the
+    next nightly tick.
+    """
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _last_completed_key(user_id),
+            datetime.now(timezone.utc).isoformat(),
+            ex=LAST_COMPLETED_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to stamp dream last-completed marker for user %s",
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> bool:
+    """True when any episode is newer than the last-completed marker.
+
+    An episode with no parseable timestamp counts as new — we can't
+    prove it's old, and skipping a pass we owed the user is worse than
+    running one we didn't.
+    """
+    for episode in episodes:
+        episode_at = parse_episode_timestamp(episode)
+        if episode_at is None or episode_at > marker:
+            return True
+    return False
+
+
 async def _execute_dream_pass_async(
     user_id: str,
     *,
@@ -341,6 +429,34 @@ async def _execute_dream_pass_async(
                     execution_path=execution_path,
                     skipped=True,
                     skip_reason="no_input",
+                )
+
+            # No NEW activity since the last completed pass — every episode
+            # in the bundle predates the marker, so re-running all three
+            # LLM phases would only re-chew already-consolidated material
+            # (and, before the empty-pass guard in apply.py, manufacture an
+            # empty dream chat). Marker read is best-effort: missing,
+            # unparseable, or Redis-down all mean "run the pass".
+            last_completed = await _read_last_completed_marker(user_id)
+            if last_completed is not None and not _has_new_episodes_since(
+                input_bundle.episodes, last_completed
+            ):
+                logger.info(
+                    "Dream pass %s skipped for user %s — no episodes newer "
+                    "than last completed pass at %s",
+                    pass_id,
+                    user_id[:12],
+                    last_completed.isoformat(),
+                )
+                return DreamPassResult(
+                    user_id=user_id,
+                    pass_id=pass_id,
+                    started_at=started_at,
+                    completed_at=datetime.now(timezone.utc),
+                    elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
+                    execution_path=execution_path,
+                    skipped=True,
+                    skip_reason="no_new_activity",
                 )
 
             # ---- Anthropic batch path -----------------------------------
@@ -460,9 +576,15 @@ async def _execute_dream_pass_async(
                 ops,
                 known_fact_uuids=input_bundle.known_fact_uuids,
             )
+            # Apply succeeded (even as a no-op) — stamp the marker so the
+            # next nightly pass can skip when nothing new has landed.
+            # Sync path only: batch apply runs hours later in
+            # batch_callbacks, which doesn't stamp yet.
+            await _stamp_last_completed_marker(user_id)
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")
+            raw_session_id = apply_stats.get("session_id")
 
             def _as_int(key: str) -> int:
                 v = apply_stats.get(key, 0)
@@ -480,7 +602,11 @@ async def _execute_dream_pass_async(
                 demotion_count=_as_int("demotion_count"),
                 entity_invalidation_count=_as_int("entity_invalidation_count"),
                 summary_for_user=ops.summary_for_user,
-                dream_session_id=str(apply_stats.get("session_id") or ""),
+                # ``None`` (key absent) on an empty pass — apply skipped the
+                # dream session entirely, so there is no id to surface.
+                dream_session_id=(
+                    raw_session_id if isinstance(raw_session_id, str) else None
+                ),
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
                 ),

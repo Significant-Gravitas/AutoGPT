@@ -66,6 +66,9 @@ def _stub_boundaries(mocker):
         "backend.copilot.db.create_chat_session",
         AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
     )
+    mocker.patch(
+        "backend.copilot.db.update_chat_session_title", AsyncMock(return_value=True)
+    )
     mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
     # Entity invalidation is gated on DREAM_PASS_INVALIDATE_ENTITY. Default
     # the flag ON so the existing entity tests exercise the apply path; the
@@ -315,22 +318,96 @@ async def test_entity_invalidation_skipped_when_flag_off(mocker):
 
 
 @pytest.mark.asyncio
-async def test_no_op_dream_still_writes_summary_session(mocker):
-    """Empty DreamOperations still creates the dream-kind ChatSession."""
+async def test_empty_pass_creates_no_session_and_no_message():
+    """A pass with no writes, proposals, demotions, or entity
+    invalidations must not manufacture a user-visible chat — no
+    dream-kind ChatSession, no placeholder message, zero stats, and no
+    session_id. A non-empty summary alone is NOT an operation.
+    Regression: nightly dreams for users with old facts but no new
+    activity created one untitled empty chat per user per night."""
     from backend.copilot import db as copilot_db
+
+    from .schemas import DreamOperationsSnapshot
 
     ops = DreamOperations(summary_for_user="Nothing new today.")
     stats = await apply_mod.apply_operations(user_id="u-a", pass_id="p-5", ops=ops)
 
+    copilot_db.create_chat_session.assert_not_awaited()
+    copilot_db.add_chat_message.assert_not_awaited()
+    apply_mod.enqueue_episode.assert_not_awaited()
+    assert stats.get("session_id") is None
     assert stats["consolidated_count"] == 0
     assert stats["proposal_count"] == 0
     assert stats["demotion_count"] == 0
-    # ChatSession + ChatMessage were both created
+    assert stats["demotion_failed_count"] == 0
+    assert stats["entity_invalidation_count"] == 0
+    assert stats["snapshot"] == DreamOperationsSnapshot()
+
+
+@pytest.mark.asyncio
+async def test_ops_with_empty_summary_still_create_session_with_placeholder():
+    """Operations landed but the model returned no narrative — the
+    session must still be created (the memory ops need their provenance
+    + user-visible record) with the fallback placeholder message."""
+    from backend.copilot import db as copilot_db
+
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="",
+    )
+    stats = await apply_mod.apply_operations(user_id="u-ph", pass_id="p-ph", ops=ops)
+
     copilot_db.create_chat_session.assert_awaited_once()
     copilot_db.add_chat_message.assert_awaited_once()
     msg_kwargs = copilot_db.add_chat_message.await_args.kwargs
     assert msg_kwargs["role"] == "assistant"
-    assert msg_kwargs["content"] == "Nothing new today."
+    assert msg_kwargs["content"] == "Dream pass completed with no narrative output."
+    assert isinstance(stats["session_id"], str) and stats["session_id"]
+
+
+@pytest.mark.asyncio
+async def test_dream_session_titled_with_utc_date():
+    """The dream-kind session gets a 'Dream summary — YYYY-MM-DD' title
+    (UTC date) via update_chat_session_title, scoped to the owning user,
+    so it doesn't render as '(untitled)' in the chat list."""
+    from backend.copilot import db as copilot_db
+
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(
+        user_id="u-title", pass_id="p-title", ops=ops
+    )
+
+    copilot_db.update_chat_session_title.assert_awaited_once()
+    title_kwargs = copilot_db.update_chat_session_title.await_args.kwargs
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    assert title_kwargs["title"] == f"Dream summary — {today}"
+    assert title_kwargs["session_id"] == stats["session_id"]
+    assert title_kwargs["user_id"] == "u-title"
+
+
+@pytest.mark.asyncio
+async def test_title_failure_does_not_abort_apply(mocker):
+    """The title write is cosmetic and best-effort — on the batch path the
+    at-most-once apply gate is already claimed when apply runs, so an
+    exception here would permanently lose the dream. The ops and the
+    narrative must still land."""
+    from backend.copilot import db as copilot_db
+
+    mocker.patch(
+        "backend.copilot.db.update_chat_session_title",
+        AsyncMock(side_effect=ConnectionError("db blip")),
+    )
+    ops = DreamOperations(
+        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
+        summary_for_user="ok",
+    )
+    stats = await apply_mod.apply_operations(user_id="u-tf", pass_id="p-tf", ops=ops)
+
+    assert stats["consolidated_count"] == 1
+    copilot_db.add_chat_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

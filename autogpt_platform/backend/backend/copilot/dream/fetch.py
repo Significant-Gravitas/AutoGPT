@@ -76,6 +76,37 @@ class DreamInput(BaseModel):
     known_episode_uuids: set[str] = Field(default_factory=set)
 
 
+def parse_episode_timestamp(episode: EpisodeRow) -> datetime | None:
+    """Best-effort tz-aware timestamp for an episode row.
+
+    ``valid_at`` is the reliable field: ingestion always sets it (the
+    ``reference_time`` passed at enqueue) and the episode fetch Cypher
+    orders by it. ``created_at`` is graphiti-core bookkeeping kept as a
+    fallback for legacy rows. ``None`` means neither field parsed —
+    callers must treat that as "age unknown" and fail open.
+    """
+    for raw in (episode.valid_at, episode.created_at):
+        if not raw:
+            continue
+        parsed = _parse_iso_timestamp(raw)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_iso_timestamp(raw: str) -> datetime | None:
+    """ISO 8601 parse tolerating Cypher's ``toString(datetime)`` output
+    (trailing ``Z``); naive values are assumed UTC so the result always
+    compares safely against tz-aware datetimes."""
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
     return AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
