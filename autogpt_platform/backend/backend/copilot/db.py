@@ -536,7 +536,19 @@ async def add_chat_messages_batch(
 #
 # Raw SQL because the Python Prisma client's ``JsonFilter`` supports only
 # whole-value ``equals`` / ``not`` — it has no ``path`` access at all.
-_EXCLUDE_DREAM_SESSIONS_SQL = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
+#
+# ``exclude_dream_sessions_sql`` is the public form for OTHER ChatSession
+# listing surfaces (e.g. the search-embedding backfill in
+# ``api/features/search/content_handlers.py``) so the predicate can't
+# drift between them; ``column`` lets aliased queries pass
+# ``cs.metadata``.
+
+
+def exclude_dream_sessions_sql(column: str = "metadata") -> str:
+    return f"({column}->>'kind' IS DISTINCT FROM 'dream')"
+
+
+_EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 
 
 async def get_user_chat_sessions(

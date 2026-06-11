@@ -629,3 +629,33 @@ async def test_library_agent_handler_stats():
     assert stats["total"] == 10
     assert stats["with_embeddings"] == 4
     assert stats["without_embeddings"] == 6
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_chat_session_handler_excludes_dream_sessions_in_every_query():
+    """Dream-pass sessions are titled pipeline artifacts — every
+    ChatSessionHandler query (backfill, stats, cleanup validity) must carry
+    the null-safe dream exclusion so nightly dream sessions are neither
+    embedded nor treated as valid embedding owners."""
+    from backend.api.features.search.content_handlers import ChatSessionHandler
+
+    captured: list[str] = []
+
+    async def fake_query_raw(sql: str, *args, **kwargs):
+        captured.append(sql)
+        if "COUNT" in sql.upper():
+            return [{"count": 0}]
+        return []
+
+    with patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        side_effect=fake_query_raw,
+    ):
+        handler = ChatSessionHandler()
+        await handler.get_missing_items(batch_size=10)
+        await handler.get_stats()
+        await handler.get_valid_content_ids()
+
+    assert len(captured) == 4
+    for sql in captured:
+        assert "IS DISTINCT FROM 'dream'" in sql, f"missing dream filter in: {sql}"
