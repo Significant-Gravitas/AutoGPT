@@ -80,6 +80,41 @@ CONSOLIDATE_MAX_TOKENS = 4096
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
+# Per-phase LLM wall-clock ceilings, passed through structured_completion
+# → call_provider. The shared DEFAULT_REQUEST_TIMEOUT_SECONDS (120s) is
+# sized for short chat completions; recombine/sanitize carry 16384-token
+# output budgets precisely because real responses exceed 8192 tokens, and
+# at real decode speeds (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K
+# response takes 150-400s — the 120s wall killed exactly the responses
+# the token-cap raise above was meant to save.
+#
+# A conservative ~20 tok/s decode floor would ask for max_output_tokens/20
+# ≈ 205s / 819s / 819s per phase, but that sums to 1843s of LLM budget
+# alone — past both SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS (1800s,
+# scheduler.py) and DEFAULT_LOCK_TTL_SECONDS (1800s, locks.py) before
+# fetch/apply even run. So the phases get values that fit the envelope
+# instead. Budget math:
+#
+#   consolidate 240s + recombine 600s + sanitize 480s = 1320s LLM ceiling
+#   + DREAM_NON_LLM_HEADROOM_SECONDS 480s (budget check + fetch + apply
+#     + cost logging)
+#   = 1800s == SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+#            == DEFAULT_LOCK_TTL_SECONDS  (fully allocated, zero slack)
+#
+# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
+# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# Consolidate's 4096-token budget fits 240s at ~17 tok/s. The envelope
+# invariant is pinned by
+# test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
+# bumping any value here fails that test until the budget is re-balanced.
+CONSOLIDATE_TIMEOUT_SECONDS = 240
+RECOMBINE_TIMEOUT_SECONDS = 600
+SANITIZE_TIMEOUT_SECONDS = 480
+# Reserved for the non-LLM segments of the pass (budget check, fetch,
+# apply, cost logging) inside the 1800s scheduler/lock envelope.
+DREAM_NON_LLM_HEADROOM_SECONDS = 480
+
 # Entity invalidation is the most destructive op the sanitizer can emit:
 # each one single-hop demotes EVERY :RELATES_TO edge on the entity, so a
 # hub entity multiplies the blast radius far past the demotion caps. We
@@ -167,6 +202,7 @@ async def _run_consolidate(
         response_model=ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
         max_output_tokens=CONSOLIDATE_MAX_TOKENS,
+        timeout_seconds=CONSOLIDATE_TIMEOUT_SECONDS,
     )
 
 
@@ -183,6 +219,7 @@ async def _run_recombine(
         response_model=RecombinationOutput,
         temperature=RECOMBINE_TEMP,
         max_output_tokens=RECOMBINE_MAX_TOKENS,
+        timeout_seconds=RECOMBINE_TIMEOUT_SECONDS,
     )
 
 
@@ -204,6 +241,7 @@ async def _run_sanitize(
         response_model=DreamOperations,
         temperature=SANITIZE_TEMP,
         max_output_tokens=SANITIZE_MAX_TOKENS,
+        timeout_seconds=SANITIZE_TIMEOUT_SECONDS,
     )
 
 
