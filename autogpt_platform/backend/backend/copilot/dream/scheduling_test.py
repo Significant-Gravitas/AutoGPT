@@ -398,10 +398,39 @@ async def test_force_refresh_with_failed_tz_lookup_still_skips_re_registration()
 
 
 @pytest.mark.asyncio
+async def test_resolve_user_timezone_works_without_local_prisma_connection():
+    """Dev outage AUTOGPT: the resolver ran in the copilot-executor
+    process, which never connects a local Prisma client — a direct
+    ``User.prisma()`` call raised ``ClientNotConnectedError`` on every
+    invocation, so dream crons were never registered for anyone. The
+    lookup must route through the ``user_db()`` accessor, which falls
+    back to the DatabaseManager RPC in Prisma-less processes."""
+    accessor = MagicMock()
+    accessor.get_user_by_id = AsyncMock(
+        return_value=MagicMock(timezone="Europe/Madrid")
+    )
+    with patch("backend.data.db_accessors.user_db", return_value=accessor):
+        assert await scheduling._resolve_user_timezone("abc") == "Europe/Madrid"
+    accessor.get_user_by_id.assert_awaited_once_with("abc")
+
+
+@pytest.mark.asyncio
+async def test_resolve_user_timezone_missing_user_is_authoritative_utc():
+    """get_user_by_id raises ValueError for a missing row — that's an
+    authoritative answer (UTC), not a lookup failure (None)."""
+    accessor = MagicMock()
+    accessor.get_user_by_id = AsyncMock(side_effect=ValueError("User not found"))
+    with patch("backend.data.db_accessors.user_db", return_value=accessor):
+        assert await scheduling._resolve_user_timezone("abc") == "UTC"
+
+
+@pytest.mark.asyncio
 async def test_resolve_user_timezone_returns_none_when_db_lookup_fails():
     """The resolver distinguishes 'lookup failed' (None) from
     'genuinely unset' (UTC)."""
-    with patch("prisma.models.User.prisma", side_effect=RuntimeError("db down")):
+    accessor = MagicMock()
+    accessor.get_user_by_id = AsyncMock(side_effect=ConnectionError("db down"))
+    with patch("backend.data.db_accessors.user_db", return_value=accessor):
         assert await scheduling._resolve_user_timezone("abc") is None
 
 
@@ -411,11 +440,11 @@ async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
     UTC — only lookup FAILURES return None."""
     from backend.data.model import USER_TIMEZONE_NOT_SET
 
-    prisma_stub = MagicMock()
-    prisma_stub.find_unique = AsyncMock(
+    accessor = MagicMock()
+    accessor.get_user_by_id = AsyncMock(
         return_value=MagicMock(timezone=USER_TIMEZONE_NOT_SET)
     )
-    with patch("prisma.models.User.prisma", return_value=prisma_stub):
+    with patch("backend.data.db_accessors.user_db", return_value=accessor):
         assert await scheduling._resolve_user_timezone("abc") == "UTC"
 
 
