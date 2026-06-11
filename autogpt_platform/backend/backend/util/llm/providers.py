@@ -422,7 +422,12 @@ async def _call_openai_responses(
         text=text_config,  # type: ignore[arg-type]
         store=False,
         timeout=timeout_seconds,
-        extra_body=extra_body or openai.omit,  # type: ignore[arg-type]
+        # ``omit`` is only valid for TYPED params — the SDK strips it
+        # there. ``extra_body`` flows raw into ``options.extra_json``
+        # (``make_request_options`` checks ``is not None``), and
+        # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+        # mapping`` on the sentinel. Absent extra_body must be ``None``.
+        extra_body=extra_body or None,
     )
 
     raw_tool_calls = extract_responses_tool_calls(response)

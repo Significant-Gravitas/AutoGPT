@@ -131,6 +131,61 @@ class TestExecutionModeStubs:
         assert captured.get("extra_body") == {"service_tier": "flex"}
 
     @pytest.mark.asyncio
+    async def test_no_service_tier_passes_none_extra_body_not_omit_sentinel(self):
+        """Sentry AUTOGPT-SERVER-99S: ``extra_body=openai.omit`` crashes the
+        real SDK — ``make_request_options`` only checks ``is not None``, so
+        the Omit sentinel lands in ``options.extra_json`` and
+        ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+        mapping`` on EVERY plain OpenAI Responses call (no service_tier).
+        ``omit`` is only valid for typed params; ``extra_body``'s absent
+        value is ``None``."""
+        from backend.util.llm.providers import _call_openai_responses
+
+        captured: dict[str, object] = {}
+
+        class _StubResponses:
+            async def create(self, **kwargs):
+                captured.update(kwargs)
+                resp = MagicMock()
+                resp.output = []
+                resp.usage = MagicMock(input_tokens=1, output_tokens=1)
+                return resp
+
+        class _StubClient:
+            def __init__(self, *args, **kwargs):
+                self.responses = _StubResponses()
+
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
+        ), patch(
+            "backend.util.llm.providers.extract_responses_content",
+            return_value="",
+        ), patch(
+            "backend.util.llm.providers.extract_responses_tool_calls",
+            return_value=[],
+        ), patch(
+            "backend.util.llm.providers.extract_responses_usage",
+            return_value=(1, 1),
+        ), patch(
+            "backend.util.llm.providers.extract_responses_reasoning",
+            return_value=None,
+        ):
+            await _call_openai_responses(
+                model="gpt-4o",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=None,
+                tools=None,
+                force_json_output=False,
+                parallel_tool_calls=False,
+                timeout_seconds=30.0,
+                service_tier=None,
+            )
+
+        assert captured.get("extra_body") is None
+
+    @pytest.mark.asyncio
     async def test_flex_mode_passes_service_tier_via_openrouter_extra_body(
         self,
     ):
