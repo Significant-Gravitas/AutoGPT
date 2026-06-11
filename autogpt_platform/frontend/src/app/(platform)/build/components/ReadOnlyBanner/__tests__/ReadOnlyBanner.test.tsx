@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 const mockDuplicate = vi.fn();
 let mockCanDuplicate = true;
 let mockIsDuplicating = false;
+let mockIsCheckingLibrary = false;
 
 vi.mock("../../../hooks/useDuplicateGraph", () => ({
   useDuplicateGraph: () => ({
     duplicate: mockDuplicate,
     isDuplicating: mockIsDuplicating,
     canDuplicate: mockCanDuplicate,
+    isCheckingLibrary: mockIsCheckingLibrary,
   }),
 }));
 
@@ -20,6 +22,7 @@ describe("ReadOnlyBanner", () => {
     vi.clearAllMocks();
     mockCanDuplicate = true;
     mockIsDuplicating = false;
+    mockIsCheckingLibrary = false;
   });
 
   test("shows the Duplicate CTA when the agent can be duplicated", () => {
@@ -41,6 +44,21 @@ describe("ReadOnlyBanner", () => {
     expect(
       screen.getByText(/Add it to your library to enable duplication/i),
     ).not.toBeNull();
+  });
+
+  test("shows the Duplicate CTA disabled while the library lookup is in flight", () => {
+    mockCanDuplicate = false;
+    mockIsCheckingLibrary = true;
+    render(<ReadOnlyBanner />);
+
+    const button = screen.getByRole("button", {
+      name: /duplicate/i,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(/Duplicate it to make changes/i)).not.toBeNull();
+    expect(
+      screen.queryByText(/Add it to your library to enable duplication/i),
+    ).toBeNull();
   });
 
   test("announces the read-only state to assistive technology", () => {

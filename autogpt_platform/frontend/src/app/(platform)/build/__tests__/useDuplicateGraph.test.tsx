@@ -17,9 +17,13 @@ vi.mock("nuqs", () => ({
 }));
 
 let mockLibraryAgent: { id: string; graph_id: string } | undefined;
+let mockIsLoading = false;
 const mockForkAgent = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/library/library", () => ({
-  useGetV2GetLibraryAgentByGraphId: vi.fn(() => ({ data: mockLibraryAgent })),
+  useGetV2GetLibraryAgentByGraphId: vi.fn(() => ({
+    data: mockLibraryAgent,
+    isLoading: mockIsLoading,
+  })),
   usePostV2ForkLibraryAgent: vi.fn(() => ({
     mutateAsync: mockForkAgent,
     isPending: false,
@@ -32,6 +36,7 @@ describe("useDuplicateGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLibraryAgent = undefined;
+    mockIsLoading = false;
   });
 
   afterEach(() => {
@@ -43,6 +48,16 @@ describe("useDuplicateGraph", () => {
 
     const { result } = renderHook(() => useDuplicateGraph());
 
+    expect(result.current.canDuplicate).toBe(false);
+  });
+
+  it("reports the library lookup as in flight while loading", () => {
+    mockLibraryAgent = undefined;
+    mockIsLoading = true;
+
+    const { result } = renderHook(() => useDuplicateGraph());
+
+    expect(result.current.isCheckingLibrary).toBe(true);
     expect(result.current.canDuplicate).toBe(false);
   });
 

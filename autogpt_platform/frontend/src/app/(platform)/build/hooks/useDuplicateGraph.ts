@@ -15,16 +15,17 @@ export function useDuplicateGraph() {
     flowID: parseAsString,
   });
 
-  const { data: libraryAgent } = useGetV2GetLibraryAgentByGraphId(
-    flowID ?? "",
-    {},
-    {
-      query: {
-        select: (res) => res.data as LibraryAgent,
-        enabled: !!flowID,
+  const { data: libraryAgent, isLoading: isCheckingLibrary } =
+    useGetV2GetLibraryAgentByGraphId(
+      flowID ?? "",
+      {},
+      {
+        query: {
+          select: (res) => res.data as LibraryAgent,
+          enabled: !!flowID,
+        },
       },
-    },
-  );
+    );
 
   const { mutateAsync: forkAgent, isPending: isDuplicating } =
     usePostV2ForkLibraryAgent();
@@ -55,5 +56,6 @@ export function useDuplicateGraph() {
     duplicate,
     isDuplicating,
     canDuplicate: !!libraryAgent,
+    isCheckingLibrary,
   };
 }

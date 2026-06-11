@@ -5,10 +5,15 @@ import { useState } from "react";
 import { useDuplicateGraph } from "../../hooks/useDuplicateGraph";
 
 export function ReadOnlyBanner() {
-  const { duplicate, isDuplicating, canDuplicate } = useDuplicateGraph();
+  const { duplicate, isDuplicating, canDuplicate, isCheckingLibrary } =
+    useDuplicateGraph();
   const [isDismissed, setIsDismissed] = useState(false);
 
   if (isDismissed) return null;
+
+  // Show the Duplicate CTA immediately while we look up the library agent, only
+  // falling back to the "add to library" hint once we know it can't be forked.
+  const showDuplicate = canDuplicate || isCheckingLibrary;
 
   return (
     <div
@@ -20,16 +25,17 @@ export function ReadOnlyBanner() {
       <Text variant="body" className="px-2 text-zinc-700">
         You&apos;re viewing a read-only copy of this agent.
         <br />
-        {canDuplicate
+        {showDuplicate
           ? "Duplicate it to make changes."
           : "Add it to your library to enable duplication."}
       </Text>
-      {canDuplicate && (
+      {showDuplicate && (
         <Button
           variant="primary"
           size="small"
           onClick={duplicate}
           loading={isDuplicating}
+          disabled={!canDuplicate}
           leftIcon={<CopyIcon className="size-4" />}
         >
           Duplicate
