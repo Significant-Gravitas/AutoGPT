@@ -205,6 +205,41 @@ class TestCheckRateLimit:
             assert exc_info.value.window == "daily"
 
     @pytest.mark.asyncio
+    async def test_skip_daily_bypasses_daily_cap_but_still_checks_weekly(self):
+        """Dream pass calls with ``skip_daily=True``. A user at-or-over
+        their daily cap must still be allowed to run a dream pass, but
+        being over the weekly cap still rejects."""
+        # Daily over-cap, weekly fine → must NOT raise when skipped.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["10000", "200"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await check_rate_limit(
+                _USER,
+                daily_cost_limit=10000,
+                weekly_cost_limit=50000,
+                skip_daily=True,
+            )
+
+        # Weekly over-cap → still rejects even when skip_daily=True.
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["100", "50000"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await check_rate_limit(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    skip_daily=True,
+                )
+            assert exc_info.value.window == "weekly"
+
+    @pytest.mark.asyncio
     async def test_raises_when_weekly_limit_exceeded(self):
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["100", "50000"])
@@ -728,6 +763,26 @@ class TestRecordCostUsage:
         assert len(incrby_calls) == 2
         assert incrby_calls[0].args[1] == 123_456  # daily
         assert incrby_calls[1].args[1] == 123_456  # weekly
+
+    @pytest.mark.asyncio
+    async def test_skip_daily_increments_weekly_only(self):
+        """Dream pass passes ``skip_daily=True`` so background spend rolls up
+        under the user's weekly cap but doesn't burn their interactive
+        daily budget. Daily INCRBY must NOT fire."""
+        mock_pipe = self._make_pipeline_mock()
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await record_cost_usage(_USER, cost_microdollars=7_777, skip_daily=True)
+
+        # Only one incrby — the weekly one.
+        incrby_calls = mock_pipe.incrby.call_args_list
+        assert len(incrby_calls) == 1
+        assert incrby_calls[0].args[1] == 7_777
 
     @pytest.mark.asyncio
     async def test_skips_when_cost_is_zero(self):

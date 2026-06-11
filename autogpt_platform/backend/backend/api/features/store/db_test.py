@@ -589,6 +589,166 @@ async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
     assert result.stats.total == 7
     assert result.stats.average_rating == 3.9
     mock_store_sub.return_value.count.assert_not_called()
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"submitted_at": "desc"}
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_search_filters_and_counts_matches(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=2)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        search_query=" invoice ",
+    )
+
+    expected_where = {
+        "user_id": "user-id",
+        "is_deleted": False,
+        "OR": [
+            {"name": {"contains": "invoice", "mode": "insensitive"}},
+            {"slug": {"contains": "invoice", "mode": "insensitive"}},
+            {"sub_heading": {"contains": "invoice", "mode": "insensitive"}},
+        ],
+    }
+    assert result.pagination.total_items == 2
+    assert result.stats.total == 7
+    mock_store_sub.return_value.find_many.assert_called_once()
+    mock_store_sub.return_value.count.assert_called_once_with(where=expected_where)
+    assert (
+        mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+        == expected_where
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_sorts_by_runs(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(
+        side_effect=AssertionError("count() must not be called"),
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        sort_key="runs",
+        sort_dir="asc",
+    )
+
+    assert mock_store_sub.return_value.find_many.call_args.kwargs["order"] == [
+        {"run_count": "asc"},
+        {"submitted_at": "desc"},
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_reraises_fetch_errors(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.get_store_submissions(user_id="user-id", page=1, page_size=20)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_status_filters_and_counts_matches(mocker):
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[])
+    mock_store_sub.return_value.count = AsyncMock(return_value=3)
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(
+        user_id="user-id",
+        page=1,
+        page_size=20,
+        statuses=[
+            prisma.enums.SubmissionStatus.PENDING,
+            prisma.enums.SubmissionStatus.APPROVED,
+        ],
+    )
+
+    expected_where = {
+        "user_id": "user-id",
+        "is_deleted": False,
+        "status": {
+            "in": [
+                prisma.enums.SubmissionStatus.PENDING,
+                prisma.enums.SubmissionStatus.APPROVED,
+            ]
+        },
+    }
+    assert result.pagination.total_items == 3
+    assert result.stats.total == 7
+    mock_store_sub.return_value.find_many.assert_called_once()
+    mock_store_sub.return_value.count.assert_called_once_with(where=expected_where)
+    assert (
+        mock_store_sub.return_value.find_many.call_args.kwargs["where"]
+        == expected_where
+    )
 
 
 def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
@@ -688,3 +848,41 @@ async def test_get_my_agents_pagination_window(mocker):
     kwargs = mock_library.return_value.find_many.call_args.kwargs
     assert kwargs["skip"] == 20
     assert kwargs["take"] == 10
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
+    mock_library = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library.return_value.find_many = AsyncMock(return_value=[])
+    mock_library.return_value.count = AsyncMock(return_value=0)
+
+    result = await db.get_my_agents(
+        user_id="user-id",
+        page=1,
+        page_size=10,
+        search_query=" scraper ",
+    )
+
+    expected_agent_graph_filter = {
+        "StoreListingVersions": {
+            "none": {
+                "isAvailable": True,
+                "StoreListing": {"is": {"isDeleted": False}},
+            }
+        },
+        "OR": [
+            {"name": {"contains": "scraper", "mode": "insensitive"}},
+            {"description": {"contains": "scraper", "mode": "insensitive"}},
+        ],
+    }
+    expected_where = {
+        "userId": "user-id",
+        "AgentGraph": {"is": expected_agent_graph_filter},
+        "isArchived": False,
+        "isDeleted": False,
+    }
+    assert result.pagination.total_items == 0
+    assert (
+        mock_library.return_value.find_many.call_args.kwargs["where"] == expected_where
+    )
+    mock_library.return_value.count.assert_called_once_with(where=expected_where)

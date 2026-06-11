@@ -12,13 +12,9 @@ from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional, cast
 
 import anthropic
-import ollama
 import openai
 from anthropic.types import ToolParam
-from groq import AsyncGroq
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -38,17 +34,15 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
-from backend.util.clients import OPENROUTER_BASE_URL
+
+# ``ToolCall`` and ``ToolContentBlock`` live in the shared
+# ``util.llm.conversions`` module so every LLM caller (block layer,
+# dream pass, copilot chat) references one canonical type. Re-export
+# them here so existing ``from backend.blocks.llm import
+# ToolContentBlock`` imports keep working.
+from backend.util.llm.conversions import ToolCall, ToolContentBlock
 from backend.util.logging import TruncatedLogger
-from backend.util.openai_responses import (
-    convert_tools_to_responses_format,
-    extract_responses_content,
-    extract_responses_reasoning,
-    extract_responses_tool_calls,
-    extract_responses_usage,
-)
 from backend.util.prompt import compress_context, estimate_token_count
-from backend.util.request import validate_url_host
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
 
@@ -739,17 +733,6 @@ for model in LlmModel:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
-class ToolCall(BaseModel):
-    name: str
-    arguments: str
-
-
-class ToolContentBlock(BaseModel):
-    id: str
-    type: str
-    function: ToolCall
-
-
 class LLMResponse(BaseModel):
     raw_response: Any
     prompt: List[Any]
@@ -972,379 +955,53 @@ async def _llm_call(
     available_tokens = max(context_window - estimated_input_tokens, 0)
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
-    if provider == "openai":
-        oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
+    # ---- Delegate per-provider HTTP to the shared helper ----------------
+    # All per-provider SDK quirks (Anthropic system-prompt wrapping,
+    # OpenRouter cost extras, AI/ML branded headers, Ollama generate
+    # API, etc.) live in ``backend/util/llm/providers.py`` so the dream
+    # pass, copilot chat, and any future server-side caller route
+    # through one implementation. This wrapper keeps the block-layer
+    # framing on top: ``LlmModel``-aware token budget, retry-on-bad-
+    # shape (caller), ``NodeExecutionStats`` (caller).
+    from backend.util.llm.providers import ProviderResponse, call_provider
 
-        tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
-
-        text_config = openai.omit
-        if force_json_output:
-            text_config = {"format": {"type": "json_object"}}  # type: ignore
-
-        response = await oai_client.responses.create(
-            model=llm_model.value,
-            input=prompt,  # type: ignore[arg-type]
-            tools=tools_param,  # type: ignore[arg-type]
-            max_output_tokens=max_tokens,
-            parallel_tool_calls=get_parallel_tool_calls_param(
-                llm_model, parallel_tool_calls
-            ),
-            text=text_config,  # type: ignore[arg-type]
-            store=False,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-
-        raw_tool_calls = extract_responses_tool_calls(response)
-        tool_calls = (
-            [
-                ToolContentBlock(
-                    id=tc["id"],
-                    type=tc["type"],
-                    function=ToolCall(
-                        name=tc["function"]["name"],
-                        arguments=tc["function"]["arguments"],
-                    ),
-                )
-                for tc in raw_tool_calls
-            ]
-            if raw_tool_calls
-            else None
-        )
-        reasoning = extract_responses_reasoning(response)
-        content = extract_responses_content(response)
-        prompt_tokens, completion_tokens = extract_responses_usage(response)
-
-        return LLMResponse(
-            raw_response=response,
-            prompt=prompt,
-            response=content,
-            tool_calls=tool_calls,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            reasoning=reasoning,
-        )
-    elif provider == "anthropic":
-        an_tools = convert_openai_tool_fmt_to_anthropic(tools)
-        # Cache tool definitions alongside the system prompt.
-        # Placing cache_control on the last tool caches all tool schemas as a
-        # single prefix — reads cost 10% of normal input tokens.
-        if isinstance(an_tools, list) and an_tools:
-            an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
-
-        system_messages = [p["content"] for p in prompt if p["role"] == "system"]
-        sysprompt = " ".join(system_messages)
-
-        messages = []
-        last_role = None
-        for p in prompt:
-            if p["role"] in ["user", "assistant"]:
-                if (
-                    p["role"] == last_role
-                    and isinstance(messages[-1]["content"], str)
-                    and isinstance(p["content"], str)
-                ):
-                    # If the role is the same as the last one, combine the content
-                    messages[-1]["content"] += p["content"]
-                else:
-                    messages.append({"role": p["role"], "content": p["content"]})
-                    last_role = p["role"]
-
-        client = anthropic.AsyncAnthropic(
-            api_key=credentials.api_key.get_secret_value()
-        )
-        # create_kwargs is built as a plain dict so we can conditionally add
-        # the `system` field only when the prompt is non-empty.  Anthropic's
-        # API rejects empty text blocks (returns HTTP 400), so omitting the
-        # field is the correct behaviour for whitespace-only prompts.
-        create_kwargs: dict[str, Any] = dict(
-            model=llm_model.value,
-            messages=messages,
-            max_tokens=max_tokens,
-            # `an_tools` may be anthropic.NOT_GIVEN when no tools were
-            # configured. The SDK treats NOT_GIVEN as a sentinel meaning "omit
-            # this field from the serialized request", so passing it here is
-            # equivalent to not including the key at all — no `tools` field is
-            # sent to the API in that case.
-            tools=an_tools,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-        if sysprompt.strip():
-            # Wrap the system prompt in a single cacheable text block.
-            # The guard intentionally omits `system` for whitespace-only
-            # prompts — Anthropic rejects empty text blocks with HTTP 400.
-            create_kwargs["system"] = [
-                {
-                    "type": "text",
-                    "text": sysprompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-        resp = await client.messages.create(**create_kwargs)
-
-        if not resp.content:
-            raise ValueError("No content returned from Anthropic.")
-
-        tool_calls = None
-        for content_block in resp.content:
-            # Antropic is different to openai, need to iterate through
-            # the content blocks to find the tool calls
-            if content_block.type == "tool_use":
-                if tool_calls is None:
-                    tool_calls = []
-                tool_calls.append(
-                    ToolContentBlock(
-                        id=content_block.id,
-                        type=content_block.type,
-                        function=ToolCall(
-                            name=content_block.name,
-                            arguments=json.dumps(content_block.input),
-                        ),
-                    )
-                )
-
-        if not tool_calls and resp.stop_reason == "tool_use":
-            logger.warning(
-                f"Tool use stop reason but no tool calls found in content. {resp}"
-            )
-
-        reasoning = None
-        for content_block in resp.content:
-            if hasattr(content_block, "type") and content_block.type == "thinking":
-                reasoning = content_block.thinking
-                break
-
-        return LLMResponse(
-            raw_response=resp,
-            prompt=prompt,
-            response=(
-                resp.content[0].name
-                if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
-                else getattr(resp.content[0], "text", "")
-            ),
-            tool_calls=tool_calls,
-            prompt_tokens=resp.usage.input_tokens,
-            completion_tokens=resp.usage.output_tokens,
-            cache_read_tokens=getattr(resp.usage, "cache_read_input_tokens", None) or 0,
-            cache_creation_tokens=getattr(
-                resp.usage, "cache_creation_input_tokens", None
-            )
-            or 0,
-            reasoning=reasoning,
-        )
-    elif provider == "groq":
-        if tools:
-            raise ValueError("Groq does not support tools.")
-
-        client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
-        response_format = {"type": "json_object"} if force_json_output else None
-        response = await client.chat.completions.create(
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            response_format=response_format,  # type: ignore
-            max_tokens=max_tokens,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-        if not response.choices:
-            raise ValueError("Groq returned empty choices in response")
-        return LLMResponse(
-            raw_response=response.choices[0].message,
-            prompt=prompt,
-            response=response.choices[0].message.content or "",
-            tool_calls=None,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            reasoning=None,
-        )
-    elif provider == "ollama":
-        if tools:
-            raise ValueError("Ollama does not support tools.")
-
-        # Validate user-provided Ollama host to prevent SSRF etc.
-        await validate_url_host(
-            ollama_host, trusted_hostnames=[settings.config.ollama_host]
-        )
-
-        client = ollama.AsyncClient(
-            host=ollama_host, timeout=LLM_REQUEST_TIMEOUT_SECONDS
-        )
-        sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-        usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-        response = await client.generate(
-            model=llm_model.value,
-            prompt=f"{sys_messages}\n\n{usr_messages}",
-            stream=False,
-            options={"num_ctx": max_tokens},
-        )
-        return LLMResponse(
-            raw_response=response.get("response") or "",
-            prompt=prompt,
-            response=response.get("response") or "",
-            tool_calls=None,
-            prompt_tokens=response.get("prompt_eval_count") or 0,
-            completion_tokens=response.get("eval_count") or 0,
-            reasoning=None,
-        )
-    elif provider == "open_router":
-        client = openai.AsyncOpenAI(
-            base_url=OPENROUTER_BASE_URL,
-            api_key=credentials.api_key.get_secret_value(),
-        )
-
-        parallel_tool_calls_param = get_parallel_tool_calls_param(
+    provider_response = await call_provider(
+        provider=cast(Any, provider),
+        model=llm_model.value,
+        api_key=credentials.api_key.get_secret_value(),
+        messages=prompt,
+        max_tokens=max_tokens,
+        tools=tools,
+        force_json_output=force_json_output,
+        parallel_tool_calls=get_parallel_tool_calls_param(
             llm_model, parallel_tool_calls
+        ),
+        ollama_host=ollama_host,
+        timeout_seconds=LLM_REQUEST_TIMEOUT_SECONDS,
+    )
+    # Block layer never opts into batch mode (that lives on the
+    # orchestrator side for the dream pass and any future async
+    # callers). The default ``execution_mode="sync"`` is hardcoded
+    # above, so the helper always returns a ``ProviderResponse`` here.
+    # The isinstance guard narrows the union for the type checker.
+    if not isinstance(provider_response, ProviderResponse):
+        raise RuntimeError(
+            "block-layer _llm_call only supports execution_mode='sync' but "
+            f"call_provider returned {type(provider_response).__name__}"
         )
 
-        response = await client.chat.completions.create(
-            extra_headers={
-                "HTTP-Referer": "https://agpt.co",
-                "X-Title": "AutoGPT",
-            },
-            # Ask OpenRouter to include the per-request USD cost on the usage
-            # object. Same shape used by simulator.py — keep aligned.
-            extra_body={"usage": {"include": True}},
-            model=llm_model.value,
-            messages=cast(list[ChatCompletionMessageParam], prompt),
-            max_tokens=max_tokens,
-            tools=(
-                cast(list[ChatCompletionToolParam], tools) if tools else openai.omit
-            ),
-            parallel_tool_calls=parallel_tool_calls_param,
-            response_format=(
-                ResponseFormatJSONObject(type="json_object")
-                if force_json_output
-                else openai.omit
-            ),
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-
-        if not response.choices:
-            raise ValueError(f"OpenRouter returned empty choices: {response}")
-
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
-
-        return LLMResponse(
-            raw_response=response.choices[0].message,
-            prompt=prompt,
-            response=response.choices[0].message.content or "",
-            tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            reasoning=reasoning,
-            provider_cost=extract_openrouter_cost(response),
-        )
-    elif provider == "llama_api":
-        tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.AsyncOpenAI(
-            base_url="https://api.llama.com/compat/v1/",
-            api_key=credentials.api_key.get_secret_value(),
-        )
-
-        parallel_tool_calls_param = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
-        )
-
-        response = await client.chat.completions.create(
-            extra_headers={
-                "HTTP-Referer": "https://agpt.co",
-                "X-Title": "AutoGPT",
-            },
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls_param,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-
-        if not response.choices:
-            raise ValueError(f"Llama API returned empty choices: {response}")
-
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
-
-        return LLMResponse(
-            raw_response=response.choices[0].message,
-            prompt=prompt,
-            response=response.choices[0].message.content or "",
-            tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            reasoning=reasoning,
-        )
-    elif provider == "aiml_api":
-        client = openai.AsyncOpenAI(
-            base_url="https://api.aimlapi.com/v2",
-            api_key=credentials.api_key.get_secret_value(),
-            default_headers={
-                "X-Project": "AutoGPT",
-                "X-Title": "AutoGPT",
-                "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
-            },
-        )
-
-        completion = await client.chat.completions.create(
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            max_tokens=max_tokens,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-        if not completion.choices:
-            raise ValueError("AI/ML API returned empty choices in response")
-
-        return LLMResponse(
-            raw_response=completion.choices[0].message,
-            prompt=prompt,
-            response=completion.choices[0].message.content or "",
-            tool_calls=None,
-            prompt_tokens=completion.usage.prompt_tokens if completion.usage else 0,
-            completion_tokens=(
-                completion.usage.completion_tokens if completion.usage else 0
-            ),
-            reasoning=None,
-        )
-    elif provider == "v0":
-        tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.AsyncOpenAI(
-            base_url="https://api.v0.dev/v1",
-            api_key=credentials.api_key.get_secret_value(),
-        )
-
-        response_format = None
-        if force_json_output:
-            response_format = {"type": "json_object"}
-
-        parallel_tool_calls_param = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
-        )
-
-        response = await client.chat.completions.create(
-            model=llm_model.value,
-            messages=prompt,  # type: ignore
-            response_format=response_format,  # type: ignore
-            max_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls_param,
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-
-        if not response.choices:
-            raise ValueError(f"v0 API returned empty choices: {response}")
-
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
-
-        return LLMResponse(
-            raw_response=response.choices[0].message,
-            prompt=prompt,
-            response=response.choices[0].message.content or "",
-            tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            reasoning=reasoning,
-        )
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
+    return LLMResponse(
+        raw_response=provider_response.raw_response,
+        prompt=prompt,
+        response=provider_response.content,
+        tool_calls=provider_response.tool_calls,
+        prompt_tokens=provider_response.prompt_tokens,
+        completion_tokens=provider_response.completion_tokens,
+        cache_read_tokens=provider_response.cache_read_tokens,
+        cache_creation_tokens=provider_response.cache_creation_tokens,
+        reasoning=provider_response.reasoning,
+        provider_cost=provider_response.cost_usd,
+    )
 
 
 class AIBlockBase(Block, ABC):

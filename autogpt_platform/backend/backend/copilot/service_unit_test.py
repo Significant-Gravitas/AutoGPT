@@ -516,6 +516,18 @@ class TestGenerateSessionTitle:
     """``_generate_session_title`` returns ``(title, response)`` — the
     caller owns both the persist and the cost-record decisions."""
 
+    @pytest.fixture(autouse=True)
+    def _stub_aux_client(self):
+        """Every title-gen test mocks ``call_provider_openai_compat_sync``,
+        but ``_generate_session_title`` still calls ``_get_aux_client()``
+        before reaching the helper. Stub that out so tests don't try to
+        instantiate a real LangfuseAsyncOpenAI from test-env config."""
+        with patch(
+            "backend.copilot.service._get_aux_client",
+            return_value=MagicMock(name="aux_client_stub"),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_valid_response_returns_cleaned_title_and_response(self):
         # Code strips whitespace, then strips ``"'`` — whitespace inside
@@ -523,11 +535,10 @@ class TestGenerateSessionTitle:
         # better than ``MyAgent``).  Test keeps the outer quotes + inner
         # whitespace distinct so the ordering is pinned.
         resp = _build_completion(content='"Clean Me"  ')
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title(
                 "first message", user_id="u", session_id="s"
@@ -540,11 +551,10 @@ class TestGenerateSessionTitle:
         """Titles >50 chars get truncated to 47 + '...'."""
         long_title = "A" * 80
         resp = _build_completion(content=long_title)
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, _ = await _generate_session_title("x", user_id=None)
         assert title is not None
@@ -557,11 +567,10 @@ class TestGenerateSessionTitle:
         typing) must not raise IndexError. The response is preserved so
         the caller can still record the paid-for cost."""
         resp = _build_completion(choices=[])
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("write a sales email")
         assert title == "write a sales email"
@@ -573,11 +582,10 @@ class TestGenerateSessionTitle:
         but the response still lands on the caller."""
         fake_choice = SimpleNamespace(message=None)
         fake_response = SimpleNamespace(choices=[fake_choice])
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=fake_response)
+        helper = AsyncMock(return_value=fake_response)
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("summarize this document")
         assert title == "summarize this document"
@@ -585,16 +593,13 @@ class TestGenerateSessionTitle:
 
     @pytest.mark.asyncio
     async def test_llm_call_raises_returns_fallback_title_and_no_response(self):
-        """Network / API errors on the create call are swallowed and
-        fallback to the first message without crashing the background
-        task."""
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(
-            side_effect=RuntimeError("connection reset")
-        )
+        """Network / API errors on the dispatch call are swallowed and
+        the caller gets back the fallback title + a ``None`` response
+        so the background task doesn't crash."""
+        helper = AsyncMock(side_effect=RuntimeError("connection reset"))
         with patch(
-            "backend.copilot.service._get_aux_client",
-            return_value=client,
+            "backend.copilot.service.call_provider_openai_compat_sync",
+            new=helper,
         ):
             title, response = await _generate_session_title("build me an invoice tool")
         assert title == "build me an invoice tool"
@@ -629,12 +634,11 @@ class TestGenerateSessionTitle:
         real billed cost into the final usage chunk — only when the aux
         transport is OR (Anthropic-direct rejects unknown extras)."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -647,8 +651,8 @@ class TestGenerateSessionTitle:
             await _generate_session_title(
                 "hello world", user_id="user-abc", session_id="sess-abc"
             )
-        client.chat.completions.create.assert_awaited_once()
-        extra_body = client.chat.completions.create.await_args.kwargs["extra_body"]
+        helper.assert_awaited_once()
+        extra_body = helper.await_args.kwargs["extra_body"]
         assert extra_body["usage"] == {"include": True}
         assert extra_body["user"] == "user-abc"
         assert extra_body["session_id"] == "sess-abc"
@@ -660,12 +664,11 @@ class TestGenerateSessionTitle:
         ``anthropic/`` prefix and dot-separated version stripped before
         being sent — Anthropic's OpenAI-compat endpoint rejects both."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -677,8 +680,8 @@ class TestGenerateSessionTitle:
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
-        client.chat.completions.create.assert_awaited_once()
-        kwargs = client.chat.completions.create.await_args.kwargs
+        helper.assert_awaited_once()
+        kwargs = helper.await_args.kwargs
         assert kwargs["model"] == "claude-haiku-4-5"
 
     @pytest.mark.asyncio
@@ -686,12 +689,11 @@ class TestGenerateSessionTitle:
         """OpenRouter routes by full ``vendor/model`` slug — the
         normalization branch must NOT fire for OR-routed aux."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -703,22 +705,23 @@ class TestGenerateSessionTitle:
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
-        client.chat.completions.create.assert_awaited_once()
-        kwargs = client.chat.completions.create.await_args.kwargs
+        helper.assert_awaited_once()
+        kwargs = helper.await_args.kwargs
         assert kwargs["model"] == "anthropic/claude-haiku-4.5"
 
     @pytest.mark.asyncio
     async def test_create_omits_extra_body_when_aux_not_openrouter(self):
         """When aux client is pointed at a non-OR endpoint (e.g.
         Anthropic OAI-compat), the OR-specific extras must not be sent
-        — Anthropic's compat endpoint 400s on unknown fields."""
+        — Anthropic's compat endpoint 400s on unknown fields. The
+        helper normalizes empty dict to None so the kwarg drops off
+        the final SDK call entirely."""
         resp = _build_completion(content="Title")
-        client = MagicMock()
-        client.chat.completions.create = AsyncMock(return_value=resp)
+        helper = AsyncMock(return_value=resp)
         with (
             patch(
-                "backend.copilot.service._get_aux_client",
-                return_value=client,
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
             ),
             patch(
                 "backend.copilot.service.config",
@@ -731,8 +734,6 @@ class TestGenerateSessionTitle:
             await _generate_session_title(
                 "hello world", user_id="user-abc", session_id="sess-abc"
             )
-        client.chat.completions.create.assert_awaited_once()
-        extra_body = client.chat.completions.create.await_args.kwargs["extra_body"]
-        assert "usage" not in extra_body
-        assert "user" not in extra_body
-        assert "session_id" not in extra_body
+        helper.assert_awaited_once()
+        extra_body = helper.await_args.kwargs.get("extra_body")
+        assert extra_body is None

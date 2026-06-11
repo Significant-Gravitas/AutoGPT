@@ -1157,3 +1157,94 @@ class TestRunBlockCredentialsHidden:
         }
         cleaned = _strip_credentials_from_schema(schema, {"credentials"})
         assert "required" not in cleaned
+
+
+class TestExecuteBlockUserTimezoneAccessor:
+    """The user-timezone lookup must go through the connection-aware
+    ``user_db()`` accessor (sentry ClientNotConnectedError).
+
+    ``execute_block`` runs in the copilot process, where the local Prisma
+    engine is NOT connected (``db.is_connected()`` is False) and DB reads are
+    served by the DatabaseManager RPC client. PR #13247 added a user lookup via
+    the directly-imported ``backend.data.user`` module, which calls Prisma
+    directly and blew up with ``ClientNotConnectedError``. Routing through the
+    ``user_db()`` accessor picks the RPC client when disconnected.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timezone_lookup_uses_accessor_not_direct_prisma(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="tz-block-id",
+            name="Timezone Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        # Accessor returns the RPC client (disconnected-process behaviour);
+        # the direct ``user_db.get_user_by_id`` would raise ClientNotConnectedError.
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(
+            return_value=MagicMock(timezone="America/New_York")
+        )
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-tz")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.user_db",
+                return_value=rpc_client,
+            ) as mock_user_db,
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="tz-block-id",
+                input_data={},
+                user_id="u-tz",
+                session_id="s-tz",
+                node_exec_id="n-tz",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+        # Went through the accessor, not the directly-imported module.
+        mock_user_db.assert_called_once()
+        rpc_client.get_user_by_id.assert_awaited_once_with("u-tz")
+        # The looked-up timezone was plumbed into the block's ExecutionContext.
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
+
+
+class _StubCreditDB:
+    async def get_credits(self, _user_id: str) -> int:
+        return 10_000
+
+    async def spend_credits(self, **kwargs):
+        return None

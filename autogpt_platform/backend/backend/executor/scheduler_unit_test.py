@@ -18,12 +18,14 @@ from backend.executor.scheduler import (
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
+    Scheduler,
     _build_trigger,
     _execute_copilot_turn,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _self_delete_copilot_turn_schedule,
+    reconcile_stripe_tiers,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -415,3 +417,60 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
         run_at=datetime.now(tz=timezone.utc),
     )
     assert args.cap_retry_count == 0
+
+
+# ---------------------------------------------------------------------------
+# System-job registration — the Stripe tier reconciliation sweep
+# ---------------------------------------------------------------------------
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+    """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
+    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
+        interval_hours,
+    )
+    mock_scheduler = MagicMock()
+    with (
+        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(f"{_SCHEDULER_PATH}.load_dotenv"),
+        patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}._extract_schema_from_url",
+            return_value=("public", "sqlite://"),
+        ),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        # super().run_service() blocks forever keeping the service alive; no-op it.
+        patch("backend.util.service.AppService.run_service", return_value=None),
+    ):
+        Scheduler(register_system_tasks=True).run_service()
+    return mock_scheduler.add_job.call_args_list
+
+
+def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
+    monkeypatch,
+):
+    """The sweep must be registered as an interval job keyed off the configured
+    interval setting and capped to a single concurrent instance."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6)
+
+    matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "reconcile_stripe_tiers"
+    assert call.kwargs["trigger"] == "interval"
+    assert call.kwargs["max_instances"] == 1
+    # 6 hours -> 6 * 3600 seconds, driven by the config setting.
+    assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
+    """Changing the configured interval changes the registered ``seconds``."""
+    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
+    assert match.kwargs["seconds"] == 12 * 3600

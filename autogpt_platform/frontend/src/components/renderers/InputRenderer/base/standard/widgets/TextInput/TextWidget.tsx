@@ -45,12 +45,20 @@ export default function TextWidget(props: WidgetProps) {
     [InputType.NUMBER]: {
       htmlType: "number",
       placeholder: "Enter number value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
+      },
     },
     [InputType.INTEGER]: {
-      htmlType: "account",
+      htmlType: "number",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.trunc(n) : undefined;
+      },
     },
   };
 
@@ -61,6 +69,11 @@ export default function TextWidget(props: WidgetProps) {
   };
 
   const config = (mapped && inputConfig[mapped]) || defaultConfig;
+
+  const displayValue =
+    typeof props.value === "number" && !Number.isFinite(props.value)
+      ? ""
+      : (props.value ?? "");
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -97,7 +110,7 @@ export default function TextWidget(props: WidgetProps) {
         label={""}
         size="small"
         wrapperClassName="mb-0"
-        value={props.value ?? ""}
+        value={displayValue}
         className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
         onChange={handleChange}
         placeholder={"Write your note here..."}
@@ -117,7 +130,7 @@ export default function TextWidget(props: WidgetProps) {
           label={""}
           size={inputSize as any}
           wrapperClassName="mb-0 flex-1"
-          value={props.value ?? ""}
+          value={displayValue}
           onChange={handleChange}
           placeholder={placeholder || config.placeholder}
           required={props.required}
@@ -148,7 +161,7 @@ export default function TextWidget(props: WidgetProps) {
         onSave={handleModalSave}
         title={schema.title || "Edit value"}
         description={schema.description || ""}
-        defaultValue={props.value ?? ""}
+        defaultValue={displayValue}
         placeholder={placeholder || config.placeholder}
       />
     </>
