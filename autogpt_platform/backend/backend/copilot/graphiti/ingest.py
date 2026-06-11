@@ -268,6 +268,41 @@ async def enqueue_episode(
         return False
 
 
+async def wait_for_ingestion(user_id: str, timeout_seconds: float) -> bool:
+    """Block until the per-user ingestion queue is fully drained.
+
+    ``enqueue_episode`` returning ``True`` only proves the episode reached
+    the in-process queue; the real graph write (LLM extraction + embedding
+    inside ``_ingestion_worker``) happens later. Callers that must not
+    report success while writes are still pending (dream-pass apply) await
+    this after enqueueing.
+
+    Relies on ``queue.join()`` — the worker calls ``task_done()`` for every
+    item, success or failure, so join resolves once everything queued at
+    call time has been attempted.
+
+    Returns ``True`` when the queue drained (or no queue exists for the
+    user — vacuously drained), ``False`` on timeout. On timeout nothing is
+    cancelled: pending items keep processing fire-and-forget exactly as
+    before this API existed.
+    """
+    queue = _get_loop_state().user_queues.get(user_id)
+    if queue is None:
+        return True
+    try:
+        await asyncio.wait_for(queue.join(), timeout=timeout_seconds)
+        return True
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Graphiti ingestion queue for user %s did not drain within %.0fs "
+            "(~%d item(s) still queued) — continuing fire-and-forget",
+            user_id[:12],
+            timeout_seconds,
+            queue.qsize(),
+        )
+        return False
+
+
 async def _ensure_worker(user_id: str) -> asyncio.Queue:
     """Create a queue and worker for *user_id* if one doesn't exist.
 
