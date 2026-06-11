@@ -200,9 +200,13 @@ const batches = []
 for (let i = 0; i < prs.length; i += BATCH_SIZE) batches.push(prs.slice(i, i + BATCH_SIZE))
 const batchResults = await parallel(
   batches.map((batch, i) => () =>
-    // Rubric-bounded classification; every actionable verdict is re-verified
-    // downstream, so a mid-tier model is enough here.
-    agent(classifyPrompt(batch), { label: `classify#${i + 1}`, phase: 'Classify', schema: CLASSIFY_SCHEMA, model: 'sonnet' }),
+    // Classification INHERITS the session model on purpose. A/B tested
+    // 2026-06-10 on the live 163-PR queue: mid-tier classify found 2 auto-closes
+    // where the strong model proved 12 (10 supersessions needed real code
+    // archaeology), hedged 75 PRs into needs-deep-review vs 30, and
+    // misclassified a verified-critical CVE fix as spam — only the inherit-model
+    // verifier stopped that close. Don't downshift this stage.
+    agent(classifyPrompt(batch), { label: `classify#${i + 1}`, phase: 'Classify', schema: CLASSIFY_SCHEMA }),
   ),
 )
 const classifications = batchResults.filter(Boolean).flatMap((r) => r.classifications || [])
