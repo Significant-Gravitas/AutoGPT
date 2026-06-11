@@ -312,6 +312,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "service daemon to run on",
     )
 
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
