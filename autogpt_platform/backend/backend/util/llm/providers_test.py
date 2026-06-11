@@ -1957,6 +1957,40 @@ class TestAnthropicTemperatureDeprecation:
         assert "temperature" not in second.kwargs
 
     @pytest.mark.asyncio
+    async def test_sync_retry_detection_is_case_insensitive(self):
+        """The deprecation message wording/casing isn't contractual — a
+        future model returning 'Temperature ... Deprecated' must still
+        trigger the self-healing retry, not fall through and fail."""
+        import httpx
+
+        err = anthropic.BadRequestError(
+            message="Temperature is Deprecated for this model.",
+            response=httpx.Response(
+                400, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body={"error": {"message": "Temperature is Deprecated for this model."}},
+        )
+        async_create = AsyncMock(side_effect=[err, self._fake_response()])
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=async_create))
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            result = await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-9-9",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.9,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert async_create.await_count == 2
+        first, second = async_create.await_args_list
+        assert first.kwargs["temperature"] == 0.9
+        assert "temperature" not in second.kwargs
+
+    @pytest.mark.asyncio
     async def test_batch_omits_temperature_for_deprecating_model(self):
         """Batch errors come back hours later in the result rows — the
         param must never be submitted for known-rejecting models."""

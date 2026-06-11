@@ -120,7 +120,8 @@ def _anthropic_accepts_temperature(model: str) -> bool:
 
 
 def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
-    return "temperature" in str(exc) and "deprecated" in str(exc)
+    error_text = str(exc).lower()
+    return "temperature" in error_text and "deprecated" in error_text
 
 
 # ---------------------------------------------------------------------------
