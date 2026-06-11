@@ -303,11 +303,11 @@ async def _read_last_completed_marker(user_id: str) -> datetime | None:
         return None
     if raw is None:
         return None
-    if isinstance(raw, bytes):
-        raw = raw.decode("utf-8")
     try:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
         marker = datetime.fromisoformat(str(raw))
-    except ValueError:
+    except (UnicodeDecodeError, ValueError):
         logger.warning(
             "Unparseable dream last-completed marker for user %s — running the pass",
             user_id[:12],
@@ -316,8 +316,14 @@ async def _read_last_completed_marker(user_id: str) -> datetime | None:
     return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
 
 
-async def _stamp_last_completed_marker(user_id: str) -> None:
-    """Record "a dream pass applied for this user just now".
+async def _stamp_last_completed_marker(user_id: str, as_of: datetime) -> None:
+    """Record the upper bound of the episode window the pass consolidated.
+
+    ``as_of`` must be the gather snapshot time (``DreamInput.window_end``),
+    NOT apply-completion time: the three LLM phases + apply take minutes,
+    and an episode enqueued in that window was absent from the bundle —
+    stamping "now" would mark it as already consolidated and skip it until
+    the next genuinely-new episode (or the marker TTL).
 
     Best-effort: a failed stamp only costs one extra full pass on the
     next nightly tick.
@@ -328,7 +334,7 @@ async def _stamp_last_completed_marker(user_id: str) -> None:
         redis = await get_redis_async()
         await redis.set(
             _last_completed_key(user_id),
-            datetime.now(timezone.utc).isoformat(),
+            as_of.isoformat(),
             ex=LAST_COMPLETED_TTL_SECONDS,
         )
     except Exception:
@@ -437,7 +443,17 @@ async def _execute_dream_pass_async(
             # (and, before the empty-pass guard in apply.py, manufacture an
             # empty dream chat). Marker read is best-effort: missing,
             # unparseable, or Redis-down all mean "run the pass".
-            last_completed = await _read_last_completed_marker(user_id)
+            #
+            # Manual admin triggers (the only callers that set status_id)
+            # bypass the marker: "dream now" is the memory-debugging tool
+            # for re-running a pass after prompt/flag/model changes, and a
+            # silent no_new_activity skip would neuter it for up to the
+            # marker's 35-day TTL.
+            last_completed = (
+                await _read_last_completed_marker(user_id)
+                if status_id is None
+                else None
+            )
             if last_completed is not None and not _has_new_episodes_since(
                 input_bundle.episodes, last_completed
             ):
@@ -578,9 +594,11 @@ async def _execute_dream_pass_async(
             )
             # Apply succeeded (even as a no-op) — stamp the marker so the
             # next nightly pass can skip when nothing new has landed.
-            # Sync path only: batch apply runs hours later in
-            # batch_callbacks, which doesn't stamp yet.
-            await _stamp_last_completed_marker(user_id)
+            # Stamped with the gather-window end so episodes that arrived
+            # mid-pass still count as new next time. Sync path only: batch
+            # apply runs hours later in batch_callbacks, which doesn't
+            # stamp yet.
+            await _stamp_last_completed_marker(user_id, input_bundle.window_end)
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")

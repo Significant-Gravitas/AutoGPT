@@ -878,6 +878,26 @@ async def test_redis_error_on_marker_read_fails_open_and_runs(
 
 
 @pytest.mark.asyncio
+async def test_corrupt_marker_bytes_fail_open_and_run(mocker, _stub_marker_redis):
+    """A marker holding invalid UTF-8 bytes must fail open like any other
+    unparseable value — never escalate the cost optimization into a pass
+    failure."""
+    _stub_marker_redis.get.return_value = b"\xff\xfe corrupt"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_episode_newer_than_marker_runs_pass(mocker, _stub_marker_redis):
     """One episode landed after the last completed pass ⇒ there's new
     material to consolidate, so the pass runs."""
@@ -938,10 +958,36 @@ async def test_successful_pass_stamps_last_completed_marker(mocker, _stub_marker
     _stub_marker_redis.set.assert_awaited_once()
     set_args = _stub_marker_redis.set.await_args
     assert set_args.args[0] == "dream:last_completed:u"
-    # Value is a parseable tz-aware ISO timestamp
+    # Stamped with the gather-window end (NOT apply-completion time) so
+    # episodes that arrive mid-pass still count as new next time.
     stamped = datetime.fromisoformat(set_args.args[1])
-    assert stamped.tzinfo is not None
+    assert stamped == datetime(2026, 6, 9, tzinfo=timezone.utc)
     assert set_args.kwargs == {"ex": orchestrator_mod.LAST_COMPLETED_TTL_SECONDS}
+
+
+@pytest.mark.asyncio
+async def test_admin_trigger_bypasses_no_new_activity_marker(
+    mocker, _stub_marker_redis
+):
+    """status_id is set only by the admin 'dream now' trigger — the
+    memory-debugging path must run the full pipeline even when the marker
+    is newer than every episode, otherwise a re-run after prompt/flag
+    changes silently no-ops for up to the marker TTL."""
+    _stub_marker_redis.get.return_value = "2026-06-08T00:00:00+00:00"
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_input_with_episode_times("2026-06-01T00:00:00Z")),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", status_id="job-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    apply_mock.assert_awaited_once()
+    # The bypass must not even read the marker — the skip is caller-gated.
+    _stub_marker_redis.get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
