@@ -41,7 +41,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
-from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_steps import RENAMED_STEPS, OnboardingStep
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -983,9 +983,10 @@ class UserExecutionSummaryStats(BaseModel):
 class UserOnboarding(BaseModel):
     userId: str
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
-    # the frontend (the DB still stores plain strings). Existing rows may hold
-    # values that have since been retired from the enum; ``_drop_unknown_steps``
-    # filters those out before validation so reads stay resilient. Boundary
+    # the frontend (the DB still stores plain strings). ``_normalize_steps``
+    # remaps renamed steps (e.g. the retired ``VISIT_COPILOT`` ->
+    # ``ONBOARDING_COMPLETE``) and drops values no longer in the enum, so reads
+    # stay correct even if the rename migration hasn't been applied yet. Boundary
     # validation on writes lives on the completion endpoint via the
     # ``FrontendOnboardingStep`` Literal.
     completedSteps: list[OnboardingStep]
@@ -1004,6 +1005,11 @@ class UserOnboarding(BaseModel):
 
     @field_validator("completedSteps", "notified", "rewardedFor", mode="before")
     @classmethod
-    def _drop_unknown_steps(cls, value: list[str]) -> list[str]:
+    def _normalize_steps(cls, value: list[str]) -> list[str]:
         known = {step.value for step in OnboardingStep}
-        return [step for step in value if step in known]
+        normalized: list[str] = []
+        for step in value:
+            mapped = RENAMED_STEPS.get(step, step)
+            if mapped in known and mapped not in normalized:
+                normalized.append(mapped)
+        return normalized

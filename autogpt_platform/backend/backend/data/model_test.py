@@ -1,7 +1,62 @@
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials, NodeExecutionStats
+from backend.data.model import HostScopedCredentials, NodeExecutionStats, UserOnboarding
+from backend.data.onboarding_steps import OnboardingStep
+
+
+def _make_onboarding(**overrides) -> UserOnboarding:
+    data = dict(
+        userId="user-1",
+        completedSteps=[],
+        walletShown=False,
+        notified=[],
+        rewardedFor=[],
+        usageReason=None,
+        integrations=[],
+        otherIntegrations=None,
+        selectedStoreListingVersionId=None,
+        agentInput=None,
+        onboardingAgentExecutionId=None,
+        agentRuns=0,
+        lastRunAt=None,
+        consecutiveRunDays=0,
+    )
+    data.update(overrides)
+    return UserOnboarding.model_validate(data)
+
+
+class TestUserOnboardingStepNormalization:
+    def test_renamed_step_is_remapped_not_dropped(self):
+        # A row written before the rename migration still carries VISIT_COPILOT.
+        # It must surface as ONBOARDING_COMPLETE so an already-onboarded user is
+        # not re-routed through the wizard if the migration is delayed.
+        onboarding = _make_onboarding(completedSteps=["WELCOME", "VISIT_COPILOT"])
+        assert onboarding.completedSteps == [
+            OnboardingStep.WELCOME,
+            OnboardingStep.ONBOARDING_COMPLETE,
+        ]
+
+    def test_renamed_and_new_value_dedupe(self):
+        # A partially-migrated row may hold both the old and new value.
+        onboarding = _make_onboarding(
+            completedSteps=["VISIT_COPILOT", "ONBOARDING_COMPLETE"]
+        )
+        assert onboarding.completedSteps == [OnboardingStep.ONBOARDING_COMPLETE]
+
+    def test_unknown_steps_are_dropped(self):
+        onboarding = _make_onboarding(rewardedFor=["BOGUS", "RUN_3_DAYS"])
+        assert onboarding.rewardedFor == [OnboardingStep.RUN_3_DAYS]
+
+    def test_remap_applies_across_all_step_columns(self):
+        onboarding = _make_onboarding(
+            completedSteps=["VISIT_COPILOT"],
+            notified=["VISIT_COPILOT"],
+            rewardedFor=["VISIT_COPILOT"],
+        )
+        assert onboarding.completedSteps == [OnboardingStep.ONBOARDING_COMPLETE]
+        assert onboarding.notified == [OnboardingStep.ONBOARDING_COMPLETE]
+        assert onboarding.rewardedFor == [OnboardingStep.ONBOARDING_COMPLETE]
 
 
 class TestHostScopedCredentials:
