@@ -30,9 +30,54 @@ def test_routing_branches(has_anthropic_key, has_openai_key, batch_enabled, expe
             has_anthropic_key=has_anthropic_key,
             has_openai_key=has_openai_key,
             batch_processing_enabled=batch_enabled,
+            batch_executor_alive=True,
         )
         == expected
     )
+
+
+def test_batch_path_requires_live_executor_else_sync_fallback(caplog):
+    """k8s runs services as separate deployments; if no BatchExecutor
+    walker is alive, a submitted batch is never polled — dream locks
+    held 24h, paid batch results expire uncollected. Flag + key alone
+    must NOT pick a batch path."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        path = resolve_dream_execution_path(
+            has_anthropic_key=True,
+            batch_processing_enabled=True,
+            batch_executor_alive=False,
+        )
+    assert path == "sync_baseline"
+    assert "batch executor" in caplog.text.lower()
+
+
+def test_liveness_defaults_to_false_fail_closed():
+    """Callers that don't know about the walker (eval harness, probes)
+    must degrade to sync, never strand a batch."""
+    assert (
+        resolve_dream_execution_path(
+            has_anthropic_key=True,
+            batch_processing_enabled=True,
+        )
+        == "sync_baseline"
+    )
+
+
+def test_dead_executor_with_flag_off_does_not_warn(caplog):
+    """The fallback WARNING fires only when batch was actually wanted —
+    a sync-baseline user with the flag off should not spam logs."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        path = resolve_dream_execution_path(
+            has_anthropic_key=True,
+            batch_processing_enabled=False,
+            batch_executor_alive=False,
+        )
+    assert path == "sync_baseline"
+    assert caplog.text == ""
 
 
 def test_has_openai_key_defaults_to_false_for_backward_compat():
@@ -42,7 +87,9 @@ def test_has_openai_key_defaults_to_false_for_backward_compat():
     anthropic_batch or sync_baseline."""
     assert (
         resolve_dream_execution_path(
-            has_anthropic_key=True, batch_processing_enabled=True
+            has_anthropic_key=True,
+            batch_processing_enabled=True,
+            batch_executor_alive=True,
         )
         == "anthropic_batch"
     )
@@ -77,6 +124,7 @@ def test_batch_eligible_transports_unaffected(transport_name):
             has_anthropic_key=True,
             batch_processing_enabled=True,
             transport_name=transport_name,
+            batch_executor_alive=True,
         )
         == "anthropic_batch"
     )

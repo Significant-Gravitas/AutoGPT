@@ -579,3 +579,76 @@ class TestBackoffMath:
         result = _next_poll_at(60)
         after = datetime.now(timezone.utc) + timedelta(seconds=60)
         assert before + timedelta(seconds=59) <= result <= after + timedelta(seconds=1)
+
+
+class TestLivenessHeartbeat:
+    @pytest.mark.asyncio
+    async def test_walk_once_stamps_liveness_heartbeat(self, fake_redis):
+        """Every walk stamps batch_executor:alive with a TTL — the
+        routing layer uses it to refuse the batch path when no walker
+        is deployed (k8s runs services as separate deployments; dev
+        currently has none for the BatchExecutor)."""
+        from backend.executor.batch_executor import (
+            HEARTBEAT_KEY,
+            HEARTBEAT_TTL_SECONDS,
+            walk_once,
+        )
+
+        stub, _store = fake_redis
+        heartbeats: list[tuple] = []
+
+        async def fake_set(key, value, ex=None, **kwargs):
+            heartbeats.append((key, ex))
+            return True
+
+        stub.set.side_effect = fake_set
+
+        await walk_once(api_key_for=lambda provider: "key")
+
+        assert (HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS) in heartbeats
+
+    @pytest.mark.asyncio
+    async def test_is_batch_executor_alive_true_when_heartbeat_fresh(self, fake_redis):
+        from backend.executor.batch_executor import is_batch_executor_alive
+
+        stub, _store = fake_redis
+        stub.get = AsyncMock(return_value="1")
+        assert await is_batch_executor_alive() is True
+
+    @pytest.mark.asyncio
+    async def test_is_batch_executor_alive_false_when_heartbeat_expired(
+        self, fake_redis
+    ):
+        from backend.executor.batch_executor import is_batch_executor_alive
+
+        stub, _store = fake_redis
+        stub.get = AsyncMock(return_value=None)
+        assert await is_batch_executor_alive() is False
+
+    @pytest.mark.asyncio
+    async def test_is_batch_executor_alive_fails_closed_on_redis_error(
+        self, fake_redis
+    ):
+        """A Redis blip must read as 'not alive' — wrongly choosing the
+        batch path strands the dream for 24h; wrongly choosing sync just
+        costs the batch discount."""
+        from backend.executor.batch_executor import is_batch_executor_alive
+
+        stub, _store = fake_redis
+        stub.get = AsyncMock(side_effect=ConnectionError("redis down"))
+        assert await is_batch_executor_alive() is False
+
+
+def test_standalone_entry_point_runs_only_the_batch_executor():
+    """k8s deploys services individually; the infra repo needs a
+    console script that runs the BatchExecutor on its own (mirrors
+    backend/scheduler.py's shape)."""
+    import backend.batch_executor as entry
+    from backend.executor.batch_executor import BatchExecutor
+
+    assert callable(entry.main)
+    import inspect
+
+    source = inspect.getsource(entry.main)
+    assert "BatchExecutor" in source
+    assert entry.BatchExecutor is BatchExecutor
