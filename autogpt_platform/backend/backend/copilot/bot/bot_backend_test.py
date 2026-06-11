@@ -24,7 +24,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .bot_backend import BotBackend
+from .bot_backend import BotBackend, BotStreamError
 
 
 @pytest.fixture
@@ -180,14 +180,15 @@ class TestStreamChat:
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
+            pytest.raises(BotStreamError) as excinfo,
         ):
-            chunks: list[str] = []
-            async for chunk in api.stream_chat(
+            async for _ in api.stream_chat(
                 platform="discord", platform_user_id="u1", message="hi"
             ):
-                chunks.append(chunk)
+                pass
 
-        assert any("executor crashed" in c for c in chunks)
+        assert excinfo.value.error_kind == "backend_stream_error"
+        assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_notifies_setup_requirements_tool_output(self, api: BotBackend):
@@ -266,7 +267,7 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_yields_error(self, api: BotBackend):
+    async def test_subscribe_returns_none_raises(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
@@ -279,11 +280,11 @@ class TestStreamChat:
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
+            pytest.raises(BotStreamError) as excinfo,
         ):
-            chunks: list[str] = []
-            async for chunk in api.stream_chat(
+            async for _ in api.stream_chat(
                 platform="discord", platform_user_id="u1", message="hi"
             ):
-                chunks.append(chunk)
+                pass
 
-        assert any("failed to subscribe" in c.lower() for c in chunks)
+        assert excinfo.value.error_kind == "subscribe_failed"

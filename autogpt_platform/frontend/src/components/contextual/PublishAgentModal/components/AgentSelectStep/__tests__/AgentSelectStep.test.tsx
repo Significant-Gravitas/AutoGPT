@@ -50,6 +50,50 @@ function installHandler(total = 47, pageSize = 10) {
   );
 }
 
+function installSearchHandler() {
+  const observedSearchQueries: string[] = [];
+
+  server.use(
+    http.get(
+      "http://localhost:3000/api/proxy/api/store/my-unpublished-agents",
+      ({ request }) => {
+        const url = new URL(request.url);
+        const searchQuery = url.searchParams.get("search_query") ?? "";
+        observedSearchQueries.push(searchQuery);
+
+        const agents =
+          searchQuery.toLowerCase() === "invoice"
+            ? [
+                {
+                  graph_id: "graph-invoice",
+                  graph_version: 1,
+                  agent_name: "Invoice Agent",
+                  description: "Processes invoices",
+                  last_edited: "2026-05-01T00:00:00.000Z",
+                  agent_image: null,
+                  recommended_schedule_cron: null,
+                },
+              ]
+            : searchQuery
+              ? []
+              : fakeAgents(3, 1, 10);
+
+        return HttpResponse.json({
+          agents,
+          pagination: {
+            current_page: 1,
+            total_items: agents.length,
+            total_pages: agents.length > 0 ? 1 : 0,
+            page_size: 10,
+          },
+        });
+      },
+    ),
+  );
+
+  return observedSearchQueries;
+}
+
 describe("AgentSelectStep", () => {
   const onSelect = vi.fn();
   const onCancel = vi.fn();
@@ -169,6 +213,71 @@ describe("AgentSelectStep", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open builder" }));
     expect(onOpenBuilder).toHaveBeenCalled();
+  });
+
+  it("passes the debounced search query to the unpublished agents request", async () => {
+    const observedSearchQueries = installSearchHandler();
+    render(
+      <AgentSelectStep
+        onSelect={onSelect}
+        onCancel={onCancel}
+        onNext={onNext}
+        onOpenBuilder={onOpenBuilder}
+      />,
+    );
+
+    await screen.findByText("Agent 1", {}, { timeout: 3000 });
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search your agents" }),
+      { target: { value: "invoice" } },
+    );
+
+    await waitFor(
+      () => {
+        expect(observedSearchQueries).toContain("invoice");
+        expect(screen.queryByText("Invoice Agent")).not.toBeNull();
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("shows a searchable no-matches state that can clear the query", async () => {
+    installSearchHandler();
+    render(
+      <AgentSelectStep
+        onSelect={onSelect}
+        onCancel={onCancel}
+        onNext={onNext}
+        onOpenBuilder={onOpenBuilder}
+      />,
+    );
+
+    await screen.findByText("Agent 1", {}, { timeout: 3000 });
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search your agents" }),
+      { target: { value: "unknown" } },
+    );
+
+    expect(
+      await screen.findByTestId(
+        "agent-search-no-matches",
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Clear search" }).at(-1)!,
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Agent 1")).not.toBeNull();
+      },
+      { timeout: 3000 },
+    );
   });
 
   it("renders the ellipsis page range when total pages exceeds 7", async () => {

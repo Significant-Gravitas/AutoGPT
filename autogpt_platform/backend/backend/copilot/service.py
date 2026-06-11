@@ -25,6 +25,7 @@ from backend.data.understanding import (
     format_understanding_for_prompt,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
@@ -42,6 +43,11 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
+
+_TITLE_MAX_WORDS = 6
+_TITLE_MAX_CHARS = 50
+_TITLE_ELLIPSIS = "..."
+_TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 
 
 def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
@@ -76,7 +82,15 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
     global _main_client
     if _main_client is None:
         api_key, base_url = config.main_client_credentials
-        _main_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+        kwargs: dict = {"api_key": api_key, "base_url": base_url}
+        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
+        # many minutes for a single turn against AutoPilot's heavy system
+        # prompt. The OpenAI client default (600 s) is too short for that
+        # case — extend it under the local transport. Cloud transports
+        # keep the SDK default so genuine hangs still surface promptly.
+        if config.transport.name == "local":
+            kwargs["timeout"] = config.local_request_timeout_s
+        _main_client = LangfuseAsyncOpenAI(**kwargs)
     return _main_client
 
 
@@ -92,7 +106,14 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     global _aux_client
     if _aux_client is None:
         api_key, base_url = config.aux_client_credentials
-        _aux_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+        kwargs: dict = {"api_key": api_key, "base_url": base_url}
+        # Local transport routes aux through the same self-hosted backend
+        # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
+        # client timeout to match ``_get_main_client`` so title generation
+        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
+        if config.transport.name == "local":
+            kwargs["timeout"] = config.local_request_timeout_s
+        _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
 
 
@@ -706,7 +727,7 @@ async def _generate_session_title(
     message: str,
     user_id: str | None = None,
     session_id: str | None = None,
-) -> tuple[str | None, ChatCompletion | None]:
+) -> tuple[str, ChatCompletion | None]:
     """Generate a concise title for a chat session based on the first message.
 
     Returns ``(title, response)``.  The caller is responsible for
@@ -721,9 +742,13 @@ async def _generate_session_title(
         session_id: Session ID for OpenRouter tracing (optional)
 
     Returns:
-        ``(title, response)`` on success; ``(None, None)`` if the LLM
-        call raised.  ``response`` is returned even when ``title`` is
-        empty so the caller can still record the (paid-for) cost.
+        ``(title, response)``. ``title`` falls back to the user's first
+        message when the LLM call raises or returns an empty title.
+        ``response`` is returned (non-None) ONLY when the create call
+        succeeded — empty-content path still carries it so the caller
+        can record the (paid-for) cost. The exception path returns
+        ``response=None`` and the caller skips cost-recording: a raised
+        ``create`` did not bill, so there is no cost to record.
     """
     try:
         # Build extra_body for OpenRouter tracing and PostHog analytics.
@@ -754,7 +779,16 @@ async def _generate_session_title(
         # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
         title_model = _normalize_title_model_for_aux()
 
-        response = await _get_aux_client().chat.completions.create(
+        # Route through the shared providers helper so future provider
+        # work (flex tier, new SDK upgrades, etc.) propagates here
+        # without a parallel migration. Pass the cached
+        # ``_get_aux_client()`` singleton (a Langfuse-wrapped
+        # AsyncOpenAI) so the title-gen span lands in the same trace
+        # tree as the originating chat turn AND the httpx connection
+        # pool stays warm across calls — building a fresh client per
+        # title would cost a TCP+TLS handshake every session.
+        response = await call_provider_openai_compat_sync(
+            client=_get_aux_client(),
             model=title_model,
             messages=[
                 {
@@ -768,26 +802,43 @@ async def _generate_session_title(
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
             max_tokens=20,
-            extra_body=extra_body,
+            extra_body=extra_body or None,
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
-        return None, None
+        return _fallback_title_from_message(message), None
 
     # Robust against an empty ``choices`` list OR a choice whose
     # ``message`` is missing ``content`` (shouldn't happen on the OpenAI
     # SDK typing, but belt-and-suspenders — the background task would
     # otherwise die on ``IndexError`` and lose the (paid-for) cost
     # recording we're about to do below).
-    title: str | None = None
+    title = ""
     if response.choices:
         msg = response.choices[0].message
-        title = msg.content if msg is not None else None
-    if title:
-        title = title.strip().strip("\"'")
-        if len(title) > 50:
-            title = title[:47] + "..."
-    return title, response
+        if msg is not None and msg.content:
+            title = msg.content.strip().strip("\"'")
+            if len(title) > _TITLE_MAX_CHARS:
+                title = title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
+    return title or _fallback_title_from_message(message), response
+
+
+def _fallback_title_from_message(message: str) -> str:
+    # ``maxsplit=_TITLE_MAX_WORDS`` caps the per-call allocation for huge
+    # messages — we only need the first N words plus a "has more" signal.
+    parts = strip_injected_context_for_display(message).split(maxsplit=_TITLE_MAX_WORDS)
+    if not parts:
+        return "New chat"
+
+    is_shortened = len(parts) > _TITLE_MAX_WORDS
+    title = " ".join(parts[:_TITLE_MAX_WORDS])
+    if len(title) > _TITLE_MAX_CHARS or (
+        is_shortened and len(title) > _TITLE_TRUNCATED_MAX_CHARS
+    ):
+        return title[:_TITLE_TRUNCATED_MAX_CHARS] + _TITLE_ELLIPSIS
+    if is_shortened:
+        return title + _TITLE_ELLIPSIS
+    return title
 
 
 def _title_usage_from_response(
@@ -945,7 +996,7 @@ async def _update_title_async(
     """
     title, response = await _generate_session_title(message, user_id, session_id)
 
-    if title and user_id:
+    if user_id:
         try:
             await update_session_title(session_id, user_id, title, only_if_empty=True)
             logger.debug("Generated title for session %s", session_id)

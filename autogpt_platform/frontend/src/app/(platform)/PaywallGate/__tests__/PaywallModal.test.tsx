@@ -39,11 +39,30 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
   Dialog: MockDialog,
 }));
 
-const mockLogOut = vi.fn();
+const mockValidateSession = vi.fn().mockResolvedValue(true);
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ logOut: mockLogOut }),
+  useSupabase: () => ({
+    validateSession: mockValidateSession,
+    isLoggedIn: true,
+  }),
 }));
 
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockReplace,
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/build",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));
+
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { PaywallModal } from "../PaywallModal";
 
 interface SubscriptionShape {
@@ -58,23 +77,28 @@ interface SubscriptionShape {
 function setupMocks({
   subscription,
   isLoading = false,
+  isFetching = false,
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
 }: {
   subscription: SubscriptionShape | null;
   isLoading?: boolean;
+  isFetching?: boolean;
   mutateFn?: ReturnType<typeof vi.fn>;
   isPending?: boolean;
 }) {
+  const refetchFn = vi.fn();
   mockUseGetSubscriptionStatus.mockReturnValue({
     data: subscription,
     isLoading,
+    isFetching,
+    refetch: refetchFn,
   });
   mockUseUpdateSubscriptionTier.mockReturnValue({
     mutateAsync: mutateFn,
     isPending,
   });
-  return { mutateFn };
+  return { mutateFn, refetchFn };
 }
 
 afterEach(() => {
@@ -137,7 +161,7 @@ describe("PaywallModal — dynamic plan rendering", () => {
 });
 
 describe("PaywallModal — logout", () => {
-  it("logs out when the Log out button is clicked", () => {
+  it("routes to the shared /logout page when the Log out button is clicked", () => {
     setupMocks({
       subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
     });
@@ -146,7 +170,7 @@ describe("PaywallModal — logout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /log out/i }));
 
-    expect(mockLogOut).toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith("/logout");
   });
 });
 
@@ -305,6 +329,90 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(mutateFn).not.toHaveBeenCalled();
   });
 
+  it("re-validates the session when the paywall mounts", () => {
+    setupMocks({
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+
+    expect(mockValidateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the current page as cancel_url so backing out of Stripe re-gates", async () => {
+    stubLocation();
+    Object.assign(window.location, { href: "https://app.test/copilot" });
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    const [args] = mutateFn.mock.calls[0];
+    expect(args.data.cancel_url).toBe("https://app.test/copilot");
+    expect(args.data.success_url).toBe(
+      "https://app.test/profile/credits?subscription=success",
+    );
+  });
+
+  it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError("Authorization header is missing", 401, null),
+      );
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/login");
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
+  it("non-401 ApiError surfaces a toast and stays on the paywall", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(new ApiError("Forbidden", 403, null));
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
   it("422 from updateTier surfaces a toast and does not redirect", async () => {
     stubLocation();
     const mutateFn = vi
@@ -445,6 +553,39 @@ describe("PaywallModal — empty / loading states", () => {
     // No upgrade buttons, no cycle toggle, no plan cards.
     expect(screen.queryByRole("radio", { name: /monthly/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /upgrade to/i })).toBeNull();
+  });
+
+  it("Retry in the unavailable fallback refetches the subscription status", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    expect(refetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Retry is disabled while the refetch is in flight", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+      isFetching: true,
+    });
+
+    render(<PaywallModal />);
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    expect(retryButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(retryButton);
+    expect(refetchFn).not.toHaveBeenCalled();
   });
 
   it("renders skeletons while subscription status is loading", () => {

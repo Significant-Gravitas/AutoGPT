@@ -63,6 +63,78 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+
+    # Gates the per-user weekly community rebuild registered by
+    # ``add_community_rebuild_schedule``. Off by default; opt-in canary
+    # so the Leiden + LLM-summarization cost doesn't ramp before
+    # retrieval-relevance benefit is measured.
+    GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
+
+    # --- Dream-system gates (P0) ---
+    #
+    # No "enabled-users list" flag — LD's per-flag targeting natively
+    # cohorts the canary (internal team → 5 → 50 → 500 → 5k), and
+    # ``is_feature_enabled(..., user_id, ...)`` evaluates each user.
+    # The four flags below are the master gate + three per-feature
+    # gates. Helper functions live next to the code that consumes them
+    # (added when each feature lands); these enum entries are
+    # scaffolding so the LD keys can be configured ahead of code.
+
+    # Master gate for the dream pass. When off, no dream-related code
+    # paths fire for the user — no schedule registration, no batch
+    # consumer pickup, no ratification loop. Defaults False; opt-in
+    # only.
+    DREAM_PASS_ENABLED = "dream-pass-enabled"
+
+    # Per-feature gate for the web-fact-check tool (P0.5). The tool
+    # can only DEMOTE memories on contradiction; new web-derived
+    # facts ride the ratification loop as tentative. Off on the
+    # local-LLM transport by default (most local installs lack a
+    # search-API key); cloud opt-in. Independent of
+    # ``DREAM_PASS_ENABLED`` so the dream pass can run without
+    # external network calls when this flag is off.
+    DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check"
+
+    # Orchestrator-level kill switch for the web-fact-check hook
+    # introduced alongside the P0.5 scaffolding. Distinct from
+    # ``DREAM_PASS_WEB_FACT_CHECK`` so the hook can be wired into the
+    # orchestrator without auto-running on every dream pass before a
+    # search backend is bound — flip this on per-user once a backend
+    # is configured.
+    DREAM_WEB_FACT_CHECK_ENABLED = "dream-web-fact-check-enabled"
+
+    # Per-feature gate for the cascading-expiry helper
+    # ``invalidate_entity_direct_neighbors`` (P0.3b). When on, the
+    # dream pass may demote every ``:RELATES_TO`` edge directly
+    # attached to a flagged-as-dead entity (e.g. "this client is
+    # gone — expire their associated facts"). Single-hop only —
+    # tangentially-related edges are NOT touched. Off by default for
+    # the first two weeks after launch because this is the highest
+    # blast-radius dream action; a buggy phase-3 sanitizer could
+    # demote too many edges before we catch it. Ratification (P0.4)
+    # is how good edges caught in the cascade get re-promoted.
+    DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity"
+
+    # Rollout gate for the async Anthropic batch path (P0.1). When on AND a
+    # direct Anthropic API key is configured, the dream pass routes through
+    # Anthropic's Batch API (~50% cheaper, async, up to 24h) and runs its
+    # memory writeback in the batch callback; when off, dreams run on the
+    # synchronous baseline regardless of key presence. A direct key is a hard
+    # requirement — the native Batch API can't be reached via
+    # OpenRouter/subscription — so this flag gates rollout on top of
+    # key-presence, not instead of it. Defaults False so the batch path ships
+    # dark and is enabled per-cohort.
+    DREAM_PASS_BATCH_ENABLED = "dream-pass-batch-enabled"
+
+    # Note: there is intentionally no DREAM_PASS_LOCAL_TRANSPORT
+    # flag. Whether to run on local-LLM transport is a CODE decision
+    # — ``resolve_dream_execution_path()`` in
+    # ``copilot/dream/routing.py`` inspects ``config.transport`` and
+    # picks sync-baseline + phase-collapse + extended lock TTL for
+    # local users. If a user has ``DREAM_PASS_ENABLED`` true, they
+    # get dreams, period — degraded on local, full on cloud. See
+    # ``dream/p0-spec.md`` §13.
+
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
