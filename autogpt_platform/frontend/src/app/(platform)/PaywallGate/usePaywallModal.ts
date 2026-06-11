@@ -57,6 +57,7 @@ export function usePaywallModal() {
   const {
     data: subscription,
     isLoading,
+    isFetching,
     refetch: refetchSubscription,
   } = useGetSubscriptionStatus({
     query: { select: (res) => (res.status === 200 ? res.data : null) },
@@ -186,6 +187,7 @@ export function usePaywallModal() {
     isLoading,
     plans,
     retryLoadPlans,
+    isRetryingPlans: isFetching,
     country,
     isYearly,
     selectedCycle,

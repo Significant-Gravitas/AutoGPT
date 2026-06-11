@@ -17,6 +17,7 @@ export function PaywallModal() {
     isLoading,
     plans,
     retryLoadPlans,
+    isRetryingPlans,
     country,
     isYearly,
     selectedCycle,
@@ -118,6 +119,7 @@ export function PaywallModal() {
                   variant="secondary"
                   size="small"
                   onClick={retryLoadPlans}
+                  loading={isRetryingPlans}
                 >
                   Retry
                 </Button>

@@ -77,11 +77,13 @@ interface SubscriptionShape {
 function setupMocks({
   subscription,
   isLoading = false,
+  isFetching = false,
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
 }: {
   subscription: SubscriptionShape | null;
   isLoading?: boolean;
+  isFetching?: boolean;
   mutateFn?: ReturnType<typeof vi.fn>;
   isPending?: boolean;
 }) {
@@ -89,6 +91,7 @@ function setupMocks({
   mockUseGetSubscriptionStatus.mockReturnValue({
     data: subscription,
     isLoading,
+    isFetching,
     refetch: refetchFn,
   });
   mockUseUpdateSubscriptionTier.mockReturnValue({
@@ -386,6 +389,30 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(window.location.href).toBe("");
   });
 
+  it("non-401 ApiError surfaces a toast and stays on the paywall", async () => {
+    stubLocation();
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(new ApiError("Forbidden", 403, null));
+    setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+      },
+      mutateFn,
+    });
+
+    render(<PaywallModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(window.location.href).toBe("");
+  });
+
   it("422 from updateTier surfaces a toast and does not redirect", async () => {
     stubLocation();
     const mutateFn = vi
@@ -541,6 +568,24 @@ describe("PaywallModal — empty / loading states", () => {
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
 
     expect(refetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("Retry is disabled while the refetch is in flight", () => {
+    const { refetchFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: {},
+      },
+      isFetching: true,
+    });
+
+    render(<PaywallModal />);
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    expect(retryButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(retryButton);
+    expect(refetchFn).not.toHaveBeenCalled();
   });
 
   it("renders skeletons while subscription status is loading", () => {
