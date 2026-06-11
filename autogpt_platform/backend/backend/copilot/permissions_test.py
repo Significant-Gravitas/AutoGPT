@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
+    DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
     CopilotPermissions,
@@ -625,3 +626,92 @@ class TestSdkBuiltinToolNames:
         assert "run_block" in known
         assert "Read" in known
         assert "Task" in known
+
+
+# ---------------------------------------------------------------------------
+# DREAM_PERMISSIONS preset (spec: dream/p0-spec.md §P0.5)
+# ---------------------------------------------------------------------------
+
+
+class TestDreamPermissionsPreset:
+    """The dream sub-agent must only touch memory + (future) web fact-check."""
+
+    def test_preset_is_whitelist_not_blacklist(self):
+        # Critical: blacklist semantics would *allow* everything not listed,
+        # which is the opposite of what we want for a restricted sub-agent.
+        assert DREAM_PERMISSIONS.tools_exclude is False
+
+    def test_memory_tools_are_allowed(self):
+        # All four Graphiti-backed memory ops the dream pass needs (read,
+        # write, find-for-forget, confirm-forget).
+        allowed = set(DREAM_PERMISSIONS.tools)
+        assert {
+            "memory_search",
+            "memory_store",
+            "memory_forget_search",
+            "memory_forget_confirm",
+        }.issubset(allowed)
+
+    def test_web_fact_check_is_listed_for_future_p0_5(self):
+        # web_fact_check ships with P0.5; preset is forward-compatible.
+        assert "web_fact_check" in DREAM_PERMISSIONS.tools
+
+    def test_shell_execution_is_blocked(self):
+        # Hard rule: dream sub-agent must never get a shell.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "bash_exec" not in effective
+
+    def test_general_web_browsing_is_blocked(self):
+        # web_fact_check is the *only* permitted web egress; raw fetch/search
+        # and browser tools must stay blocked.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "web_fetch" not in effective
+        assert "web_search" not in effective
+        assert "WebSearch" not in effective  # SDK built-in
+        assert "browser_act" not in effective
+        assert "browser_navigate" not in effective
+        assert "browser_screenshot" not in effective
+
+    def test_file_operations_are_blocked(self):
+        # No workspace file ops, no SDK built-in file editing.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        for tool in (
+            "read_workspace_file",
+            "write_workspace_file",
+            "delete_workspace_file",
+            "list_workspace_files",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+        ):
+            assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
+
+    def test_agent_graph_mutation_is_blocked(self):
+        # Dream pass reflects on memory; it does not edit or run agents.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        for tool in (
+            "create_agent",
+            "edit_agent",
+            "fix_agent_graph",
+            "run_agent",
+            "run_block",
+            "run_sub_session",
+            "Task",
+        ):
+            assert tool not in effective, f"{tool} must be blocked for dream sub-agent"
+
+    def test_effective_set_matches_whitelist_intersection(self):
+        # Sanity: effective set = whitelist ∩ known universe.  web_fact_check
+        # is intentionally absent from the universe until P0.5 lands, so the
+        # effective set today is the four memory tools.
+        effective = DREAM_PERMISSIONS.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert effective == frozenset(
+            {
+                "memory_search",
+                "memory_store",
+                "memory_forget_search",
+                "memory_forget_confirm",
+            }
+        )
