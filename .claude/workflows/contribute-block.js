@@ -337,7 +337,8 @@ async function selectItems({ requests, count }) {
       `open PR already linked, highest community reactions then oldest first. For ` +
       `each pick, return request as a one-sentence plain-language description built ` +
       `from the issue title+body, and the issue number.`,
-    { label: 'select-blocks', phase: 'Select', schema: WORKLIST_SCHEMA },
+    // Issue-queue judgment, but low-stakes (a bad pick just wastes one item) — mid tier.
+    { label: 'select-blocks', phase: 'Select', schema: WORKLIST_SCHEMA, model: 'sonnet' },
   )
   return (res && res.items ? res.items : []).slice(0, count)
 }
@@ -351,7 +352,8 @@ async function createBranch(request) {
       `(git ls-remote --exit-code origin), append -2, -3, ... until free. Then: ` +
       `git fetch origin dev --quiet && git checkout -b "$slug" origin/dev. Return ` +
       `the exact branch name created.`,
-    { label: `branch:${request.slice(0, 40)}`, phase: 'Implement', schema: BRANCH_SCHEMA },
+    // Mechanical git commands — cheapest tier.
+    { label: `branch:${request.slice(0, 40)}`, phase: 'Implement', schema: BRANCH_SCHEMA, model: 'haiku' },
   )
   return res && res.branch ? res.branch : null
 }
@@ -510,7 +512,8 @@ if (opened.length) {
       `none failing), mixed (failing + pending), unknown (query failed). Put ` +
       `failing/pending check names and any early bot-review count in notes.\n\nPRs:\n` +
       opened.map((s) => `- ${s.prUrl}`).join('\n'),
-    { label: 'ci-sweep', phase: 'Status', schema: STATUS_SCHEMA },
+    // Read-only gh status queries — cheapest tier.
+    { label: 'ci-sweep', phase: 'Status', schema: STATUS_SCHEMA, model: 'haiku' },
   )
   statuses = (res && res.statuses) || []
 }

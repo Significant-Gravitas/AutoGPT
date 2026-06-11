@@ -188,7 +188,8 @@ const snap = await agent(
     (scope ? ` --search ${JSON.stringify(scope)}` : '') +
     `. Compute daysSinceUpdate from updatedAt using the shell. Map author to its ` +
     `login, assigned to whether assignees is non-empty.`,
-  { label: 'snapshot', phase: 'Snapshot', schema: SNAPSHOT_SCHEMA },
+  // Mechanical gh+jq work — cheapest tier.
+  { label: 'snapshot', phase: 'Snapshot', schema: SNAPSHOT_SCHEMA, model: 'haiku' },
 )
 const prs = (snap && snap.prs) || []
 log(`Queue snapshot: ${prs.length} open PRs${scope ? ` (scope: ${scope})` : ''}`)
@@ -199,7 +200,9 @@ const batches = []
 for (let i = 0; i < prs.length; i += BATCH_SIZE) batches.push(prs.slice(i, i + BATCH_SIZE))
 const batchResults = await parallel(
   batches.map((batch, i) => () =>
-    agent(classifyPrompt(batch), { label: `classify#${i + 1}`, phase: 'Classify', schema: CLASSIFY_SCHEMA }),
+    // Rubric-bounded classification; every actionable verdict is re-verified
+    // downstream, so a mid-tier model is enough here.
+    agent(classifyPrompt(batch), { label: `classify#${i + 1}`, phase: 'Classify', schema: CLASSIFY_SCHEMA, model: 'sonnet' }),
   ),
 )
 const classifications = batchResults.filter(Boolean).flatMap((r) => r.classifications || [])
@@ -217,6 +220,10 @@ const dupRows = classifications
   .map((c) => ({ number: c.number, title: titleByNumber[c.number] || '', topics: c.topics, keyFiles: c.keyFiles }))
 let clusters = []
 if (dupRows.length >= 2) {
+  // Clustering and the Verify refuters deliberately INHERIT the session model —
+  // these are the judgment-heavy stages (cross-queue same-problem reasoning;
+  // gating real closes). Inheriting gives them the strongest model the running
+  // session has (e.g. fable) without hard-pinning a model some harnesses lack.
   const res = await agent(clusterPrompt(dupRows), { label: 'cluster', phase: 'Cluster', schema: CLUSTER_SCHEMA })
   clusters = ((res && res.clusters) || []).filter((cl) => cl.members && cl.members.length >= 2)
 }
