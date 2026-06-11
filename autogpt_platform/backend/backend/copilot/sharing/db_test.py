@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import SharedVia
-from prisma.models import AgentGraphExecution, ChatLinkedShare
+from prisma.models import (
+    AgentGraphExecution,
+    ChatLinkedShare,
+)
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import (

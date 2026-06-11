@@ -29,7 +29,11 @@ from backend.blocks._base import (
     BlockWebhookConfig,
 )
 from backend.data.integrations import Webhook, update_webhook
-from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    CredentialsField,
+)
 from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
     NodeExecutionStats,
