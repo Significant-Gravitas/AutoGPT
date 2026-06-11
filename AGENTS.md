@@ -66,6 +66,8 @@ For end-to-end implementation work, use the pipeline skills instead of ad-hoc ed
 
 The full lifecycle chains into the PR review stack: implementation loop → `/open-pr` → `/pr-polish` (alternates `/pr-review` + `/pr-address` until merge-ready). `/pr-polish` always runs in the foreground main thread — never inside a spawned agent. `/review-impl` gates the working tree pre-commit; `/pr-review` gates the PR surface.
 
+For queue-level maintenance, `/pr-sweep` triages all open PRs — clusters duplicates, consolidates complementary work onto a winner PR with author credit, auto-closes only unambiguous junk (spam, blank template, proven-superseded), and recommends the rest. Its analysis arm is the read-only `sweep-prs` workflow (`.claude/workflows/sweep-prs.js`); mutations >5 PRs require explicit confirmation.
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
