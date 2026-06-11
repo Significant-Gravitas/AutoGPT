@@ -2,8 +2,10 @@ import hmac
 import logging
 
 from fastapi import HTTPException, Request
+from pydantic import SecretStr
 from strenum import StrEnum
 
+from backend.data.integrations import WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,9 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
     SECRET_HEADER = "X-Webhook-Secret"
 
     @classmethod
-    async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
+    async def verify_signature(
+        cls, webhook: WebhookWithRelations, request: Request
+    ) -> None:
         # Find any non-empty `secret_token` configured on a triggered node or
         # preset attached to this webhook. The webhook is loaded via
         # `get_webhook(..., include_relations=True)` in the router so these
@@ -44,23 +48,17 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
             )
 
     @classmethod
-    def _configured_secret(cls, webhook: Webhook) -> str | None:
-        sources: list[dict] = []
-        # WebhookWithRelations exposes triggered_nodes/triggered_presets; on a
-        # plain `Webhook` they're absent.
-        for node in getattr(webhook, "triggered_nodes", []) or []:
-            sources.append(getattr(node, "input_default", {}) or {})
-        for preset in getattr(webhook, "triggered_presets", []) or []:
-            sources.append(getattr(preset, "inputs", {}) or {})
+    def _configured_secret(cls, webhook: WebhookWithRelations) -> str | None:
+        sources = [node.input_default for node in webhook.triggered_nodes] + [
+            preset.inputs for preset in webhook.triggered_presets
+        ]
 
         found: list[str] = []
         for src in sources:
             value = src.get(cls.SECRET_TOKEN_INPUT)
-            if not value:
-                continue
             # Stored values may arrive as plain strings or as SecretStr
             # depending on serialization path; normalize.
-            if hasattr(value, "get_secret_value"):
+            if isinstance(value, SecretStr):
                 value = value.get_secret_value()
             if isinstance(value, str) and value.strip():
                 found.append(value)

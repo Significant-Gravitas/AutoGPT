@@ -120,7 +120,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     @classmethod
     async def verify_signature(
         cls,
-        webhook: integrations.Webhook,
+        webhook: integrations.WebhookWithRelations,
         request: Request,
     ) -> None:
         """
@@ -131,10 +131,12 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         this. Providers whose protocol does sign deliveries (GitHub, Telegram,
         Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
         missing or invalid signatures, using `hmac.compare_digest` for any
-        secret comparison.
+        secret comparison. Overrides that only need the stored `secret` /
+        `config` may widen the parameter to `integrations.Webhook`.
 
         Params:
-            webhook: Configured webhook including stored `secret` / config.
+            webhook: Configured webhook including stored `secret` / config,
+                with `triggered_nodes` / `triggered_presets` relations loaded.
             request: Incoming FastAPI `Request`. Read with `await request.body()`
                 for HMAC computation; Starlette caches the body so a second
                 read inside `validate_payload` is safe.
