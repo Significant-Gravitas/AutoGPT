@@ -29,6 +29,7 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
+    field_validator,
     model_validator,
 )
 from pydantic_core import (
@@ -40,6 +41,7 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.onboarding_steps import OnboardingStep
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
@@ -980,14 +982,16 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
-    # Step names are plain strings: legacy values that have been retired from
-    # the active set (see ``backend.data.onboarding.OnboardingStep``) must
-    # remain readable from existing rows. Boundary validation lives on the
-    # completion endpoint via the ``FrontendOnboardingStep`` Literal.
-    completedSteps: list[str]
+    # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
+    # the frontend (the DB still stores plain strings). Existing rows may hold
+    # values that have since been retired from the enum; ``_drop_unknown_steps``
+    # filters those out before validation so reads stay resilient. Boundary
+    # validation on writes lives on the completion endpoint via the
+    # ``FrontendOnboardingStep`` Literal.
+    completedSteps: list[OnboardingStep]
     walletShown: bool
-    notified: list[str]
-    rewardedFor: list[str]
+    notified: list[OnboardingStep]
+    rewardedFor: list[OnboardingStep]
     usageReason: Optional[str]
     integrations: list[str]
     otherIntegrations: Optional[str]
@@ -997,3 +1001,9 @@ class UserOnboarding(BaseModel):
     agentRuns: int
     lastRunAt: Optional[datetime]
     consecutiveRunDays: int
+
+    @field_validator("completedSteps", "notified", "rewardedFor", mode="before")
+    @classmethod
+    def _drop_unknown_steps(cls, value: list[str]) -> list[str]:
+        known = {step.value for step in OnboardingStep}
+        return [step for step in value if step in known]
