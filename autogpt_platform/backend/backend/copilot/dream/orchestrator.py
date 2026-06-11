@@ -293,16 +293,10 @@ async def _execute_dream_pass_async(
     # subscription mode shouldn't dual-bill the user's Anthropic key when the
     # chat layer is on Claude Code OAuth).
     batch_enabled = await is_feature_enabled(Flag.DREAM_PASS_BATCH_ENABLED, user_id)
-    # Lazy import: the heartbeat probe lives in the executor package and
-    # is only needed when the batch flag is in play.
-    from backend.executor.batch_executor import is_batch_executor_alive
-
-    batch_alive = await is_batch_executor_alive() if batch_enabled else False
     execution_path: ExecutionPath = resolve_dream_execution_path(
         has_anthropic_key=has_anthropic_key,
         batch_processing_enabled=batch_enabled,
         transport_name=config.transport.name,
-        batch_executor_alive=batch_alive,
     )
 
     ttl = _resolve_lock_ttl(transport_is_local)

@@ -78,16 +78,6 @@ WALK_INTERVAL_SECONDS = 10
 INITIAL_POLL_DELAY_SECONDS = 30
 MAX_POLL_DELAY_SECONDS = 300
 
-# Liveness heartbeat. Every walk stamps this single Redis key
-# (cluster-safe) with a TTL of a few walk intervals; the dream
-# routing layer refuses to pick a batch path unless the heartbeat is
-# fresh — submitting a batch with no walker deployed strands the
-# dream lock for 24h and pays for provider results nobody collects.
-# Doubles as the observability hook: an absent key means no walker
-# is alive anywhere.
-HEARTBEAT_KEY = "batch_executor:alive"
-HEARTBEAT_TTL_SECONDS = WALK_INTERVAL_SECONDS * 3
-
 
 # ---------------------------------------------------------------------------
 # Pending-entry persistence
@@ -245,38 +235,6 @@ def clear_handlers_for_test() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _stamp_heartbeat() -> None:
-    """Best-effort liveness stamp — a Redis blip must not skip a walk."""
-    from backend.data.redis_client import get_redis_async
-
-    try:
-        redis = await get_redis_async()
-        await redis.set(HEARTBEAT_KEY, "1", ex=HEARTBEAT_TTL_SECONDS)
-    except Exception:
-        logger.warning("Failed to stamp batch-executor heartbeat", exc_info=True)
-
-
-async def is_batch_executor_alive() -> bool:
-    """Whether any BatchExecutor walker stamped a heartbeat recently.
-
-    Fails CLOSED on Redis errors: wrongly reporting alive routes a
-    dream onto the batch path with nobody polling it (24h stranded
-    lock, paid results expiring uncollected); wrongly reporting dead
-    just costs the batch discount for one pass.
-    """
-    from backend.data.redis_client import get_redis_async
-
-    try:
-        redis = await get_redis_async()
-        return await redis.get(HEARTBEAT_KEY) is not None
-    except Exception:
-        logger.warning(
-            "Could not read batch-executor heartbeat — treating as not alive",
-            exc_info=True,
-        )
-        return False
-
-
 async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> None:
     """One walk of the pending queue.
 
@@ -296,7 +254,6 @@ async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> Non
     factory so this module doesn't need to know how settings are
     organized.
     """
-    await _stamp_heartbeat()
     now = datetime.now(timezone.utc)
     entries = await list_pending()
     for entry in entries:

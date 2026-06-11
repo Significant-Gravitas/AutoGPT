@@ -14,12 +14,9 @@ batch executors is just flipping the conditional below.
 
 from __future__ import annotations
 
-import logging
 from typing import Literal
 
 from backend.copilot.config import TransportName
-
-logger = logging.getLogger(__name__)
 
 # Kept in sync with ``model_pricing.ExecutionPath`` so the discount
 # table in model_pricing.py reads our chosen path directly. If you add
@@ -50,7 +47,6 @@ def resolve_dream_execution_path(
     has_openai_key: bool = False,
     batch_processing_enabled: bool = False,
     transport_name: TransportName | None = None,
-    batch_executor_alive: bool = False,
 ) -> ExecutionPath:
     """Pick the dream pass execution path.
 
@@ -67,27 +63,10 @@ def resolve_dream_execution_path(
     (see ``_TRANSPORTS_FORCE_SYNC`` above for the rationale).
     Defaults to ``None`` so callers that don't know their transport
     still get the historical key-driven behaviour.
-
-    ``batch_executor_alive`` defaults to ``False`` — fail-closed. In
-    k8s the BatchExecutor runs as its own deployment; submitting a
-    batch with no walker alive strands the dream lock for 24h and
-    pays for provider batch results nobody collects. The orchestrator
-    fetches the real signal via
-    ``batch_executor.is_batch_executor_alive()``; callers that don't
-    know about the walker degrade to sync.
     """
     if transport_name in _TRANSPORTS_FORCE_SYNC:
         return "sync_baseline"
     if batch_processing_enabled:
-        batch_wanted = has_anthropic_key or has_openai_key
-        if batch_wanted and not batch_executor_alive:
-            logger.warning(
-                "Dream batch path requested (flag on, provider key present) "
-                "but no batch executor heartbeat is alive — falling back to "
-                "sync_baseline. Deploy the batch-executor service or expect "
-                "full-rate sync passes."
-            )
-            return "sync_baseline"
         if has_anthropic_key:
             return "anthropic_batch"
         if has_openai_key:
