@@ -11,6 +11,7 @@ from prisma.enums import ContentType
 from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
+    ChatSessionHandler,
     DocumentationHandler,
     LibraryAgentHandler,
     StoreAgentHandler,
@@ -637,8 +638,6 @@ async def test_chat_session_handler_excludes_dream_sessions_in_every_query():
     ChatSessionHandler query (backfill, stats, cleanup validity) must carry
     the null-safe dream exclusion so nightly dream sessions are neither
     embedded nor treated as valid embedding owners."""
-    from backend.api.features.search.content_handlers import ChatSessionHandler
-
     captured: list[str] = []
 
     async def fake_query_raw(sql: str, *args, **kwargs):
