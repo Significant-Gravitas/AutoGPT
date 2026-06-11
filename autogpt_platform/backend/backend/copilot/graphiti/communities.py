@@ -237,10 +237,14 @@ async def _activity_since_last_rebuild(
 # lock another worker has since taken.
 #
 # The TTL exceeds the scheduler's hard rebuild bound
-# (``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` = 1800s; every caller wraps
-# the rebuild in ``run_async(..., timeout=...)``), so the lock cannot expire
-# mid-rebuild and no lease-renewal watchdog is needed — the TTL is purely a
-# crash backstop.
+# (``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` = 1800s). That bound is
+# real because ``run_async`` (scheduler.py) cancels the underlying task on
+# timeout — a timed-out rebuild receives CancelledError, which propagates
+# through the ``finally`` below and releases the lock well before the TTL.
+# Without that cancellation the 120s headroom would be meaningless: the
+# orphaned rebuild would keep running past TTL expiry, unlocked. No
+# lease-renewal watchdog is needed — the TTL only backstops a crashed or
+# killed scheduler process, where neither cancellation nor ``finally`` ran.
 _REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
 _REBUILD_LOCK_TTL_SECONDS = 1800 + 120
 

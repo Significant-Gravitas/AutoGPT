@@ -1,3 +1,6 @@
+import asyncio
+import concurrent.futures
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -13,6 +16,7 @@ from backend.executor.scheduler import (
     Scheduler,
     _build_trigger,
     _normalize_cron_day_of_week,
+    run_async,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
@@ -613,3 +617,68 @@ def test_build_trigger_unix_dow_various_cases(
     nxt = trigger.get_next_fire_time(None, start)
     assert nxt is not None
     assert nxt.strftime("%A") == expected_dow
+
+
+# ---------------------------------------------------------------------------
+# run_async timeout semantics — "timed out" must mean "stopped"
+#
+# APScheduler's max_instances only guards the sync wrapper; once run_async
+# raises TimeoutError the wrapper exits and the slot frees. If the coroutine
+# kept running on the shared loop, a >timeout nightly pass would overlap the
+# next night's fire. These tests pin the contract: on timeout the underlying
+# task is cancelled, so the coroutine receives CancelledError promptly.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def scheduler_loop_in_thread():
+    """A real event loop on a background thread, patched in as the
+    scheduler's shared loop so run_async bridges to it."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    with patch("backend.executor.scheduler._event_loop", loop):
+        yield loop
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)
+    loop.close()
+
+
+class TestRunAsyncTimeoutCancellation:
+    def test_overrunning_coroutine_is_cancelled_when_run_async_times_out(
+        self, scheduler_loop_in_thread
+    ) -> None:
+        started = threading.Event()
+        cancelled = threading.Event()
+
+        async def overrunning_nightly_pass():
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        with pytest.raises(concurrent.futures.TimeoutError):
+            run_async(overrunning_nightly_pass(), timeout=0.2)
+
+        assert started.is_set(), "coroutine never started on the shared loop"
+        assert cancelled.wait(timeout=5), (
+            "run_async timed out but left the coroutine running on the shared "
+            "loop — the next scheduled fire could overlap it"
+        )
+
+    def test_coroutine_finishing_within_timeout_returns_result_uncancelled(
+        self, scheduler_loop_in_thread
+    ) -> None:
+        cancelled = threading.Event()
+
+        async def quick_pass():
+            try:
+                return "done"
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        assert run_async(quick_pass(), timeout=5) == "done"
+        assert not cancelled.is_set()
