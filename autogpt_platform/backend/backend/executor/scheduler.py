@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import logging
 import os
 import re
@@ -147,28 +146,11 @@ def get_event_loop():
 
 
 def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
-    """Run a coroutine in the shared event loop and wait for completion.
-
-    On timeout the underlying task is cancelled before re-raising, so
-    "timed out" means "stopped": the coroutine receives CancelledError
-    promptly instead of leaking onto the shared loop, where it could
-    outlive its Redis lock TTL and overlap the next scheduled fire
-    (APScheduler's ``max_instances`` only guards this sync wrapper,
-    which has already raised by then).
-    """
+    """Run a coroutine in the shared event loop and wait for completion."""
     loop = get_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     try:
         return future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError:
-        # Cancelling a run_coroutine_threadsafe future cancels the
-        # wrapped asyncio task on the loop.
-        future.cancel()
-        logger.warning(
-            f"Async operation timed out after {timeout}s and was cancelled: "
-            f"{coro.__qualname__}"
-        )
-        raise
     except Exception as e:
         logger.warning(f"Async operation failed: {type(e).__name__}: {e}")
         raise
