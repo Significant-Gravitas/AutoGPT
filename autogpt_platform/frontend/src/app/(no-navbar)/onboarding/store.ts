@@ -4,6 +4,25 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export const MAX_PAIN_POINT_SELECTIONS = 3;
 export type Step = 1 | 2 | 3 | 4 | 5;
 
+// Wizard step layouts. With payments enabled the paywall is the FIRST step so
+// the user pays before personalising; the profile-collection steps shift down
+// by one. Centralised here so page rendering, the page hook's URL clamping and
+// the SubscriptionStep's Stripe success/cancel return URLs can't drift apart.
+export const PAYWALL_FIRST_STEPS = {
+  subscription: 1,
+  welcome: 2,
+  role: 3,
+  painPoints: 4,
+  preparing: 5,
+} as const;
+
+export const NO_PAYWALL_STEPS = {
+  welcome: 1,
+  role: 2,
+  painPoints: 3,
+  preparing: 4,
+} as const;
+
 interface OnboardingWizardState {
   currentStep: Step;
   name: string;
@@ -13,6 +32,7 @@ interface OnboardingWizardState {
   otherPainPoint: string;
   selectedPlan: string | null;
   selectedBilling: "monthly" | "yearly";
+  hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
   setName(name: string): void;
   setRole(role: string): void;
@@ -21,6 +41,7 @@ interface OnboardingWizardState {
   setOtherPainPoint(otherPainPoint: string): void;
   setSelectedPlan(plan: string): void;
   setSelectedBilling(billing: "monthly" | "yearly"): void;
+  applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;
   nextStep(): void;
   prevStep(): void;
@@ -39,6 +60,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       otherPainPoint: "",
       selectedPlan: null,
       selectedBilling: "yearly",
+      hasUserSelectedBilling: false,
       selectedCountryCode: "US",
       setName(name) {
         set({ name });
@@ -68,7 +90,12 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
         set({ selectedPlan: plan });
       },
       setSelectedBilling(billing) {
-        set({ selectedBilling: billing });
+        set({ selectedBilling: billing, hasUserSelectedBilling: true });
+      },
+      applyPricingExperimentBilling(billing) {
+        set((state) =>
+          state.hasUserSelectedBilling ? state : { selectedBilling: billing },
+        );
       },
       setSelectedCountryCode(code) {
         set({ selectedCountryCode: code });
@@ -96,6 +123,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
           otherPainPoint: "",
           selectedPlan: null,
           selectedBilling: "yearly",
+          hasUserSelectedBilling: false,
           selectedCountryCode: "US",
         });
       },
@@ -128,6 +156,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
         painPoints: state.painPoints,
         otherPainPoint: state.otherPainPoint,
         selectedBilling: state.selectedBilling,
+        hasUserSelectedBilling: state.hasUserSelectedBilling,
         selectedCountryCode: state.selectedCountryCode,
       }),
     },

@@ -21,20 +21,21 @@ from backend.api.features.library.db import (
     update_graph_in_library,
     update_library_agent,
 )
+from backend.api.features.search.embeddings import (
+    cleanup_orphaned_embeddings,
+    get_embedding_stats,
+)
+from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
     get_store_agent_details,
     get_store_agents,
 )
-from backend.api.features.store.embeddings import (
-    backfill_missing_embeddings,
-    cleanup_orphaned_embeddings,
-    get_embedding_stats,
-)
-from backend.api.features.store.hybrid_search import unified_hybrid_search
+from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.data import bot_analytics as bot_analytics_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -105,6 +106,7 @@ from backend.data.push_subscription import (
     get_user_push_subscriptions,
     increment_fail_count,
 )
+from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -370,6 +372,9 @@ class DatabaseManager(AppService):
         cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
     )
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -389,6 +394,13 @@ class DatabaseManager(AppService):
     cleanup_expired_platform_link_tokens = _(
         platform_linking_db.cleanup_expired_platform_link_tokens
     )
+    fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = _(bot_analytics_db.record_bot_event)
+    record_guild_joined = _(bot_analytics_db.record_guild_joined)
+    mark_guild_left = _(bot_analytics_db.mark_guild_left)
+    sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -615,6 +627,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     increment_push_fail_count = d.increment_push_fail_count
     cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
 
+    # ============ Subscription Reconciliation ============ #
+    reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     find_user_link_owner = d.find_user_link_owner
@@ -632,6 +647,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
+    fetch_workspace_artifact = d.fetch_workspace_artifact
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = d.record_bot_event
+    record_guild_joined = d.record_guild_joined
+    mark_guild_left = d.mark_guild_left
+    sync_guild_presence = d.sync_guild_presence
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

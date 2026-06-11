@@ -25,6 +25,7 @@ from backend.data.understanding import (
     format_understanding_for_prompt,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
@@ -81,7 +82,15 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
     global _main_client
     if _main_client is None:
         api_key, base_url = config.main_client_credentials
-        _main_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+        kwargs: dict = {"api_key": api_key, "base_url": base_url}
+        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
+        # many minutes for a single turn against AutoPilot's heavy system
+        # prompt. The OpenAI client default (600 s) is too short for that
+        # case — extend it under the local transport. Cloud transports
+        # keep the SDK default so genuine hangs still surface promptly.
+        if config.transport.name == "local":
+            kwargs["timeout"] = config.local_request_timeout_s
+        _main_client = LangfuseAsyncOpenAI(**kwargs)
     return _main_client
 
 
@@ -97,7 +106,14 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     global _aux_client
     if _aux_client is None:
         api_key, base_url = config.aux_client_credentials
-        _aux_client = LangfuseAsyncOpenAI(api_key=api_key, base_url=base_url)
+        kwargs: dict = {"api_key": api_key, "base_url": base_url}
+        # Local transport routes aux through the same self-hosted backend
+        # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
+        # client timeout to match ``_get_main_client`` so title generation
+        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
+        if config.transport.name == "local":
+            kwargs["timeout"] = config.local_request_timeout_s
+        _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
 
 
@@ -763,7 +779,16 @@ async def _generate_session_title(
         # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
         title_model = _normalize_title_model_for_aux()
 
-        response = await _get_aux_client().chat.completions.create(
+        # Route through the shared providers helper so future provider
+        # work (flex tier, new SDK upgrades, etc.) propagates here
+        # without a parallel migration. Pass the cached
+        # ``_get_aux_client()`` singleton (a Langfuse-wrapped
+        # AsyncOpenAI) so the title-gen span lands in the same trace
+        # tree as the originating chat turn AND the httpx connection
+        # pool stays warm across calls — building a fresh client per
+        # title would cost a TCP+TLS handshake every session.
+        response = await call_provider_openai_compat_sync(
+            client=_get_aux_client(),
             model=title_model,
             messages=[
                 {
@@ -777,7 +802,7 @@ async def _generate_session_title(
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
             max_tokens=20,
-            extra_body=extra_body,
+            extra_body=extra_body or None,
         )
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")

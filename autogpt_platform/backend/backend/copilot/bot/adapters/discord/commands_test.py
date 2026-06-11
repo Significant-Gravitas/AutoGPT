@@ -15,6 +15,7 @@ from backend.util.exceptions import LinkAlreadyExistsError
 from ...bot_backend import ChatSummary, LinkTokenResult
 from .commands import (
     _handle_help,
+    _handle_leave,
     _handle_new,
     _handle_resume,
     _handle_setup,
@@ -247,6 +248,69 @@ class TestHandleNew:
             new=AsyncMock(side_effect=RuntimeError("redis down")),
         ):
             await _handle_new(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+        assert "try again" in sent.args[0].lower()
+
+
+class TestHandleLeave:
+    @pytest.mark.asyncio
+    async def test_thread_unsubscribes(self):
+        interaction = _interaction()
+        interaction.channel = MagicMock(spec=discord.Thread)
+        interaction.channel.id = 777
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await _handle_leave(interaction)
+
+        mock_unsub.assert_awaited_once_with("discord", "777")
+        interaction.response.send_message.assert_awaited_once()
+        sent = interaction.response.send_message.await_args
+        assert sent.kwargs["ephemeral"] is True
+        assert "quiet" in sent.args[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_plain_channel_is_rejected(self):
+        # Channels aren't subscribed in the first place — /leave only makes
+        # sense in a thread we'd otherwise auto-reply in.
+        interaction = _interaction()
+        interaction.channel = MagicMock()
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await _handle_leave(interaction)
+
+        mock_unsub.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_dm_is_rejected(self):
+        interaction = _interaction(guild=False)
+        interaction.channel = MagicMock()
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(),
+        ) as mock_unsub:
+            await _handle_leave(interaction)
+
+        mock_unsub.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_failure_sends_fallback_message(self):
+        interaction = _interaction()
+        interaction.channel = MagicMock(spec=discord.Thread)
+        interaction.channel.id = 777
+        with patch(
+            "backend.copilot.bot.threads.unsubscribe",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            await _handle_leave(interaction)
 
         interaction.response.send_message.assert_awaited_once()
         sent = interaction.response.send_message.await_args

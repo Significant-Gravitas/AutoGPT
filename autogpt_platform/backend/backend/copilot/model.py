@@ -72,6 +72,17 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
 
+    # Session kind — distinguishes regular chats from dream-pass and
+    # daydream artifacts so the frontend can render them differently
+    # (and so analytics / retention rules can filter them out).
+    # Open enum: future kinds (e.g. ``"daydream"``) can land without a
+    # migration; readers must tolerate unknown values.
+    kind: str = "normal"
+
+    # When ``kind == "dream"``, the originating pass id so the session
+    # links back to the orchestrator run that produced it.
+    dream_pass_id: str | None = None
+
 
 class ChatMessage(BaseModel):
     id: str | None = None
@@ -1062,15 +1073,25 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
+    sessions = await db.get_user_chat_sessions(
+        user_id, limit, offset, title_contains=title_contains
+    )
+    # Total count ignores the filter — it's the user's overall session
+    # count, used by paginated listings. The /search/global caller
+    # discards it.
     total_count = await db.get_user_session_count(user_id)
 
     return sessions, total_count
@@ -1101,6 +1122,20 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await async_redis.delete(redis_key)
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Best-effort embedding cleanup so deleted sessions stop appearing in
+    # /search/global hits. Only attempt when we have a user_id since the
+    # embedding row is user-scoped; without it the user-filter would miss
+    # and the orphan row (if any) gets cleaned up by the periodic embedder.
+    if user_id:
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                delete_chat_session_embedding,
+            )
+
+            await delete_chat_session_embedding(session_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
 
     # Shut down any local browser daemon for this session (best-effort).
     # Inline import required: all tool modules import ChatSession from this
@@ -1156,6 +1191,20 @@ async def update_session_title(
         except Exception as e:
             logger.warning(
                 f"Cache title update failed for session {session_id} (non-critical): {e}"
+            )
+
+        # Fire-and-forget: index the new title so /search/global can find
+        # this session. Local import keeps the heavy embedding deps
+        # (OpenAI client, prisma raw SQL) off the model import path.
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                schedule_chat_session_embedding,
+            )
+
+            schedule_chat_session_embedding(session_id, user_id, title)
+        except Exception as e:
+            logger.warning(
+                f"Failed to schedule session title embedding for {session_id}: {e}"
             )
 
         return True
