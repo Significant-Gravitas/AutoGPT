@@ -585,11 +585,15 @@ def test_standalone_entry_point_runs_only_the_batch_executor():
     """k8s deploys services individually; the infra repo needs a
     console script that runs the BatchExecutor on its own (mirrors
     backend/scheduler.py's shape)."""
-    import inspect
-
     import backend.batch_executor as entry
     from backend.executor.batch_executor import BatchExecutor
 
     assert callable(entry.main)
-    assert "BatchExecutor" in inspect.getsource(entry.main)
     assert entry.BatchExecutor is BatchExecutor
+
+    with patch.object(entry, "run_processes") as run_processes:
+        entry.main()
+
+    run_processes.assert_called_once()
+    (batch_executor,) = run_processes.call_args.args
+    assert isinstance(batch_executor, BatchExecutor)
