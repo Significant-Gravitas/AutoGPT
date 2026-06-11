@@ -522,6 +522,23 @@ async def add_chat_messages_batch(
     raise RuntimeError(f"Failed to insert messages after {max_retries} attempts")
 
 
+# WHERE fragment shared by the user-facing session list and its count so
+# the sidebar list, its pagination total, and /search/global stay
+# consistent.
+#
+# ``IS DISTINCT FROM`` (not ``<>``) is load-bearing: sessions created
+# before ``ChatSessionMetadata.kind`` existed have no ``kind`` key in
+# their metadata JSON, so ``metadata->>'kind'`` evaluates to SQL NULL
+# for them. ``NULL <> 'dream'`` is NULL → WHERE drops the row → every
+# legacy chat would vanish from the sidebar. ``IS DISTINCT FROM`` treats
+# NULL as an ordinary comparable value, so missing-key / null-metadata
+# rows stay visible and only rows with ``kind = 'dream'`` are excluded.
+#
+# Raw SQL because the Python Prisma client's ``JsonFilter`` supports only
+# whole-value ``equals`` / ``not`` — it has no ``path`` access at all.
+_EXCLUDE_DREAM_SESSIONS_SQL = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
+
+
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
@@ -530,25 +547,56 @@ async def get_user_chat_sessions(
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
+    Dream-pass sessions (``metadata.kind == "dream"``) are hidden from
+    this LIST path — they are pipeline artifacts, not user chats, until
+    the UI grows a dedicated surface for them (P6). Fetch-by-id paths
+    (:func:`get_chat_session_metadata`, :func:`get_chat_messages_paginated`)
+    intentionally still return them.
+
     ``title_contains`` is a case-insensitive substring filter used by
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
     """
-    where: ChatSessionWhereInput = {"userId": user_id}
+    params: list[Any] = [user_id]
+    title_filter = ""
     if title_contains:
-        where["title"] = {"contains": title_contains, "mode": "insensitive"}
-    prisma_sessions = await PrismaChatSession.prisma().find_many(
-        where=where,
-        order={"updatedAt": "desc"},
-        take=limit,
-        skip=offset,
+        params.append(f"%{_escape_like(title_contains)}%")
+        title_filter = f'AND "title" ILIKE ${len(params)} '
+    params.extend((limit, offset))
+    query = (
+        'SELECT * FROM {schema_prefix}"ChatSession" '
+        'WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " "
+        + title_filter
+        + f'ORDER BY "updatedAt" DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}'
     )
-    return [ChatSessionInfo.from_db(s) for s in prisma_sessions]
+    sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
+    return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
 async def get_user_session_count(user_id: str) -> int:
-    """Get the total number of chat sessions for a user."""
-    return await PrismaChatSession.prisma().count(where={"userId": user_id})
+    """Get the total number of chat sessions for a user.
+
+    Applies the same dream-session exclusion as
+    :func:`get_user_chat_sessions` so pagination totals always match the
+    visible list.
+    """
+    rows = await db.query_raw_with_schema(
+        'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" '
+        'WHERE "userId" = $1 AND ' + _EXCLUDE_DREAM_SESSIONS_SQL,
+        user_id,
+    )
+    return rows[0]["count"] if rows else 0
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so ``title_contains`` matches literally.
+
+    Parity with Prisma's ``contains`` filter, which escapes them too;
+    Postgres' default LIKE escape character is the backslash.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
