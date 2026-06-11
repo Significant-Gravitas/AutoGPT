@@ -141,6 +141,7 @@ describe("Flow read-only gating", () => {
 
     expect(screen.queryByTestId("builder-actions")).not.toBeNull();
     expect(screen.queryByTestId("read-only-banner")).toBeNull();
+    expect(screen.queryByTestId("safe-mode-toggle")).not.toBeNull();
     expect(
       screen.getByTestId("control-panel").getAttribute("data-readonly"),
     ).toBe("false");
@@ -156,6 +157,7 @@ describe("Flow read-only gating", () => {
     expect(screen.queryByTestId("read-only-banner")).not.toBeNull();
     expect(screen.queryByTestId("builder-actions")).toBeNull();
     expect(screen.queryByTestId("trigger-agent-banner")).toBeNull();
+    expect(screen.queryByTestId("safe-mode-toggle")).toBeNull();
     expect(
       screen.getByTestId("control-panel").getAttribute("data-readonly"),
     ).toBe("true");

@@ -50,4 +50,16 @@ describe("ReadOnlyBanner", () => {
     expect(banner?.getAttribute("role")).toBe("status");
     expect(banner?.getAttribute("aria-live")).toBe("polite");
   });
+
+  test("can be dismissed", () => {
+    const { container } = render(<ReadOnlyBanner />);
+
+    expect(
+      container.querySelector('[data-id="read-only-banner"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    expect(container.querySelector('[data-id="read-only-banner"]')).toBeNull();
+  });
 });

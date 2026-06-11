@@ -133,7 +133,7 @@ export const Flow = () => {
             (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
-          {graph && (
+          {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
               className="right-2 top-32 p-2"
