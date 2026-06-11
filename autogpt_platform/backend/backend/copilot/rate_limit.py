@@ -62,7 +62,7 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.data.db_accessors import user_db
+from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
@@ -955,6 +955,11 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
     all fan out simultaneously. The key is deleted on transient errors so
     the next request can retry. Returns True when a subscription was found
     and synced (tier was updated in DB + cache cleared).
+
+    The DB work routes through ``credit_db()`` so the reconcile also works
+    from Prisma-less processes (scheduler-server, copilot-executor), where
+    a direct ``backend.data.credit`` call would raise
+    ``ClientNotConnectedError``.
     """
     gate_key = f"{_STRIPE_RECONCILE_PREFIX}{user_id}"
     try:
@@ -968,9 +973,7 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
         return False
 
     try:
-        from backend.data.credit import reconcile_stripe_tier_for_user  # avoid circular
-
-        return await reconcile_stripe_tier_for_user(user_id)
+        return await credit_db().reconcile_stripe_tier_for_user(user_id)
     except Exception as exc:
         logger.warning("stripe_reconcile: check failed for %s: %s", user_id[:8], exc)
         try:
