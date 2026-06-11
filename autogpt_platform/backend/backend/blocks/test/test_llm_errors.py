@@ -3,10 +3,7 @@ import openai
 import pytest
 
 import backend.blocks.llm as llm
-from backend.blocks.llm_errors import (
-    format_llm_error_message,
-    is_invalid_model_error,
-)
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 
 
 def _make_openai_status_error(message: str, code: str | None = None, status: int = 400):
@@ -28,6 +25,11 @@ def _make_openai_status_error(message: str, code: str | None = None, status: int
         "deprecated model: text-davinci-003",
         "unsupported model requested",
         "model gpt-4o-old is not available",
+        "The model `gpt-4-turbo` has been deprecated",
+        "Model claude-1.2 was retired on 2025-01-01",
+        "model text-davinci-003 is deprecated",
+        "No such model: gpt-5-imaginary",
+        "'fake-model' is not a valid model",
     ],
 )
 def test_is_invalid_model_error_matches_known_patterns(message: str):
@@ -50,10 +52,36 @@ def test_is_invalid_model_error_matches_structured_code():
         "The dataset does not exist",
         "User profile no longer available",
         "model latency is high, please retry",
+        "This model's maximum context length is 8192 tokens",
+        "Request exceeded the token limit for model gpt-4o",
     ],
 )
 def test_is_invalid_model_error_ignores_non_model_errors(message: str):
     assert is_invalid_model_error(ValueError(message)) is False
+
+
+def test_is_invalid_model_error_ignores_server_errors_mentioning_models():
+    error = _make_openai_status_error(
+        "The model gpt-4o is not available right now", status=503
+    )
+
+    assert is_invalid_model_error(error) is False
+
+
+def test_is_invalid_model_error_accepts_client_error_statuses():
+    error = _make_openai_status_error(
+        "The model `gpt-4-turbo` has been deprecated", status=404
+    )
+
+    assert is_invalid_model_error(error) is True
+
+
+def test_is_invalid_model_error_excludes_context_length_api_errors():
+    error = _make_openai_status_error(
+        "This model's maximum context length is 8192 tokens", status=400
+    )
+
+    assert is_invalid_model_error(error) is False
 
 
 def test_format_llm_error_message_appends_guidance_for_invalid_model():

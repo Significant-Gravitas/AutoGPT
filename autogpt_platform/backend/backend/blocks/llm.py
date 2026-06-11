@@ -1707,7 +1707,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    # Clamp so repeated 15% reductions can never decay to 0,
+                    # which providers reject outright.
+                    input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )

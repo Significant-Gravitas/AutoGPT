@@ -1113,6 +1113,40 @@ class TestUserErrorStatusCodeHandling:
             call_count > 1
         ), f"Expected multiple retry attempts for 500, got {call_count}"
 
+
+class TestContextLengthRetryHandling:
+    """Context-length failures retry with reduced max_tokens, never reaching 0."""
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reduction_clamps_above_zero(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        seen_max_tokens = []
+
+        async def mock_llm_call(*args, **kwargs):
+            seen_max_tokens.append(kwargs["max_tokens"])
+            raise ValueError("This model's maximum context length is 8192 tokens")
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                max_tokens=2,
+                retry=5,
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert len(seen_max_tokens) > 1, "context-length errors should keep retrying"
+        assert all(
+            tokens >= 1 for tokens in seen_max_tokens[1:]
+        ), f"max_tokens decayed below 1: {seen_max_tokens}"
+
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
