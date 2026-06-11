@@ -26,6 +26,15 @@ def _logprob_response(token: str, logprob: float) -> SimpleNamespace:
     return SimpleNamespace(choices=[choice])
 
 
+def _empty_logprob_response() -> SimpleNamespace:
+    """A response whose first token has no top_logprobs entries — the
+    classifier returned nothing usable for that passage."""
+    content = SimpleNamespace(top_logprobs=[])
+    logprobs = SimpleNamespace(content=[content])
+    choice = SimpleNamespace(logprobs=logprobs)
+    return SimpleNamespace(choices=[choice])
+
+
 def _client_with(responses: list[SimpleNamespace]) -> tuple[MagicMock, list[dict]]:
     captured: list[dict] = []
 
@@ -75,6 +84,25 @@ async def test_rank_scores_true_above_false_and_sorts():
 
     assert [passage for passage, _ in ranked] == ["relevant", "irrelevant"]
     assert ranked[0][1] > ranked[1][1]
+
+
+@pytest.mark.asyncio
+async def test_rank_handles_empty_logprobs_without_desync():
+    """An empty ``top_logprobs`` must not be silently skipped — doing so
+    desyncs scores from passages and makes ``zip(..., strict=True)`` raise
+    ``ValueError``, aborting the entire rerank. The passage with a missing
+    classifier response should score lowest and sort last instead."""
+    client, _ = _client_with(
+        [_logprob_response("True", -0.05), _empty_logprob_response()]
+    )
+    reranker = CompatOpenAIRerankerClient(
+        config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
+    )
+
+    ranked = await reranker.rank("query", ["relevant", "no_response"])
+
+    assert [passage for passage, _ in ranked] == ["relevant", "no_response"]
+    assert dict(ranked)["no_response"] == 0.0
 
 
 def test_build_graphiti_uses_compat_reranker(mocker):

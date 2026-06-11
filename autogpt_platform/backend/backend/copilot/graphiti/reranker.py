@@ -27,7 +27,11 @@ import openai
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.helpers import semaphore_gather
 from graphiti_core.llm_client import LLMConfig, RateLimitError
-from graphiti_core.prompts import Message
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +47,16 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
     """Stock reranker with an OpenAI-compliant ``max_tokens`` floor."""
 
     async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
-        openai_messages_list = [
+        openai_messages_list: list[list[ChatCompletionMessageParam]] = [
             [
-                Message(
+                ChatCompletionSystemMessageParam(
                     role="system",
                     content=(
                         "You are an expert tasked with determining whether the "
                         "passage is relevant to the query"
                     ),
                 ),
-                Message(
+                ChatCompletionUserMessageParam(
                     role="user",
                     content=f"""
                            Respond with "True" if PASSAGE is relevant to QUERY and "False" otherwise.
@@ -72,7 +76,7 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                 *[
                     self.client.chat.completions.create(
                         model=self.config.model or DEFAULT_MODEL,
-                        messages=openai_messages,  # type: ignore[arg-type]
+                        messages=openai_messages,
                         temperature=0,
                         max_tokens=MIN_COMPLETION_TOKENS,
                         logit_bias={"6432": 1, "7983": 1},
@@ -95,6 +99,12 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             scores: list[float] = []
             for top_logprobs in responses_top_logprobs:
                 if len(top_logprobs) == 0:
+                    # Keep scores aligned 1:1 with passages — a skipped
+                    # entry desyncs the lists and makes the
+                    # ``zip(..., strict=True)`` below raise ``ValueError``,
+                    # aborting the whole rerank. Treat a missing classifier
+                    # response as least-relevant (0.0).
+                    scores.append(0.0)
                     continue
                 norm_logprobs = np.exp(top_logprobs[0].logprob)
                 if top_logprobs[0].token.strip().split(" ")[0].lower() == "true":
