@@ -16980,6 +16980,8 @@
           "memory_forget_confirm",
           "todo_write",
           "platform_info",
+          "discord_channel_list",
+          "discord_posted",
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
