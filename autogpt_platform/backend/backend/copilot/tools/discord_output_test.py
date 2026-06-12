@@ -128,6 +128,58 @@ async def test_post_maps_authz_error(session):
 
 
 @pytest.mark.asyncio
+async def test_post_missing_content(session):
+    result = await PostToDiscordTool()._execute(
+        user_id=_USER, session=session, channel="#x", content="   "
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_content"
+
+
+@pytest.mark.asyncio
+async def test_post_invalid_mode(session):
+    result = await PostToDiscordTool()._execute(
+        user_id=_USER, session=session, channel="#x", content="hi", mode="shout"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_mode"
+
+
+@pytest.mark.asyncio
+async def test_post_message_send_failed_maps_error(session):
+    bridge = _bridge()
+    bridge.send_message_to_channel.return_value = DeliveryResult(
+        ok=False, kind="message", channel_id="42", error="send_failed"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToDiscordTool()._execute(
+            user_id=_USER, session=session, channel="#x", content="hi"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "send_failed"
+    assert "permission" in result.message
+
+
+@pytest.mark.asyncio
+async def test_post_thread_failed_maps_error(session):
+    bridge = _bridge()
+    bridge.create_thread_in_channel.return_value = DeliveryResult(
+        ok=False, kind="thread", channel_id="42", error="thread_failed"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToDiscordTool()._execute(
+            user_id=_USER,
+            session=session,
+            channel="#x",
+            content="body",
+            mode="thread",
+            thread_name="Monday",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "thread_failed"
+
+
+@pytest.mark.asyncio
 async def test_post_unavailable_without_token():
     with patch(f"{_PATH}._discord_bot_configured", return_value=False):
         assert PostToDiscordTool().is_available is False

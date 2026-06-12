@@ -65,6 +65,14 @@ _ERROR_MESSAGES: dict[str, str] = {
 
 
 def _discord_bot_configured() -> bool:
+    """Whether a Discord bot is configured, used to gate tool availability.
+
+    Assumes the copilot/executor process shares the bot token env with the
+    bridge pod (true for ``poetry run app`` and the standard deployment). If
+    they ever diverge, gate on bridge reachability instead — actual delivery
+    still fails safe via the RPC; this only controls whether the LLM is
+    offered the tool at all.
+    """
     return bool(Settings().secrets.autopilot_bot_discord_token)
 
 
