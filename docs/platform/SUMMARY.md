@@ -50,6 +50,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [AutoPilot Scheduling, New Design & Out of Beta](changelog/may-7-june-10-2026.md)
   * [Artifacts, Briefings, and Builder Chat](changelog/april-10-may-1-2026.md)
   * [Smarter starts, faster feedback](changelog/march-23-april-9-2026.md)
   * [Import workflows from other platforms and enjoy a polished marketplace](changelog/march-20-march-25-2026.md)
