@@ -77,6 +77,8 @@ async def deliver_message(
     content: str,
 ) -> DeliveryResult:
     """Post ``content`` to ``channel`` (name or ID) as a standalone message."""
+    if not content or not content.strip():
+        return DeliveryResult(ok=False, kind="message", error="empty_content")
     channel_id, error = await _resolve_target(adapter, api, platform, user_id, channel)
     if channel_id is None:
         return DeliveryResult(ok=False, kind="message", error=error)
@@ -100,6 +102,8 @@ async def create_thread(
     content: str,
 ) -> DeliveryResult:
     """Create a standalone thread in ``channel`` and post ``content`` in it."""
+    if not content or not content.strip():
+        return DeliveryResult(ok=False, kind="thread", error="empty_content")
     channel_id, error = await _resolve_target(adapter, api, platform, user_id, channel)
     if channel_id is None:
         return DeliveryResult(ok=False, kind="thread", error=error)

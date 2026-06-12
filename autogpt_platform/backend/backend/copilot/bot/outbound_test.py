@@ -130,6 +130,30 @@ async def test_deliver_message_send_failure():
 
 
 @pytest.mark.asyncio
+async def test_deliver_message_empty_content_is_distinct_error():
+    adapter = _adapter()
+    result = await outbound.deliver_message(
+        adapter, _api(["g1"]), "discord", "user-1", "#x", "   "
+    )
+    assert result.ok is False
+    assert result.error == "empty_content"
+    # Nothing should be resolved or sent for empty content.
+    adapter.list_text_channels.assert_not_awaited()
+    adapter.post_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_thread_empty_content_is_distinct_error():
+    adapter = _adapter()
+    result = await outbound.create_thread(
+        adapter, _api(["g1"]), "discord", "user-1", "#x", "Monday", ""
+    )
+    assert result.ok is False
+    assert result.error == "empty_content"
+    adapter.create_channel_thread.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_create_thread_happy_path():
     adapter = _adapter(
         channels=[ChannelInfo(id="42", name="announcements", server_id="g1")],
