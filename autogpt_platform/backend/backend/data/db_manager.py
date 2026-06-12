@@ -46,7 +46,11 @@ from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
 )
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.credit import (
+    UsageTransactionMetadata,
+    get_user_credit_model,
+    reconcile_stripe_tier_for_user,
+)
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
@@ -374,6 +378,10 @@ class DatabaseManager(AppService):
 
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+    # Per-user lazy reconcile, exposed so Prisma-less processes
+    # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
+    # row via db_accessors.credit_db() instead of crashing on direct Prisma.
+    reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
 
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
@@ -629,6 +637,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+    reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
