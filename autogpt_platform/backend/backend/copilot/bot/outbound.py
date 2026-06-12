@@ -134,10 +134,13 @@ async def _resolve_target(
             return None, "not_authorized"
         return ref, None
 
+    # `c.server_id in server_ids` is redundant with passing `server_ids` to
+    # the adapter, but re-asserting it here keeps authorization correct even
+    # if an adapter ever returns channels outside the requested servers.
     matches = [
         c
         for c in await adapter.list_text_channels(server_ids)
-        if c.name.lower() == ref.lower()
+        if c.name.lower() == ref.lower() and c.server_id in server_ids
     ]
     if not matches:
         return None, "channel_not_found"

@@ -56,6 +56,26 @@ class TestResolve:
         assert result.linked is False
 
 
+class TestListLinkedServerIds:
+    @pytest.mark.asyncio
+    async def test_returns_ids_for_matching_platform_only(self, api: BotBackend):
+        api._client.list_server_links = AsyncMock(
+            return_value=[
+                MagicMock(platform="DISCORD", platform_server_id="g1"),
+                MagicMock(platform="SLACK", platform_server_id="t1"),
+                MagicMock(platform="DISCORD", platform_server_id="g2"),
+            ]
+        )
+        result = await api.list_linked_server_ids("discord", "user-1")
+        assert result == ["g1", "g2"]
+        api._client.list_server_links.assert_awaited_once_with(user_id="user-1")
+
+    @pytest.mark.asyncio
+    async def test_empty_when_no_links(self, api: BotBackend):
+        api._client.list_server_links = AsyncMock(return_value=[])
+        assert await api.list_linked_server_ids("discord", "user-1") == []
+
+
 class TestRefreshServerName:
     @pytest.mark.asyncio
     async def test_forwards_uppercased_platform(self, api: BotBackend):

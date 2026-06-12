@@ -217,6 +217,9 @@ class DiscordAdapter(PlatformAdapter):
             for channel in guild.text_channels:
                 # Only surface channels the bot can actually post in, so the
                 # picker upstream never offers a target that would 403 on send.
+                # If the bot member isn't cached (`me is None`) we can't check,
+                # so we surface the channel and let the eventual send fail
+                # loudly rather than hide everything.
                 if me is not None and not channel.permissions_for(me).send_messages:
                     continue
                 channels.append(
@@ -231,8 +234,11 @@ class DiscordAdapter(PlatformAdapter):
 
     async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
         channel = await self._resolve_channel(channel_id)
-        guild = getattr(channel, "guild", None)
-        return str(guild.id) if guild is not None else None
+        # Guild channels and threads carry `.guild`; DM/group channels don't,
+        # so they resolve to None (never authorized for a server post).
+        if isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
+            return str(channel.guild.id)
+        return None
 
     async def post_channel_message(
         self, channel_id: str, text: str
