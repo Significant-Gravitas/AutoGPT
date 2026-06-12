@@ -25,6 +25,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     create_tool_handler,
     pop_pending_tool_output,
+    reset_pending_tool_outputs,
     reset_stash_event,
     set_execution_context,
     stash_pending_tool_output,
@@ -136,6 +137,18 @@ class TestToolOutputStash:
         stash_pending_tool_output("b", "beta")
         assert pop_pending_tool_output("b") == "beta"
         assert pop_pending_tool_output("a") == "alpha"
+
+    def test_reset_pending_tool_outputs_drops_orphans(self):
+        """A retry attempt must not inherit stashed outputs from a rolled-back
+        attempt — orphaned entries shift the name-keyed FIFO off-by-one and
+        attach stale payloads to the new attempt's tool calls."""
+        stash_pending_tool_output("run_block", "stale-from-failed-attempt")
+        reset_pending_tool_outputs()
+        assert pop_pending_tool_output("run_block") is None
+
+        # A fresh stash after the reset behaves normally.
+        stash_pending_tool_output("run_block", "fresh")
+        assert pop_pending_tool_output("run_block") == "fresh"
 
 
 # ---------------------------------------------------------------------------

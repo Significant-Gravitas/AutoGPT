@@ -401,6 +401,15 @@ def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] 
         try:
             parsed: Any = json.loads(output)
         except json.JSONDecodeError:
+            if '"setup_requirements"' in output:
+                # A payload that mentions setup_requirements but doesn't parse
+                # is almost certainly a truncated/corrupted tool output — the
+                # user never gets their sign-in link if we drop it silently.
+                logger.warning(
+                    "Dropping unparseable setup_requirements tool output "
+                    "(%d chars) — sign-in link will not be sent",
+                    len(output),
+                )
             return None
     else:
         parsed = output

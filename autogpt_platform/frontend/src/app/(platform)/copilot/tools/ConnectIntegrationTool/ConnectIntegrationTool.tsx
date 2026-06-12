@@ -4,6 +4,10 @@ import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/s
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
+import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
 
 type Props = {
   part: ToolUIPart;
@@ -46,6 +50,12 @@ export function ConnectIntegrationTool({ part }: Props) {
       ? parseOutput((part as { output?: unknown }).output)
       : null;
 
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput((part as { output?: unknown }).output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
+
   const errorMessage = isError
     ? (parseError((part as { output?: unknown }).output) ??
       "Failed to connect integration")
@@ -78,6 +88,13 @@ export function ConnectIntegrationTool({ part }: Props) {
 
       {isError && errorMessage && (
         <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
+      )}
+
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-red-500">
+          The sign-in card data arrived corrupted and can&apos;t be shown. Ask
+          AutoPilot to retry connecting {providerName}.
+        </p>
       )}
 
       {output && (

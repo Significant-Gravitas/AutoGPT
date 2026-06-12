@@ -1,6 +1,7 @@
 """Tests for the bot's thin facade over PlatformLinkingManagerClient."""
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,7 +25,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .bot_backend import BotBackend, BotStreamError
+from .bot_backend import BotBackend, BotStreamError, _extract_setup_requirements
 
 
 @pytest.fixture
@@ -288,3 +289,29 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "subscribe_failed"
+
+
+class TestExtractSetupRequirements:
+    def test_extracts_from_json_string(self):
+        payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
+        assert _extract_setup_requirements(payload) == {
+            "type": "setup_requirements",
+            "message": "Connect GitHub",
+        }
+
+    def test_truncated_setup_requirements_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """A corrupted setup_requirements payload must not be dropped silently —
+        the user never receives their sign-in link, so we need telemetry."""
+        truncated = '{"type":"setup_requirements","message":"Connect Goo'
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements(truncated) is None
+        assert any("setup_requirements" in record.message for record in caplog.records)
+
+    def test_non_setup_unparseable_output_stays_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        with caplog.at_level(logging.WARNING):
+            assert _extract_setup_requirements("plain text tool result") is None
+        assert not caplog.records
