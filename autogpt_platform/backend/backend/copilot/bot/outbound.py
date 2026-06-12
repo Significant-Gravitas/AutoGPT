@@ -57,7 +57,15 @@ async def list_channels(
     server_ids = tuple(await api.list_linked_server_ids(platform, user_id))
     if not server_ids:
         return []
-    return await adapter.list_text_channels(server_ids)
+    # Re-filter the adapter's output against the linked-server allowlist so the
+    # picker can never surface a channel from an unlinked server, even if an
+    # adapter over-returns. Mirrors the same guard in `_resolve_target`.
+    allowed = set(server_ids)
+    return [
+        channel
+        for channel in await adapter.list_text_channels(server_ids)
+        if channel.server_id in allowed
+    ]
 
 
 async def deliver_message(

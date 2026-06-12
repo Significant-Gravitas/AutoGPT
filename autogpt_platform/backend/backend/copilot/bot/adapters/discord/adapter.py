@@ -268,10 +268,18 @@ class DiscordAdapter(PlatformAdapter):
                 name=name[:100],
                 type=discord.ChannelType.public_thread,
             )
-            await self._send_chunked(thread, text)
         except discord.HTTPException:
             logger.exception("Failed to create thread in channel %s", channel_id)
             return None
+        # The thread now exists on Discord. Surface its ref even if posting the
+        # body fails, so the caller reports partial success and doesn't retry
+        # into a duplicate thread.
+        try:
+            await self._send_chunked(thread, text)
+        except discord.HTTPException:
+            logger.exception(
+                "Thread %s created but posting its content failed", thread.id
+            )
         return PostedRef(id=str(thread.id), url=thread.jump_url)
 
     async def _send_chunked(
@@ -280,6 +288,10 @@ class DiscordAdapter(PlatformAdapter):
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
         callers permalink to), or ``None`` if there was nothing to send.
+
+        Raises only if the *first* chunk fails — once anything is delivered, a
+        later-chunk failure stops the send and keeps the partial result rather
+        than discarding what already posted (a retry would duplicate it).
         """
         remaining = text.strip()
         first: Optional[discord.Message] = None
@@ -287,7 +299,13 @@ class DiscordAdapter(PlatformAdapter):
             chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
             if not chunk:
                 break
-            msg = await channel.send(chunk, tts=False)
+            try:
+                msg = await channel.send(chunk, tts=False)
+            except discord.HTTPException:
+                if first is None:
+                    raise
+                logger.exception("Dropping trailing chunk after partial send")
+                break
             if first is None:
                 first = msg
         return first

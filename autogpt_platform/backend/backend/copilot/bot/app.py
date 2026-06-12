@@ -98,6 +98,11 @@ class CoPilotChatBridge(AppService):
         cheerfully reporting OK on a dead bridge.
         """
         self._adapters_healthy = False
+        # Drop the adapter/api handles so outbound RPCs raise UnhealthyService
+        # instead of dispatching into an adapter whose gateway connection has
+        # already torn down.
+        self._adapters_by_platform = {}
+        self._api = None
         exc = future.exception()
         if exc is not None:
             logger.error("CoPilotChatBridge adapters crashed: %r", exc, exc_info=exc)
@@ -117,6 +122,8 @@ class CoPilotChatBridge(AppService):
         configured, so a retrying caller backs off instead of treating it as
         a permanent failure.
         """
+        if not self._adapters_healthy:
+            raise UnhealthyServiceError("CoPilotChatBridge adapter task is not running")
         adapter = self._adapters_by_platform.get(platform.value.lower())
         if adapter is None or self._api is None:
             raise UnhealthyServiceError(

@@ -163,3 +163,17 @@ async def test_list_channels_empty_without_links():
     result = await outbound.list_channels(adapter, _api([]), "discord", "user-1")
     assert result == []
     adapter.list_text_channels.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_channels_drops_unlinked_server_channels():
+    # Defense-in-depth: even if the adapter over-returns, channels outside the
+    # user's linked servers are filtered out of the picker.
+    adapter = _adapter(
+        channels=[
+            ChannelInfo(id="10", name="ours", server_id="g1"),
+            ChannelInfo(id="20", name="leaked", server_id="other"),
+        ]
+    )
+    result = await outbound.list_channels(adapter, _api(["g1"]), "discord", "user-1")
+    assert [c.id for c in result] == ["10"]

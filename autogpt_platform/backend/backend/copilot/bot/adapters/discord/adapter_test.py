@@ -907,3 +907,51 @@ class TestProactiveOutput:
         assert ref is not None
         # 5000 chars at ~1900/chunk → more than one send.
         assert channel.send.await_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_post_message_keeps_first_chunk_on_later_failure(self):
+        # First chunk posts, a later chunk 500s: the already-posted message is
+        # surfaced (partial success) rather than discarded into a retry-duplicate.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        first = MagicMock(id=111, jump_url="u1")
+        channel.send = AsyncMock(
+            side_effect=[first, discord.HTTPException(MagicMock(status=500), "boom")]
+        )
+        client.get_channel.return_value = channel
+
+        ref = await adapter.post_channel_message("10", ("word " * 1000).strip())
+
+        assert ref is not None
+        assert ref.id == "111"
+
+    @pytest.mark.asyncio
+    async def test_post_message_returns_none_when_first_chunk_fails(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=500), "boom")
+        )
+        client.get_channel.return_value = channel
+
+        assert await adapter.post_channel_message("10", "hi") is None
+
+    @pytest.mark.asyncio
+    async def test_create_thread_returns_ref_when_content_post_fails(self):
+        # Thread created but posting body fails → still return the thread ref so
+        # the caller doesn't retry and spawn a duplicate thread.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 777
+        thread.jump_url = "https://discord.com/t/777"
+        thread.send = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=500), "boom")
+        )
+        channel.create_thread = AsyncMock(return_value=thread)
+        client.get_channel.return_value = channel
+
+        ref = await adapter.create_channel_thread("10", "Monday", "body")
+
+        assert ref is not None
+        assert ref.id == "777"

@@ -21,6 +21,7 @@ def _bridge(*, with_adapter: bool = True) -> tuple[CoPilotChatBridge, MagicMock]
     bridge = CoPilotChatBridge.__new__(CoPilotChatBridge)
     adapter = MagicMock()
     adapter.platform_name = "discord"
+    bridge._adapters_healthy = True
     bridge._api = MagicMock()
     bridge._adapters_by_platform = {"discord": adapter} if with_adapter else {}
     return bridge, adapter
@@ -29,6 +30,14 @@ def _bridge(*, with_adapter: bool = True) -> tuple[CoPilotChatBridge, MagicMock]
 @pytest.mark.asyncio
 async def test_require_raises_when_adapter_missing():
     bridge, _ = _bridge(with_adapter=False)
+    with pytest.raises(UnhealthyServiceError):
+        bridge._require(Platform.DISCORD)
+
+
+@pytest.mark.asyncio
+async def test_require_raises_when_unhealthy():
+    bridge, _ = _bridge()
+    bridge._adapters_healthy = False
     with pytest.raises(UnhealthyServiceError):
         bridge._require(Platform.DISCORD)
 
