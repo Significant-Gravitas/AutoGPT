@@ -924,6 +924,9 @@ class TestProactiveOutput:
 
         assert ref is not None
         assert ref.id == "111"
+        # Prove the later (failing) chunk was actually reached, so chunk-sizing
+        # changes can't quietly turn this into a single-send happy path.
+        assert channel.send.await_count >= 2
 
     @pytest.mark.asyncio
     async def test_post_message_returns_none_when_first_chunk_fails(self):
