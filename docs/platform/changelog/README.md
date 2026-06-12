@@ -6,7 +6,7 @@ What's new in AutoPilot and the AutoGPT Platform. We ship updates regularly and 
 
 | Date | Highlights |
 | ---- | ---------- |
-| [May 7 – June 10](may-7-june-10-2026.md) | AutoPilot scheduling, new login design, subscriptions out of beta, settings rebuilt |
+| [May 7 – June 10](may-7-june-10-2026.md) | AutoPilot upgrades, redesigned login, live subscriptions, rebuilt settings |
 | [April 10 – May 1](april-10-may-1-2026.md) | Artifacts panel, agent briefings, AI chat in builder |
 | [March 23 – April 9](march-23-april-9-2026.md) | Themed prompt categories, live timer stats, redesigned onboarding, copy your prompts |
 | [March 20 – March 25](march-20-march-25-2026.md) | Import workflows from other tools, marketplace UI polish, dry-run mode, parallel AutoPilot actions |
