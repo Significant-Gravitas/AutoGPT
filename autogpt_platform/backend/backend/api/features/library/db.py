@@ -64,6 +64,25 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
+async def _fetch_last_execution_times(user_id: str, graph_ids: list[str]) -> dict[str, datetime]:
+    """Fetch the latest execution time per graph in a single batched query."""
+    if not graph_ids:
+        return {}
+    rows = await prisma.models.AgentGraphExecution.prisma().group_by(
+        by=["agentGraphId"],
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        max={"createdAt": True},
+    )
+    return {
+        row["agentGraphId"]: row.get("_max", {}).get("createdAt")
+        for row in rows if row.get("_max") and row.get("_max", {}).get("createdAt")
+    }
+
+
 async def _fetch_schedule_info(
     user_id: str, graph_id: Optional[str] = None
 ) -> dict[str, str]:
@@ -190,16 +209,35 @@ async def list_library_agents(
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
 
-    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where=where_clause,
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=include_executions
-        ),
-        order=order_by,
-        skip=(page - 1) * page_size,
-        take=page_size,
-    )
-    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
+    if sort_by == library_model.LibraryAgentSort.LAST_RUN_AT:
+        # Fetch all matching agents to sort in-memory
+        all_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=include_executions
+            ),
+        )
+        agent_count = len(all_agents)
+        
+        all_graph_ids = [a.agentGraphId for a in all_agents if a.agentGraphId]
+        last_exec_times = await _fetch_last_execution_times(user_id, all_graph_ids)
+        
+        def get_last_run(agent: prisma.models.LibraryAgent) -> datetime:
+            return last_exec_times.get(agent.agentGraphId) or agent.createdAt
+            
+        all_agents.sort(key=get_last_run, reverse=True)
+        library_agents = all_agents[(page - 1) * page_size : page * page_size]
+    else:
+        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=include_executions
+            ),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
