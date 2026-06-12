@@ -141,11 +141,11 @@ def _build_graphiti(group_id: str, llm_client):
     flex) without disturbing the embedder + cross-encoder defaults.
     """
     from graphiti_core import Graphiti
-    from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
     from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client import LLMConfig
 
     from .falkordb_driver import AutoGPTFalkorDriver
+    from .reranker import CompatOpenAIRerankerClient
 
     embedder_config = OpenAIEmbedderConfig(
         api_key=graphiti_config.resolve_embedder_api_key(),
@@ -155,16 +155,18 @@ def _build_graphiti(group_id: str, llm_client):
     embedder = OpenAIEmbedder(config=embedder_config)
 
     # P-1.4: cross-encoder reranker for warm-context retrieval.
-    # OpenAIRerankerClient runs concurrent boolean-classifier prompts
-    # (one per candidate edge) and uses log-probabilities to rank.
-    # Cheap because the reranker model defaults to gpt-4.1-nano —
-    # the cost is one batch of small calls per session-start search.
+    # Runs concurrent boolean-classifier prompts (one per candidate
+    # edge) and uses log-probabilities to rank. Cheap because the
+    # reranker model defaults to gpt-4.1-nano — the cost is one batch
+    # of small calls per session-start search. The Compat subclass
+    # fixes the stock client's max_tokens=1, which OpenAI-compatible
+    # upstreams now reject with a 400 (minimum is 16).
     reranker_config = LLMConfig(
         api_key=graphiti_config.resolve_llm_api_key(),
         model=graphiti_config.reranker_model,
         base_url=graphiti_config.resolve_llm_base_url(),
     )
-    cross_encoder = OpenAIRerankerClient(config=reranker_config)
+    cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)
 
     graph_driver = AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
