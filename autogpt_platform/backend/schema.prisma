@@ -1283,6 +1283,8 @@ enum ContentType {
   INTEGRATION // File-based: Python classes (blocks with credentials)
   DOCUMENTATION // File-based: .md/.mdx files
   LIBRARY_AGENT // Database: User's personal agents
+  WORKSPACE_FILE // Database: UserWorkspaceFile (per-user)
+  CHAT_SESSION // Database: ChatSession (per-user)
 }
 
 // Unified embeddings table for all searchable content types
@@ -1586,4 +1588,48 @@ model PlatformLinkToken {
   @@index([platform, platformServerId])
   @@index([platform, platformUserId])
   @@index([expiresAt])
+}
+
+// ── Bot usage analytics ────────────────────────────────────────────────
+// Privacy: these tables NEVER store message content. Only counts,
+// timestamps, bounded enums (event type, channel type, error kind) and
+// numeric metrics (reply length, latency). Tagged with PlatformType so the
+// same analytics work for every chat-bot platform.
+
+// Append-only stream of discrete bot usage events. Powers message-volume,
+// command-usage, error-rate and per-server activity charts.
+model BotEvent {
+  id          String       @id @default(uuid())
+  createdAt   DateTime     @default(now())
+  platform    PlatformType
+  // Bounded event kind, e.g. "message_received", "reply_sent",
+  // "command_used", "link_created", "link_removed", "stream_error".
+  eventType   String
+  serverId    String? // Platform server/guild ID; null for DMs
+  channelType String? // "dm" | "channel" | "thread"
+  commandName String? // For command_used events (e.g. "/new", "/resume")
+  errorKind   String? // Bounded failure category for stream_error events
+  charCount   Int? // Reply length in characters — a metric, NOT content
+  durationMs  Int? // Receive→reply latency in milliseconds
+
+  @@index([platform, eventType, createdAt])
+  @@index([platform, serverId, createdAt])
+  @@index([createdAt])
+}
+
+// Presence table: which servers the bot is physically in right now (a
+// superset of PlatformLink, since the bot can be in servers that haven't run
+// /setup). `leftAt IS NULL` is the live membership; the joinedAt histogram
+// drives growth charts and sharding-threshold prediction.
+model BotGuild {
+  id         String       @id @default(uuid())
+  platform   PlatformType
+  serverId   String // Platform server/guild ID
+  name       String? // Server display name (best-effort, may go stale)
+  joinedAt   DateTime     @default(now())
+  leftAt     DateTime? // Set when the bot is removed; null = currently joined
+  lastSeenAt DateTime     @default(now()) // Last reconcile that confirmed presence
+
+  @@unique([platform, serverId])
+  @@index([platform, leftAt])
 }

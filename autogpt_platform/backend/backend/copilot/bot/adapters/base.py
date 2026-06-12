@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Literal, Optional
 
+from pydantic import BaseModel
+
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
 
@@ -26,6 +28,20 @@ class MessageHistoryEntry:
     username: str
     user_id: Optional[str]
     text: str
+
+
+class FileAttachment(BaseModel):
+    """A workspace artifact ready to attach to a platform message.
+
+    ``content`` carries the file bytes — the handler only ever produces
+    these after the backend has already checked them against the adapter's
+    ``max_attachment_bytes``, so adapters can attach directly without
+    re-validating size.
+    """
+
+    filename: str
+    mime_type: str
+    content: bytes
 
 
 @dataclass
@@ -146,5 +162,20 @@ class PlatformAdapter(ABC):
         Should be slightly under max_message_length to leave headroom for
         any trailing content that the splitter might pull into the current
         chunk.
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def max_attachment_bytes(self) -> int:
+        """Hard platform cap on a single uploaded file's size in bytes."""
+        ...
+
+    @abstractmethod
+    async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
+        """Send a single file as an attachment, with optional accompanying text.
+
+        Callers must ensure ``len(file.content) <= max_attachment_bytes`` —
+        the handler enforces that upstream via the workspace fetch path.
         """
         ...

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 import fastapi
@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
@@ -182,6 +183,35 @@ async def download_file(
     return await create_file_download_response(file)
 
 
+@router.get(
+    "/files/{file_id}/preview",
+    summary="Preview file by ID",
+    operation_id="getWorkspaceFilePreview",
+)
+async def preview_file(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+    w: int = Query(default=400, ge=16, le=1024),
+    bytes_: int = Query(default=4096, ge=256, le=131072, alias="bytes"),
+) -> Response:
+    """
+    Return a cheap preview of a file.
+
+    Images/PDFs/Office docs are returned as a small WebP thumbnail; text-like
+    files return only their first ``bytes`` bytes. Used by the Artifacts page so
+    a grid of files no longer downloads every file in full.
+    """
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+
+    return await build_preview_response(file, width=w, max_bytes=bytes_)
+
+
 @router.delete(
     "/files/{file_id}",
     summary="Delete a workspace file",
@@ -339,6 +369,23 @@ async def list_workspace_files(
     session_id: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    q: str | None = Query(
+        default=None,
+        description=(
+            "Case-insensitive substring search on file name. Applied "
+            "in the database for fresh results without waiting on "
+            "embedding generation."
+        ),
+    ),
+    origin: Literal["builder", "autopilot"] | None = Query(
+        default=None,
+        description=(
+            "Filter by upload origin. ``autopilot`` matches files stored "
+            "under ``/sessions/...`` (CoPilot chat uploads); ``builder`` "
+            "matches everything else. Ignored when ``session_id`` is set "
+            "(session scoping already implies origin)."
+        ),
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -346,6 +393,9 @@ async def list_workspace_files(
     When session_id is provided, only files for that session are returned.
     Otherwise, all files across sessions are listed. Results are paginated
     via `limit`/`offset`; `has_more` indicates whether additional pages exist.
+
+    The Artifacts page uses ``q`` for name search and ``origin`` to filter
+    between Builder (root-level) and Autopilot (session-scoped) uploads.
     """
     workspace = await get_or_create_workspace(user_id)
 
@@ -356,11 +406,27 @@ async def list_workspace_files(
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
+
+    # Origin → path filter. Only applied when not session-scoped, since
+    # session_id already pins the origin.
+    list_path: str | None = None
+    path_not_starts_with: str | None = None
+    if session_id is None and origin is not None:
+        if origin == "autopilot":
+            list_path = "/sessions/"
+        else:  # "builder"
+            path_not_starts_with = "/sessions/"
+
+    name_contains = (q or "").strip() or None
+
     # Fetch one extra to compute has_more without a separate count query.
     files = await manager.list_files(
+        path=list_path,
         limit=limit + 1,
         offset=offset,
         include_all_sessions=include_all,
+        name_contains=name_contains,
+        path_not_starts_with=path_not_starts_with,
     )
     has_more = len(files) > limit
     page = files[:limit]

@@ -29,6 +29,7 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
@@ -95,6 +96,14 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+# Dream / nightly / community-rebuild operations call into OpenRouter
+# with 50K-token prompts and FalkorDB-backed Leiden passes that
+# legitimately take >5 min. Match the dream lock's 30 min TTL so the
+# future resolves before the lock expires under the dream pass.
+SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
+# The Stripe tier sweep pages through every active subscription, so it needs a
+# generous ceiling relative to the per-op default.
+STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 
 def job_listener(event):
@@ -417,6 +426,449 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
+def execute_community_rebuild(user_id: str):
+    """Per-user Graphiti community rebuild (P-1.7).
+
+    Sync wrapper around the async ``rebuild_communities_for_user`` so it
+    can run on the APScheduler thread pool. Failures are caught inside
+    the coroutine; this wrapper logs the outcome.
+
+    Runtime flag gate: if ``GRAPHITI_COMMUNITIES_ENABLED`` flipped from
+    on→off after the schedule was registered, this body short-circuits
+    instead of running. Registration-time gating is in
+    ``add_community_rebuild_schedule``; this is the third layer of
+    defense (see ``copilot/dream/scheduling.py`` module docstring).
+    """
+    from backend.copilot.graphiti.config import is_communities_enabled_for_user
+
+    if not run_async(is_communities_enabled_for_user(user_id)):
+        logger.info(
+            "Community rebuild skipped for user %s — flag flipped off post-registration",
+            user_id[:12],
+        )
+        return
+
+    result = run_async(
+        rebuild_communities_for_user(user_id),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
+    if result.get("error"):
+        logger.warning(
+            "Community rebuild errored for user %s: %s",
+            user_id[:12],
+            result["error"],
+        )
+    else:
+        logger.info(
+            "Community rebuild completed for user %s in %.1fs: %s",
+            user_id[:12],
+            result.get("elapsed_seconds") or 0.0,
+            result.get("communities_built"),
+        )
+
+
+def execute_nightly_batch_sync(user_id: str):
+    """Per-user nightly batch-family fan-out cron body.
+
+    Sync wrapper for APScheduler. The body inside
+    ``run_nightly_batch_submit`` sequentially invokes each enabled
+    submitter (dream pass, ratification supersession sweep, plus
+    future P2 / P3 / P4 / P11 stages). In real-batch mode each
+    submitter enqueues to the provider's batch API and returns in
+    seconds; results land asynchronously via the
+    ``copilot_batch_executor`` poller. In sync_baseline mode (today),
+    each submitter inlines its work and the function takes ~30-60s.
+
+    Runtime flag gate (layer 3 of the 3-layer design): if
+    ``DREAM_PASS_ENABLED`` flipped off after the cron was registered,
+    this body short-circuits before any submitter runs. The
+    consolidation removes the separate dream / ratification crons —
+    both are now submitters inside this single nightly cron.
+
+    Returns the typed ``NightlyBatchResult`` so the admin
+    ``*_with_status`` wrapper can persist it on the JobStatus row.
+    Returns ``None`` only when the runtime flag gate short-circuits
+    before the submitter runs.
+    """
+    from backend.copilot.dream.nightly_batch import (
+        NightlyBatchResult,
+        run_nightly_batch_submit,
+    )
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+        logger.info(
+            "Nightly batch skipped for user %s — DREAM_PASS_ENABLED flipped off",
+            user_id[:12],
+        )
+        return None
+
+    result: NightlyBatchResult = run_async(
+        run_nightly_batch_submit(user_id),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
+    if result.error:
+        logger.warning(
+            "Nightly batch errored for user %s (nightly %s): %s",
+            user_id[:12],
+            result.nightly_id,
+            result.error,
+        )
+    elif result.skipped:
+        logger.info(
+            "Nightly batch skipped for user %s (nightly %s): %s",
+            user_id[:12],
+            result.nightly_id,
+            result.skip_reason,
+        )
+    else:
+        dream_writes = result.dream.consolidated_count if result.dream else 0
+        dream_proposals = result.dream.proposal_count if result.dream else 0
+        rat_ratified = result.ratification.ratified_count if result.ratification else 0
+        rat_superseded = (
+            result.ratification.superseded_count if result.ratification else 0
+        )
+        logger.info(
+            "Nightly batch completed for user %s in %.1fs (nightly %s): "
+            "dream_writes=%d dream_proposals=%d ratified=%d superseded=%d",
+            user_id[:12],
+            result.elapsed_seconds or 0.0,
+            result.nightly_id,
+            dream_writes,
+            dream_proposals,
+            rat_ratified,
+            rat_superseded,
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# *_with_status wrappers — used by fire-and-forget admin triggers
+# ---------------------------------------------------------------------------
+#
+# The original ``execute_*_sync`` bodies above are called from cron
+# triggers and return a result that the cron-fired path just logs.
+# The admin trigger pattern (POST returns 202 + job_id, frontend
+# polls) needs each work body to also write status transitions to the
+# Redis-backed JobStatus registry so the frontend can show
+# "Consolidating..." → "Recombining..." → "Complete (3.2 min)".
+#
+# Rather than thread ``job_id`` through every internal call, we wrap
+# the sync bodies with a thin status-recording wrapper. The wrapper
+# uses ``run_async`` to call the async JobStatus helpers from this
+# sync context (same bridge to the shared event loop the existing
+# bodies use).
+#
+# The cron path keeps calling the original ``execute_*_sync`` bodies
+# (no status writes). The admin path goes through these wrappers.
+
+
+def execute_nightly_batch_with_status(user_id: str, job_id: str):
+    """Run the nightly batch and record JobStatus transitions.
+
+    Used by the admin trigger pattern (POST /api/admin/memory/{user}/nightly
+    returns 202 + job_id; this fires asynchronously via
+    ``Scheduler.schedule_immediate_nightly_batch``).
+    """
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+
+    try:
+        run_async(
+            update_status_phase(kind="nightly", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        # Status update failures must never crash the work body — the
+        # admin frontend will just see the row stuck at "queued" until
+        # mark_complete / mark_errored writes the terminal state.
+        logger.warning(
+            "Failed to mark nightly batch %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        result = execute_nightly_batch_sync(user_id)
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered nightly batch crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="nightly",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for nightly %s", job_id[:12]
+            )
+        return
+
+    if result is None:
+        # Runtime flag gate short-circuit — record a minimal envelope
+        # so the polling client sees the run completed-as-skipped.
+        from backend.copilot.dream.nightly_batch import NightlyBatchResult
+
+        now = datetime.now(timezone.utc)
+        result = NightlyBatchResult(
+            user_id=user_id,
+            nightly_id="",
+            started_at=now,
+            completed_at=now,
+            elapsed_seconds=0.0,
+            skipped=True,
+            skip_reason="dream_pass_disabled_runtime",
+        )
+
+    # ``run_nightly_batch_submit`` never raises — a submitter CRASH is
+    # captured in ``NightlyBatchResult.error``, while a submitter that
+    # ran but reported its own failure carries it on its sub-result
+    # (``dream.error`` / ``ratification.error``) with the top-level
+    # error left unset. The admin row must read errored for all of
+    # these — otherwise the Memory Visualizer renders a failed dream
+    # as a successful nightly run (same contract as the dream-pass
+    # wrapper below).
+    error_parts = [
+        part
+        for part in (
+            result.error,
+            (
+                f"dream: {result.dream.error}"
+                if result.dream is not None and result.dream.error
+                else None
+            ),
+            (
+                f"ratification: {result.ratification.error}"
+                if result.ratification is not None and result.ratification.error
+                else None
+            ),
+        )
+        if part
+    ]
+    if error_parts:
+        try:
+            run_async(
+                mark_errored(
+                    kind="nightly", job_id=job_id, error=" | ".join(error_parts)
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark nightly batch %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
+    # The nightly fan-out is complete once every submitter has run —
+    # even when the dream submitter took a provider batch path and only
+    # ENQUEUED its pass (``result.dream_in_flight``). The dream batch
+    # callbacks finalize ``dream_pass`` JobStatus rows only, never this
+    # nightly row, so parking it at 'submitted' would leave it stuck
+    # with nothing ever writing a terminal state until the 6h TTL
+    # reaps it. Close it out as complete; ``dream_in_flight`` on the
+    # persisted envelope tells consumers the dream's apply step is
+    # still landing asynchronously via the BatchExecutor.
+    try:
+        run_async(
+            mark_complete(kind="nightly", job_id=job_id, result=result),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark nightly batch %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def execute_dream_pass_with_status(user_id: str, job_id: str):
+    """Run the dream pass in isolation and record JobStatus transitions."""
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+    from backend.copilot.dream.orchestrator import execute_dream_pass
+
+    try:
+        run_async(
+            update_status_phase(kind="dream_pass", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark dream pass %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        result = run_async(
+            execute_dream_pass(user_id, status_id=job_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered dream pass crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="dream_pass",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for dream pass %s", job_id[:12]
+            )
+        return
+
+    # The Anthropic batch path returns ``DreamPassResult`` as soon as
+    # the first phase submission is queued — the actual apply step
+    # runs in the BatchExecutor's callback chain when phase 3 lands
+    # (anywhere from minutes to ~1h later). In that case the dream
+    # batch_callbacks own the final ``mark_complete`` / ``mark_errored``
+    # transition; this wrapper must NOT close the row out early or
+    # the GET status endpoint will report ``complete`` while the batch
+    # is still processing.
+    if (
+        result.execution_path == "anthropic_batch"
+        and not result.skipped
+        and not result.error
+    ):
+        try:
+            run_async(
+                update_status_phase(
+                    kind="dream_pass",
+                    job_id=job_id,
+                    state="submitted",
+                    current_phase="consolidate",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to flip dream pass %s to submitted for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
+    if result.error:
+        # A sync pass that returned an error result must surface as
+        # errored, not complete — otherwise the Memory Visualizer renders
+        # a failed dream as a successful one.
+        try:
+            run_async(
+                mark_errored(kind="dream_pass", job_id=job_id, error=result.error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark dream pass %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
+    try:
+        run_async(
+            mark_complete(kind="dream_pass", job_id=job_id, result=result),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark dream pass %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def execute_community_rebuild_with_status(user_id: str, job_id: str):
+    """Run a community rebuild and record JobStatus transitions."""
+    from backend.copilot.dream.job_status import (
+        mark_complete,
+        mark_errored,
+        update_status_phase,
+    )
+
+    try:
+        run_async(
+            update_status_phase(kind="rebuild", job_id=job_id, state="running"),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark community rebuild %s as running for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+    try:
+        result = run_async(
+            rebuild_communities_for_user(user_id),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Admin-triggered community rebuild crashed for user %s job %s",
+            user_id[:12],
+            job_id[:12],
+        )
+        try:
+            run_async(
+                mark_errored(
+                    kind="rebuild",
+                    job_id=job_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record errored status for rebuild %s", job_id[:12]
+            )
+        return
+
+    try:
+        run_async(
+            mark_complete(kind="rebuild", job_id=job_id, result=result),
+            timeout=10,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to mark community rebuild %s complete for user %s",
+            job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
 def cleanup_oauth_tokens():
     """Clean up expired OAuth tokens from the database."""
 
@@ -446,6 +898,16 @@ def cleanup_platform_link_tokens():
         return await db.cleanup_expired_platform_link_tokens()
 
     run_async(_cleanup())
+
+
+def reconcile_stripe_tiers():
+    """Reconcile all STRIPE-sourced user tiers against live Stripe state."""
+
+    async def _reconcile():
+        db = get_database_manager_async_client()
+        return await db.reconcile_all_stripe_tiers()
+
+    run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
 def execution_accuracy_alerts():
@@ -959,6 +1421,19 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Stripe Subscription Tier Reconciliation - configurable interval
+            # Safety net for missed/lost Stripe webhooks: makes Stripe the
+            # eventual source of truth for STRIPE-sourced tiers (incl. downgrades).
+            self.scheduler.add_job(
+                reconcile_stripe_tiers,
+                id="reconcile_stripe_tiers",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,  # Prevent overlapping sweeps
+                seconds=config.stripe_tier_reconcile_interval_hours * 3600,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
                 execution_accuracy_alerts,
@@ -1342,6 +1817,287 @@ class Scheduler(AppService):
         """Manually trigger embedding backfill for approved store agents."""
         return ensure_embeddings_coverage()
 
+    # --- Graphiti community detection (P-1.7) ---
+    #
+    # Communities are off-by-default behind LD flag ``GRAPHITI_COMMUNITIES_ENABLED``
+    # at the call sites. The scheduler unconditionally accepts the
+    # registration call; callers gate on the flag. Rebuilds run weekly at
+    # user-local 04:00 Sunday to avoid the Leiden cost spike during active
+    # hours (and to stagger from a future per-user dream pass at 03:00).
+
+    @expose
+    def add_community_rebuild_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a weekly community rebuild for one user.
+
+        Gated by ``Flag.GRAPHITI_COMMUNITIES_ENABLED`` per-user. When the
+        flag is off the call is a no-op — returns a structured "skipped"
+        dict so callers see the same shape as a successful registration.
+        """
+        from backend.copilot.graphiti.config import is_communities_enabled_for_user
+
+        if not run_async(is_communities_enabled_for_user(user_id)):
+            logger.info(
+                "Community rebuild registration skipped for user %s — "
+                "GRAPHITI_COMMUNITIES_ENABLED flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "graphiti_communities_disabled",
+            }
+
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"community_rebuild_{user_id}"
+        job = self.scheduler.add_job(
+            execute_community_rebuild,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 4 * * 0", timezone=user_timezone),
+            id=job_id,
+            name=f"Graphiti community rebuild for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered community rebuild job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_community_rebuild_schedule(self, user_id: str) -> bool:
+        """Remove the weekly community rebuild for one user."""
+        job_id = f"community_rebuild_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        logger.info("Removed community rebuild job for user %s", user_id[:12])
+        return True
+
+    @expose
+    def execute_community_rebuild_pass(self, user_id: str, force: bool = False) -> dict:
+        """Manually trigger a community rebuild for one user (bypasses cron).
+
+        Set ``force=True`` to bypass the activity gate inside
+        ``rebuild_communities_for_user`` — useful for admin debugging
+        when you want to rebuild even on an unchanged graph.
+        """
+        return run_async(
+            rebuild_communities_for_user(user_id, force=force),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+
+    # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
+    #
+    # ONE per-user cron at user-local 03:00 fans out all batch-family
+    # work (dream pass, ratification supersession sweep, plus future
+    # P2 / P3 / P4 / P11 submitters). The separate dream-pass and
+    # ratification-pass crons that previously existed are gone — both
+    # are now submitters inside this nightly cron's body.
+    #
+    # In real-batch mode this cron returns in seconds (each submitter
+    # just enqueues to the provider's batch API; results land hours
+    # later via the ``copilot_batch_executor`` poller). In
+    # sync_baseline mode (today, until P0.1 adapter stubs are filled
+    # in) each submitter inlines its work.
+    #
+    # ``execute_ratification_pass_now`` remains as an admin-callable
+    # sync endpoint because ratification is Cypher-only and finishes in
+    # seconds (no batch SLA to amortise). The dream pass + nightly fan-
+    # out moved to fire-and-forget + JobStatus polling — see
+    # ``schedule_immediate_*`` below — so their old sync ``_now``
+    # methods were removed in Step 9 of the providers rollout.
+
+    @expose
+    def add_nightly_batch_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly batch-family fan-out cron for one user.
+
+        Gated by ``Flag.DREAM_PASS_ENABLED`` per-user. When the flag
+        is off the call is a no-op — returns a structured "skipped"
+        dict matching the shape of a successful registration.
+        Defense-in-depth: the auto-registration helper in
+        ``copilot/dream/scheduling.py`` already gates this, but direct
+        callers (admin endpoint, ad-hoc scripts) bypass that helper.
+        """
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not run_async(is_feature_enabled(Flag.DREAM_PASS_ENABLED, user_id)):
+            logger.info(
+                "Nightly batch registration skipped for user %s — "
+                "DREAM_PASS_ENABLED flag is off.",
+                user_id[:12],
+            )
+            return {
+                "id": None,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": None,
+                "skipped": True,
+                "reason": "dream_pass_disabled",
+            }
+
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"dream_nightly_batch_{user_id}"
+        job = self.scheduler.add_job(
+            execute_nightly_batch_sync,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone=user_timezone),
+            id=job_id,
+            name=f"Dream nightly batch for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered nightly batch job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def delete_nightly_batch_schedule(self, user_id: str) -> bool:
+        """Remove the nightly batch cron for one user."""
+        job_id = f"dream_nightly_batch_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            return False
+        job.remove()
+        logger.info("Removed nightly batch job for user %s", user_id[:12])
+        return True
+
+    # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
+    #
+    # The ``schedule_immediate_*`` methods schedule the matching
+    # ``*_with_status`` wrapper to run on the APScheduler thread pool
+    # at the current time, then return immediately. The admin route
+    # writes the initial ``state="queued"`` row before calling these;
+    # the wrapper writes ``running`` / phase transitions / ``complete``
+    # / ``errored``. The admin frontend polls a GET endpoint to render
+    # progress without holding an HTTP connection open for minutes.
+
+    @expose
+    def schedule_immediate_nightly_batch(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot nightly batch run keyed by ``job_id``.
+
+        The admin endpoint that calls this has already written an
+        initial ``state="queued"`` JobStatus row, so this method just
+        adds the APScheduler job and returns immediately. The wrapper
+        body is responsible for advancing the status row.
+        """
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_nightly_{job_id}"
+        self.scheduler.add_job(
+            execute_nightly_batch_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate nightly batch %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "nightly"}
+
+    @expose
+    def schedule_immediate_dream_pass(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot dream pass run keyed by ``job_id``."""
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_dream_{job_id}"
+        self.scheduler.add_job(
+            execute_dream_pass_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate dream pass %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "dream_pass"}
+
+    @expose
+    def schedule_immediate_community_rebuild(self, user_id: str, job_id: str) -> dict:
+        """Schedule a one-shot community rebuild run keyed by ``job_id``."""
+        import datetime as _dt
+
+        scheduler_job_id = f"adhoc_rebuild_{job_id}"
+        self.scheduler.add_job(
+            execute_community_rebuild_with_status,
+            kwargs={"user_id": user_id, "job_id": job_id},
+            trigger="date",
+            run_date=_dt.datetime.now(_dt.timezone.utc),
+            id=scheduler_job_id,
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=False,
+            max_instances=1,
+        )
+        logger.info(
+            "Scheduled immediate community rebuild %s for user %s",
+            job_id[:12],
+            user_id[:12],
+        )
+        return {"scheduled": True, "job_id": job_id, "kind": "rebuild"}
+
+    @expose
+    def execute_ratification_pass_now(self, user_id: str) -> dict:
+        """Run the ratification sweep in isolation (admin debug endpoint).
+
+        Bypasses the nightly batch cron and runs only the ratification
+        supersession sweep. Useful for testing ratification logic
+        without waiting for / running the full nightly fan-out.
+        """
+        from backend.copilot.dream.ratification import run_ratification_pass
+
+        result = run_async(run_ratification_pass(user_id))
+        return result.model_dump(mode="json")
+
 
 class SchedulerClient(AppServiceClient):
     @classmethod
@@ -1357,3 +2113,37 @@ class SchedulerClient(AppServiceClient):
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+
+    add_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.add_community_rebuild_schedule
+    )
+    delete_community_rebuild_schedule = endpoint_to_async(
+        Scheduler.delete_community_rebuild_schedule
+    )
+    execute_community_rebuild_pass = endpoint_to_async(
+        Scheduler.execute_community_rebuild_pass
+    )
+
+    add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
+    delete_nightly_batch_schedule = endpoint_to_async(
+        Scheduler.delete_nightly_batch_schedule
+    )
+
+    # Ratification stays synchronous — Cypher-only, finishes in seconds.
+    # The admin viz "Ratification" button still calls this directly.
+    execute_ratification_pass_now = endpoint_to_async(
+        Scheduler.execute_ratification_pass_now
+    )
+
+    # Fire-and-forget admin triggers — the admin route writes an
+    # initial JobStatus row, calls these, and returns 202 immediately.
+    # Frontend polls the JobStatus GET endpoint to render progress.
+    schedule_immediate_nightly_batch = endpoint_to_async(
+        Scheduler.schedule_immediate_nightly_batch
+    )
+    schedule_immediate_dream_pass = endpoint_to_async(
+        Scheduler.schedule_immediate_dream_pass
+    )
+    schedule_immediate_community_rebuild = endpoint_to_async(
+        Scheduler.schedule_immediate_community_rebuild
+    )

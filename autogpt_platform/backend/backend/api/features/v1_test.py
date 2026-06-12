@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import fastapi
 import fastapi.testclient
@@ -200,6 +200,52 @@ def test_execute_graph_block(
     )
 
 
+def test_execute_graph_block_forwards_execution_context(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    """Regression for #12648: blocks that read execution_context (e.g. time
+    blocks) crashed because the direct-block-execute route didn't forward
+    one. The route must construct an ExecutionContext carrying the caller's
+    user_id + timezone and pass it through to ``Block.execute``."""
+    captured_kwargs: dict = {}
+
+    mock_block = Mock()
+    mock_block.disabled = False
+    mock_block.name = "TestBlock"
+
+    async def mock_execute(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        yield "output", {"data": "ok"}
+
+    mock_block.execute = mock_execute
+
+    mocker.patch(
+        "backend.api.features.v1.get_block",
+        return_value=mock_block,
+    )
+
+    mock_user = Mock()
+    mock_user.timezone = "America/New_York"
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        return_value=mock_user,
+    )
+
+    mocker.patch(
+        "backend.api.features.v1.execution_utils.block_usage_cost",
+        return_value=(0, {}),
+    )
+
+    response = client.post("/blocks/test-block/execute", json={"x": "y"})
+
+    assert response.status_code == 200
+    assert "execution_context" in captured_kwargs
+    ctx = captured_kwargs["execution_context"]
+    assert ctx.user_id == test_user_id
+    assert ctx.user_timezone == "America/New_York"
+
+
 def test_execute_graph_block_charges_when_cost_positive(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -364,6 +410,37 @@ def test_request_top_up(
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
+    )
+
+
+def test_request_top_up_forwards_datafast_headers(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """DataFast attribution headers are forwarded to top_up_intent."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits",
+        json={"credit_amount": 500},
+        headers={
+            "X-Datafast-Visitor-Id": "vis_1",
+            "X-Datafast-Session-Id": "ses_1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_credit_model.top_up_intent.assert_awaited_once_with(
+        ANY,
+        500,
+        datafast_visitor_id="vis_1",
+        datafast_session_id="ses_1",
     )
 
 

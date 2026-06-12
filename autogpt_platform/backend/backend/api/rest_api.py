@@ -17,9 +17,11 @@ from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
 import backend.api.features.admin.block_cost_admin_routes
+import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
@@ -37,6 +39,7 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
@@ -367,7 +370,17 @@ app.include_router(
     prefix="/api/admin",
 )
 app.include_router(
+    backend.api.features.admin.bot_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
+)
+app.include_router(
     backend.api.features.admin.block_cost_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.memory_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api",
 )
@@ -422,6 +435,11 @@ app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
+)
+app.include_router(
+    search_routes.router,
+    tags=["search"],
+    prefix="/api/search",
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,
