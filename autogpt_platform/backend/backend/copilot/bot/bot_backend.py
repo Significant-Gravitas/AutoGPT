@@ -220,11 +220,10 @@ class BotBackend:
         Backs the proactive-output authorization check: a scheduled/autopilot
         post is only allowed into a channel whose server appears in this list.
         """
-        plat = Platform(platform.upper())
-        links = await self._client.list_server_links(user_id=user_id)
-        return [
-            link.platform_server_id for link in links if link.platform == plat.value
-        ]
+        return await self._client.list_user_server_ids(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
 
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
