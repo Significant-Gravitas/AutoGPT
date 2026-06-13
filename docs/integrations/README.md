@@ -85,6 +85,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Get Orders](block-integrations/slant3d/order.md#slant3d-get-orders) | Get all orders for the account |
 | [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
 | [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
+| [Sort List](block-integrations/basic.md#sort-list) | Sorts a list directly or by a key on dictionary items |
 | [Store Value](block-integrations/basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
