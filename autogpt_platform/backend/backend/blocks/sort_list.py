@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, Callable, List
 
 from backend.blocks._base import (
     Block,
@@ -74,16 +74,7 @@ class SortListBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         """Yield sorted list outputs or a sorting error message."""
-        try:
-            sorted_list = _sort_items(
-                input_data.list, input_data.key, input_data.reverse
-            )
-        except ValueError as e:
-            yield "error", str(e)
-            return
-        except TypeError as e:
-            yield "error", f"Failed to sort list: {e}"
-            return
+        sorted_list = _sort_items(input_data.list, input_data.key, input_data.reverse)
 
         yield "sorted_list", sorted_list
         yield "length", len(sorted_list)
@@ -93,7 +84,7 @@ def _sort_items(items: List[Any], key: str | None, reverse: bool) -> List[Any]:
     """Return a sorted copy of items."""
     copied_items = items.copy()
     if not key:
-        return sorted(copied_items, reverse=reverse)
+        return _sorted_items(copied_items, reverse=reverse)
 
     for index, item in enumerate(copied_items):
         if not isinstance(item, dict):
@@ -103,4 +94,16 @@ def _sort_items(items: List[Any], key: str | None, reverse: bool) -> List[Any]:
         if key not in item:
             raise ValueError(f"Item at index {index} is missing key '{key}'.")
 
-    return sorted(copied_items, key=lambda item: item[key], reverse=reverse)
+    return _sorted_items(copied_items, key=lambda item: item[key], reverse=reverse)
+
+
+def _sorted_items(
+    items: List[Any],
+    reverse: bool,
+    key: Callable[[Any], Any] | None = None,
+) -> List[Any]:
+    """Sort items and convert comparison failures into ValueError."""
+    try:
+        return sorted(items, key=key, reverse=reverse)
+    except TypeError as e:
+        raise ValueError(f"Failed to sort list: {e}") from e
