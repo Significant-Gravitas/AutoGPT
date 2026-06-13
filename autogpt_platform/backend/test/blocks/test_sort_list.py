@@ -3,17 +3,31 @@ from typing import Any
 import pytest
 
 from backend.blocks.sort_list import SortListBlock
+from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 from backend.util.test import execute_block_test
 
 
 async def _collect_outputs(input_data: dict[str, Any]) -> list[tuple[str, Any]]:
     block = SortListBlock()
-    return [(name, value) async for name, value in block.execute(input_data)]
+    return [
+        (name, value)
+        async for name, value in block.execute(
+            input_data,
+            execution_context=ExecutionContext(),
+        )
+    ]
 
 
 async def test_builtin_block_cases():
     await execute_block_test(SortListBlock())
+
+
+def test_error_output_keeps_default_value():
+    error_field = SortListBlock.Output.model_fields["error"]
+
+    assert not error_field.is_required()
+    assert error_field.default == ""
 
 
 async def test_sorts_numbers_naturally():

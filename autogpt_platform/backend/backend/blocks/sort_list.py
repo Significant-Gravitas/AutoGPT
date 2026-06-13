@@ -35,7 +35,10 @@ class SortListBlock(Block):
 
         sorted_list: List[Any] = SchemaField(description="The sorted list.")
         length: int = SchemaField(description="The number of items in the sorted list.")
-        error: str = SchemaField(description="Error message if sorting failed.")
+        error: str = SchemaField(
+            default="",
+            description="Error message if sorting failed.",
+        )
 
     def __init__(self):
         """Initialize the block metadata and built-in test cases."""
