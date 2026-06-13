@@ -11,7 +11,11 @@ from backend.data.model import SchemaField
 
 
 class SortListBlock(Block):
+    """Sort a list directly or by a dictionary item key."""
+
     class Input(BlockSchemaInput):
+        """Input schema for list sorting."""
+
         list: List[Any] = SchemaField(
             description="The list to sort.",
             placeholder="e.g., [3, 1, 2]",
@@ -27,11 +31,14 @@ class SortListBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Output schema for list sorting."""
+
         sorted_list: List[Any] = SchemaField(description="The sorted list.")
         length: int = SchemaField(description="The number of items in the sorted list.")
         error: str = SchemaField(description="Error message if sorting failed.")
 
     def __init__(self):
+        """Initialize the block metadata and built-in test cases."""
         super().__init__(
             id="d294805e-3b2f-48c8-81ca-eaf13c582ef1",
             description="Sorts a list directly or by a key on dictionary items.",
@@ -66,6 +73,7 @@ class SortListBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        """Yield sorted list outputs or a sorting error message."""
         try:
             sorted_list = _sort_items(
                 input_data.list, input_data.key, input_data.reverse
@@ -82,8 +90,9 @@ class SortListBlock(Block):
 
 
 def _sort_items(items: List[Any], key: str | None, reverse: bool) -> List[Any]:
+    """Return a sorted copy of items."""
     copied_items = items.copy()
-    if key is None:
+    if not key:
         return sorted(copied_items, reverse=reverse)
 
     for index, item in enumerate(copied_items):
