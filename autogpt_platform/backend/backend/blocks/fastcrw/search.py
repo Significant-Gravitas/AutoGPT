@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 from firecrawl import FirecrawlApp
@@ -52,6 +53,42 @@ class FastCRWSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_input={
+                "credentials": fastcrw.get_test_credentials().model_dump(),
+                "query": "example query",
+                "limit": 1,
+            },
+            test_credentials=fastcrw.get_test_credentials(),
+            test_output=[
+                ("data", lambda x: getattr(x, "web", None) is not None),
+                (
+                    "site",
+                    lambda x: getattr(x, "url", None) == "https://example.com",
+                ),
+            ],
+            test_mock={
+                "_search": lambda *args, **kwargs: SimpleNamespace(
+                    web=[
+                        SimpleNamespace(
+                            url="https://example.com",
+                            title="Example",
+                            description="An example result.",
+                        )
+                    ]
+                )
+            },
+        )
+
+    def _search(self, app: FirecrawlApp, input_data: Input) -> Any:
+        """SDK call isolated so it can be mocked in block self-tests."""
+        return app.search(
+            input_data.query,
+            limit=input_data.limit,
+            scrape_options=ScrapeOptions(
+                formats=convert_to_format_options(input_data.formats) or None,
+                max_age=input_data.max_age,
+                wait_for=input_data.wait_for,
+            ),
         )
 
     async def run(
@@ -63,15 +100,7 @@ class FastCRWSearchBlock(Block):
         )
 
         # Sync call
-        scrape_result = app.search(
-            input_data.query,
-            limit=input_data.limit,
-            scrape_options=ScrapeOptions(
-                formats=convert_to_format_options(input_data.formats) or None,
-                max_age=input_data.max_age,
-                wait_for=input_data.wait_for,
-            ),
-        )
+        scrape_result = self._search(app, input_data)
         # fastCRW mirrors Firecrawl's credit model: billed per returned web
         # result (~1 credit each). The SearchResponse structure exposes `.web`
         # when scrape_options was requested; fall back to `limit` as an upper

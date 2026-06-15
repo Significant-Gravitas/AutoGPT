@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 from firecrawl import FirecrawlApp
@@ -51,6 +52,30 @@ class FastCRWExtractBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_input={
+                "credentials": fastcrw.get_test_credentials().model_dump(),
+                "urls": ["https://example.com"],
+                "prompt": "Extract the page title.",
+            },
+            test_credentials=fastcrw.get_test_credentials(),
+            test_output=[
+                ("data", {"title": "Example"}),
+            ],
+            test_mock={
+                "_extract": lambda *args, **kwargs: SimpleNamespace(
+                    data={"title": "Example"},
+                    credits_used=1,
+                )
+            },
+        )
+
+    def _extract(self, app: FirecrawlApp, input_data: Input) -> Any:
+        """SDK call isolated so it can be mocked in block self-tests."""
+        return app.extract(
+            urls=input_data.urls,
+            prompt=input_data.prompt,
+            schema=input_data.output_schema,
+            enable_web_search=input_data.enable_web_search,
         )
 
     async def run(
@@ -65,12 +90,7 @@ class FastCRWExtractBlock(Block):
         )
 
         try:
-            extract_result = app.extract(
-                urls=input_data.urls,
-                prompt=input_data.prompt,
-                schema=input_data.output_schema,
-                enable_web_search=input_data.enable_web_search,
-            )
+            extract_result = self._extract(app, input_data)
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Extract failed: {e}",

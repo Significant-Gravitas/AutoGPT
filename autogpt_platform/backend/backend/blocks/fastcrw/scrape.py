@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 from firecrawl import FirecrawlApp
@@ -67,6 +68,37 @@ class FastCRWScrapeBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_input={
+                "credentials": fastcrw.get_test_credentials().model_dump(),
+                "url": "https://example.com",
+                "formats": [ScrapeFormat.MARKDOWN.value],
+            },
+            test_credentials=fastcrw.get_test_credentials(),
+            test_output=[
+                ("data", lambda x: getattr(x, "markdown", None) == "# Example"),
+                ("markdown", "# Example"),
+            ],
+            test_mock={
+                "_scrape": lambda *args, **kwargs: SimpleNamespace(
+                    markdown="# Example",
+                    html="<h1>Example</h1>",
+                    raw_html="<html></html>",
+                    links=["https://example.com"],
+                    screenshot="",
+                    change_tracking={},
+                    json={},
+                )
+            },
+        )
+
+    def _scrape(self, app: FirecrawlApp, input_data: Input) -> Any:
+        """SDK call isolated so it can be mocked in block self-tests."""
+        return app.scrape(
+            input_data.url,
+            formats=convert_to_format_options(input_data.formats),
+            only_main_content=input_data.only_main_content,
+            max_age=input_data.max_age,
+            wait_for=input_data.wait_for,
         )
 
     async def run(
@@ -77,13 +109,7 @@ class FastCRWScrapeBlock(Block):
             api_url=get_fastcrw_api_url(),
         )
 
-        scrape_result = app.scrape(
-            input_data.url,
-            formats=convert_to_format_options(input_data.formats),
-            only_main_content=input_data.only_main_content,
-            max_age=input_data.max_age,
-            wait_for=input_data.wait_for,
-        )
+        scrape_result = self._scrape(app, input_data)
         # fastCRW mirrors Firecrawl's credit model: 1 credit (~$0.001) per
         # scraped page; scrape is a single-page operation.
         self.merge_stats(

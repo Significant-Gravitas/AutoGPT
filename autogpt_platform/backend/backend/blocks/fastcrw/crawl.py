@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 from firecrawl import FirecrawlApp
@@ -69,6 +70,45 @@ class FastCRWCrawlBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_input={
+                "credentials": fastcrw.get_test_credentials().model_dump(),
+                "url": "https://example.com",
+                "limit": 1,
+                "formats": [ScrapeFormat.MARKDOWN.value],
+            },
+            test_credentials=fastcrw.get_test_credentials(),
+            test_output=[
+                ("data", lambda x: isinstance(x, list) and len(x) == 1),
+                ("markdown", "# Example"),
+            ],
+            test_mock={
+                "_crawl": lambda *args, **kwargs: SimpleNamespace(
+                    data=[
+                        SimpleNamespace(
+                            markdown="# Example",
+                            html="<h1>Example</h1>",
+                            raw_html="<html></html>",
+                            links=["https://example.com"],
+                            screenshot="",
+                            change_tracking={},
+                            json={},
+                        )
+                    ]
+                )
+            },
+        )
+
+    def _crawl(self, app: FirecrawlApp, input_data: Input) -> Any:
+        """SDK call isolated so it can be mocked in block self-tests."""
+        return app.crawl(
+            input_data.url,
+            limit=input_data.limit,
+            scrape_options=ScrapeOptions(
+                formats=convert_to_format_options(input_data.formats),
+                only_main_content=input_data.only_main_content,
+                max_age=input_data.max_age,
+                wait_for=input_data.wait_for,
+            ),
         )
 
     async def run(
@@ -80,16 +120,7 @@ class FastCRWCrawlBlock(Block):
         )
 
         # Sync call
-        crawl_result = app.crawl(
-            input_data.url,
-            limit=input_data.limit,
-            scrape_options=ScrapeOptions(
-                formats=convert_to_format_options(input_data.formats),
-                only_main_content=input_data.only_main_content,
-                max_age=input_data.max_age,
-                wait_for=input_data.wait_for,
-            ),
-        )
+        crawl_result = self._crawl(app, input_data)
         # fastCRW mirrors Firecrawl's credit model: 1 credit (~$0.001) per
         # crawled page. crawl_result.data is the list of scraped pages returned.
         pages_data = crawl_result.data or []

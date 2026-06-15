@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any
 
 from firecrawl import FirecrawlApp
@@ -41,6 +42,41 @@ class FastCRWMapWebsiteBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
+            test_input={
+                "credentials": fastcrw.get_test_credentials().model_dump(),
+                "url": "https://example.com",
+            },
+            test_credentials=fastcrw.get_test_credentials(),
+            test_output=[
+                ("links", ["https://example.com/page"]),
+                (
+                    "results",
+                    [
+                        {
+                            "url": "https://example.com/page",
+                            "title": "Example Page",
+                            "description": "An example page.",
+                        }
+                    ],
+                ),
+            ],
+            test_mock={
+                "_map": lambda *args, **kwargs: SimpleNamespace(
+                    links=[
+                        SimpleNamespace(
+                            url="https://example.com/page",
+                            title="Example Page",
+                            description="An example page.",
+                        )
+                    ]
+                )
+            },
+        )
+
+    def _map(self, app: FirecrawlApp, input_data: Input) -> Any:
+        """SDK call isolated so it can be mocked in block self-tests."""
+        return app.map(
+            url=input_data.url,
         )
 
     async def run(
@@ -52,9 +88,7 @@ class FastCRWMapWebsiteBlock(Block):
         )
 
         # Sync call
-        map_result = app.map(
-            url=input_data.url,
-        )
+        map_result = self._map(app, input_data)
         # fastCRW mirrors Firecrawl's credit model: 1 credit (~$0.001) per map
         # request.
         self.merge_stats(
