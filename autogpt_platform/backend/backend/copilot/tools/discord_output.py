@@ -143,24 +143,12 @@ class PostToDiscordTool(BaseTool):
             "required": ["channel", "content"],
         }
 
-    async def _execute(
-        self,
-        user_id: str | None,
-        session: ChatSession,
-        **kwargs,
-    ) -> ToolResponseBase:
-        session_id = session.session_id if session else None
-        if not user_id:
-            return ErrorResponse(
-                message="Authentication required.",
-                error="auth_required",
-                session_id=session_id,
-            )
-
+    @staticmethod
+    def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
+        """Return an ``ErrorResponse`` for the first invalid param, else None."""
         channel: str | None = kwargs.get("channel")
         content: str | None = kwargs.get("content")
         mode: str = kwargs.get("mode") or "message"
-
         if not channel or not channel.strip():
             return ErrorResponse(
                 message="`channel` is required.",
@@ -179,8 +167,6 @@ class PostToDiscordTool(BaseTool):
                 error="invalid_mode",
                 session_id=session_id,
             )
-
-        client = get_copilot_chat_bridge_client()
         if mode == "thread":
             thread_name: str | None = kwargs.get("thread_name")
             if not thread_name or not thread_name.strip():
@@ -189,11 +175,36 @@ class PostToDiscordTool(BaseTool):
                     error="missing_thread_name",
                     session_id=session_id,
                 )
+        return None
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id if session else None
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required.",
+                error="auth_required",
+                session_id=session_id,
+            )
+        invalid = self._validate_params(session_id, **kwargs)
+        if invalid is not None:
+            return invalid
+
+        channel: str = kwargs["channel"]
+        content: str = kwargs["content"]
+        mode: str = kwargs.get("mode") or "message"
+
+        client = get_copilot_chat_bridge_client()
+        if mode == "thread":
             result = await client.create_thread_in_channel(
                 platform=Platform.DISCORD,
                 user_id=user_id,
                 channel=channel,
-                thread_name=thread_name,
+                thread_name=kwargs["thread_name"],
                 content=content,
             )
         else:
