@@ -72,6 +72,7 @@ export function CopilotPage() {
       <MainArea
         isMobile={isMobile}
         isContextPanelEnabled={isContextPanelEnabled}
+        isArtifactsEnabled={isArtifactsEnabled}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
@@ -79,8 +80,8 @@ export function CopilotPage() {
       {isMobile && isContextPanelEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} mobile />
       )}
-      {(isArtifactsEnabled || isContextPanelEnabled) && (
-        <ArtifactPanel mobile={isMobile} />
+      {isMobile && (isArtifactsEnabled || isContextPanelEnabled) && (
+        <ArtifactPanel mobile />
       )}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
@@ -91,6 +92,7 @@ export function CopilotPage() {
 interface MainAreaProps {
   isMobile: boolean;
   isContextPanelEnabled: boolean;
+  isArtifactsEnabled: boolean;
   sessionId: string | null;
   droppedFiles: File[];
   setDroppedFiles: (files: File[]) => void;
@@ -99,6 +101,7 @@ interface MainAreaProps {
 function MainArea({
   isMobile,
   isContextPanelEnabled,
+  isArtifactsEnabled,
   sessionId,
   droppedFiles,
   setDroppedFiles,
@@ -139,6 +142,9 @@ function MainArea({
       {!isMobile && isContextPanelEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} />
       )}
+      {!isMobile &&
+        (isArtifactsEnabled || isContextPanelEnabled) &&
+        sessionId && <ArtifactPanel />}
       {!isMobile && isContextPanelEnabled && sessionId && (
         <ContextPanelToggle />
       )}
