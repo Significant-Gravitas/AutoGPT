@@ -12964,7 +12964,7 @@
             "title": "File Ids"
           },
           "folder_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
             "title": "Folder Id"
           }
         },
