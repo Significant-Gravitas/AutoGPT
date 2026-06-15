@@ -27,6 +27,7 @@ import {
   CircleNotch,
   DotsThree,
   DownloadSimpleIcon,
+  FilesIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
@@ -65,6 +66,7 @@ export function ChatSidebar() {
     setSearchOpen,
   } = useCopilotUIStore();
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
   const router = useRouter();
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
@@ -332,6 +334,18 @@ export function ChatSidebar() {
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
                       <MagnifyingGlassIcon className="!size-5" />
+                    </ShadcnButton>
+                  ) : null}
+                  {isArtifactsEnabled ? (
+                    <ShadcnButton
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Files"
+                      onClick={() => router.push("/artifacts")}
+                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    >
+                      <FilesIcon className="!size-5" />
                     </ShadcnButton>
                   ) : null}
                   <UsagePopover />
