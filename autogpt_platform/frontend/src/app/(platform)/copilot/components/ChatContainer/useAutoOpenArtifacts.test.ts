@@ -68,8 +68,8 @@ describe("useAutoOpenArtifacts (card-based)", () => {
       rerender({ sessionId: "s2" });
     });
 
-    // `isOpen` is shared with ContextPanel and intentionally left alone;
-    // the drawer hides because activeArtifact is null.
+    // Switching sessions clears the preview via activeArtifact; we assert on
+    // activeArtifact (not isOpen) because the drawer is gated on it.
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
@@ -77,8 +77,8 @@ describe("useAutoOpenArtifacts (card-based)", () => {
 
   it("clears artifact preview on unmount (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
-    // openArtifact drives the preview drawer via activeArtifact and leaves
-    // `isOpen` (the context sidebar's flag) untouched.
+    // openArtifact opens the context region (isOpen: true, expandedPanel:
+    // "artifact") and drives the preview drawer via activeArtifact.
     expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
       A_ID,
     );
@@ -89,7 +89,7 @@ describe("useAutoOpenArtifacts (card-based)", () => {
     });
 
     // Drawer is gated on activeArtifact, so clearing it is what hides the
-    // preview after nav-away. `isOpen` belongs to ContextPanel.
+    // preview after nav-away; we assert on activeArtifact here.
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.activeArtifact).toBeNull();
   });

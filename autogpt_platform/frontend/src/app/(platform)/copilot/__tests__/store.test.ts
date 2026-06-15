@@ -41,13 +41,14 @@ function resetStore() {
 describe("artifactPanel store actions", () => {
   beforeEach(resetStore);
 
-  it("openArtifact sets the active artifact without forcing the context sidebar open", () => {
+  it("openArtifact sets the active artifact, opens the context region, and expands the artifact", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
     const s = useCopilotUIStore.getState().artifactPanel;
-    // The preview drawer is driven by activeArtifact; `isOpen` is the context
-    // sidebar's flag and is intentionally left untouched.
-    expect(s.isOpen).toBe(false);
+    // openArtifact opens the context region (isOpen) so closing the artifact
+    // returns to the expanded Context Panel, and marks the artifact as the
+    // expanded panel.
+    expect(s.isOpen).toBe(true);
     expect(s.expandedPanel).toBe("artifact");
     expect(s.activeArtifact?.id).toBe("a");
     expect(s.history).toEqual([]);
@@ -144,17 +145,12 @@ describe("artifactPanel store actions", () => {
     const b = makeArtifact("b");
     useCopilotUIStore.getState().openArtifact(a);
     useCopilotUIStore.getState().openArtifact(b);
-    // Simulate the context sidebar being open — `isOpen` is its flag now and
-    // openArtifact no longer sets it.
-    useCopilotUIStore.setState((st) => ({
-      artifactPanel: { ...st.artifactPanel, isOpen: true },
-    }));
 
     useCopilotUIStore.getState().resetArtifactPanel();
 
     const s = useCopilotUIStore.getState().artifactPanel;
-    // `isOpen` is intentionally left alone — it's shared with ContextPanel
-    // and resetArtifactPanel runs on every session change.
+    // isOpen is intentionally left alone by resetArtifactPanel — it's shared
+    // with ContextPanel and reset runs on every session change.
     expect(s.isOpen).toBe(true);
     expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
