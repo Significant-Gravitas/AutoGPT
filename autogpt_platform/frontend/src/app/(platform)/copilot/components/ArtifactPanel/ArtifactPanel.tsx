@@ -1,11 +1,10 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 import { Drawer } from "vaul";
-import { useCopilotUIStore } from "../../store";
 import { ArtifactContent } from "./components/ArtifactContent";
-import { ArtifactMinimizedStrip } from "./components/ArtifactMinimizedStrip";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
+import { ArtifactRail } from "./components/ArtifactRail";
 import { useArtifactPanel } from "./useArtifactPanel";
 
 interface Props {
@@ -14,22 +13,19 @@ interface Props {
 
 export function ArtifactPanel({ mobile }: Props) {
   const {
-    isMinimized,
-    isMaximized,
     activeArtifact,
+    expandedPanel,
     history,
     isSourceView,
     classification,
     setIsSourceView,
-    minimizeArtifactPanel,
-    maximizeArtifactPanel,
-    restoreArtifactPanel,
+    clearArtifactPreview,
+    expandArtifactPanel,
     goBackArtifact,
     canCopy,
     handleCopy,
     handleDownload,
   } = useArtifactPanel();
-  const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
 
   if (!activeArtifact || !classification) return null;
 
@@ -37,30 +33,43 @@ export function ArtifactPanel({ mobile }: Props) {
     artifact: activeArtifact,
     classification,
     canGoBack: history.length > 0,
-    isMaximized,
     isSourceView,
     hasSourceToggle: classification.hasSourceToggle,
-    mobile: !!mobile,
     canCopy,
     onBack: goBackArtifact,
     onClose: clearArtifactPreview,
-    onMinimize: minimizeArtifactPanel,
-    onMaximize: maximizeArtifactPanel,
-    onRestore: restoreArtifactPanel,
     onCopy: handleCopy,
     onDownload: handleDownload,
     onSourceToggle: setIsSourceView,
   };
 
-  if (isMinimized) {
-    return (
-      <div className="fixed right-0 top-[72px] z-[60] h-[calc(100vh-72px)]">
-        <ArtifactMinimizedStrip
+  if (!mobile) {
+    if (expandedPanel === "context") {
+      return (
+        <ArtifactRail
           artifact={activeArtifact}
           classification={classification}
-          onExpand={restoreArtifactPanel}
+          onExpand={expandArtifactPanel}
         />
-      </div>
+      );
+    }
+    return (
+      <motion.div
+        key="artifact-panel"
+        data-artifact-panel
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.15 }}
+        className="flex h-full min-w-0 flex-1 flex-col overflow-hidden border-l border-l-[#80808017] bg-sidebar"
+        style={{ userSelect: "text" }}
+      >
+        <ArtifactPanelHeader {...headerProps} />
+        <ArtifactContent
+          artifact={activeArtifact}
+          isSourceView={isSourceView}
+          classification={classification}
+        />
+      </motion.div>
     );
   }
 
@@ -85,16 +94,7 @@ export function ArtifactPanel({ mobile }: Props) {
           aria-hidden="true"
         />
         <Drawer.Content
-          className={cn(
-            "fixed right-0 top-0 z-[70] flex h-full flex-col bg-white shadow-xl outline-none",
-            mobile
-              ? "w-full"
-              : isMaximized
-                ? "w-[85vw]"
-                : "w-[640px] max-w-[90vw]",
-          )}
-          // Override vaul's `[data-vaul-drawer]{user-select:none}` rule so
-          // artifact text is selectable.
+          className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col bg-white shadow-xl outline-none"
           style={{ userSelect: "text" }}
           aria-describedby={undefined}
         >
