@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from backend.api.features.library.exceptions import FolderAlreadyExistsError
 from backend.data import workspace_folder as wf
 
 
@@ -66,6 +67,51 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
     # Folder soft-deleted, not hard-deleted.
     _, kwargs = folder_prisma.update.call_args
     assert kwargs["data"] == {"isDeleted": True}
+
+
+@pytest.mark.asyncio
+async def test_create_folder_rejects_duplicate_root_name(mocker):
+    """Duplicate root-level names are rejected in-app (NULL parentId defeats
+    the DB unique constraint)."""
+    folder_prisma = mocker.MagicMock()
+    folder_prisma.find_first = mocker.AsyncMock(return_value=_folder_record())
+    folder_prisma.create = mocker.AsyncMock()
+    mocker.patch.object(
+        wf.UserWorkspaceFolder, "prisma", mocker.MagicMock(return_value=folder_prisma)
+    )
+
+    with pytest.raises(FolderAlreadyExistsError):
+        await wf.create_folder("ws-001", "Reports")
+
+    folder_prisma.create.assert_not_awaited()
+    _, kwargs = folder_prisma.find_first.call_args
+    assert kwargs["where"] == {
+        "workspaceId": "ws-001",
+        "name": "Reports",
+        "parentId": None,
+        "isDeleted": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_folder_rejects_duplicate_root_name(mocker):
+    """Renaming onto an existing root-level name is rejected, excluding self."""
+    mocker.patch.object(
+        wf, "_get_folder_record", mocker.AsyncMock(return_value=_folder_record())
+    )
+    folder_prisma = mocker.MagicMock()
+    folder_prisma.find_first = mocker.AsyncMock(return_value=_folder_record(id="fld-2"))
+    folder_prisma.update = mocker.AsyncMock()
+    mocker.patch.object(
+        wf.UserWorkspaceFolder, "prisma", mocker.MagicMock(return_value=folder_prisma)
+    )
+
+    with pytest.raises(FolderAlreadyExistsError):
+        await wf.update_folder("fld-1", "ws-001", name="Reports")
+
+    folder_prisma.update.assert_not_awaited()
+    _, kwargs = folder_prisma.find_first.call_args
+    assert kwargs["where"]["id"] == {"not": "fld-1"}
 
 
 @pytest.mark.asyncio

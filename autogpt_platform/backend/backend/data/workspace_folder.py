@@ -34,7 +34,9 @@ class WorkspaceFolder(pydantic.BaseModel):
     file_count: int = 0
 
     @staticmethod
-    def from_db(folder: "UserWorkspaceFolder", file_count: int = 0) -> "WorkspaceFolder":
+    def from_db(
+        folder: "UserWorkspaceFolder", file_count: int = 0
+    ) -> "WorkspaceFolder":
         return WorkspaceFolder(
             id=folder.id,
             workspace_id=folder.workspaceId,
@@ -86,12 +88,38 @@ async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
     return WorkspaceFolder.from_db(folder, file_count=_file_count(folder))
 
 
+async def _root_name_taken(
+    workspace_id: str,
+    name: str,
+    exclude_folder_id: Optional[str] = None,
+) -> bool:
+    """Whether a live root-level folder with this name already exists.
+
+    The DB unique constraint ``@@unique([workspaceId, parentId, name])`` does
+    not prevent duplicates at root: v1 folders always have ``parentId = NULL``
+    and Postgres treats NULLs as distinct, so the constraint never fires for
+    root folders. Guard the v1 (root) case explicitly here.
+    """
+    where: dict = {
+        "workspaceId": workspace_id,
+        "name": name,
+        "parentId": None,
+        "isDeleted": False,
+    }
+    if exclude_folder_id is not None:
+        where["id"] = {"not": exclude_folder_id}
+    return await UserWorkspaceFolder.prisma().find_first(where=where) is not None
+
+
 async def create_folder(
     workspace_id: str,
     name: str,
     icon: Optional[str] = None,
 ) -> WorkspaceFolder:
     """Create a new root-level folder for the workspace."""
+    if await _root_name_taken(workspace_id, name):
+        raise FolderAlreadyExistsError("A folder with this name already exists")
+
     create_data: dict = {
         "name": name,
         "Workspace": {"connect": {"id": workspace_id}},
@@ -117,6 +145,11 @@ async def update_folder(
     """Update a folder's name/icon."""
     # update() uses where={"id": ...} without workspaceId — verify ownership first.
     await _get_folder_record(folder_id, workspace_id)
+
+    if name is not None and await _root_name_taken(
+        workspace_id, name, exclude_folder_id=folder_id
+    ):
+        raise FolderAlreadyExistsError("A folder with this name already exists")
 
     update_data: dict = {}
     if name is not None:

@@ -111,9 +111,7 @@ def test_create_folder_success(mocker):
     response = client.post("/folders", json={"name": "Invoices"})
     assert response.status_code == 201
     assert response.json()["name"] == "Invoices"
-    create.assert_awaited_once_with(
-        workspace_id="ws-001", name="Invoices", icon=None
-    )
+    create.assert_awaited_once_with(workspace_id="ws-001", name="Invoices", icon=None)
 
 
 def test_create_folder_name_conflict_returns_409(mocker):
