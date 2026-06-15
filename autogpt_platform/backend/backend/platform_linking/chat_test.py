@@ -28,6 +28,16 @@ def _request(**overrides) -> BotChatRequest:
 
 
 class TestStartChatTurn:
+    @pytest.fixture(autouse=True)
+    def _allow_turn(self):
+        # The paywall/rate-limit gate is covered in TestEvaluateTurnGate; here
+        # default it to "allow" so these tests don't reach DB/Redis for it.
+        with patch(
+            "backend.platform_linking.chat.evaluate_turn_gate",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
         db_mock = MagicMock()
@@ -424,3 +434,107 @@ class TestEnsureChatSession:
         ):
             with pytest.raises(NotFoundError):
                 await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+
+class TestEvaluateTurnGate:
+    _PATH = "backend.platform_linking.chat"
+
+    @pytest.mark.asyncio
+    async def test_paywalled_returns_denial_with_button(self):
+        from .chat import evaluate_turn_gate
+
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=True)),
+            patch(
+                f"{self._PATH}._billing_url",
+                return_value="https://app/settings/billing",
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "paywalled"
+        assert denial.button_url == "https://app/settings/billing"
+        assert denial.button_label == "Subscribe"
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_returns_window_and_reset_message(self):
+        from datetime import timedelta, timezone
+
+        from backend.copilot.rate_limit import RateLimitExceeded
+
+        from .chat import evaluate_turn_gate
+
+        resets_at = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(
+                f"{self._PATH}.check_rate_limit",
+                AsyncMock(side_effect=RateLimitExceeded("daily", resets_at)),
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "rate_limited"
+        assert "daily usage limit" in denial.message
+        assert "Resets in" in denial.message
+
+    @pytest.mark.asyncio
+    async def test_rate_unavailable_returns_transient_message_no_button(self):
+        from backend.copilot.rate_limit import RateLimitUnavailable
+
+        from .chat import evaluate_turn_gate
+
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(
+                f"{self._PATH}.check_rate_limit",
+                AsyncMock(side_effect=RateLimitUnavailable()),
+            ),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
+        assert denial.button_url is None
+
+    @pytest.mark.asyncio
+    async def test_paywall_lookup_failure_fails_closed_as_unavailable(self):
+        # A transient tier-lookup error must NOT let the turn through unmetered;
+        # fail closed with a retry message (mirrors the web route's 503).
+        from .chat import evaluate_turn_gate
+
+        with patch(
+            f"{self._PATH}.is_user_paywalled",
+            AsyncMock(side_effect=RuntimeError("supabase down")),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
+        assert denial.button_url is None
+
+    @pytest.mark.asyncio
+    async def test_within_limits_returns_none(self):
+        from .chat import evaluate_turn_gate
+
+        with (
+            patch(f"{self._PATH}.is_user_paywalled", AsyncMock(return_value=False)),
+            patch(
+                f"{self._PATH}.get_global_rate_limits",
+                AsyncMock(return_value=(100, 500, "BASIC")),
+            ),
+            patch(f"{self._PATH}.check_rate_limit", AsyncMock(return_value=None)),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is None

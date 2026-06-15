@@ -1265,3 +1265,71 @@ class TestAttachments:
         assert "file_ids" not in captured
         note = adapter.send_message.await_args_list[0].args[1]
         assert "bad.exe" in note
+
+
+class TestTurnDenied:
+    @pytest.mark.asyncio
+    async def test_paywalled_turn_sends_subscribe_button(self):
+        from backend.platform_linking.models import TurnDenial
+
+        from .bot_backend import ChatTurnDeniedError
+
+        api = _api()
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(
+                TurnDenial(
+                    reason="paywalled",
+                    message="AutoPilot needs an active subscription.",
+                    button_label="Subscribe",
+                    button_url="https://app.example/settings/billing",
+                )
+            )
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.handler.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_link.assert_awaited_once()
+        kwargs = adapter.send_link.await_args.kwargs
+        assert kwargs["link_url"] == "https://app.example/settings/billing"
+        assert kwargs["link_label"] == "Subscribe"
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_turn_sends_plain_message_when_no_button(self):
+        from backend.platform_linking.models import TurnDenial
+
+        from .bot_backend import ChatTurnDeniedError
+
+        api = _api()
+        msg = "You've reached your daily usage limit. Resets in 5h 30m."
+
+        async def denied_stream(*args, **kwargs):
+            raise ChatTurnDeniedError(TurnDenial(reason="rate_limited", message=msg))
+            yield ""  # pragma: no cover
+
+        api.stream_chat = denied_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with patch(
+            "backend.copilot.bot.handler.get_redis_async",
+            new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_message.assert_awaited_once()
+        assert msg in adapter.send_message.await_args.args[1]
+        adapter.send_link.assert_not_awaited()

@@ -31,7 +31,7 @@ from .adapters.base import (
     MessageHistoryEntry,
     PlatformAdapter,
 )
-from .bot_backend import BotBackend, BotStreamError
+from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
@@ -611,6 +611,30 @@ class MessageHandler:
                             adapter, target_id, post, ctx, active_session_id
                         ):
                             sent_any_content = True
+        except ChatTurnDeniedError as exc:
+            # Refused before running (paywall / rate limit). Show the message
+            # and, when present, a CTA button (Subscribe / Upgrade).
+            denial = exc.denial
+            logger.info("Turn denied (%s) for target %s", denial.reason, target_id)
+            self._api.track_event(
+                platform=ctx.platform,
+                event_type="turn_denied",
+                server_id=ctx.server_id,
+                channel_type=ctx.channel_type,
+                error_kind=denial.reason,
+            )
+            if denial.button_url and denial.button_label:
+                await adapter.send_link(
+                    target_id,
+                    denial.message,
+                    link_label=denial.button_label,
+                    link_url=denial.button_url,
+                )
+            else:
+                await adapter.send_message(
+                    target_id, denial.message, mentionable_users=ctx.mentionable_users
+                )
+            return
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
             # stay quiet so the user doesn't get a double response.
