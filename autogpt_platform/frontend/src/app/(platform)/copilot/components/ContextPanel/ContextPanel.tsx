@@ -10,7 +10,8 @@ import {
 import { cn } from "@/lib/utils";
 import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArtifactDragHandle } from "../ArtifactPanel/components/ArtifactDragHandle";
+import { DEFAULT_PANEL_WIDTH } from "../../store";
+import { ContextPanelRail } from "./components/ContextPanelRail";
 import { FilesTab } from "./components/FilesTab/FilesTab";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 import { ProgressTab } from "./components/ProgressTab/ProgressTab";
@@ -26,13 +27,15 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const {
     isOpen,
     activeTab,
-    width,
+    showRail,
+    showExpanded,
     setActiveTab,
-    setArtifactPanelWidth,
     closeArtifactPanel,
+    expandContextPanel,
   } = useContextPanel();
   const { uploaded, generated } = useSessionFiles(sessionId);
   const filesCount = uploaded.length + generated.length;
+  const width = DEFAULT_PANEL_WIDTH;
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -82,25 +85,22 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     );
   }
 
+  if (showRail) {
+    return <ContextPanelRail onExpand={expandContextPanel} />;
+  }
+
   return (
     <AnimatePresence initial={false}>
-      {isOpen && (
-        // data-artifact-panel is required by the reused ArtifactDragHandle,
-        // which measures the panel via closest("[data-artifact-panel]").
-        // Flex sibling (not fixed) so it pushes the chat column left instead
-        // of overlaying it; height inherits from the MainArea flex row.
+      {showExpanded && (
         <motion.div
           key="context-panel"
           data-context-panel
-          data-artifact-panel
           initial={{ width: 0 }}
           animate={{ width }}
           exit={{ width: 0 }}
           transition={{ duration: 0.2, ease: "linear" }}
           className="flex h-full shrink-0 flex-col overflow-hidden border-l border-l-[#80808017] bg-sidebar"
         >
-          {/* Opacity is delayed so the content fades in after the width
-              animation completes, avoiding the squished-content look. */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -108,11 +108,6 @@ export function ContextPanel({ sessionId, mobile }: Props) {
             transition={{ duration: 0.15, delay: 0.2 }}
             className="flex h-full w-full flex-col"
           >
-            <ArtifactDragHandle
-              onWidthChange={setArtifactPanelWidth}
-              minWidth={352}
-              maxWidth={352}
-            />
             {tabs}
           </motion.div>
         </motion.div>

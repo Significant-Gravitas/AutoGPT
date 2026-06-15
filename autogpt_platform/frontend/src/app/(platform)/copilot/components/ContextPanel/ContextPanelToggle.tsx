@@ -6,9 +6,12 @@ import { useCopilotUIStore } from "../../store";
 
 export function ContextPanelToggle() {
   const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  const hasArtifact = useCopilotUIStore(
+    (s) => s.artifactPanel.activeArtifact != null,
+  );
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
 
-  if (isOpen) return null;
+  if (isOpen || hasArtifact) return null;
 
   return (
     <div className="flex shrink-0 items-start p-3">
