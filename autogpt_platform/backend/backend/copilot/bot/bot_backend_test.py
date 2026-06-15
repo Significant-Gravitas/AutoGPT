@@ -25,7 +25,12 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .bot_backend import BotBackend, BotStreamError, _extract_setup_requirements
+from .bot_backend import (
+    BotBackend,
+    BotStreamError,
+    _extract_setup_requirements,
+    _is_corrupted_setup_requirements,
+)
 
 
 @pytest.fixture
@@ -240,6 +245,53 @@ class TestStreamChat:
             )
         ]
 
+    async def test_notifies_setup_dropped_on_corrupted_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            StreamToolOutputAvailable(
+                toolCallId="tool-1",
+                toolName="connect_integration",
+                output='{"type":"setup_requirements","message":"Connect Goo',
+            )
+        )
+        await queue.put(StreamFinish())
+
+        setup_calls: list[tuple[str, dict, str | None]] = []
+        dropped_calls: list[tuple[str, str | None]] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append((session_id, output, tool_name))
+
+        async def on_dropped(session_id: str, tool_name: str | None):
+            dropped_calls.append((session_id, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_setup_required=on_setup,
+                on_setup_dropped=on_dropped,
+            ):
+                pass
+
+        # The corrupted payload yields no card, so on_setup_required must not
+        # fire — but the user is told the link was dropped.
+        assert setup_calls == []
+        assert dropped_calls == [("sess", "connect_integration")]
+
     @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):
         api._client.start_chat_turn = AsyncMock(
@@ -315,3 +367,22 @@ class TestExtractSetupRequirements:
         with caplog.at_level(logging.WARNING):
             assert _extract_setup_requirements("plain text tool result") is None
         assert not caplog.records
+
+
+class TestIsCorruptedSetupRequirements:
+    def test_truncated_setup_requirements_is_corrupted(self):
+        assert _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect Goo'
+        )
+
+    def test_valid_setup_requirements_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements(
+            '{"type":"setup_requirements","message":"Connect GitHub"}'
+        )
+
+    def test_unparseable_non_setup_output_is_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements('{"type":"other","x')
+
+    def test_plain_text_and_dict_outputs_are_not_corrupted(self):
+        assert not _is_corrupted_setup_requirements("plain text tool result")
+        assert not _is_corrupted_setup_requirements({"type": "setup_requirements"})

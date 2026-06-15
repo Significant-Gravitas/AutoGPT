@@ -94,6 +94,14 @@ SetupRequiredCallback = Callable[
     Awaitable[None],
 ]
 
+# Fired when a setup_requirements payload arrives corrupted and is dropped, so
+# the adapter can surface a user-facing notice instead of leaving the user
+# staring at a sign-in prompt that never renders. Args: (session_id, tool_name).
+SetupDroppedCallback = Callable[
+    [str, str | None],
+    Awaitable[None],
+]
+
 
 class BotBackend:
     """Bot-side linking + chat operations, routed over cluster-internal RPC."""
@@ -318,6 +326,7 @@ class BotBackend:
         platform_server_id: Optional[str] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
+        on_setup_dropped: SetupDroppedCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -348,6 +357,7 @@ class BotBackend:
             )
 
         setup_notified = False
+        setup_drop_notified = False
 
         try:
             while True:
@@ -377,6 +387,18 @@ class BotBackend:
                             setup_output,
                             chunk.toolName,
                         )
+                    elif (
+                        setup_output is None
+                        and not setup_notified
+                        and not setup_drop_notified
+                        and on_setup_dropped
+                        and _is_corrupted_setup_requirements(chunk.output)
+                    ):
+                        # The link was dropped (corrupted payload). Tell the
+                        # user once so they aren't left waiting on a sign-in
+                        # prompt that will never arrive.
+                        setup_drop_notified = True
+                        await on_setup_dropped(handle.session_id, chunk.toolName)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
@@ -393,6 +415,24 @@ class BotBackend:
                 session_id=handle.session_id,
                 subscriber_queue=queue,
             )
+
+
+def _is_corrupted_setup_requirements(output: str | dict[str, Any]) -> bool:
+    """True when *output* names setup_requirements but doesn't parse as JSON.
+
+    This is the truncation/corruption signature: the tool intended to surface a
+    sign-in card, but the payload arrived mangled, so the user gets nothing
+    unless the caller surfaces a notice.
+    """
+    if not isinstance(output, str):
+        return False
+    if '"setup_requirements"' not in output:
+        return False
+    try:
+        json.loads(output)
+    except json.JSONDecodeError:
+        return True
+    return False
 
 
 def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] | None:
