@@ -35,7 +35,6 @@ function resetArtifactPanelStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",

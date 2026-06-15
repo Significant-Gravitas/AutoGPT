@@ -132,7 +132,6 @@ export const ActiveState: Story = {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          width: 600,
           activeArtifact: makeArtifact({ id: "active-card" }),
           history: [],
           activeTab: "files",

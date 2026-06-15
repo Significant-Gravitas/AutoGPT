@@ -35,7 +35,6 @@ function resetCopilotStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
@@ -361,7 +360,6 @@ describe("ChatContainer", () => {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          width: 600,
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
           activeTab: "files",

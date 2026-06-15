@@ -40,7 +40,6 @@ export interface ArtifactRef {
 
 interface ArtifactPanelState {
   isOpen: boolean;
-  width: number;
   activeArtifact: ArtifactRef | null;
   history: ArtifactRef[];
   activeTab: ContextPanelTab;
@@ -49,7 +48,6 @@ interface ArtifactPanelState {
 }
 
 export const DEFAULT_PANEL_WIDTH = 352; // 22rem
-export const MAX_PANEL_WIDTH = 352; // 22rem
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -62,12 +60,6 @@ export type ContextPanelTab = "progress" | "files";
 
 const isClient = typeof window !== "undefined";
 
-function getPersistedWidth(): number {
-  // Panel width is fixed; ignore any persisted value so previously-saved widths
-  // don't override the current design.
-  return DEFAULT_PANEL_WIDTH;
-}
-
 function getPersistedOpen(): boolean {
   if (!isClient) return false;
   return storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN) === "true";
@@ -77,16 +69,6 @@ function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
   return saved === "progress" ? saved : "files";
-}
-
-let panelWidthPersistTimer: ReturnType<typeof setTimeout> | null = null;
-function schedulePanelWidthPersist(width: number) {
-  if (!isClient) return;
-  if (panelWidthPersistTimer) clearTimeout(panelWidthPersistTimer);
-  panelWidthPersistTimer = setTimeout(() => {
-    storage.set(Key.COPILOT_ARTIFACT_PANEL_WIDTH, String(width));
-    panelWidthPersistTimer = null;
-  }, 200);
 }
 
 function persistCompletedSessions(ids: Set<string>) {
@@ -138,7 +120,6 @@ interface CopilotUIState {
   resetArtifactPanel: () => void;
   expandContextPanel: () => void;
   expandArtifactPanel: () => void;
-  setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
   setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
@@ -235,7 +216,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   // Artifact panel
   artifactPanel: {
     isOpen: getPersistedOpen(),
-    width: getPersistedWidth(),
     activeArtifact: null,
     history: [],
     activeTab: getPersistedTab(),
@@ -315,12 +295,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set((state) => ({
       artifactPanel: { ...state.artifactPanel, expandedPanel: "artifact" },
     })),
-  setArtifactPanelWidth: (width) => {
-    schedulePanelWidthPersist(width);
-    set((state) => ({
-      artifactPanel: { ...state.artifactPanel, width },
-    }));
-  },
   goBackArtifact: () =>
     set((state) => {
       const { history } = state.artifactPanel;
@@ -469,7 +443,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
-    storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_CONTEXT_PANEL_OPEN);
     storage.clean(Key.COPILOT_CONTEXT_PANEL_TAB);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
@@ -483,7 +456,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSoundEnabled: true,
       artifactPanel: {
         isOpen: false,
-        width: DEFAULT_PANEL_WIDTH,
         activeArtifact: null,
         history: [],
         activeTab: "files",

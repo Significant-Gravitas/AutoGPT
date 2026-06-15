@@ -21,7 +21,6 @@ function openPanelWith(artifact: ArtifactRef) {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: true,
-      width: 600,
       activeArtifact: artifact,
       history: [],
       activeTab: "files",
@@ -151,7 +150,6 @@ export const ContextRail: Story = {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          width: 600,
           activeArtifact: makeArtifact(),
           history: [],
           activeTab: "files",
@@ -210,7 +208,6 @@ export const Closed: Story = {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: false,
-          width: 600,
           activeArtifact: null,
           history: [],
           activeTab: "files",

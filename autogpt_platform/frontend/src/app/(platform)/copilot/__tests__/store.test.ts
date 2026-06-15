@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRef } from "../store";
-import { DEFAULT_PANEL_WIDTH, useCopilotUIStore } from "../store";
+import { useCopilotUIStore } from "../store";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
@@ -26,7 +26,6 @@ function resetStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
@@ -181,12 +180,6 @@ describe("artifactPanel store actions", () => {
     );
   });
 
-  it("setArtifactPanelWidth updates width", () => {
-    useCopilotUIStore.getState().setArtifactPanelWidth(720);
-    const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.width).toBe(720);
-  });
-
   it("history is capped at 25 entries (MAX_HISTORY)", () => {
     // Open 27 artifacts sequentially (A0..A26). History should never exceed 25.
     for (let i = 0; i < 27; i++) {
@@ -213,7 +206,6 @@ describe("artifactPanel store actions", () => {
     expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
-    expect(s.width).toBe(DEFAULT_PANEL_WIDTH);
   });
 });
 
