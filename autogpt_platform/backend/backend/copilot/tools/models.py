@@ -55,6 +55,11 @@ class ResponseType(str, Enum):
     TRIGGER_SETUP = "trigger_setup"
     TRIGGER_CONFIG_REQUIRED = "trigger_config_required"
 
+    # Presets (list / update / delete)
+    PRESET_LIST = "preset_list"
+    PRESET_UPDATED = "preset_updated"
+    PRESET_DELETED = "preset_deleted"
+
     # MCP
     MCP_GUIDE = "mcp_guide"
     MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
@@ -285,6 +290,8 @@ class ExecutionStartedResponse(ToolResponseBase):
     library_agent_id: str | None = None
     library_agent_link: str | None = None
     status: str = "QUEUED"
+    # Set when the run was started with save_as_preset=true.
+    saved_preset_id: str | None = None
 
 
 # Auth/error models

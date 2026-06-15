@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
@@ -98,6 +99,7 @@ class RunAgentInput(BaseModel):
 
     username_agent_slug: str = ""
     library_agent_id: str = ""
+    preset_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     use_defaults: bool = False
     schedule_name: str = ""
@@ -105,13 +107,18 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
+    save_as_preset: bool = False
+    preset_name: str = ""
+    preset_description: str = ""
 
     @field_validator(
         "username_agent_slug",
         "library_agent_id",
+        "preset_id",
         "schedule_name",
         "cron",
         "timezone",
+        "preset_name",
         mode="before",
     )
     @classmethod
@@ -143,7 +150,9 @@ class RunAgentTool(BaseTool):
             "and surfaces the inline credentials-setup card if anything is missing — "
             "do NOT redirect to the Builder for credential setup. "
             "Identify by username_agent_slug ('user/agent') or library_agent_id. "
-            "For scheduling, provide schedule_name + cron."
+            "For scheduling, provide schedule_name + cron. To run a saved preset, "
+            "pass preset_id (alone). Pass save_as_preset=true (+ preset_name) to save "
+            "these inputs as a reusable preset while running."
         )
 
     @property
@@ -158,6 +167,14 @@ class RunAgentTool(BaseTool):
                 "library_agent_id": {
                     "type": "string",
                     "description": "Library agent ID.",
+                },
+                "preset_id": {
+                    "type": "string",
+                    "description": (
+                        "Run a saved preset by ID (uses its stored inputs + "
+                        "credentials; 'inputs' override individual fields). Use "
+                        "alone — not with an agent identifier or save_as_preset."
+                    ),
                 },
                 "inputs": {
                     "type": "object",
@@ -223,6 +240,12 @@ class RunAgentTool(BaseTool):
         if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
+
+        # Running a saved preset is a distinct path (uses the preset's stored
+        # graph + inputs + credentials). Handle it before agent-identifier
+        # resolution below.
+        if params.preset_id:
+            return await self._handle_preset_run(user_id, session, params)
 
         # Validate at least one identifier is provided
         has_slug = params.username_agent_slug and "/" in params.username_agent_slug
@@ -355,9 +378,17 @@ class RunAgentTool(BaseTool):
             if prereq_error:
                 return prereq_error
 
-            # Step 3: Execute or Schedule
+            # Step 3: optionally persist the validated config as a reusable preset
+            saved_preset_id = await self._maybe_save_preset(
+                user_id=user_id,
+                graph=graph,
+                graph_credentials=graph_credentials,
+                params=params,
+            )
+
+            # Step 4: Execute or Schedule
             if is_schedule:
-                return await self._schedule_agent(
+                result = await self._schedule_agent(
                     user_id=user_id,
                     session=session,
                     graph=graph,
@@ -368,7 +399,7 @@ class RunAgentTool(BaseTool):
                     timezone=params.timezone,
                 )
             else:
-                return await self._run_agent(
+                result = await self._run_agent(
                     user_id=user_id,
                     session=session,
                     graph=graph,
@@ -377,6 +408,11 @@ class RunAgentTool(BaseTool):
                     wait_for_result=params.wait_for_result,
                     dry_run=params.dry_run,
                 )
+
+            # Echo the saved preset id back on the execution-started card.
+            if saved_preset_id and isinstance(result, ExecutionStartedResponse):
+                result.saved_preset_id = saved_preset_id
+            return result
 
         except NotFoundError as e:
             return ErrorResponse(
@@ -644,6 +680,119 @@ class RunAgentTool(BaseTool):
 
         return graph_credentials, None
 
+    async def _handle_preset_run(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        params: RunAgentInput,
+    ) -> ToolResponseBase:
+        """Run a saved preset by id (mirrors POST /presets/{id}/execute)."""
+        session_id = session.session_id
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required. Please sign in to use this tool.",
+                session_id=session_id,
+            )
+        if params.username_agent_slug or params.library_agent_id:
+            return ErrorResponse(
+                message=(
+                    "Use either preset_id or an agent identifier "
+                    "(username_agent_slug / library_agent_id), not both."
+                ),
+                session_id=session_id,
+            )
+        if params.save_as_preset:
+            return ErrorResponse(
+                message=(
+                    "save_as_preset can't be combined with preset_id — "
+                    "the preset already exists."
+                ),
+                session_id=session_id,
+            )
+        if params.schedule_name or params.cron:
+            return ErrorResponse(
+                message=(
+                    "preset_id runs the preset now; schedule it separately instead."
+                ),
+                session_id=session_id,
+            )
+
+        preset = await library_db().get_preset(
+            user_id=user_id, preset_id=params.preset_id
+        )
+        if not preset:
+            return ErrorResponse(
+                message=f"Preset '{params.preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
+        graph = await graph_db().get_graph(
+            preset.graph_id, preset.graph_version, user_id=user_id
+        )
+        if not graph:
+            return ErrorResponse(
+                message=(
+                    f"The agent for preset '{params.preset_id}' is not "
+                    "accessible (anymore)."
+                ),
+                session_id=session_id,
+            )
+
+        # A webhook-triggered preset fires on its external event; it has no
+        # runnable payload here, so executing it directly would fail downstream.
+        # Reject cleanly (matching run_agent's has_external_trigger guard).
+        if graph.has_external_trigger:
+            return ErrorResponse(
+                message=(
+                    f"Preset '{params.preset_id}' is a webhook trigger — it runs "
+                    "automatically when its event fires, so it can't be run on "
+                    "demand. Use update_preset to reconfigure or pause it "
+                    "(is_active=false), or delete_preset to remove it."
+                ),
+                error="preset_is_webhook_trigger",
+                session_id=session_id,
+            )
+
+        merged_inputs = {**preset.inputs, **params.inputs}
+        return await self._run_agent(
+            user_id=user_id,
+            session=session,
+            graph=graph,
+            graph_credentials=preset.credentials,
+            inputs=merged_inputs,
+            wait_for_result=params.wait_for_result,
+            dry_run=params.dry_run,
+            preset_id=preset.id,
+        )
+
+    async def _maybe_save_preset(
+        self,
+        *,
+        user_id: str,
+        graph: GraphModel,
+        graph_credentials: dict[str, CredentialsMetaInput],
+        params: RunAgentInput,
+    ) -> str | None:
+        """Persist the validated run config as a reusable preset when requested.
+
+        Returns the new preset id, or None when save_as_preset wasn't set.
+        """
+        if not params.save_as_preset:
+            return None
+        created = await library_db().create_preset(
+            user_id=user_id,
+            preset=LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=params.preset_name or graph.name,
+                description=params.preset_description,
+                inputs=params.inputs,
+                credentials=graph_credentials,
+                is_active=True,
+            ),
+        )
+        return created.id
+
     async def _run_agent(
         self,
         user_id: str,
@@ -653,6 +802,7 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         dry_run: bool,
         wait_for_result: int = 0,
+        preset_id: str | None = None,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
@@ -684,6 +834,7 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
                 dry_run=dry_run,
+                preset_id=preset_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

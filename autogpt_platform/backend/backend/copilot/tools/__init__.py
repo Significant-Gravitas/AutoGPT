@@ -40,6 +40,7 @@ from .manage_folders import (
     MoveFolderTool,
     UpdateFolderTool,
 )
+from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .platform_info import PlatformInfoTool
 from .run_agent import RunAgentTool
@@ -98,6 +99,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_agent_triggers": ListAgentTriggersTool(),
     # Webhook-trigger setup (create triggered preset + return ingress URL)
     "setup_agent_webhook_trigger": SetupAgentWebhookTriggerTool(),
+    # Preset management (list / update / delete; works for triggers too)
+    "list_presets": ListPresetsTool(),
+    "update_preset": UpdatePresetTool(),
+    "delete_preset": DeletePresetTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),

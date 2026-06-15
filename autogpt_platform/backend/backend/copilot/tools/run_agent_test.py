@@ -13,8 +13,8 @@ from ._test_data import (
     setup_llm_test_data,
     setup_test_data,
 )
-from .models import SetupRequirementsResponse
-from .run_agent import RunAgentTool
+from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
+from .run_agent import RunAgentInput, RunAgentTool
 
 # This is so the formatter doesn't remove the fixture imports
 setup_llm_test_data = setup_llm_test_data
@@ -878,3 +878,188 @@ async def test_run_agent_redirects_webhook_trigger_agent():
     assert "setup_agent_webhook_trigger" in result.message
     # It must NOT have attempted to execute the graph.
     mock_graph_db.get_graph.assert_awaited_once()
+
+
+# ---- preset_id (run on demand) + save_as_preset (create) ----
+
+
+@pytest.mark.asyncio
+async def test_run_preset_rejects_agent_identifier():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    result = await tool._handle_preset_run(
+        "preset-user",
+        session,
+        RunAgentInput(preset_id="p1", library_agent_id="lib1"),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "not both" in result.message
+
+
+@pytest.mark.asyncio
+async def test_run_preset_rejects_save_as_preset():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    result = await tool._handle_preset_run(
+        "preset-user",
+        session,
+        RunAgentInput(preset_id="p1", save_as_preset=True),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "already exists" in result.message
+
+
+@pytest.mark.asyncio
+async def test_run_preset_not_found():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=None)
+    with patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="missing")
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_not_found"
+
+
+@pytest.mark.asyncio
+async def test_run_preset_executes_with_merged_inputs():
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+
+    preset = MagicMock()
+    preset.id = "p1"
+    preset.graph_id = "g1"
+    preset.graph_version = 2
+    preset.inputs = {"a": 1, "b": 2}
+    preset.credentials = {}
+
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 2
+    graph.has_external_trigger = False
+
+    library_agent = MagicMock()
+    library_agent.id = "lib1"
+    library_agent.graph_id = "g1"
+    library_agent.graph_version = 2
+    library_agent.name = "My Agent"
+
+    execution = MagicMock()
+    execution.id = "exec1"
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock(return_value=execution)
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            new=AsyncMock(return_value=library_agent),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+            new=AsyncMock(),
+        ),
+        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
+        )
+
+    assert isinstance(result, ExecutionStartedResponse)
+    kwargs = add_exec.await_args.kwargs
+    assert kwargs["preset_id"] == "p1"
+    assert kwargs["inputs"] == {"a": 1, "b": 99}
+
+
+@pytest.mark.asyncio
+async def test_run_preset_rejects_webhook_trigger():
+    """A webhook-triggered preset can't be run on demand (it fires on its
+    event); reject cleanly without attempting execution."""
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user")
+
+    preset = MagicMock()
+    preset.id = "p-wh"
+    preset.graph_id = "g-wh"
+    preset.graph_version = 1
+    preset.inputs = {"repo": "owner/repo"}
+    preset.credentials = {}
+
+    graph = MagicMock()
+    graph.id = "g-wh"
+    graph.has_external_trigger = True
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock()
+
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p-wh")
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_is_webhook_trigger"
+    add_exec.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_maybe_save_preset_returns_none_when_flag_off():
+    tool = RunAgentTool()
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 1
+    result = await tool._maybe_save_preset(
+        user_id="u1", graph=graph, graph_credentials={}, params=RunAgentInput()
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_maybe_save_preset_creates_with_default_name():
+    tool = RunAgentTool()
+    graph = MagicMock()
+    graph.id = "g1"
+    graph.name = "My Agent"
+    graph.version = 1
+
+    created = MagicMock()
+    created.id = "preset-new"
+    mock_lib_db = MagicMock()
+    mock_lib_db.create_preset = AsyncMock(return_value=created)
+
+    with patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db):
+        result = await tool._maybe_save_preset(
+            user_id="u1",
+            graph=graph,
+            graph_credentials={},
+            params=RunAgentInput(save_as_preset=True, inputs={"x": 1}),
+        )
+
+    assert result == "preset-new"
+    preset_arg = mock_lib_db.create_preset.await_args.kwargs["preset"]
+    assert preset_arg.name == "My Agent"
+    assert preset_arg.inputs == {"x": 1}
+    assert preset_arg.graph_id == "g1"

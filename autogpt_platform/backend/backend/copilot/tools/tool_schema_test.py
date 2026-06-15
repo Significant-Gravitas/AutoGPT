@@ -79,7 +79,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # and the "manual webhooks return an exact URL / provider webhooks need
 # an explicitly chosen account" copy the model needs to drive webhook
 # trigger setup without inventing URLs or auto-picking credentials.
-_CHAR_BUDGET = 42_500
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+_CHAR_BUDGET = 45_000
 
 
 @pytest.fixture(scope="module")
