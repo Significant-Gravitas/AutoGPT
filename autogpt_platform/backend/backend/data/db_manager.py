@@ -35,6 +35,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.data import bot_analytics as bot_analytics_db
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -45,7 +46,11 @@ from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
 )
-from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.credit import (
+    UsageTransactionMetadata,
+    get_user_credit_model,
+    reconcile_stripe_tier_for_user,
+)
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
@@ -373,6 +378,10 @@ class DatabaseManager(AppService):
 
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = _(reconcile_all_stripe_tiers)
+    # Per-user lazy reconcile, exposed so Prisma-less processes
+    # (scheduler-server, copilot-executor) can self-heal a stale NO_TIER
+    # row via db_accessors.credit_db() instead of crashing on direct Prisma.
+    reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
 
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
@@ -393,6 +402,13 @@ class DatabaseManager(AppService):
     cleanup_expired_platform_link_tokens = _(
         platform_linking_db.cleanup_expired_platform_link_tokens
     )
+    fetch_workspace_artifact = _(platform_linking_db.fetch_workspace_artifact)
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = _(bot_analytics_db.record_bot_event)
+    record_guild_joined = _(bot_analytics_db.record_guild_joined)
+    mark_guild_left = _(bot_analytics_db.mark_guild_left)
+    sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -621,6 +637,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Subscription Reconciliation ============ #
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
+    reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -639,6 +656,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_server_link = d.delete_server_link
     delete_user_link = d.delete_user_link
     cleanup_expired_platform_link_tokens = d.cleanup_expired_platform_link_tokens
+    fetch_workspace_artifact = d.fetch_workspace_artifact
+
+    # ============ Bot Analytics ============ #
+    record_bot_event = d.record_bot_event
+    record_guild_joined = d.record_guild_joined
+    mark_guild_left = d.mark_guild_left
+    sync_guild_presence = d.sync_guild_presence
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

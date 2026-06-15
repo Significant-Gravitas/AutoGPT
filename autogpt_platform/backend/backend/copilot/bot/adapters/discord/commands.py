@@ -22,16 +22,26 @@ logger = logging.getLogger(__name__)
 def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
     """Register all slash commands on the given CommandTree."""
 
+    def _track(interaction: discord.Interaction, command_name: str) -> None:
+        api.track_event(
+            platform="discord",
+            event_type="command_used",
+            server_id=str(interaction.guild.id) if interaction.guild else None,
+            command_name=command_name,
+        )
+
     @tree.command(
         name="setup",
         description="Link this server to an AutoGPT account for AutoPilot",
     )
     @app_commands.default_permissions(manage_guild=True)
     async def setup_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "setup")
         await _handle_setup(interaction, api)
 
     @tree.command(name="help", description="Show AutoPilot bot usage info")
     async def help_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "help")
         await _handle_help(interaction)
 
     @tree.command(
@@ -39,6 +49,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Manage linked servers from your AutoGPT settings",
     )
     async def unlink_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "unlink")
         await _handle_unlink(interaction)
 
     @tree.command(
@@ -46,6 +57,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Start a fresh AutoPilot conversation in this DM or thread",
     )
     async def new_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "new")
         await _handle_new(interaction)
 
     @tree.command(
@@ -53,6 +65,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Resume one of your past AutoPilot conversations (DMs only)",
     )
     async def resume_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "resume")
         await _handle_resume(interaction, api)
 
     @tree.command(
@@ -60,6 +73,7 @@ def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
         description="Stop AutoPilot from auto-replying in this thread",
     )
     async def leave_command(interaction: discord.Interaction) -> None:
+        _track(interaction, "leave")
         await _handle_leave(interaction)
 
 
