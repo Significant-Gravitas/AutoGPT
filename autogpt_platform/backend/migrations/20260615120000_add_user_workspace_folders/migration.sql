@@ -21,6 +21,12 @@ CREATE INDEX "UserWorkspaceFolder_workspaceId_isDeleted_idx" ON "UserWorkspaceFo
 -- CreateIndex
 CREATE UNIQUE INDEX "UserWorkspaceFolder_workspaceId_parentId_name_key" ON "UserWorkspaceFolder"("workspaceId", "parentId", "name");
 
+-- Root folders have parentId = NULL; Postgres treats NULLs as distinct, so the
+-- composite unique index above does not constrain them. Enforce unique names
+-- among live root folders so concurrent creates/renames can't duplicate
+-- (race-safe backstop for the application-level check).
+CREATE UNIQUE INDEX "UserWorkspaceFolder_workspaceId_name_root_key" ON "UserWorkspaceFolder"("workspaceId", "name") WHERE "parentId" IS NULL AND "isDeleted" = false;
+
 -- CreateIndex
 CREATE INDEX "UserWorkspaceFile_folderId_idx" ON "UserWorkspaceFile"("folderId");
 

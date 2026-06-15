@@ -102,7 +102,7 @@ export function useArtifactsFolders() {
       deleteMutation.mutateAsync({ folderId }),
     isDeleting: deleteMutation.isPending,
     moveFileToFolder: (args: { fileId: string; folderId: string | null }) =>
-      moveMutation.mutate({
+      moveMutation.mutateAsync({
         data: { file_ids: [args.fileId], folder_id: args.folderId },
       }),
   };

@@ -25,8 +25,11 @@ export function MoveToFolderDialog({
   const { folders, moveFileToFolder } = useArtifactsFolders();
 
   function handleMove(folderId: string | null) {
-    moveFileToFolder({ fileId, folderId });
-    setIsOpen(false);
+    // Close only on success; the hook toasts on error and we keep the dialog
+    // open so the user can retry without re-opening it.
+    moveFileToFolder({ fileId, folderId })
+      .then(() => setIsOpen(false))
+      .catch(() => {});
   }
 
   return (

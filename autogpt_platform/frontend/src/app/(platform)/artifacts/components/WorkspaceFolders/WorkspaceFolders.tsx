@@ -88,9 +88,9 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
               onClick={() => onSelectFolder(folder.id)}
               onEdit={() => setEditing(folder)}
               onDelete={() => setDeleting(folder)}
-              onFileDrop={(fileId, folderId) =>
-                moveFileToFolder({ fileId, folderId })
-              }
+              onFileDrop={(fileId, folderId) => {
+                moveFileToFolder({ fileId, folderId }).catch(() => {});
+              }}
             />
           ))}
         </div>
