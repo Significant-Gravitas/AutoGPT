@@ -32,7 +32,12 @@ export function useArtifactsPage() {
   const query = useInfiniteQuery({
     queryKey: [
       ...ARTIFACTS_LIST_QUERY_KEY,
-      { q: q ?? null, origin: origin ?? null, folderId: folderId ?? null },
+      {
+        q: q ?? null,
+        origin: origin ?? null,
+        folderId: folderId ?? null,
+        rootOnly,
+      },
     ] as const,
     queryFn: ({ pageParam }) =>
       listWorkspaceFiles({
