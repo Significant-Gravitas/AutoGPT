@@ -34,8 +34,12 @@ class ConnectIntegrationTool(BaseTool):
 
     @property
     def description(self) -> str:
+        supported = ", ".join(f"\'{p}\'" for p in SUPPORTED_PROVIDERS)
         return (
-            "Prompt the user to connect a required integration (e.g. GitHub). "
+            f"Prompt the user to connect a required integration. "
+            f"Supported providers: {supported}. "
+            "ONLY call this tool for one of the supported providers listed above — "
+            "do NOT call it for Google, Gmail, Slack, or any other provider not in the list. "
             "Call this when an external CLI or API call fails because the user "
             "has not connected the relevant account. "
             "The tool surfaces a credentials setup card in the chat so the user "
