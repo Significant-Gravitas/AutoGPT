@@ -100,14 +100,18 @@ class FastCRWCrawlBlock(Block):
 
     def _crawl(self, app: FirecrawlApp, input_data: Input) -> Any:
         """SDK call isolated so it can be mocked in block self-tests."""
+        limit = max(0, input_data.limit)
+        max_age = max(0, input_data.max_age)
+        wait_for = max(0, input_data.wait_for)
+
         return app.crawl(
             input_data.url,
-            limit=input_data.limit,
+            limit=limit,
             scrape_options=ScrapeOptions(
                 formats=convert_to_format_options(input_data.formats),
                 only_main_content=input_data.only_main_content,
-                max_age=input_data.max_age,
-                wait_for=input_data.wait_for,
+                max_age=max_age,
+                wait_for=wait_for,
             ),
         )
 
