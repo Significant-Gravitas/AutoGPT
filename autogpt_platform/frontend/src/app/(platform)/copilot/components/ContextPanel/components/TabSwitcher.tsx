@@ -17,7 +17,7 @@ export function TabSwitcher({ activeTab, filesCount, onChange }: Props) {
     <div
       role="tablist"
       aria-label="Context panel sections"
-      className="flex items-center gap-1 rounded-full bg-zinc-100 p-1"
+      className="flex items-center gap-1 rounded-full bg-zinc-100 p-0.5"
     >
       {tabs.map((tab) => (
         <button
@@ -27,7 +27,7 @@ export function TabSwitcher({ activeTab, filesCount, onChange }: Props) {
           aria-selected={activeTab === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            "flex-1 rounded-full px-3 py-1 text-sm font-medium transition-colors",
+            "flex-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
             activeTab === tab.id
               ? "bg-white text-zinc-900 shadow-sm"
               : "text-zinc-500 hover:text-zinc-700",
