@@ -74,6 +74,10 @@ def _extract_error_message(response: Any) -> str:
     return "Unknown error"
 
 
+def _normalize_profile_key(profile_key: str) -> str:
+    return profile_key.strip()
+
+
 class SocialPlatform(str, Enum):
     BLUESKY = "bluesky"
     FACEBOOK = "facebook"
@@ -226,13 +230,14 @@ class AyrshareClient:
         Raises:
             AyrshareAPIException: If the API request fails or private key is invalid.
         """
+        profile_key = _normalize_profile_key(profile_key)
         payload: dict[str, Any] = {
             "domain": "id-pojeg",
             "privateKey": private_key,
             "profileKey": profile_key,
         }
 
-        headers = self.headers
+        headers = dict(self.headers)
         headers["Profile-Key"] = profile_key
         if logout is not None:
             payload["logout"] = logout
@@ -512,7 +517,9 @@ class AyrshareClient:
         if notes:
             payload["notes"] = notes
 
-        headers = self.headers
+        headers = dict(self.headers)
+        if profile_key:
+            profile_key = _normalize_profile_key(profile_key)
         if profile_key:
             headers["Profile-Key"] = profile_key
 
