@@ -181,3 +181,16 @@ def platform_linking_db():
         platform_linking_db = get_database_manager_async_client()
 
     return platform_linking_db
+
+
+def bot_analytics_db():
+    if db.is_connected():
+        from backend.data import bot_analytics as _bot_analytics_db
+
+        bot_analytics_db = _bot_analytics_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        bot_analytics_db = get_database_manager_async_client()
+
+    return bot_analytics_db
