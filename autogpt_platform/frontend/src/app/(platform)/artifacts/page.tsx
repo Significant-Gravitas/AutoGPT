@@ -11,6 +11,9 @@ import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSea
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
 import { StorageUsage } from "./components/StorageUsage/StorageUsage";
+import { FolderBreadcrumb } from "./components/WorkspaceFolders/FolderBreadcrumb";
+import { WorkspaceFolders } from "./components/WorkspaceFolders/WorkspaceFolders";
+import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
 
 const EASE_OUT_SOFT: Transition["ease"] = [0.16, 1, 0.3, 1];
@@ -45,10 +48,16 @@ export default function ArtifactsPage() {
     debouncedSearch,
     originFilter,
     setOriginFilter,
+    selectedFolderId,
+    setSelectedFolderId,
     hasMore,
     isLoadingMore,
     loadMore,
   } = useArtifactsPage();
+  const { folders } = useArtifactsFolders();
+
+  const isSearching = searchTerm.length > 0;
+  const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
@@ -110,6 +119,30 @@ export default function ArtifactsPage() {
           <OriginFilter value={originFilter} onChange={setOriginFilter} />
         </motion.div>
       </div>
+      {selectedFolderId !== null ? (
+        <motion.div
+          variants={variants}
+          initial="hidden"
+          animate="show"
+          transition={{ delay: reduceMotion ? 0 : 0.3 }}
+        >
+          <FolderBreadcrumb
+            folderName={selectedFolder?.name ?? "Folder"}
+            onBack={() => setSelectedFolderId(null)}
+          />
+        </motion.div>
+      ) : (
+        !isSearching && (
+          <motion.div
+            variants={variants}
+            initial="hidden"
+            animate="show"
+            transition={{ delay: reduceMotion ? 0 : 0.3 }}
+          >
+            <WorkspaceFolders onSelectFolder={setSelectedFolderId} />
+          </motion.div>
+        )
+      )}
       <motion.div
         variants={variants}
         initial="hidden"
@@ -125,7 +158,7 @@ export default function ArtifactsPage() {
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
-          listKey={`${originFilter}|${debouncedSearch}`}
+          listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
         />
       </motion.div>
     </main>

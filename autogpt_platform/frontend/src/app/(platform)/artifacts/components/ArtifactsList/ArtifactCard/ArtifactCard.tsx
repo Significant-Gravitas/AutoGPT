@@ -17,13 +17,16 @@ import {
   CircleNotchIcon,
   DotsThreeIcon,
   DownloadSimpleIcon,
+  FolderIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
+import { createFileDragImage, FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
 import {
   deriveFileOrigin,
   downloadFileBlob,
@@ -60,6 +63,22 @@ export function ArtifactCard({ file, onOpen }: Props) {
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
   const TypeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const dragImageRef = useRef<HTMLElement | null>(null);
+
+  function handleDragStart(e: React.DragEvent<HTMLLIElement>) {
+    e.dataTransfer.setData(FILE_DRAG_MIME, file.id);
+    e.dataTransfer.effectAllowed = "move";
+    const dragImage = createFileDragImage(file.name);
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 16, 16);
+    dragImageRef.current = dragImage;
+  }
+
+  function handleDragEnd() {
+    dragImageRef.current?.remove();
+    dragImageRef.current = null;
+  }
 
   return (
     <motion.li
@@ -67,6 +86,9 @@ export function ArtifactCard({ file, onOpen }: Props) {
       style={{ willChange: "transform, opacity, filter" }}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
           Sits behind the content (z-0); the content is pointer-events-none so
@@ -101,10 +123,24 @@ export function ArtifactCard({ file, onOpen }: Props) {
             </Text>
           </div>
           <div className="pointer-events-auto">
-            <CardMenu file={file} goLabel={goLabel} goHref={origin.href} />
+            <CardMenu
+              file={file}
+              goLabel={goLabel}
+              goHref={origin.href}
+              onMove={() => setIsMoveOpen(true)}
+            />
           </div>
         </div>
       </div>
+      {isMoveOpen && (
+        <MoveToFolderDialog
+          fileId={file.id}
+          fileName={file.name}
+          currentFolderId={file.folder_id}
+          isOpen={isMoveOpen}
+          setIsOpen={setIsMoveOpen}
+        />
+      )}
     </motion.li>
   );
 }
@@ -113,10 +149,12 @@ function CardMenu({
   file,
   goLabel,
   goHref,
+  onMove,
 }: {
   file: WorkspaceFileItem;
   goLabel: string;
   goHref: string;
+  onMove: () => void;
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
@@ -198,6 +236,16 @@ function CardMenu({
             <ArrowSquareOutIcon size={16} className="mr-2" />
             {goLabel}
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onMove();
+          }}
+          data-testid="artifacts-move-to-folder"
+        >
+          <FolderIcon size={16} className="mr-2" />
+          Move to folder
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

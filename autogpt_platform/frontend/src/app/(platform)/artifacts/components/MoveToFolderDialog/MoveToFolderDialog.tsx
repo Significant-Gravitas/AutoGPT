@@ -1,0 +1,87 @@
+"use client";
+
+import { FolderIcon, HouseIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useArtifactsFolders } from "../../useArtifactsFolders";
+import { FOLDER_STYLE } from "../WorkspaceFolders/folder-constants";
+
+interface Props {
+  fileId: string;
+  fileName: string;
+  currentFolderId?: string | null;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+}
+
+export function MoveToFolderDialog({
+  fileId,
+  fileName,
+  currentFolderId,
+  isOpen,
+  setIsOpen,
+}: Props) {
+  const { folders, moveFileToFolder } = useArtifactsFolders();
+
+  function handleMove(folderId: string | null) {
+    moveFileToFolder({ fileId, folderId });
+    setIsOpen(false);
+  }
+
+  return (
+    <Dialog
+      controlled={{ isOpen, set: setIsOpen }}
+      styling={{ maxWidth: "28rem" }}
+      title="Move to folder"
+    >
+      <Dialog.Content>
+        <div className="flex flex-col gap-1">
+          <Text variant="small" className="mb-1 text-zinc-500">
+            Move &ldquo;{fileName}&rdquo; to:
+          </Text>
+          {currentFolderId != null && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 px-3 py-2.5"
+              onClick={() => handleMove(null)}
+              data-testid="move-to-root"
+            >
+              <HouseIcon size={18} className="text-zinc-500" />
+              <Text variant="small-medium">Files (root)</Text>
+            </Button>
+          )}
+          {folders.length === 0 && currentFolderId == null ? (
+            <div className="flex h-20 items-center justify-center">
+              <Text variant="small" className="text-zinc-400">
+                No folders yet
+              </Text>
+            </div>
+          ) : (
+            folders
+              .filter((f) => f.id !== currentFolderId)
+              .map((folder) => {
+                const style = FOLDER_STYLE;
+                return (
+                  <Button
+                    key={folder.id}
+                    variant="ghost"
+                    className="w-full justify-start gap-3 px-3 py-2.5"
+                    onClick={() => handleMove(folder.id)}
+                    data-testid="move-to-folder-option"
+                  >
+                    <FolderIcon
+                      size={18}
+                      weight="fill"
+                      className={style.icon}
+                    />
+                    <Text variant="small-medium">{folder.name}</Text>
+                  </Button>
+                );
+              })
+          )}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}

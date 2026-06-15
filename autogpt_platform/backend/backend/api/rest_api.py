@@ -43,6 +43,7 @@ import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
@@ -418,6 +419,11 @@ app.include_router(
 )
 app.include_router(
     workspace_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )

@@ -15,6 +15,7 @@ type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 export function useArtifactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -23,11 +24,15 @@ export function useArtifactsPage() {
 
   const q = debouncedSearch || undefined;
   const origin = originFilter === "all" ? undefined : originFilter;
+  // No folder selected → show only root-level files; a folder is selected →
+  // scope the listing to that folder.
+  const folderId = selectedFolderId ?? undefined;
+  const rootOnly = selectedFolderId === null;
 
   const query = useInfiniteQuery({
     queryKey: [
       ...ARTIFACTS_LIST_QUERY_KEY,
-      { q: q ?? null, origin: origin ?? null },
+      { q: q ?? null, origin: origin ?? null, folderId: folderId ?? null },
     ] as const,
     queryFn: ({ pageParam }) =>
       listWorkspaceFiles({
@@ -35,6 +40,8 @@ export function useArtifactsPage() {
         offset: pageParam,
         q,
         origin,
+        folder_id: folderId,
+        root_only: rootOnly,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -58,6 +65,8 @@ export function useArtifactsPage() {
     debouncedSearch,
     originFilter,
     setOriginFilter,
+    selectedFolderId,
+    setSelectedFolderId,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {

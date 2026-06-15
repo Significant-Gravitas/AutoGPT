@@ -39,7 +39,7 @@ const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.ARTIFACTS]: false,
-  [Flag.ARTIFACTS_PAGE]: false,
+  [Flag.ARTIFACTS_PAGE]: true,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,

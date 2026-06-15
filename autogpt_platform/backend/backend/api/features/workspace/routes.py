@@ -148,6 +148,7 @@ class WorkspaceFileItem(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
+    folder_id: str | None = None
     metadata: dict = Field(default_factory=dict)
     origin: Literal["uploaded", "generated"]
     created_at: str
@@ -400,6 +401,17 @@ async def list_workspace_files(
             "Ignored when ``session_id`` is set."
         ),
     ),
+    folder_id: str | None = Query(
+        default=None,
+        description="Only return files in this folder.",
+    ),
+    root_only: bool = Query(
+        default=False,
+        description=(
+            "Only return root-level files (not in any folder). Ignored when "
+            "``folder_id`` is set."
+        ),
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -444,6 +456,8 @@ async def list_workspace_files(
         name_contains=name_contains,
         metadata_equals=metadata_equals,
         metadata_not_equals=metadata_not_equals,
+        folder_id=folder_id,
+        root_only=root_only,
     )
     has_more = len(files) > limit
     page = files[:limit]
@@ -456,6 +470,7 @@ async def list_workspace_files(
                 path=f.path,
                 mime_type=f.mime_type,
                 size_bytes=f.size_bytes,
+                folder_id=f.folder_id,
                 metadata=f.metadata or {},
                 origin=_derive_origin(f.metadata),
                 created_at=f.created_at.isoformat(),
