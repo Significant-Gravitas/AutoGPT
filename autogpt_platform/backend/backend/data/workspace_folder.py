@@ -199,8 +199,11 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
             where={"folderId": folder_id, "workspaceId": workspace_id},
             data={"folderId": None},
         )
-        await UserWorkspaceFolder.prisma(tx).update(
-            where={"id": folder_id},
+        # update_many with an isDeleted guard so a concurrent delete that slips
+        # past the ownership check above is a no-op rather than re-deleting a
+        # logically-deleted row (TOCTOU-safe, idempotent).
+        await UserWorkspaceFolder.prisma(tx).update_many(
+            where={"id": folder_id, "isDeleted": False},
             data={"isDeleted": True},
         )
 

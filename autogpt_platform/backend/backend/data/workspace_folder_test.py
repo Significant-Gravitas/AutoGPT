@@ -41,7 +41,7 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
         side_effect=lambda *a, **k: calls.append("reparent_files")
     )
     folder_prisma = mocker.MagicMock()
-    folder_prisma.update = mocker.AsyncMock(
+    folder_prisma.update_many = mocker.AsyncMock(
         side_effect=lambda *a, **k: calls.append("soft_delete_folder")
     )
 
@@ -65,8 +65,9 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
     _, kwargs = file_prisma.update_many.call_args
     assert kwargs["where"] == {"folderId": "fld-1", "workspaceId": "ws-001"}
     assert kwargs["data"] == {"folderId": None}
-    # Folder soft-deleted, not hard-deleted.
-    _, kwargs = folder_prisma.update.call_args
+    # Folder soft-deleted (not hard-deleted) with a TOCTOU-safe isDeleted guard.
+    _, kwargs = folder_prisma.update_many.call_args
+    assert kwargs["where"] == {"id": "fld-1", "isDeleted": False}
     assert kwargs["data"] == {"isDeleted": True}
 
 
