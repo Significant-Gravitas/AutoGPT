@@ -40,12 +40,12 @@ export interface ArtifactRef {
 
 interface ArtifactPanelState {
   isOpen: boolean;
-  isMinimized: boolean;
-  isMaximized: boolean;
   width: number;
   activeArtifact: ArtifactRef | null;
   history: ArtifactRef[];
   activeTab: ContextPanelTab;
+  /** Which panel is expanded in the right region; the other shows as a rail. */
+  expandedPanel: "context" | "artifact";
 }
 
 export const DEFAULT_PANEL_WIDTH = 352; // 22rem
@@ -136,9 +136,8 @@ interface CopilotUIState {
   closeArtifactPanel: () => void;
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
-  minimizeArtifactPanel: () => void;
-  maximizeArtifactPanel: () => void;
-  restoreArtifactPanel: () => void;
+  expandContextPanel: () => void;
+  expandArtifactPanel: () => void;
   setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
   setActiveTab: (tab: ContextPanelTab) => void;
@@ -236,22 +235,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   // Artifact panel
   artifactPanel: {
     isOpen: getPersistedOpen(),
-    isMinimized: false,
-    isMaximized: false,
     width: getPersistedWidth(),
     activeArtifact: null,
     history: [],
     activeTab: getPersistedTab(),
+    expandedPanel: "context",
   },
   openArtifact: (ref) =>
     set((state) => {
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
-      // A non-null activeArtifact already means the preview drawer is showing,
-      // so push the current one onto history when switching. We no longer gate
-      // on `isOpen`: that flag belongs solely to the context sidebar now (see
-      // toggleContextPanel / openContextPanelForFiles).
       const shouldPushHistory =
         activeArtifact != null && activeArtifact.id !== ref.id;
       const MAX_HISTORY = 25;
@@ -260,15 +254,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         : shouldPushHistory
           ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
+      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       return {
-        // The preview drawer (ArtifactPanel) is driven by `activeArtifact`.
-        // We deliberately leave `isOpen` untouched so opening a preview never
-        // forces the context sidebar open — the drawer overlays it instead.
         artifactPanel: {
           ...state.artifactPanel,
-          isMinimized: false,
+          isOpen: true,
           activeArtifact: ref,
           history,
+          expandedPanel: "artifact",
         },
       };
     }),
@@ -290,9 +283,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: false,
-          isMinimized: false,
           activeArtifact: null,
           history: [],
+          expandedPanel: "context",
         },
       };
     }),
@@ -302,51 +295,30 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         activeArtifact: null,
         history: [],
-        isMinimized: false,
-        isMaximized: false,
+        expandedPanel: "context",
       },
     })),
   resetArtifactPanel: () =>
     set((state) => ({
-      // Clear preview state only — leave `isOpen` alone since it's shared
-      // with ContextPanel, which would otherwise collapse on session
-      // switches (resetArtifactPanel runs in useAutoOpenArtifacts).
       artifactPanel: {
         ...state.artifactPanel,
-        isMinimized: false,
-        isMaximized: false,
         activeArtifact: null,
         history: [],
+        expandedPanel: "context",
       },
     })),
-  minimizeArtifactPanel: () =>
+  expandContextPanel: () =>
     set((state) => ({
-      artifactPanel: { ...state.artifactPanel, isMinimized: true },
+      artifactPanel: { ...state.artifactPanel, expandedPanel: "context" },
     })),
-  maximizeArtifactPanel: () =>
+  expandArtifactPanel: () =>
     set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isMaximized: true,
-        isMinimized: false,
-      },
-    })),
-  restoreArtifactPanel: () =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isMaximized: false,
-        isMinimized: false,
-      },
+      artifactPanel: { ...state.artifactPanel, expandedPanel: "artifact" },
     })),
   setArtifactPanelWidth: (width) => {
     schedulePanelWidthPersist(width);
     set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        width,
-        isMaximized: false,
-      },
+      artifactPanel: { ...state.artifactPanel, width },
     }));
   },
   goBackArtifact: () =>
@@ -372,7 +344,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeTab: tab,
           activeArtifact: null,
           history: [],
-          isMinimized: false,
+          expandedPanel: "context",
         },
       };
     }),
@@ -391,9 +363,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: nextOpen,
-          isMinimized: false,
           activeArtifact: null,
           history: [],
+          expandedPanel: "context",
         },
       };
     }),
@@ -407,10 +379,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanel: {
         ...state.artifactPanel,
         isOpen: true,
-        isMinimized: false,
         activeTab: "files",
         activeArtifact: null,
         history: [],
+        expandedPanel: "context",
       },
     }));
   },
@@ -424,10 +396,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanel: {
         ...state.artifactPanel,
         isOpen: true,
-        isMinimized: false,
         activeTab: "progress",
         activeArtifact: null,
         history: [],
+        expandedPanel: "context",
       },
     }));
   },
@@ -511,12 +483,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       isSoundEnabled: true,
       artifactPanel: {
         isOpen: false,
-        isMinimized: false,
-        isMaximized: false,
         width: DEFAULT_PANEL_WIDTH,
         activeArtifact: null,
         history: [],
         activeTab: "files",
+        expandedPanel: "context",
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
