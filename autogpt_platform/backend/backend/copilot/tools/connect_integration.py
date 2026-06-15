@@ -34,7 +34,7 @@ class ConnectIntegrationTool(BaseTool):
 
     @property
     def description(self) -> str:
-        supported = ", ".join(f"\'{p}\'" for p in SUPPORTED_PROVIDERS)
+        supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDERS)
         return (
             f"Prompt the user to connect a required integration. "
             f"Supported providers: {supported}. "
