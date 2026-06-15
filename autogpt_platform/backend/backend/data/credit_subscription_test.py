@@ -13,6 +13,8 @@ from prisma.models import User
 
 from backend.data.credit import (
     UserCredit,
+    _is_stripe_reconcilable,
+    build_price_to_tier_map,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -52,10 +54,9 @@ async def test_set_subscription_tier_updates_db():
         patch("backend.data.credit.get_user_by_id"),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        mock_prisma.return_value.update.assert_awaited_once_with(
-            where={"id": "user-1"},
-            data={"subscriptionTier": SubscriptionTier.PRO},
-        )
+        update_call = mock_prisma.return_value.update.await_args
+        assert update_call.kwargs["where"] == {"id": "user-1"}
+        assert update_call.kwargs["data"]["subscriptionTier"] == SubscriptionTier.PRO
 
 
 @pytest.mark.asyncio
@@ -322,6 +323,40 @@ async def test_sync_subscription_from_stripe_cancelled():
 
 
 @pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
+    """``past_due`` is NOT active/trialing, so it falls into the non-active else
+    branch: with no OTHER active/trialing sub, the user is revoked to NO_TIER.
+
+    This locks the product decision that an unpaid (past_due) subscription
+    immediately loses its tier rather than coasting until cancellation."""
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_pastdue",
+        "customer": "cus_123",
+        "status": "past_due",
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+    }
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+
+
+@pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_limit():
     """After unsubscribe takes effect, workspace storage resolves against NO_TIER."""
     from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
@@ -337,7 +372,10 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     empty_list.data = []
     empty_list.has_more = False
 
-    async def _set_tier(_user_id: str, tier: SubscriptionTier) -> None:
+    async def _set_tier(
+        _user_id: str,
+        tier: SubscriptionTier,
+    ) -> None:
         mock_user.subscriptionTier = tier
 
     with (
@@ -4502,3 +4540,85 @@ async def test_modify_stripe_subscription_tier_upgrade_yearly_still_immediate():
     _, kwargs = mock_modify.call_args
     assert kwargs["proration_behavior"] == "always_invoice"
     mock_schedule_create.assert_not_called()
+
+
+def _reconcilable_user(tier: SubscriptionTier, customer_id: str | None) -> MagicMock:
+    user = MagicMock()
+    user.subscription_tier = tier
+    user.stripe_customer_id = customer_id
+    return user
+
+
+def test_is_stripe_reconcilable_payer():
+    # Stripe customer on a paid, non-ENTERPRISE tier -> reconcilable.
+    user = _reconcilable_user(SubscriptionTier.PRO, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_enterprise_immune():
+    # ENTERPRISE is never auto-downgraded, even with a Stripe customer.
+    user = _reconcilable_user(SubscriptionTier.ENTERPRISE, "cus_1")
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_manual_grant_without_customer():
+    # A paid tier with no Stripe customer models a manual/admin grant.
+    user = _reconcilable_user(SubscriptionTier.PRO, None)
+    assert _is_stripe_reconcilable(user) is False
+
+
+def test_is_stripe_reconcilable_no_tier_with_customer():
+    # NO_TIER with a Stripe customer is still reconcilable (a missed-upgrade row).
+    user = _reconcilable_user(SubscriptionTier.NO_TIER, "cus_1")
+    assert _is_stripe_reconcilable(user) is True
+
+
+def test_is_stripe_reconcilable_free_user():
+    user = _reconcilable_user(SubscriptionTier.NO_TIER, None)
+    assert _is_stripe_reconcilable(user) is False
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_includes_monthly_and_yearly():
+    """Every priceable tier's monthly AND yearly price ID must map back to that
+    tier, so a yearly plan resolves to the same tier as its monthly twin."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        return f"price_{tier.value.lower()}_{billing_cycle}"
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    for tier in (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ):
+        assert price_to_tier[f"price_{tier.value.lower()}_monthly"] == tier
+        assert price_to_tier[f"price_{tier.value.lower()}_yearly"] == tier
+
+
+@pytest.mark.asyncio
+async def test_build_price_to_tier_map_skips_unconfigured_prices():
+    """A tier/cycle with no configured price ID (None) is simply omitted from
+    the map rather than crashing or mapping an empty key."""
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        # Only PRO monthly is configured.
+        if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+            return "price_pro_monthly"
+        return None
+
+    with patch(
+        "backend.data.credit.get_subscription_price_id", side_effect=mock_price_id
+    ):
+        price_to_tier = await build_price_to_tier_map()
+
+    assert price_to_tier == {"price_pro_monthly": SubscriptionTier.PRO}

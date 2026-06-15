@@ -21,6 +21,37 @@ describe("useOnboardingWizardStore", () => {
       expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
         "yearly",
       );
+      expect(useOnboardingWizardStore.getState().hasUserSelectedBilling).toBe(
+        false,
+      );
+    });
+  });
+
+  describe("billing selection", () => {
+    it("tracks when the billing cycle was selected by the user", () => {
+      useOnboardingWizardStore.getState().setSelectedBilling("monthly");
+
+      const state = useOnboardingWizardStore.getState();
+      expect(state.selectedBilling).toBe("monthly");
+      expect(state.hasUserSelectedBilling).toBe(true);
+    });
+
+    it("applies experiment billing until the user has selected a cycle", () => {
+      useOnboardingWizardStore
+        .getState()
+        .applyPricingExperimentBilling("monthly");
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "monthly",
+      );
+
+      useOnboardingWizardStore.getState().setSelectedBilling("yearly");
+      useOnboardingWizardStore
+        .getState()
+        .applyPricingExperimentBilling("monthly");
+
+      const state = useOnboardingWizardStore.getState();
+      expect(state.selectedBilling).toBe("yearly");
+      expect(state.hasUserSelectedBilling).toBe(true);
     });
   });
 

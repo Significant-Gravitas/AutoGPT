@@ -96,6 +96,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TaskDecompositionResponse,
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
@@ -426,6 +427,7 @@ async def list_sessions(
 
 @router.post(
     "/sessions",
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
@@ -1652,6 +1654,7 @@ ToolResponseUnion = (
     | DocPageResponse
     | MCPToolsDiscoveredResponse
     | MCPToolOutputResponse
+    | TaskDecompositionResponse
     | ScheduleListResponse
     | ScheduleDeletedResponse
     | MemoryStoreResponse

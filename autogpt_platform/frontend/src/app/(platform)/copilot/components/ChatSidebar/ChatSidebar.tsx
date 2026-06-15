@@ -27,6 +27,7 @@ import {
   CircleNotch,
   DotsThree,
   DownloadSimpleIcon,
+  FilesIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusCircleIcon,
@@ -46,7 +47,9 @@ import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { SESSION_LIST_QUERY_KEY, useSessionList } from "../../useSessionList";
-import { ChatSearchModal } from "../ChatSearchModal/ChatSearchModal";
+import type { SearchResultItem } from "@/app/api/__generated__/models/searchResultItem";
+import { GlobalSearchModal } from "@/app/(platform)/components/GlobalSearchModal/GlobalSearchModal";
+import { useRouter } from "next/navigation";
 import { ChatSessionBlock } from "../ChatSessionBlock/ChatSessionBlock";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
@@ -56,9 +59,15 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { completedSessionIDs, clearCompletedSession, setSearchOpen } =
-    useCopilotUIStore();
+  const {
+    completedSessionIDs,
+    clearCompletedSession,
+    isSearchOpen,
+    setSearchOpen,
+  } = useCopilotUIStore();
   const isChatSearchEnabled = useGetFlag(Flag.CHAT_SEARCH);
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const router = useRouter();
   const sessionNeedsReload = useCopilotChatRuntimeStore(
     (state) => state.sessionNeedsReload,
   );
@@ -155,6 +164,41 @@ export function ChatSidebar() {
   function handleSelectSession(id: string) {
     setSessionId(id);
     setSearchOpen(false);
+  }
+
+  function handleSelectSearchItem(item: SearchResultItem) {
+    if (item.type === "chat_session") {
+      setSessionId(item.id);
+      return;
+    }
+    if (item.type === "library_agent") {
+      router.push(`/library/agents/${item.id}`);
+      return;
+    }
+    if (item.type === "store_agent") {
+      // Store-agent rows carry creator + slug in ``metadata`` so we can
+      // build the marketplace URL without an extra fetch.
+      const metadata = (item.metadata ?? {}) as {
+        creator?: string;
+        slug?: string;
+      };
+      if (metadata.creator && metadata.slug) {
+        router.push(
+          `/marketplace/agent/${encodeURIComponent(metadata.creator)}/${encodeURIComponent(metadata.slug)}`,
+        );
+      }
+      return;
+    }
+    if (item.type === "workspace_file") {
+      // No dedicated viewer route — open the file's download URL in a
+      // new tab so the user gets the content immediately.
+      window.open(
+        `/api/proxy/api/workspace/files/${item.id}/download`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      return;
+    }
   }
 
   function handleRenameClick(
@@ -290,6 +334,18 @@ export function ChatSidebar() {
                       className="rounded-full text-zinc-600 hover:bg-zinc-100"
                     >
                       <MagnifyingGlassIcon className="!size-5" />
+                    </ShadcnButton>
+                  ) : null}
+                  {isArtifactsEnabled ? (
+                    <ShadcnButton
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Files"
+                      onClick={() => router.push("/artifacts")}
+                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
+                    >
+                      <FilesIcon className="!size-5" />
                     </ShadcnButton>
                   ) : null}
                   <UsagePopover />
@@ -530,10 +586,10 @@ export function ChatSidebar() {
       )}
 
       {isChatSearchEnabled ? (
-        <ChatSearchModal
-          sessions={sessions}
-          currentSessionId={sessionId}
-          onSelectSession={handleSelectSession}
+        <GlobalSearchModal
+          isOpen={isSearchOpen}
+          onClose={() => setSearchOpen(false)}
+          onSelectItem={handleSelectSearchItem}
         />
       ) : null}
     </>

@@ -65,7 +65,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # extra ~270 chars on CI (env-flagged tool registrations push CI
 # higher than local) carry the LLM-decision-critical copy for
 # "search the library before building new" + "user-confirmed bypass".
-_CHAR_BUDGET = 39_500
+# Bumped 39500 -> 40500 on PR #12731 for the decompose_goal tool.
+# Adds ~1k chars: step-level schema (id/description/action/block_name),
+# the require_approval gate, and the "STOP before building" caveat the
+# model needs to halt for user approval instead of rushing into
+# create_agent.
+# Bumped 40500 -> 41000 when find_library_agent absorbed direct by-id lookup:
+# a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
+# exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
+# reliable without a separate tool. Net smaller than a dedicated tool would add.
+_CHAR_BUDGET = 41_000
 
 
 @pytest.fixture(scope="module")

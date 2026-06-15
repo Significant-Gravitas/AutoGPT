@@ -7,6 +7,7 @@ import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
+import { DecomposeGoalTool } from "../../../tools/DecomposeGoal/DecomposeGoal";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
 import {
   CreateFeatureRequestTool,
@@ -216,6 +217,8 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-decompose_goal":
+      return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":

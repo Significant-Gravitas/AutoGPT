@@ -2,6 +2,8 @@
 
 import re
 
+from backend.data.sharing.workspace_refs import cut_lands_inside_artifact_link
+
 # Matches a triple-backtick fence with an optional language tag. Used to tell
 # whether a cut falls inside an open Markdown code block.
 _CODE_FENCE = re.compile(r"```(\w*)")
@@ -48,21 +50,33 @@ def split_at_boundary(text: str, flush_at: int) -> tuple[str, str]:
     for sep in ("\n\n", "\n"):
         idx = search_region.rfind(sep)
         if idx != -1:
-            cut = search_start + idx
+            cut = _guarded_cut(text, search_start + idx)
             return _balance_code_fences(text[:cut].rstrip(), text[cut:].lstrip("\n"))
 
     for sep in (". ", "! ", "? "):
         idx = search_region.rfind(sep)
         if idx != -1:
-            cut = search_start + idx + len(sep)
+            cut = _guarded_cut(text, search_start + idx + len(sep))
             return _balance_code_fences(text[:cut], text[cut:])
 
     idx = search_region.rfind(" ")
     if idx != -1:
-        cut = search_start + idx
+        cut = _guarded_cut(text, search_start + idx)
         return _balance_code_fences(text[:cut], text[cut:].lstrip())
 
-    return _balance_code_fences(text[:flush_at], text[flush_at:])
+    cut = _guarded_cut(text, flush_at)
+    return _balance_code_fences(text[:cut], text[cut:])
+
+
+def _guarded_cut(text: str, cut: int) -> int:
+    """Keep a workspace artifact markdown link from being split across chunks.
+
+    ``split_at_boundary`` picks a cut purely from prose boundaries, so it can
+    land inside ``[name](workspace://...)`` — which would stop the downstream
+    artifact extractor matching it. Pull the cut back to the link's start so the
+    whole link travels intact into the remainder.
+    """
+    return cut_lands_inside_artifact_link(text, cut)
 
 
 def _balance_code_fences(before: str, after: str) -> tuple[str, str]:

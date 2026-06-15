@@ -159,6 +159,19 @@ const config = {
             opacity: "1",
           },
         },
+        // Emil Kowalski enter pattern: translate from below + fade,
+        // ease-out, under 300ms. Driven by inline ``animation-delay``
+        // for per-item staggering.
+        "search-item-in": {
+          "0%": {
+            opacity: "0",
+            transform: "translateY(4px)",
+          },
+          "100%": {
+            opacity: "1",
+            transform: "translateY(0)",
+          },
+        },
         shimmer: {
           "0%": {
             backgroundPosition: "200% 0",
@@ -186,15 +199,32 @@ const config = {
           "0%": { backgroundPosition: "50% 50%, 50% 50%" },
           "100%": { backgroundPosition: "350% 50%, 350% 50%" },
         },
+        "marquee-x": {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
+        "progress-bar": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
+        // 180ms / ease-out keeps the entry inside Emil Kowalski's
+        // "faster is better" UI budget. Backwards mode so the item
+        // stays invisible until its staggered delay elapses, instead
+        // of flashing at frame zero.
+        "search-item-in":
+          "search-item-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both",
         shimmer: "shimmer 4s ease-in-out infinite",
         loader: "loader 1s infinite",
         shake: "shake 0.5s ease-in-out",
         aurora: "aurora 60s linear infinite",
+        "marquee-x": "marquee-x 40s linear infinite",
+        "progress-bar":
+          "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
       },
       transitionDuration: {
         "2000": "2000ms",
