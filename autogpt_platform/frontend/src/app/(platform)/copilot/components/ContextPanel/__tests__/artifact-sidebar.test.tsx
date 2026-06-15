@@ -34,7 +34,6 @@ function resetCopilotStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
-      expandedPanel: "context",
     },
   }));
 }

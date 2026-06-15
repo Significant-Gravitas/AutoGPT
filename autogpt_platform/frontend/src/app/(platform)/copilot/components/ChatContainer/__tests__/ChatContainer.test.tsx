@@ -38,7 +38,6 @@ function resetCopilotStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
-      expandedPanel: "context",
     },
   });
 }
@@ -363,7 +362,6 @@ describe("ChatContainer", () => {
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
           activeTab: "files",
-          expandedPanel: "artifact",
         },
       });
 

@@ -43,8 +43,6 @@ interface ArtifactPanelState {
   activeArtifact: ArtifactRef | null;
   history: ArtifactRef[];
   activeTab: ContextPanelTab;
-  /** Which panel is expanded in the right region; the other shows as a rail. */
-  expandedPanel: "context" | "artifact";
 }
 
 export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
@@ -158,8 +156,6 @@ interface CopilotUIState {
   closeArtifactPanel: () => void;
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
-  expandContextPanel: () => void;
-  expandArtifactPanel: () => void;
   goBackArtifact: () => void;
   setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
@@ -270,7 +266,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     activeArtifact: null,
     history: [],
     activeTab: getPersistedTab(),
-    expandedPanel: "context",
   },
   openArtifact: (ref) =>
     set((state) => {
@@ -292,7 +287,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: true,
           activeArtifact: ref,
           history,
-          expandedPanel: "artifact",
         },
       };
     }),
@@ -316,7 +310,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: false,
           activeArtifact: null,
           history: [],
-          expandedPanel: "context",
         },
       };
     }),
@@ -326,7 +319,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         activeArtifact: null,
         history: [],
-        expandedPanel: "context",
       },
     })),
   resetArtifactPanel: () =>
@@ -335,16 +327,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         activeArtifact: null,
         history: [],
-        expandedPanel: "context",
       },
-    })),
-  expandContextPanel: () =>
-    set((state) => ({
-      artifactPanel: { ...state.artifactPanel, expandedPanel: "context" },
-    })),
-  expandArtifactPanel: () =>
-    set((state) => ({
-      artifactPanel: { ...state.artifactPanel, expandedPanel: "artifact" },
     })),
   goBackArtifact: () =>
     set((state) => {
@@ -369,7 +352,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeTab: tab,
           activeArtifact: null,
           history: [],
-          expandedPanel: "context",
         },
       };
     }),
@@ -390,7 +372,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: nextOpen,
           activeArtifact: null,
           history: [],
-          expandedPanel: "context",
         },
       };
     }),
@@ -407,7 +388,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         activeArtifact: null,
         history: [],
-        expandedPanel: "context",
       },
     }));
   },
@@ -424,7 +404,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "progress",
         activeArtifact: null,
         history: [],
-        expandedPanel: "context",
       },
     }));
   },
@@ -514,7 +493,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeArtifact: null,
         history: [],
         activeTab: "files",
-        expandedPanel: "context",
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",

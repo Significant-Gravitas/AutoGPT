@@ -135,7 +135,6 @@ export const ActiveState: Story = {
           activeArtifact: makeArtifact({ id: "active-card" }),
           history: [],
           activeTab: "files",
-          expandedPanel: "artifact",
         },
       });
       return <Story />;

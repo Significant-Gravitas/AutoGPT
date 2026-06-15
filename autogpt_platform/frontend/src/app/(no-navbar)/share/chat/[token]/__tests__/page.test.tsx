@@ -38,7 +38,6 @@ function resetArtifactPanelStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
-      expandedPanel: "context",
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();

@@ -29,7 +29,6 @@ function resetStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
-      expandedPanel: "context",
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —
@@ -49,7 +48,6 @@ describe("artifactPanel store actions", () => {
     // returns to the expanded Context Panel, and marks the artifact as the
     // expanded panel.
     expect(s.isOpen).toBe(true);
-    expect(s.expandedPanel).toBe("artifact");
     expect(s.activeArtifact?.id).toBe("a");
     expect(s.history).toEqual([]);
   });
@@ -110,7 +108,6 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().closeArtifactPanel();
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.isOpen).toBe(false);
-    expect(s.expandedPanel).toBe("context");
     // Drawer is gated on activeArtifact — closing must drop it so it can't float.
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
@@ -152,28 +149,8 @@ describe("artifactPanel store actions", () => {
     // isOpen is intentionally left alone by resetArtifactPanel — it's shared
     // with ContextPanel and reset runs on every session change.
     expect(s.isOpen).toBe(true);
-    expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
-  });
-
-  it("expandContextPanel/expandArtifactPanel toggle expandedPanel without touching activeArtifact", () => {
-    const a = makeArtifact("a");
-    useCopilotUIStore.getState().openArtifact(a);
-    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
-      "artifact",
-    );
-    useCopilotUIStore.getState().expandContextPanel();
-    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
-      "context",
-    );
-    useCopilotUIStore.getState().expandArtifactPanel();
-    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
-      "artifact",
-    );
-    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
-      "a",
-    );
   });
 
   it("history is capped at 25 entries (MAX_HISTORY)", () => {
@@ -199,7 +176,6 @@ describe("artifactPanel store actions", () => {
 
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.isOpen).toBe(false);
-    expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
   });

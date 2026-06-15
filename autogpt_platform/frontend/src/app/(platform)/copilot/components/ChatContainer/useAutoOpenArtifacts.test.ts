@@ -31,7 +31,6 @@ function resetStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
-      expandedPanel: "context",
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();
@@ -77,8 +76,8 @@ describe("useAutoOpenArtifacts (card-based)", () => {
 
   it("clears artifact preview on unmount (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
-    // openArtifact opens the context region (isOpen: true, expandedPanel:
-    // "artifact") and drives the preview drawer via activeArtifact.
+    // openArtifact opens the context region (isOpen: true) and drives the
+    // preview drawer via activeArtifact.
     expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
       A_ID,
     );
