@@ -47,7 +47,7 @@ interface ArtifactPanelState {
   expandedPanel: "context" | "artifact";
 }
 
-export const DEFAULT_PANEL_WIDTH = 352; // 22rem
+export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
 export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
 export const MIN_CONTEXT_PANEL_WIDTH = 280;
 export const MAX_CONTEXT_PANEL_WIDTH = 600;

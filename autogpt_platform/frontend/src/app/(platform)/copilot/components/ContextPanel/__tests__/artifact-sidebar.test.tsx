@@ -31,7 +31,6 @@ function resetCopilotStore() {
     artifactPanel: {
       ...s.artifactPanel,
       isOpen: true,
-      width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
@@ -85,7 +84,7 @@ function RightRegion({ sessionId }: { sessionId: string }) {
   );
 }
 
-describe("Context/Artifact panel swap (desktop)", () => {
+describe("Context/Artifact panel (desktop)", () => {
   beforeEach(() => {
     server.use(
       getListWorkspaceFilesMockHandler200({
@@ -121,47 +120,19 @@ describe("Context/Artifact panel swap (desktop)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("swaps between the artifact and context panels and closes the artifact", async () => {
+  it("shows the artifact panel when an artifact opens and returns to the context panel on close", async () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact());
 
     render(<RightRegion sessionId="session-1" />);
 
-    // 1. Artifact opened: artifact header is visible, context shows a rail.
+    // Artifact open: the artifact takes over the right region — its header is
+    // visible and the Context Panel (tabs) is hidden.
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Expand workspace panel" }),
-    ).toBeDefined();
+    expect(screen.queryByRole("tablist")).toBeNull();
 
-    // 2. Expand the context panel → tabs visible, artifact collapses to a rail.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand workspace panel" }),
-    );
-    expect(await screen.findByRole("tablist")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Expand artifact panel" }),
-    ).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Expand workspace panel" }),
-    ).toBeNull();
-
-    // 3. Expand the artifact panel again → header back, context rail returns.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand artifact panel" }),
-    );
-    expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Expand workspace panel" }),
-    ).toBeDefined();
-
-    // 4. Close the artifact → artifact gone, context panel expanded (no rails).
+    // Close the artifact → it disappears and the Context Panel is shown.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(await screen.findByRole("tablist")).toBeDefined();
     expect(screen.queryByText("notes.txt")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Expand workspace panel" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Expand artifact panel" }),
-    ).toBeNull();
   });
 });

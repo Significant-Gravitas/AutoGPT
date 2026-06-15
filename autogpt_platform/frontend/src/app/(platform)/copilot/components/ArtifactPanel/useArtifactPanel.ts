@@ -10,7 +10,6 @@ import { classifyArtifact } from "./helpers";
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
-  const expandArtifactPanel = useCopilotUIStore((s) => s.expandArtifactPanel);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
   const artifactPanelWidth = useCopilotUIStore((s) => s.artifactPanelWidth);
   const setArtifactPanelWidth = useCopilotUIStore(
@@ -83,13 +82,11 @@ export function useArtifactPanel() {
 
   return {
     activeArtifact,
-    expandedPanel: artifactPanel.expandedPanel,
     history: artifactPanel.history,
     isSourceView,
     classification,
     setIsSourceView,
     clearArtifactPreview,
-    expandArtifactPanel,
     goBackArtifact,
     canCopy,
     handleCopy,

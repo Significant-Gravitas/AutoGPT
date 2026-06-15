@@ -143,32 +143,6 @@ export const OpenWithImageArtifact: Story = {
   },
 };
 
-export const ContextRail: Story = {
-  name: "Context Rail (Collapsed Preview)",
-  decorators: [
-    (Story) => {
-      useCopilotUIStore.setState({
-        artifactPanel: {
-          isOpen: true,
-          activeArtifact: makeArtifact(),
-          history: [],
-          activeTab: "files",
-          expandedPanel: "context",
-        },
-      });
-      return <Story />;
-    },
-  ],
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "The context panel is expanded, so the artifact preview collapses to a rail.",
-      },
-    },
-  },
-};
-
 export const ErrorState: Story = {
   name: "Error — Failed to Load (Stale Artifact)",
   decorators: [

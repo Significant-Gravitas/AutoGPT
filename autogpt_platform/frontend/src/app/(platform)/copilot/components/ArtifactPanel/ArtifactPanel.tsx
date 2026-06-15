@@ -5,7 +5,6 @@ import { MIN_ARTIFACT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactContent } from "./components/ArtifactContent";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
-import { ArtifactRail } from "./components/ArtifactRail";
 import { useArtifactPanel } from "./useArtifactPanel";
 
 interface Props {
@@ -15,13 +14,11 @@ interface Props {
 export function ArtifactPanel({ mobile }: Props) {
   const {
     activeArtifact,
-    expandedPanel,
     history,
     isSourceView,
     classification,
     setIsSourceView,
     clearArtifactPreview,
-    expandArtifactPanel,
     goBackArtifact,
     canCopy,
     handleCopy,
@@ -47,14 +44,6 @@ export function ArtifactPanel({ mobile }: Props) {
   };
 
   if (!mobile) {
-    if (expandedPanel === "context") {
-      return (
-        <ArtifactRail
-          artifact={activeArtifact}
-          onExpand={expandArtifactPanel}
-        />
-      );
-    }
     return (
       <div
         data-artifact-panel

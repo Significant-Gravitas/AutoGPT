@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { XIcon } from "@phosphor-icons/react";
 import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
-import { ContextPanelRail } from "./components/ContextPanelRail";
 import { FilesTab } from "./components/FilesTab/FilesTab";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
 import { ProgressTab } from "./components/ProgressTab/ProgressTab";
@@ -27,11 +26,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const {
     isOpen,
     activeTab,
-    showRail,
     showExpanded,
     setActiveTab,
     closeArtifactPanel,
-    expandContextPanel,
     contextPanelWidth,
     setContextPanelWidth,
   } = useContextPanel();
@@ -40,8 +37,18 @@ export function ContextPanel({ sessionId, mobile }: Props) {
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
-      {!mobile && (
-        <div className="flex justify-end p-2">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 p-2",
+          mobile && "mt-12",
+        )}
+      >
+        <TabSwitcher
+          activeTab={activeTab}
+          filesCount={filesCount}
+          onChange={setActiveTab}
+        />
+        {!mobile && (
           <Button
             type="button"
             variant="ghost"
@@ -51,14 +58,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           >
             <XIcon className="!size-5" />
           </Button>
-        </div>
-      )}
-      <div className={cn("p-2", mobile && "mt-12")}>
-        <TabSwitcher
-          activeTab={activeTab}
-          filesCount={filesCount}
-          onChange={setActiveTab}
-        />
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {activeTab === "progress" && <ProgressTab sessionId={sessionId} />}
@@ -84,10 +84,6 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         </SheetContent>
       </Sheet>
     );
-  }
-
-  if (showRail) {
-    return <ContextPanelRail onExpand={expandContextPanel} />;
   }
 
   if (!showExpanded) return null;
