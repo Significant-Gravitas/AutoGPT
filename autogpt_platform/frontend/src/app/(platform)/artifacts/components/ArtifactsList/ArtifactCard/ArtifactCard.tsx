@@ -24,7 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
 import { createFileDragImage, FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
 import {
@@ -66,7 +66,17 @@ export function ArtifactCard({ file, onOpen }: Props) {
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const dragImageRef = useRef<HTMLElement | null>(null);
 
+  // Clean up a leftover drag-image node if the card unmounts mid-drag (before
+  // dragend fires), so the off-screen element isn't leaked into the DOM.
+  useEffect(() => {
+    return () => {
+      dragImageRef.current?.remove();
+      dragImageRef.current = null;
+    };
+  }, []);
+
   function handleDragStart(e: React.DragEvent<HTMLLIElement>) {
+    dragImageRef.current?.remove();
     e.dataTransfer.setData(FILE_DRAG_MIME, file.id);
     e.dataTransfer.effectAllowed = "move";
     const dragImage = createFileDragImage(file.name);

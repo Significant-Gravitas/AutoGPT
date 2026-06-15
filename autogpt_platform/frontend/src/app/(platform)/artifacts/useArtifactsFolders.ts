@@ -87,16 +87,18 @@ export function useArtifactsFolders() {
   return {
     folders: foldersQuery.data?.folders ?? [],
     isLoading: foldersQuery.isLoading,
+    isError: foldersQuery.isError,
+    error: foldersQuery.error,
     createFolder: (args: { name: string }) =>
-      createMutation.mutate({ data: { name: args.name } }),
+      createMutation.mutateAsync({ data: { name: args.name } }),
     isCreating: createMutation.isPending,
     updateFolder: (args: { folderId: string; name?: string }) =>
-      updateMutation.mutate({
+      updateMutation.mutateAsync({
         folderId: args.folderId,
         data: { name: args.name },
       }),
     isUpdating: updateMutation.isPending,
-    deleteFolder: (folderId: string) => deleteMutation.mutate({ folderId }),
+    deleteFolder: (folderId: string) => deleteMutation.mutateAsync({ folderId }),
     isDeleting: deleteMutation.isPending,
     moveFileToFolder: (args: { fileId: string; folderId: string | null }) =>
       moveMutation.mutate({
