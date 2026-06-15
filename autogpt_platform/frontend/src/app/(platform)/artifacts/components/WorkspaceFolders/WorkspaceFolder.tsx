@@ -82,7 +82,7 @@ export function WorkspaceFolder({
           {fileCount} {fileCount === 1 ? "file" : "files"}
         </Text>
       </div>
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
         <Button
           variant="icon"
           size="icon"

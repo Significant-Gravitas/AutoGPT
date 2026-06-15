@@ -26,7 +26,10 @@ import type { Variants } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
-import { createFileDragImage, FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
+import {
+  createFileDragImage,
+  FILE_DRAG_MIME,
+} from "../../WorkspaceFolders/drag";
 import {
   deriveFileOrigin,
   downloadFileBlob,
@@ -97,8 +100,8 @@ export function ArtifactCard({ file, onOpen }: Props) {
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
       data-testid="artifacts-list-item"
       draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
+      onDragStartCapture={handleDragStart}
+      onDragEndCapture={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
           Sits behind the content (z-0); the content is pointer-events-none so

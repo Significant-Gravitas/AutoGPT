@@ -59,6 +59,7 @@ function makeFile(
     size_bytes: 1024,
     folder_id: null,
     metadata: {},
+    origin: "generated",
     created_at: "2026-05-01T00:00:00Z",
     ...overrides,
   };
