@@ -1,23 +1,10 @@
 from __future__ import annotations
 
-import importlib
-import sys
-import types
+from unittest.mock import AsyncMock
 
 import pytest
 
-
-class _Requests:
-    pass
-
-
-request_module = types.ModuleType("backend.util.request")
-request_module.Requests = _Requests
-sys.modules.setdefault("backend.util.request", request_module)
-
-ayrshare = importlib.import_module("backend.integrations.ayrshare")
-AyrshareClient = ayrshare.AyrshareClient
-SocialPlatform = ayrshare.SocialPlatform
+from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 
 
 class _Response:
@@ -33,12 +20,7 @@ class _Response:
 
 class _FakeRequests:
     def __init__(self, response: _Response):
-        self.response = response
-        self.calls: list[dict] = []
-
-    async def post(self, url: str, *, json: dict, headers: dict | None = None):
-        self.calls.append({"url": url, "json": json, "headers": dict(headers or {})})
-        return self.response
+        self.post = AsyncMock(return_value=response)
 
 
 def _set_ayrshare_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -48,8 +30,10 @@ def _set_ayrshare_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_generate_jwt_strips_profile_key_without_mutating_base_headers(monkeypatch):
+@pytest.mark.asyncio
+async def test_generate_jwt_strips_profile_key_without_mutating_base_headers(
+    monkeypatch,
+):
     _set_ayrshare_api_key(monkeypatch)
     requests = _FakeRequests(
         _Response(
@@ -65,14 +49,17 @@ async def test_generate_jwt_strips_profile_key_without_mutating_base_headers(mon
 
     await client.generate_jwt(private_key="private-key", profile_key=" profile-key ")
 
-    call = requests.calls[0]
-    assert call["json"]["profileKey"] == "profile-key"
-    assert call["headers"]["Profile-Key"] == "profile-key"
+    requests.post.assert_awaited_once()
+    call = requests.post.await_args
+    assert call.kwargs["json"]["profileKey"] == "profile-key"
+    assert call.kwargs["headers"]["Profile-Key"] == "profile-key"
     assert "Profile-Key" not in client.headers
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_create_post_strips_profile_key_without_mutating_base_headers(monkeypatch):
+@pytest.mark.asyncio
+async def test_create_post_strips_profile_key_without_mutating_base_headers(
+    monkeypatch,
+):
     _set_ayrshare_api_key(monkeypatch)
     requests = _FakeRequests(
         _Response(
@@ -98,6 +85,7 @@ async def test_create_post_strips_profile_key_without_mutating_base_headers(monk
         profile_key=" profile-key ",
     )
 
-    call = requests.calls[0]
-    assert call["headers"]["Profile-Key"] == "profile-key"
+    requests.post.assert_awaited_once()
+    call = requests.post.await_args
+    assert call.kwargs["headers"]["Profile-Key"] == "profile-key"
     assert "Profile-Key" not in client.headers
