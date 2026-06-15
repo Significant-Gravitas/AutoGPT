@@ -40,7 +40,9 @@ class WorkspaceFolderUpdateRequest(BaseModel):
 
 class BulkMoveFilesRequest(BaseModel):
     file_ids: list[str]
-    folder_id: str | None = None  # None = move to root
+    # None = move to root. Reject "" so it can't bypass the truthiness-based
+    # ownership check and hit a foreign-key error (returns 422 instead).
+    folder_id: str | None = Field(None, min_length=1)
 
 
 class WorkspaceFolderListResponse(BaseModel):

@@ -160,21 +160,29 @@ async def update_folder(
     if not update_data:
         return await get_folder(folder_id, workspace_id)
 
+    # update_many (not update) so the write itself is guarded by isDeleted: a
+    # folder soft-deleted concurrently after the ownership check above must not
+    # be silently updated (and reported as a 200).
     try:
-        updated = await UserWorkspaceFolder.prisma().update(
-            where={"id": folder_id},
+        updated_count = await UserWorkspaceFolder.prisma().update_many(
+            where={"id": folder_id, "isDeleted": False},
             data=update_data,
-            include={"Files": {"where": {"isDeleted": False}}},
         )
     except UniqueViolationError:
         raise FolderAlreadyExistsError("A folder with this name already exists")
 
-    # Build the response from the update result rather than re-reading: a
-    # concurrent delete between update and re-fetch would soft-delete the row
-    # and make a follow-up get_folder raise NotFoundError (spurious 404).
-    if updated is None:
+    if updated_count == 0:
         raise NotFoundError(f"Folder #{folder_id} not found")
-    return WorkspaceFolder.from_db(updated, file_count=_file_count(updated))
+
+    # Re-read without an isDeleted filter so a delete racing in *after* a
+    # successful update doesn't turn it into a spurious 404.
+    refreshed = await UserWorkspaceFolder.prisma().find_first(
+        where={"id": folder_id},
+        include={"Files": {"where": {"isDeleted": False}}},
+    )
+    if refreshed is None:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+    return WorkspaceFolder.from_db(refreshed, file_count=_file_count(refreshed))
 
 
 async def delete_folder(folder_id: str, workspace_id: str) -> None:

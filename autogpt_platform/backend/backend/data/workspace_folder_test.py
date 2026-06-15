@@ -5,6 +5,7 @@ import pytest
 
 from backend.api.features.library.exceptions import FolderAlreadyExistsError
 from backend.data import workspace_folder as wf
+from backend.util.exceptions import NotFoundError
 
 
 def _folder_record(**overrides):
@@ -112,6 +113,27 @@ async def test_update_folder_rejects_duplicate_root_name(mocker):
     folder_prisma.update.assert_not_awaited()
     _, kwargs = folder_prisma.find_first.call_args
     assert kwargs["where"]["id"] == {"not": "fld-1"}
+
+
+@pytest.mark.asyncio
+async def test_update_folder_raises_when_concurrently_deleted(mocker):
+    """A folder soft-deleted between the ownership check and the write must
+    surface NotFoundError, not a false 200 on a logically-deleted row."""
+    mocker.patch.object(
+        wf, "_get_folder_record", mocker.AsyncMock(return_value=_folder_record())
+    )
+    folder_prisma = mocker.MagicMock()
+    folder_prisma.find_first = mocker.AsyncMock(return_value=None)  # no name dup
+    folder_prisma.update_many = mocker.AsyncMock(return_value=0)  # nothing matched
+    mocker.patch.object(
+        wf.UserWorkspaceFolder, "prisma", mocker.MagicMock(return_value=folder_prisma)
+    )
+
+    with pytest.raises(NotFoundError):
+        await wf.update_folder("fld-1", "ws-001", name="Renamed")
+
+    _, kwargs = folder_prisma.update_many.call_args
+    assert kwargs["where"] == {"id": "fld-1", "isDeleted": False}
 
 
 @pytest.mark.asyncio

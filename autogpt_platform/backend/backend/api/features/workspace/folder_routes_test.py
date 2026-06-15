@@ -198,6 +198,16 @@ def test_bulk_move_files_returns_updated_files(mocker):
     )
 
 
+def test_bulk_move_rejects_empty_folder_id():
+    """An empty-string folder_id is rejected at validation (422), not passed
+    through to a foreign-key error."""
+    response = client.post(
+        "/folders/files/bulk-move",
+        json={"file_ids": ["f1"], "folder_id": ""},
+    )
+    assert response.status_code == 422
+
+
 def test_bulk_move_files_to_root(mocker):
     """folder_id omitted means move to root (None)."""
     mocker.patch(
