@@ -30,6 +30,19 @@ class MessageHistoryEntry:
     text: str
 
 
+@dataclass
+class ReferencedConversation:
+    """A different thread/channel the incoming message linked or @-referenced,
+    fetched by the bot via its own gateway so the model can read it directly
+    instead of trying to web-fetch a JS-rendered Discord page.
+
+    ``messages`` is in chronological order and already bounded to a char budget.
+    """
+
+    title: str
+    messages: tuple[MessageHistoryEntry, ...]
+
+
 class FileAttachment(BaseModel):
     """A workspace artifact ready to attach to a platform message.
 
@@ -89,6 +102,9 @@ class MessageContext:
     # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
     # get pinged even if the LLM produces `@theirname` in its output.
     mentionable_users: tuple[tuple[str, str], ...] = ()
+    # Other threads/channels the message linked or @-referenced, fetched by the
+    # bot up-front so the model has their content without web-fetching Discord.
+    referenced_conversations: tuple[ReferencedConversation, ...] = ()
 
     @property
     def is_dm(self) -> bool:

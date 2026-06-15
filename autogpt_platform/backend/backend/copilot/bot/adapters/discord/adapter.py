@@ -26,8 +26,10 @@ from ..base import (
     MessageHistoryEntry,
     PlatformAdapter,
     PostedRef,
+    ReferencedConversation,
 )
 from . import commands, config, intro
+from .references import extract_referenced_channel_ids
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,14 @@ logger = logging.getLogger(__name__)
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
 _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
+
+# When a message links or @-mentions other threads/channels, the bot fetches
+# their recent content up-front (same guild only) so the model can read it
+# instead of trying to web-fetch a JS-rendered Discord page. Bounded so a
+# link-heavy message can't fan out into many large reads.
+MAX_REFERENCED_CONVERSATIONS = 3
+REFERENCED_HISTORY_LIMIT = 200
+REFERENCED_CHAR_BUDGET = 8000
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -410,6 +420,7 @@ class DiscordAdapter(PlatformAdapter):
             if channel_type == "thread" and bot_mentioned:
                 thread_history = await self._thread_history(message)
 
+            message_text = self._message_text(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -418,10 +429,13 @@ class DiscordAdapter(PlatformAdapter):
                 message_id=str(message.id),
                 user_id=str(message.author.id),
                 username=message.author.display_name,
-                text=self._message_text(message),
+                text=message_text,
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
+                referenced_conversations=await self._fetch_referenced_conversations(
+                    message, message_text
+                ),
             )
             await self._on_message_callback(ctx, self)
 
@@ -533,57 +547,104 @@ class DiscordAdapter(PlatformAdapter):
     ) -> tuple[MessageHistoryEntry, ...]:
         if not isinstance(message.channel, discord.Thread):
             return ()
-
-        entries: list[MessageHistoryEntry] = []
-        used_chars = 0
-        bot_user_id = self._client.user.id if self._client.user else None
         try:
-            # Newest-first so that when a long thread exceeds the size budget we
-            # keep the most recent (most relevant) messages instead of the
-            # oldest; we reverse back to chronological order before returning.
-            async for prior in message.channel.history(
-                limit=THREAD_HISTORY_LIMIT,
-                before=message,
-                oldest_first=False,
-            ):
-                # Skip our own outputs — copilot has its own transcript for
-                # that side. Other bots' messages are kept as context.
-                if bot_user_id is not None and prior.author.id == bot_user_id:
-                    continue
-                text = self._strip_mentions(prior)
-                if not text:
-                    continue
-                remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
-                if remaining <= 0:
-                    break
-                oversized = len(text) > remaining
-                if oversized and entries:
-                    # No room for another whole message — stop and keep what we
-                    # have (the more recent messages).
-                    break
-                if oversized:
-                    # Lone most-recent message is itself over budget: keep a
-                    # truncated head of it.
-                    text = _truncate_to_budget(text, remaining)
-                used_chars += len(text)
-                entries.append(
-                    MessageHistoryEntry(
-                        username=prior.author.display_name,
-                        user_id=str(prior.author.id),
-                        text=text,
-                    )
-                )
-                if oversized:
-                    # We just truncated the newest message to the budget; older
-                    # messages are both less relevant and would otherwise sneak
-                    # into the whitespace `rstrip` freed up. Stop here.
-                    break
+            return await self._budgeted_history(
+                message.channel.history(
+                    limit=THREAD_HISTORY_LIMIT,
+                    before=message,
+                    oldest_first=False,
+                ),
+                THREAD_HISTORY_CHAR_BUDGET,
+            )
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
             return ()
 
+    async def _budgeted_history(
+        self, history, char_budget: int
+    ) -> tuple[MessageHistoryEntry, ...]:
+        """Drain a newest-first message iterator into chronological entries,
+        capped at ``char_budget`` chars (most-recent kept when over budget).
+
+        Skips the bot's own messages (copilot has its own transcript for those)
+        but keeps other bots' messages as context.
+        """
+        entries: list[MessageHistoryEntry] = []
+        used_chars = 0
+        bot_user_id = self._client.user.id if self._client.user else None
+        async for prior in history:
+            if bot_user_id is not None and prior.author.id == bot_user_id:
+                continue
+            text = self._strip_mentions(prior)
+            if not text:
+                continue
+            remaining = char_budget - used_chars
+            if remaining <= 0:
+                break
+            oversized = len(text) > remaining
+            if oversized and entries:
+                # No room for another whole message — keep what we have.
+                break
+            if oversized:
+                # Lone most-recent message is itself over budget: keep a head.
+                text = _truncate_to_budget(text, remaining)
+            used_chars += len(text)
+            entries.append(
+                MessageHistoryEntry(
+                    username=prior.author.display_name,
+                    user_id=str(prior.author.id),
+                    text=text,
+                )
+            )
+            if oversized:
+                break
         entries.reverse()  # chronological order for the prompt
         return tuple(entries)
+
+    async def _fetch_referenced_conversations(
+        self, message: discord.Message, text: str
+    ) -> tuple[ReferencedConversation, ...]:
+        """Fetch the recent content of any thread/channel ``text`` references.
+
+        Same-guild only: the bot never surfaces content from a server the
+        requester may not be in, even when its own gateway could read it.
+        """
+        if message.guild is None:
+            return ()
+        channel_ids = extract_referenced_channel_ids(
+            text,
+            exclude_channel_id=str(message.channel.id),
+            limit=MAX_REFERENCED_CONVERSATIONS,
+        )
+        conversations: list[ReferencedConversation] = []
+        for channel_id in channel_ids:
+            convo = await self._fetch_one_referenced(message.guild, channel_id)
+            if convo is not None:
+                conversations.append(convo)
+        return tuple(conversations)
+
+    async def _fetch_one_referenced(
+        self, guild: discord.Guild, channel_id: str
+    ) -> Optional[ReferencedConversation]:
+        channel = await self._resolve_channel(channel_id)
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            return None
+        if channel.guild.id != guild.id:
+            # Cross-guild reference — don't read content from another server.
+            return None
+        try:
+            messages = await self._budgeted_history(
+                channel.history(limit=REFERENCED_HISTORY_LIMIT, oldest_first=False),
+                REFERENCED_CHAR_BUDGET,
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning(
+                "Could not fetch referenced channel %s", channel_id, exc_info=True
+            )
+            return None
+        if not messages:
+            return None
+        return ReferencedConversation(title=channel.name, messages=messages)
 
 
 def _truncate_to_budget(text: str, limit: int) -> str:

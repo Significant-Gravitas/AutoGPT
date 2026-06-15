@@ -25,7 +25,12 @@ from backend.util.exceptions import (
 from backend.util.settings import Settings
 
 from . import sessions, threads
-from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
+from .adapters.base import (
+    FileAttachment,
+    MessageContext,
+    MessageHistoryEntry,
+    PlatformAdapter,
+)
 from .bot_backend import BotBackend, BotStreamError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
@@ -127,20 +132,36 @@ class MessageHandler:
     # -- Batched streaming --
 
     def _message_text(self, ctx: MessageContext) -> str:
-        if not ctx.thread_history:
+        if not ctx.thread_history and not ctx.referenced_conversations:
             return ctx.text
 
         platform_display = ctx.platform.capitalize()
-        lines = ["[Recent thread context before this message]"]
-        for entry in ctx.thread_history:
-            user = (
-                f"{entry.username} ({platform_display} user ID: {entry.user_id})"
-                if entry.user_id
-                else entry.username
+        lines: list[str] = []
+        for convo in ctx.referenced_conversations:
+            # The bot already fetched this linked/@-referenced conversation via
+            # its own connection — tell the model so it reads the content below
+            # instead of trying to web-fetch the (JS-rendered) platform page.
+            lines.append(
+                f"[Referenced {platform_display} conversation: {convo.title} — "
+                f"fetched for you; do not web-fetch {platform_display}]"
             )
-            lines.append(f"\n[From {user}]\n{entry.text}")
+            for entry in convo.messages:
+                lines.append(self._format_history_entry(entry, platform_display))
+        if ctx.thread_history:
+            lines.append("[Recent thread context before this message]")
+            for entry in ctx.thread_history:
+                lines.append(self._format_history_entry(entry, platform_display))
         lines.append(f"\n[Current message]\n{ctx.text}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
+        user = (
+            f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+            if entry.user_id
+            else entry.username
+        )
+        return f"\n[From {user}]\n{entry.text}"
 
     async def _enqueue_and_process(
         self,

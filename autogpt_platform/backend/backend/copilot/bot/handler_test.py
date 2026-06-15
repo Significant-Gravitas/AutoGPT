@@ -9,7 +9,12 @@ import pytest
 from backend.platform_linking.models import WorkspaceArtifact
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
+from .adapters.base import (
+    ChannelType,
+    MessageContext,
+    MessageHistoryEntry,
+    ReferencedConversation,
+)
 from .bot_backend import LinkTokenResult, ResolveResult
 from .handler import MessageHandler, TargetState, build_thread_name, clamp_thread_name
 
@@ -25,6 +30,7 @@ def _ctx(
     text: str = "hello bot",
     bot_mentioned: bool = False,
     thread_history: tuple[MessageHistoryEntry, ...] = (),
+    referenced_conversations: tuple[ReferencedConversation, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -37,6 +43,7 @@ def _ctx(
         text=text,
         bot_mentioned=bot_mentioned,
         thread_history=thread_history,
+        referenced_conversations=referenced_conversations,
     )
 
 
@@ -820,3 +827,49 @@ class TestDeliverArtifact:
         adapter.send_file.assert_not_awaited()
         adapter.send_message.assert_awaited_once()
         assert "x.png" in adapter.send_message.await_args.args[1]
+
+
+class TestMessageTextReferencedConversations:
+    def test_no_context_returns_bare_text(self):
+        handler = MessageHandler(_api())
+        assert handler._message_text(_ctx(text="hi")) == "hi"
+
+    def test_referenced_conversation_is_rendered_with_dont_webfetch_note(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="find my mentions",
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="Release v0.6.61",
+                    messages=(
+                        MessageHistoryEntry("Krz", "u-2", "remember to bump version"),
+                        MessageHistoryEntry("Nick", "u-3", "and tag the release"),
+                    ),
+                ),
+            ),
+        )
+        out = handler._message_text(ctx)
+        assert "Referenced Discord conversation: Release v0.6.61" in out
+        assert "do not web-fetch Discord" in out
+        assert "remember to bump version" in out
+        assert "and tag the release" in out
+        assert "[Current message]\nfind my mentions" in out
+
+    def test_referenced_and_thread_history_both_rendered(self):
+        handler = MessageHandler(_api())
+        ctx = _ctx(
+            text="now",
+            thread_history=(MessageHistoryEntry("Alice", "u-1", "earlier point"),),
+            referenced_conversations=(
+                ReferencedConversation(
+                    title="other-thread",
+                    messages=(MessageHistoryEntry("Bob", "u-9", "linked content"),),
+                ),
+            ),
+        )
+        out = handler._message_text(ctx)
+        assert "linked content" in out
+        assert "Recent thread context" in out
+        assert "earlier point" in out
+        # Referenced block precedes the immediate thread context.
+        assert out.index("linked content") < out.index("earlier point")

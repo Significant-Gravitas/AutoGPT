@@ -958,3 +958,78 @@ class TestProactiveOutput:
 
         assert ref is not None
         assert ref.id == "777"
+
+
+# ── Referenced-conversation fetch ──────────────────────────────────────
+
+
+def _referenced_channel(name: str, guild_id: int, priors: list[MagicMock]) -> MagicMock:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.name = name
+    channel.guild = MagicMock(id=guild_id)
+    channel.history = MagicMock(return_value=_AsyncHistory(priors))
+    return channel
+
+
+def _prior(author_id: int, display_name: str, content: str) -> MagicMock:
+    msg = MagicMock()
+    msg.author = MagicMock(id=author_id, display_name=display_name)
+    msg.content = content
+    msg.mentions = []
+    return msg
+
+
+def _incoming(guild_id: int | None, channel_id: int) -> MagicMock:
+    message = MagicMock()
+    message.guild = MagicMock(id=guild_id) if guild_id is not None else None
+    message.channel = MagicMock(id=channel_id)
+    return message
+
+
+class TestFetchReferencedConversations:
+    @pytest.mark.asyncio
+    async def test_fetches_same_guild_referenced_thread(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel(
+            "Release v0.6.61", 111, [_prior(2000, "Krz", "bump the version")]
+        )
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555),
+            "find my mentions in https://discord.com/channels/111/222/333",
+        )
+
+        assert len(result) == 1
+        assert result[0].title == "Release v0.6.61"
+        assert result[0].messages[0].text == "bump the version"
+
+    @pytest.mark.asyncio
+    async def test_skips_cross_guild_reference(self):
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel("Other", 999, [_prior(2000, "X", "secret")])
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/999/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_no_reference_makes_no_fetch(self):
+        adapter, client = _bare_adapter()
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "just a normal message"
+        )
+        assert result == ()
+        client.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dm_with_no_guild_skips(self):
+        adapter, client = _bare_adapter()
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(None, 555), "<#222>"
+        )
+        assert result == ()
+        client.get_channel.assert_not_called()
