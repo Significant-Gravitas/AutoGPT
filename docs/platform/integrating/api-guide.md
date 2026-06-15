@@ -57,6 +57,23 @@ OAuth is ideal for:
 
 See the [OAuth Integration Guide](oauth-guide.md) for complete OAuth implementation details.
 
+## Rate Limits
+
+The v2 API enforces rate limits to ensure fair usage:
+
+| Scope                        | Limit                            |
+|------------------------------|----------------------------------|
+| **Global (authenticated)**   | 200 requests per minute per user |
+| **Global (unauthenticated)** | 5 requests per minute per IP     |
+
+Some endpoints have additional per-endpoint limits (e.g. agent execution, file uploads, search). These are documented on each endpoint in the [v2 API docs](https://backend.agpt.co/external-api/v2/docs).
+
+When a rate limit is exceeded, the API returns HTTP `429 Too Many Requests` with a JSON body:
+
+```json
+{"detail": "Rate limit exceeded: too many requests"}
+```
+
 ## Available Scopes
 
 When creating API keys or using OAuth, request only the scopes your application needs.

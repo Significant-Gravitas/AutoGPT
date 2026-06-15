@@ -224,7 +224,11 @@ async def execute_preset(
         require_permission(APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentGraphRun:
-    """Execute a preset, optionally overriding saved inputs and credentials."""
+    """
+    Execute a preset, optionally overriding saved inputs and credentials.
+
+    **Rate limit:** 60 requests per minute per user.
+    """
     await graph_exec_limiter.check(auth.user_id)
 
     # Check credit balance

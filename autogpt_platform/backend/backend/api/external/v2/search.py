@@ -43,6 +43,8 @@ async def search(
 
     Searches across agents, blocks, and documentation. Results are ranked
     by a combination of keyword matching and semantic similarity.
+
+    **Rate limit:** 30 requests per minute per user.
     """
     await search_limiter.check(auth.user_id)
 

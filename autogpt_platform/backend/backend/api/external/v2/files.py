@@ -196,6 +196,8 @@ async def upload_file(
 
     Returns a `file_uri` that can be passed to agent graph/node file inputs.
     Uploaded files are virus-scanned before storage.
+
+    **Rate limit:** 20 requests per 5 minutes per user.
     """
     await file_upload_limiter.check(auth.user_id)
 

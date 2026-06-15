@@ -415,7 +415,11 @@ async def upload_submission_media(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceMediaUploadResponse:
-    """Upload an image or video for a marketplace submission. Max size: 10MB."""
+    """
+    Upload an image or video for a marketplace submission. Max size: 10MB.
+
+    **Rate limit:** 10 requests per 5 minutes per user.
+    """
     await media_upload_limiter.check(auth.user_id)
 
     max_size = 10 * 1024 * 1024  # 10MB limit for external API

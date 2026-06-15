@@ -179,7 +179,11 @@ async def execute_agent(
         require_permission(APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentGraphRun:
-    """Execute an agent from the library."""
+    """
+    Execute an agent from the library.
+
+    **Rate limit:** 60 requests per minute per user.
+    """
     await graph_exec_limiter.check(auth.user_id)
 
     # Check credit balance

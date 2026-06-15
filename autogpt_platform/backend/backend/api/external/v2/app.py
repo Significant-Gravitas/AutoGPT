@@ -29,6 +29,15 @@ integrations, automations, and custom applications.
 For authentication details and usage examples, see the
 [API Integration Guide](https://docs.agpt.co/platform/integrating/api-guide/).
 
+### Rate Limits
+
+All endpoints are subject to a global rate limit per authenticated user:
+**200 requests per minute**. Unauthenticated requests are limited to
+**5 requests per minute** per client IP.
+
+Some endpoints have additional per-endpoint rate limits (documented on each
+endpoint). When a rate limit is exceeded, the API returns `429 Too Many Requests`.
+
 ### Pagination
 
 List endpoints return paginated responses. Use `page` and `page_size` query
