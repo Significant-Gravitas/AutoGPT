@@ -10900,7 +10900,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Builder (root-level) and Autopilot (session-scoped) uploads.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -10953,13 +10953,13 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "enum": ["builder", "autopilot"], "type": "string" },
+                { "enum": ["uploaded", "generated"], "type": "string" },
                 { "type": "null" }
               ],
-              "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin).",
+              "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set.",
               "title": "Origin"
             },
-            "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin)."
+            "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set."
           }
         ],
         "responses": {
@@ -22545,6 +22545,11 @@
             "type": "object",
             "title": "Metadata"
           },
+          "origin": {
+            "type": "string",
+            "enum": ["uploaded", "generated"],
+            "title": "Origin"
+          },
           "created_at": { "type": "string", "title": "Created At" }
         },
         "type": "object",
@@ -22554,6 +22559,7 @@
           "path",
           "mime_type",
           "size_bytes",
+          "origin",
           "created_at"
         ],
         "title": "WorkspaceFileItem"
