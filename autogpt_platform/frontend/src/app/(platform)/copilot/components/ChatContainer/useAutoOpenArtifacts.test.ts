@@ -28,12 +28,11 @@ function resetStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
       width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      expandedPanel: "context",
     },
   });
   useCopilotUIStore.getState().resetAutoOpenState();

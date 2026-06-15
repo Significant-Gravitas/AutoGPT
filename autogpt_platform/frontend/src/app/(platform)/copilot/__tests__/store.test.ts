@@ -26,12 +26,11 @@ function resetStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
       width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      expandedPanel: "context",
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —
@@ -50,7 +49,7 @@ describe("artifactPanel store actions", () => {
     // The preview drawer is driven by activeArtifact; `isOpen` is the context
     // sidebar's flag and is intentionally left untouched.
     expect(s.isOpen).toBe(false);
-    expect(s.isMinimized).toBe(false);
+    expect(s.expandedPanel).toBe("artifact");
     expect(s.activeArtifact?.id).toBe("a");
     expect(s.history).toEqual([]);
   });
@@ -111,7 +110,7 @@ describe("artifactPanel store actions", () => {
     useCopilotUIStore.getState().closeArtifactPanel();
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.isOpen).toBe(false);
-    expect(s.isMinimized).toBe(false);
+    expect(s.expandedPanel).toBe("context");
     // Drawer is gated on activeArtifact — closing must drop it so it can't float.
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
@@ -146,7 +145,6 @@ describe("artifactPanel store actions", () => {
     const b = makeArtifact("b");
     useCopilotUIStore.getState().openArtifact(a);
     useCopilotUIStore.getState().openArtifact(b);
-    useCopilotUIStore.getState().maximizeArtifactPanel();
     // Simulate the context sidebar being open — `isOpen` is its flag now and
     // openArtifact no longer sets it.
     useCopilotUIStore.setState((st) => ({
@@ -159,50 +157,34 @@ describe("artifactPanel store actions", () => {
     // `isOpen` is intentionally left alone — it's shared with ContextPanel
     // and resetArtifactPanel runs on every session change.
     expect(s.isOpen).toBe(true);
-    expect(s.isMinimized).toBe(false);
-    expect(s.isMaximized).toBe(false);
+    expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
   });
 
-  it("minimize/restore toggles isMinimized without touching activeArtifact", () => {
+  it("expandContextPanel/expandArtifactPanel toggle expandedPanel without touching activeArtifact", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
-    useCopilotUIStore.getState().minimizeArtifactPanel();
-    expect(useCopilotUIStore.getState().artifactPanel.isMinimized).toBe(true);
-    useCopilotUIStore.getState().restoreArtifactPanel();
-    expect(useCopilotUIStore.getState().artifactPanel.isMinimized).toBe(false);
+    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
+      "artifact",
+    );
+    useCopilotUIStore.getState().expandContextPanel();
+    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
+      "context",
+    );
+    useCopilotUIStore.getState().expandArtifactPanel();
+    expect(useCopilotUIStore.getState().artifactPanel.expandedPanel).toBe(
+      "artifact",
+    );
     expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
       "a",
     );
   });
 
-  it("maximize sets isMaximized and clears isMinimized", () => {
-    const a = makeArtifact("a");
-    useCopilotUIStore.getState().openArtifact(a);
-    useCopilotUIStore.getState().minimizeArtifactPanel();
-    useCopilotUIStore.getState().maximizeArtifactPanel();
-    const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isMaximized).toBe(true);
-    expect(s.isMinimized).toBe(false);
-  });
-
-  it("restoreArtifactPanel clears both isMinimized and isMaximized", () => {
-    const a = makeArtifact("a");
-    useCopilotUIStore.getState().openArtifact(a);
-    useCopilotUIStore.getState().maximizeArtifactPanel();
-    useCopilotUIStore.getState().restoreArtifactPanel();
-    const s = useCopilotUIStore.getState().artifactPanel;
-    expect(s.isMaximized).toBe(false);
-    expect(s.isMinimized).toBe(false);
-  });
-
-  it("setArtifactPanelWidth updates width and clears isMaximized", () => {
-    useCopilotUIStore.getState().maximizeArtifactPanel();
+  it("setArtifactPanelWidth updates width", () => {
     useCopilotUIStore.getState().setArtifactPanelWidth(720);
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.width).toBe(720);
-    expect(s.isMaximized).toBe(false);
   });
 
   it("history is capped at 25 entries (MAX_HISTORY)", () => {
@@ -223,14 +205,12 @@ describe("artifactPanel store actions", () => {
     const b = makeArtifact("b");
     useCopilotUIStore.getState().openArtifact(a);
     useCopilotUIStore.getState().openArtifact(b);
-    useCopilotUIStore.getState().maximizeArtifactPanel();
 
     useCopilotUIStore.getState().clearCopilotLocalData();
 
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.isOpen).toBe(false);
-    expect(s.isMinimized).toBe(false);
-    expect(s.isMaximized).toBe(false);
+    expect(s.expandedPanel).toBe("context");
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
     expect(s.width).toBe(DEFAULT_PANEL_WIDTH);

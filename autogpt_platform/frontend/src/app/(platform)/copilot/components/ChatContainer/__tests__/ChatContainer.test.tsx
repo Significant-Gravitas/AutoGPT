@@ -35,12 +35,11 @@ function resetCopilotStore() {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: false,
-      isMinimized: false,
-      isMaximized: false,
       width: 600,
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      expandedPanel: "context",
     },
   });
 }
@@ -362,12 +361,11 @@ describe("ChatContainer", () => {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          isMinimized: false,
-          isMaximized: false,
           width: 600,
           activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
           history: [],
           activeTab: "files",
+          expandedPanel: "artifact",
         },
       });
 

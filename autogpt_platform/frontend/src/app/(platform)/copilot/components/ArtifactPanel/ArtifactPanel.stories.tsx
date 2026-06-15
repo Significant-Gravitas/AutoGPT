@@ -21,12 +21,11 @@ function openPanelWith(artifact: ArtifactRef) {
   useCopilotUIStore.setState({
     artifactPanel: {
       isOpen: true,
-      isMinimized: false,
-      isMaximized: false,
       width: 600,
       activeArtifact: artifact,
       history: [],
       activeTab: "files",
+      expandedPanel: "artifact",
     },
   });
 }
@@ -40,7 +39,7 @@ const meta: Meta<typeof ArtifactPanel> = {
     docs: {
       description: {
         component:
-          "Side panel for previewing workspace artifacts. Supports resize, minimize, maximize, and navigation history. Bug: panel auto-opens on chat switch instead of staying collapsed.",
+          "Side panel for previewing workspace artifacts. Supports resize, navigation history, and a collapsed context rail. Bug: panel auto-opens on chat switch instead of staying collapsed.",
       },
     },
   },
@@ -145,24 +144,31 @@ export const OpenWithImageArtifact: Story = {
   },
 };
 
-export const MinimizedStrip: Story = {
-  name: "Minimized",
+export const ContextRail: Story = {
+  name: "Context Rail (Collapsed Preview)",
   decorators: [
     (Story) => {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: true,
-          isMinimized: true,
-          isMaximized: false,
           width: 600,
           activeArtifact: makeArtifact(),
           history: [],
           activeTab: "files",
+          expandedPanel: "context",
         },
       });
       return <Story />;
     },
   ],
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The context panel is expanded, so the artifact preview collapses to a rail.",
+      },
+    },
+  },
 };
 
 export const ErrorState: Story = {
@@ -204,12 +210,11 @@ export const Closed: Story = {
       useCopilotUIStore.setState({
         artifactPanel: {
           isOpen: false,
-          isMinimized: false,
-          isMaximized: false,
           width: 600,
           activeArtifact: null,
           history: [],
           activeTab: "files",
+          expandedPanel: "context",
         },
       });
       return <Story />;
