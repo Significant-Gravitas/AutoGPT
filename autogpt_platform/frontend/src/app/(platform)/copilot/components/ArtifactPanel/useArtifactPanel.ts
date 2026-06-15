@@ -12,6 +12,10 @@ export function useArtifactPanel() {
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const expandArtifactPanel = useCopilotUIStore((s) => s.expandArtifactPanel);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
+  const artifactPanelWidth = useCopilotUIStore((s) => s.artifactPanelWidth);
+  const setArtifactPanelWidth = useCopilotUIStore(
+    (s) => s.setArtifactPanelWidth,
+  );
 
   const [isSourceView, setIsSourceView] = useState(false);
 
@@ -90,5 +94,7 @@ export function useArtifactPanel() {
     canCopy,
     handleCopy,
     handleDownload,
+    artifactPanelWidth,
+    setArtifactPanelWidth,
   };
 }

@@ -9,8 +9,8 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { XIcon } from "@phosphor-icons/react";
-import { AnimatePresence, motion } from "framer-motion";
-import { DEFAULT_PANEL_WIDTH } from "../../store";
+import { MAX_CONTEXT_PANEL_WIDTH, MIN_CONTEXT_PANEL_WIDTH } from "../../store";
+import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ContextPanelRail } from "./components/ContextPanelRail";
 import { FilesTab } from "./components/FilesTab/FilesTab";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
@@ -32,10 +32,11 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     setActiveTab,
     closeArtifactPanel,
     expandContextPanel,
+    contextPanelWidth,
+    setContextPanelWidth,
   } = useContextPanel();
   const { uploaded, generated } = useSessionFiles(sessionId);
   const filesCount = uploaded.length + generated.length;
-  const width = DEFAULT_PANEL_WIDTH;
 
   const tabs = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -89,29 +90,23 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     return <ContextPanelRail onExpand={expandContextPanel} />;
   }
 
+  if (!showExpanded) return null;
+
   return (
-    <AnimatePresence initial={false}>
-      {showExpanded && (
-        <motion.div
-          key="context-panel"
-          data-context-panel
-          initial={{ width: 0 }}
-          animate={{ width }}
-          exit={{ width: 0 }}
-          transition={{ duration: 0.2, ease: "linear" }}
-          className="flex h-full shrink-0 flex-col overflow-hidden border-l border-l-[#80808017] bg-sidebar"
-        >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.1, delay: 0 } }}
-            transition={{ duration: 0.15, delay: 0.2 }}
-            className="flex h-full w-full flex-col"
-          >
-            {tabs}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div
+      data-context-panel
+      style={{ width: contextPanelWidth }}
+      className="relative flex h-full shrink-0 flex-col border-l border-l-[#80808017] bg-sidebar"
+    >
+      <PanelResizeHandle
+        panelSelector="[data-context-panel]"
+        onWidthChange={setContextPanelWidth}
+        minWidth={MIN_CONTEXT_PANEL_WIDTH}
+        maxWidth={MAX_CONTEXT_PANEL_WIDTH}
+      />
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        {tabs}
+      </div>
+    </div>
   );
 }

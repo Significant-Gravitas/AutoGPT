@@ -1,7 +1,8 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Drawer } from "vaul";
+import { MIN_ARTIFACT_PANEL_WIDTH } from "../../store";
+import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactContent } from "./components/ArtifactContent";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { ArtifactRail } from "./components/ArtifactRail";
@@ -25,6 +26,8 @@ export function ArtifactPanel({ mobile }: Props) {
     canCopy,
     handleCopy,
     handleDownload,
+    artifactPanelWidth,
+    setArtifactPanelWidth,
   } = useArtifactPanel();
 
   if (!activeArtifact || !classification) return null;
@@ -48,28 +51,30 @@ export function ArtifactPanel({ mobile }: Props) {
       return (
         <ArtifactRail
           artifact={activeArtifact}
-          classification={classification}
           onExpand={expandArtifactPanel}
         />
       );
     }
     return (
-      <motion.div
-        key="artifact-panel"
+      <div
         data-artifact-panel
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.15 }}
-        className="flex h-full min-w-0 flex-1 flex-col overflow-hidden border-l border-l-[#80808017] bg-sidebar"
-        style={{ userSelect: "text" }}
+        style={{ width: artifactPanelWidth, userSelect: "text" }}
+        className="relative flex h-full shrink-0 flex-col border-l border-l-[#80808017] bg-sidebar"
       >
-        <ArtifactPanelHeader {...headerProps} />
-        <ArtifactContent
-          artifact={activeArtifact}
-          isSourceView={isSourceView}
-          classification={classification}
+        <PanelResizeHandle
+          panelSelector="[data-artifact-panel]"
+          onWidthChange={setArtifactPanelWidth}
+          minWidth={MIN_ARTIFACT_PANEL_WIDTH}
         />
-      </motion.div>
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+          <ArtifactPanelHeader {...headerProps} />
+          <ArtifactContent
+            artifact={activeArtifact}
+            isSourceView={isSourceView}
+            classification={classification}
+          />
+        </div>
+      </div>
     );
   }
 

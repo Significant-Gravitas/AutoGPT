@@ -7,6 +7,8 @@ export function useContextPanel() {
   const setActiveTab = useCopilotUIStore((s) => s.setActiveTab);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const expandContextPanel = useCopilotUIStore((s) => s.expandContextPanel);
+  const contextPanelWidth = useCopilotUIStore((s) => s.contextPanelWidth);
+  const setContextPanelWidth = useCopilotUIStore((s) => s.setContextPanelWidth);
 
   const hasArtifact = artifactPanel.activeArtifact != null;
   const showRail = hasArtifact && artifactPanel.expandedPanel === "artifact";
@@ -20,5 +22,7 @@ export function useContextPanel() {
     setActiveTab,
     closeArtifactPanel,
     expandContextPanel,
+    contextPanelWidth,
+    setContextPanelWidth,
   };
 }

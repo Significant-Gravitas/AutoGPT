@@ -48,6 +48,10 @@ interface ArtifactPanelState {
 }
 
 export const DEFAULT_PANEL_WIDTH = 352; // 22rem
+export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
+export const MIN_CONTEXT_PANEL_WIDTH = 280;
+export const MAX_CONTEXT_PANEL_WIDTH = 600;
+export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -71,6 +75,37 @@ function getPersistedTab(): ContextPanelTab {
   return saved === "progress" ? saved : "files";
 }
 
+function clampWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getPersistedContextWidth(): number {
+  if (!isClient) return DEFAULT_PANEL_WIDTH;
+  const raw = Number(storage.get(Key.COPILOT_CONTEXT_PANEL_WIDTH));
+  return Number.isFinite(raw) && raw > 0
+    ? clampWidth(raw, MIN_CONTEXT_PANEL_WIDTH, MAX_CONTEXT_PANEL_WIDTH)
+    : DEFAULT_PANEL_WIDTH;
+}
+
+function getPersistedArtifactWidth(): number {
+  if (!isClient) return DEFAULT_ARTIFACT_PANEL_WIDTH;
+  const raw = Number(storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH));
+  return Number.isFinite(raw) && raw >= MIN_ARTIFACT_PANEL_WIDTH
+    ? raw
+    : DEFAULT_ARTIFACT_PANEL_WIDTH;
+}
+
+const widthPersistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+function scheduleWidthPersist(key: Key, value: number) {
+  if (!isClient) return;
+  const existing = widthPersistTimers[key];
+  if (existing) clearTimeout(existing);
+  widthPersistTimers[key] = setTimeout(() => {
+    storage.set(key, String(Math.round(value)));
+    delete widthPersistTimers[key];
+  }, 200);
+}
+
 function persistCompletedSessions(ids: Set<string>) {
   if (!isClient) return;
   try {
@@ -88,6 +123,11 @@ interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
+
+  contextPanelWidth: number;
+  artifactPanelWidth: number;
+  setContextPanelWidth: (width: number) => void;
+  setArtifactPanelWidth: (width: number) => void;
 
   sessionToDelete: DeleteTarget | null;
   setSessionToDelete: (target: DeleteTarget | null) => void;
@@ -159,6 +199,17 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  contextPanelWidth: getPersistedContextWidth(),
+  artifactPanelWidth: getPersistedArtifactWidth(),
+  setContextPanelWidth: (width) => {
+    scheduleWidthPersist(Key.COPILOT_CONTEXT_PANEL_WIDTH, width);
+    set({ contextPanelWidth: width });
+  },
+  setArtifactPanelWidth: (width) => {
+    scheduleWidthPersist(Key.COPILOT_ARTIFACT_PANEL_WIDTH, width);
+    set({ artifactPanelWidth: width });
+  },
 
   sessionToDelete: null,
   setSessionToDelete: (target) => set({ sessionToDelete: target }),
@@ -445,12 +496,16 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     storage.clean(Key.COPILOT_CONTEXT_PANEL_OPEN);
     storage.clean(Key.COPILOT_CONTEXT_PANEL_TAB);
+    storage.clean(Key.COPILOT_CONTEXT_PANEL_WIDTH);
+    storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
     set({
       completedSessionIDs: new Set<string>(),
+      contextPanelWidth: DEFAULT_PANEL_WIDTH,
+      artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,

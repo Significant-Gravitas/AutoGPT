@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { CaretRightIcon, FolderIcon } from "@phosphor-icons/react";
+import { CaretRightIcon } from "@phosphor-icons/react";
 
 interface Props {
   onExpand: () => void;
@@ -19,7 +19,6 @@ export function ContextPanelRail({ onExpand }: Props) {
       >
         <CaretRightIcon className="!size-5" />
       </Button>
-      <FolderIcon aria-hidden className="size-5 text-zinc-400" />
     </div>
   );
 }
