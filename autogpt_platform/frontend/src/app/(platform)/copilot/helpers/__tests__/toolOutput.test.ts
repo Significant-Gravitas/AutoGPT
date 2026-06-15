@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
 
@@ -8,6 +8,10 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../toolOutput";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("isUnparseableJsonOutput", () => {
   it("returns true for truncated JSON", () => {
