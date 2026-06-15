@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@sentry/nextjs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/nextjs")>()),
@@ -20,6 +20,10 @@ function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
 }
 
 describe("RunAgentTool corrupted output", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("shows a visible error and reports to Sentry when output is unparseable JSON", () => {
     render(
       <RunAgentTool
@@ -47,5 +51,6 @@ describe("RunAgentTool corrupted output", () => {
       />,
     );
     expect(screen.queryByText(/result data arrived corrupted/i)).toBeNull();
+    expect(vi.mocked(Sentry.captureMessage)).not.toHaveBeenCalled();
   });
 });

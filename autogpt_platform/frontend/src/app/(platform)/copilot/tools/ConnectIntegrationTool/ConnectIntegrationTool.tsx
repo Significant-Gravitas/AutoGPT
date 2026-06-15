@@ -43,7 +43,6 @@ function parseError(raw: unknown): string | null {
 export function ConnectIntegrationTool({ part }: Props) {
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
-  const isError = part.state === "output-error";
 
   const output =
     part.state === "output-available"
@@ -56,10 +55,15 @@ export function ConnectIntegrationTool({ part }: Props) {
     isUnparseableJsonOutput((part as { output?: unknown }).output);
   if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
 
-  const errorMessage = isError
-    ? (parseError((part as { output?: unknown }).output) ??
-      "Failed to connect integration")
-    : null;
+  const isError = part.state === "output-error" || isCorrupted;
+
+  // Only genuine output-error states get the generic failure message; a
+  // corrupted payload renders its own dedicated message below.
+  const errorMessage =
+    part.state === "output-error"
+      ? (parseError((part as { output?: unknown }).output) ??
+        "Failed to connect integration")
+      : null;
 
   const rawProvider =
     (part as { input?: { provider?: string } }).input?.provider ?? "";
