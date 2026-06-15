@@ -47,7 +47,13 @@ export function GlobalSearchOverlay() {
     <GlobalSearchModal
       isOpen={isOpen}
       onClose={closeSearch}
-      onSelectItem={(item) => selectSearchResult(router, item)}
+      onSelectItem={(item) => {
+        // Close on selection directly — a chat_session selected while already
+        // on /copilot only changes the query param, so the pathname-change
+        // effect above wouldn't fire.
+        closeSearch();
+        selectSearchResult(router, item);
+      }}
     />
   );
 }
