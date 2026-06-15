@@ -197,7 +197,10 @@ describe("ArtifactsPage - folders", () => {
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("movable.txt")).toBeDefined();
-    fireEvent.click(screen.getByTestId("artifacts-card-menu"));
+    // Radix DropdownMenu opens on pointerdown, not click, under happy-dom.
+    fireEvent.pointerDown(screen.getByTestId("artifacts-card-menu"), {
+      button: 0,
+    });
     fireEvent.click(await screen.findByTestId("artifacts-move-to-folder"));
     fireEvent.click(await screen.findByTestId("move-to-folder-option"));
 
