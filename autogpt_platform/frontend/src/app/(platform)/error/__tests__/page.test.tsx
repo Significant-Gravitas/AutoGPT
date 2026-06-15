@@ -42,14 +42,18 @@ describe("ErrorPage", () => {
     });
   });
 
-  it("keeps the session expired screen for authenticated users", () => {
+  it("keeps the session expired screen for authenticated users", async () => {
     searchMessage = "session-expired";
     supabaseState = {
       isUserLoading: false,
       isLoggedIn: true,
     };
 
-    render(<ErrorPage />);
+    const { container } = render(<ErrorPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".min-h-screen")).not.toBeNull();
+    });
 
     expect(replaceMock).not.toHaveBeenCalled();
   });
