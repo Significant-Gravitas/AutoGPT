@@ -65,6 +65,7 @@ async def list_workspace_folders(
     summary="Create workspace folder",
     operation_id="createWorkspaceFolder",
     status_code=fastapi.status.HTTP_201_CREATED,
+    responses={409: {"description": "A folder with this name already exists"}},
 )
 async def create_workspace_folder(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -82,6 +83,10 @@ async def create_workspace_folder(
     "/{folder_id}",
     summary="Update workspace folder",
     operation_id="updateWorkspaceFolder",
+    responses={
+        404: {"description": "Folder not found"},
+        409: {"description": "A folder with this name already exists"},
+    },
 )
 async def update_workspace_folder(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -102,6 +107,7 @@ async def update_workspace_folder(
     summary="Delete workspace folder",
     operation_id="deleteWorkspaceFolder",
     status_code=fastapi.status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "Folder not found"}},
 )
 async def delete_workspace_folder(
     user_id: Annotated[str, fastapi.Security(get_user_id)],

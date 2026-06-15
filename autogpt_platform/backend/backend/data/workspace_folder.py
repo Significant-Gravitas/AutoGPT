@@ -161,14 +161,20 @@ async def update_folder(
         return await get_folder(folder_id, workspace_id)
 
     try:
-        await UserWorkspaceFolder.prisma().update(
+        updated = await UserWorkspaceFolder.prisma().update(
             where={"id": folder_id},
             data=update_data,
+            include={"Files": {"where": {"isDeleted": False}}},
         )
     except UniqueViolationError:
         raise FolderAlreadyExistsError("A folder with this name already exists")
 
-    return await get_folder(folder_id, workspace_id)
+    # Build the response from the update result rather than re-reading: a
+    # concurrent delete between update and re-fetch would soft-delete the row
+    # and make a follow-up get_folder raise NotFoundError (spurious 404).
+    if updated is None:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+    return WorkspaceFolder.from_db(updated, file_count=_file_count(updated))
 
 
 async def delete_folder(folder_id: str, workspace_id: str) -> None:
