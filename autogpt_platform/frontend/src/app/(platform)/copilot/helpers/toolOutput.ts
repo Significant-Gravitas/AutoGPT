@@ -42,6 +42,12 @@ export function isCorruptedCardToolPart(part: {
   return isUnparseableJsonOutput(part.output);
 }
 
+/**
+ * Bounded so the dedupe set can't grow for the tab's lifetime and so a
+ * `toolCallId` reused in a much later conversation eventually evicts its old
+ * entry and gets reported again instead of being silently dropped.
+ */
+const MAX_REPORTED_TOOL_CALL_IDS = 500;
 const reportedToolCallIds = new Set<string>();
 
 /**
@@ -53,6 +59,10 @@ export function reportCorruptedToolOutput(
   toolType: string,
 ): void {
   if (!toolCallId || reportedToolCallIds.has(toolCallId)) return;
+  if (reportedToolCallIds.size >= MAX_REPORTED_TOOL_CALL_IDS) {
+    const oldest = reportedToolCallIds.values().next().value;
+    if (oldest !== undefined) reportedToolCallIds.delete(oldest);
+  }
   reportedToolCallIds.add(toolCallId);
   Sentry.captureMessage(
     "Copilot tool output unparseable — interactive card lost",

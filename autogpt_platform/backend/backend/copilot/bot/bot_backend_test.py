@@ -245,6 +245,7 @@ class TestStreamChat:
             )
         ]
 
+    @pytest.mark.asyncio
     async def test_notifies_setup_dropped_on_corrupted_output(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
