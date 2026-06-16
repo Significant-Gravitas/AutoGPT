@@ -75,7 +75,7 @@ export function usePaywallModal() {
     void validateSession();
   });
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
-    "yearly",
+    "monthly",
   );
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   // When the user already has an active Stripe subscription (admin override
