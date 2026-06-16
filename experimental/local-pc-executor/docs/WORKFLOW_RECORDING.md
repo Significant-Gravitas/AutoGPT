@@ -1,7 +1,7 @@
 # Workflow Recording → Skill
 
-> **Status**: Design draft v0.2 — revised after panel review. Not yet
-> spec-locked.
+> **Status**: v1 wire contract spec-locked (§1, §6); PM-strategy
+> questions resolved with v1 defaults (§0.1). Implementation in progress.
 >
 > Record a workflow the user performs **anywhere on their machine**, hand
 > it to the agent, and have the agent generalize it into a reusable
@@ -42,6 +42,42 @@ demonstration capture (the old "Tier 2") **and** the live co-pilot loop
 with on-device interpretation (the old "Tier 3"). Those are the
 baseline, not a phased cut. They are now framed as **two interaction
 modes over one trajectory floor**, not two releases.
+
+---
+
+## 0.1 v1 scope decisions (build contract)
+
+The north star the whole build serves: **a non-technical person shows the
+agent a repetitive task once, on their own machine, then walks away and
+trusts it to repeat the task correctly — the first skill, the first time,
+with their data staying local unless they choose otherwise.** Acceptance
+test: a real user records the CSV-into-a-form task once and lets the
+resulting skill run unattended on a fresh batch; pass = correct + they
+didn't babysit it.
+
+To unblock the build, the §10 open questions take these v1 defaults
+(revisit post-v1):
+
+- **Capture (v1):** real-machine, general — screenshot+action floor
+  (always) + browser DOM enrichment (via the claude-in-chrome channel)
+  + desktop a11y enrichment where the tree exists. Not browser-only.
+- **Interpretation default:** `extract_then_cloud`; probe-then-ask for
+  `screenshots_to_cloud` (§3.1, §9.1). `local_vlm` when present.
+- **Parameter inference:** never auto-save a single-row guess — require
+  co-pilot confirmation OR ≥2 demonstration rows (§8).
+- **Skill portability:** recorded skills are machine-bound (shim-local)
+  in v1; graduating browser skills into the shared library is post-v1.
+- **Compliance:** content-free audit entry only in v1 (§9); a reviewable
+  encrypted content manifest is post-v1.
+- **Coverage floor:** `kind: none` steps degrade to vision-at-replay; if
+  >50% of a recording's steps are `kind: none` and no OCR is available,
+  warn at record time that this app records poorly.
+
+The **wire contract (§1 schema, §6 ops + error codes) is spec-locked** —
+both repos build against it as-is. The build seam for the genuinely
+OS-specific part (raw input-event observation) is a `CaptureSource`
+interface with a mock producer for tests; real per-OS hooks land behind
+it without changing the contract.
 
 ---
 
