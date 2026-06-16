@@ -41,7 +41,6 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -71,18 +70,15 @@ export function CopilotPage() {
       {!isMobile && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
-        isContextPanelEnabled={isContextPanelEnabled}
         isArtifactsEnabled={isArtifactsEnabled}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
       />
-      {isMobile && isContextPanelEnabled && sessionId && (
+      {isMobile && isArtifactsEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} mobile />
       )}
-      {isMobile && (isArtifactsEnabled || isContextPanelEnabled) && (
-        <ArtifactPanel mobile />
-      )}
+      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
     </SidebarProvider>
@@ -91,7 +87,6 @@ export function CopilotPage() {
 
 interface MainAreaProps {
   isMobile: boolean;
-  isContextPanelEnabled: boolean;
   isArtifactsEnabled: boolean;
   sessionId: string | null;
   droppedFiles: File[];
@@ -100,7 +95,6 @@ interface MainAreaProps {
 
 function MainArea({
   isMobile,
-  isContextPanelEnabled,
   isArtifactsEnabled,
   sessionId,
   droppedFiles,
@@ -131,7 +125,7 @@ function MainArea({
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
-          {!isMobile && isContextPanelEnabled && (
+          {!isMobile && isArtifactsEnabled && (
             <ContextPanelAutoOpen
               key={`context-auto-open-${sessionId ?? "new"}`}
               sessionId={sessionId}
@@ -139,15 +133,11 @@ function MainArea({
           )}
         </FileDropZone>
       </div>
-      {!isMobile && isContextPanelEnabled && sessionId && (
+      {!isMobile && isArtifactsEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} />
       )}
-      {!isMobile &&
-        (isArtifactsEnabled || isContextPanelEnabled) &&
-        sessionId && <ArtifactPanel />}
-      {!isMobile && isContextPanelEnabled && sessionId && (
-        <ContextPanelToggle />
-      )}
+      {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
+      {!isMobile && isArtifactsEnabled && sessionId && <ContextPanelToggle />}
     </div>
   );
 }

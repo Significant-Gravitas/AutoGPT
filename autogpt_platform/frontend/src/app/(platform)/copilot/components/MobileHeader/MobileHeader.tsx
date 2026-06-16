@@ -7,7 +7,7 @@ import { useCopilotUIStore } from "../../store";
 export function MobileHeader() {
   const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
-  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
+  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   return (
     <div
       className="fixed z-50 flex gap-2"

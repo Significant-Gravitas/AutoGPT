@@ -790,7 +790,7 @@ describe("shouldShowTaskListNotice", () => {
     ).toBe(true);
   });
 
-  it("returns false when the CONTEXT_PANEL flag is off", () => {
+  it("returns false when the context panel is disabled", () => {
     expect(
       shouldShowTaskListNotice({
         isContextPanelEnabled: false,

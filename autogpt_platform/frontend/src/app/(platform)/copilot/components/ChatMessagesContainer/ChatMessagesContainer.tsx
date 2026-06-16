@@ -314,7 +314,7 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
-  const isContextPanelEnabled = useGetFlag(Flag.CONTEXT_PANEL);
+  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   const latestTaskList = getLatestTaskList(messages);
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList = shouldShowTaskListNotice({
