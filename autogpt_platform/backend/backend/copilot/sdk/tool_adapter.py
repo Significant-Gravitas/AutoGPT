@@ -659,7 +659,10 @@ def _make_truncating_wrapper(
 
 
 def create_copilot_mcp_server(
-    *, use_e2b: bool = False, use_local_pc_computer: bool = False
+    *,
+    use_e2b: bool = False,
+    use_local_pc_computer: bool = False,
+    use_recording: bool = False,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -682,6 +685,13 @@ def create_copilot_mcp_server(
     shim advertised the ``computer_use`` capability in HELLO — gating
     happens at the handler level too so a misconfigured caller still
     fails closed.
+
+    When *use_recording* is True, the workflow-recording MCP tools
+    (``record_workflow``, ``list_recordings``,
+    ``generate_skill_from_recording``, ``dry_run_skill``) are registered.
+    Set this only when the active executor is a connected ``LocalPCShim``
+    AND that shim advertised the ``recording`` capability in HELLO — same
+    fail-closed handler-level gating as the computer-use tools.
     """
 
     sdk_tools = []
@@ -741,6 +751,26 @@ def create_copilot_mcp_server(
             ann = (
                 _MUTATING_ANNOTATION
                 if name in _LOCAL_PC_MUTATING_TOOLS
+                else _PARALLEL_ANNOTATION
+            )
+            decorated = tool(name, desc, schema, annotations=ann)(
+                _make_truncating_wrapper(handler, name)
+            )
+            sdk_tools.append(decorated)
+
+    # Workflow-recording tools — only when the connected shim advertised the
+    # ``recording`` capability. record_workflow + dry_run_skill mutate state
+    # on the user's machine (start/stop a recording, drive replay), so they
+    # carry the mutating annotation for serialised dispatch. list_recordings
+    # + generate_skill_from_recording are read/compute-only.
+    if use_recording:
+        from .recording_tools import RECORDING_TOOLS
+
+        _RECORDING_MUTATING_TOOLS = {"record_workflow", "dry_run_skill"}
+        for name, desc, schema, handler in RECORDING_TOOLS:
+            ann = (
+                _MUTATING_ANNOTATION
+                if name in _RECORDING_MUTATING_TOOLS
                 else _PARALLEL_ANNOTATION
             )
             decorated = tool(name, desc, schema, annotations=ann)(
@@ -930,6 +960,7 @@ def get_copilot_tool_names(
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
     use_local_pc_computer: bool = False,
+    use_recording: bool = False,
 ) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
@@ -943,6 +974,10 @@ def get_copilot_tool_names(
     otherwise the CLI silently rejects tool calls registered in the MCP
     server but missing from the allow-list. Caller must pass the same
     boolean to :func:`create_copilot_mcp_server`.
+
+    When *use_recording* is True the workflow-recording MCP tool names
+    (``record_workflow`` etc.) are appended under the same allow-list
+    contract — pass the same boolean to :func:`create_copilot_mcp_server`.
     """
     hidden_short_names = tool_names_in_groups(disabled_groups)
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
@@ -955,13 +990,19 @@ def get_copilot_tool_names(
             f"{MCP_TOOL_PREFIX}{name}" for name in LOCAL_PC_COMPUTER_TOOL_NAMES
         ]
 
+    recording_names: list[str] = []
+    if use_recording:
+        from .recording_tools import RECORDING_TOOL_NAMES
+
+        recording_names = [f"{MCP_TOOL_PREFIX}{name}" for name in RECORDING_TOOL_NAMES]
+
     if not use_e2b:
         base = (
             list(COPILOT_TOOL_NAMES)
             if not hidden_mcp_names
             else [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
         )
-        return [*base, *local_pc_names]
+        return [*base, *local_pc_names, *recording_names]
 
     # In E2B mode, Write/Edit are NOT registered (E2B uses write_file/edit_file
     # from E2B_FILE_TOOLS instead), so don't include them here.
@@ -971,6 +1012,7 @@ def get_copilot_tool_names(
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
         *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
         *local_pc_names,
+        *recording_names,
         *_SDK_BUILTIN_ALWAYS,
     ]
 

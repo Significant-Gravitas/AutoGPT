@@ -3956,9 +3956,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             and "computer_use" in (e2b_sandbox.capabilities or [])
         )
 
+        # Workflow-recording gate — same shape as the computer-use gate, but
+        # additionally behind the WORKFLOW_RECORDING LaunchDarkly flag
+        # (default off, per-user rollout). Requires the deploy-level LocalPC
+        # config, the shim, and the shim's `recording` capability. Handler-
+        # level gating in recording_tools fails closed if this is wrong.
+        use_recording = bool(
+            config.use_local_pc_executor
+            and isinstance(e2b_sandbox, LocalPCShim)
+            and "recording" in (e2b_sandbox.capabilities or [])
+        )
+        if use_recording:
+            from backend.util.feature_flag import Flag, is_feature_enabled
+
+            use_recording = await is_feature_enabled(
+                Flag.WORKFLOW_RECORDING,
+                user_id or "anonymous",
+                default=False,
+            )
+
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
             use_local_pc_computer=use_local_pc_computer,
+            use_recording=use_recording,
         )
 
         # Resolve model (request tier → LD per-user override → config default).
@@ -4022,11 +4042,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         for name in LOCAL_PC_COMPUTER_TOOL_NAMES
                     ],
                 ]
+            if use_recording:
+                from .recording_tools import RECORDING_TOOL_NAMES
+                from .tool_adapter import MCP_TOOL_PREFIX
+
+                allowed = [
+                    *allowed,
+                    *[f"{MCP_TOOL_PREFIX}{name}" for name in RECORDING_TOOL_NAMES],
+                ]
         else:
             allowed = get_copilot_tool_names(
                 use_e2b=use_e2b,
                 disabled_groups=disabled_tool_groups,
                 use_local_pc_computer=use_local_pc_computer,
+                use_recording=use_recording,
             )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
