@@ -192,13 +192,22 @@ async def delete_preset_with_webhook_cleanup(*, user_id: str, preset_id: str) ->
 
 
 async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
-    """Deregister + delete a webhook if no trigger references it anymore."""
-    webhook = await get_webhook(webhook_id)
-    credentials = (
-        await credentials_manager.get(user_id, webhook.credentials_id)
-        if webhook.credentials_id
-        else None
-    )
-    await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
-        user_id, webhook.id, credentials
-    )
+    """Deregister + delete a webhook if no trigger references it anymore.
+
+    Best-effort: webhook cleanup runs *after* the preset update/delete is
+    committed, so a failure here (e.g. provider deregister error) must not fail
+    the whole mutation — it would leave the preset state correct but raise to the
+    caller. We log and move on; at worst the webhook lingers and is pruned later.
+    """
+    try:
+        webhook = await get_webhook(webhook_id)
+        credentials = (
+            await credentials_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
+            user_id, webhook.id, credentials
+        )
+    except Exception as e:
+        logger.warning(f"Best-effort prune of webhook #{webhook_id} failed: {e}")

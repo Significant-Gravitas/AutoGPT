@@ -378,15 +378,7 @@ class RunAgentTool(BaseTool):
             if prereq_error:
                 return prereq_error
 
-            # Step 3: optionally persist the validated config as a reusable preset
-            saved_preset_id = await self._maybe_save_preset(
-                user_id=user_id,
-                graph=graph,
-                graph_credentials=graph_credentials,
-                params=params,
-            )
-
-            # Step 4: Execute or Schedule
+            # Step 3: Execute or Schedule
             if is_schedule:
                 result = await self._schedule_agent(
                     user_id=user_id,
@@ -409,9 +401,18 @@ class RunAgentTool(BaseTool):
                     dry_run=params.dry_run,
                 )
 
-            # Echo the saved preset id back on the execution-started card.
-            if saved_preset_id and isinstance(result, ExecutionStartedResponse):
-                result.saved_preset_id = saved_preset_id
+            # Step 4: persist the validated config as a reusable preset — only
+            # after the run/schedule actually started, so a failed operation
+            # (e.g. schedule validation, credential race) doesn't orphan a preset.
+            if isinstance(result, ExecutionStartedResponse):
+                saved_preset_id = await self._maybe_save_preset(
+                    user_id=user_id,
+                    graph=graph,
+                    graph_credentials=graph_credentials,
+                    params=params,
+                )
+                if saved_preset_id:
+                    result.saved_preset_id = saved_preset_id
             return result
 
         except NotFoundError as e:
@@ -735,6 +736,20 @@ class RunAgentTool(BaseTool):
                     f"The agent for preset '{params.preset_id}' is not "
                     "accessible (anymore)."
                 ),
+                session_id=session_id,
+            )
+
+        # Builder-bound sessions can only run their bound agent — enforce the
+        # same guard as the regular run path so a preset for a different graph
+        # can't execute in a builder-bound chat.
+        builder_graph_id = session.metadata.builder_graph_id
+        if builder_graph_id and graph.id != builder_graph_id:
+            return ErrorResponse(
+                message=(
+                    "This chat is bound to the builder's current agent. "
+                    "Running a preset for a different agent is not allowed here."
+                ),
+                error="builder_session_graph_mismatch",
                 session_id=session_id,
             )
 

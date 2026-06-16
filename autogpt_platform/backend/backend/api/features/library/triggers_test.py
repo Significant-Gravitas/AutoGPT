@@ -232,3 +232,17 @@ async def test_delete_not_found_raises():
     with _delete_patches(preset=None):
         with pytest.raises(NotFoundError):
             await delete_preset_with_webhook_cleanup(user_id=_USER, preset_id="missing")
+
+
+@pytest.mark.asyncio
+async def test_prune_dangling_webhook_is_best_effort():
+    """Cleanup runs after state is committed, so a prune failure is swallowed
+    (logged) rather than raised — the mutation must not fail post-commit."""
+    from backend.api.features.library.triggers import _prune_dangling_webhook
+
+    with patch(
+        f"{_PATH}.get_webhook",
+        new=AsyncMock(side_effect=Exception("provider unreachable")),
+    ):
+        # Must not raise.
+        await _prune_dangling_webhook(_USER, "wh-1")

@@ -427,10 +427,12 @@ To retrieve a webhook URL later, use `list_agent_triggers` — it returns the
 the agent → "+ New Task" → enter config → "Set up Trigger" → "Triggers" tab →
 copy the webhook URL. The URL is **not** shown in the Builder.
 
-**Managing triggers & presets after setup:** a webhook trigger is a preset, so
-manage it with `list_presets`, `update_preset` (rename / pause-resume /
-reconfigure), `delete_preset`, and `run_agent` (`preset_id` to run on demand,
-`save_as_preset` to save a run) — see each tool's description for arguments.
+**Managing triggers & presets after setup:** a webhook trigger is a preset — use
+`list_presets` to find it, then `update_preset` (rename / pause-resume via
+`is_active` / reconfigure) or `delete_preset`. Webhook triggers fire
+automatically on their event and **can't** be run on demand;
+`run_agent(preset_id=…)` runs only **non-webhook** presets (and `save_as_preset`
+saves a run as one). See each tool's description for arguments.
 
 ### Building Trigger Agents
 

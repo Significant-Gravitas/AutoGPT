@@ -233,7 +233,16 @@ class AgentDetails(BaseModel):
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
-    trigger_info: GraphTriggerInfo | None = None
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentDetailsResponse(ToolResponseBase):

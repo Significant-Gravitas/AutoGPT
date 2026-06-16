@@ -860,10 +860,15 @@ async def test_run_agent_redirects_webhook_trigger_agent():
     mock_lib_db.get_library_agent = AsyncMock(return_value=lib_agent)
     mock_graph_db = MagicMock()
     mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    add_exec = AsyncMock()
 
     with (
         patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
         patch("backend.copilot.tools.run_agent.graph_db", return_value=mock_graph_db),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
     ):
         result = await tool._execute(
             user_id="webhook-user",
@@ -878,12 +883,13 @@ async def test_run_agent_redirects_webhook_trigger_agent():
     assert "setup_agent_webhook_trigger" in result.message
     # It must NOT have attempted to execute the graph.
     mock_graph_db.get_graph.assert_awaited_once()
+    add_exec.assert_not_awaited()
 
 
 # ---- preset_id (run on demand) + save_as_preset (create) ----
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_rejects_agent_identifier():
     tool = RunAgentTool()
     session = make_session(user_id="preset-user")
@@ -896,7 +902,7 @@ async def test_run_preset_rejects_agent_identifier():
     assert "not both" in result.message
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_rejects_save_as_preset():
     tool = RunAgentTool()
     session = make_session(user_id="preset-user")
@@ -909,7 +915,7 @@ async def test_run_preset_rejects_save_as_preset():
     assert "already exists" in result.message
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_not_found():
     tool = RunAgentTool()
     session = make_session(user_id="preset-user")
@@ -923,7 +929,7 @@ async def test_run_preset_not_found():
     assert result.error == "preset_not_found"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_executes_with_merged_inputs():
     tool = RunAgentTool()
     session = make_session(user_id="preset-user")
@@ -983,7 +989,7 @@ async def test_run_preset_executes_with_merged_inputs():
     assert kwargs["inputs"] == {"a": 1, "b": 99}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_preset_rejects_webhook_trigger():
     """A webhook-triggered preset can't be run on demand (it fires on its
     event); reject cleanly without attempting execution."""
@@ -1024,7 +1030,7 @@ async def test_run_preset_rejects_webhook_trigger():
     add_exec.assert_not_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_maybe_save_preset_returns_none_when_flag_off():
     tool = RunAgentTool()
     graph = MagicMock()
@@ -1037,7 +1043,7 @@ async def test_maybe_save_preset_returns_none_when_flag_off():
     assert result is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_maybe_save_preset_creates_with_default_name():
     tool = RunAgentTool()
     graph = MagicMock()
