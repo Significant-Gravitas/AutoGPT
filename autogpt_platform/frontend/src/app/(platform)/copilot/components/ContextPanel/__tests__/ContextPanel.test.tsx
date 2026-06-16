@@ -31,7 +31,7 @@ describe("ContextPanel", () => {
     expect(await screen.findByText(/No files yet/i)).toBeDefined();
   });
 
-  test("keeps the tab switcher visible while previewing an artifact", () => {
+  test("hides itself while an artifact is previewing (artifact takes over the region)", () => {
     useCopilotUIStore.setState((s) => ({
       artifactPanel: {
         ...s.artifactPanel,
@@ -45,8 +45,9 @@ describe("ContextPanel", () => {
         },
       },
     }));
-    render(<ContextPanel sessionId="session-1" />);
-    expect(screen.getByRole("tablist")).toBeDefined();
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    expect(container.querySelector("[data-context-panel]")).toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
   });
 
   test("renders nothing when closed", () => {
