@@ -96,13 +96,13 @@ describe("SubscriptionStep", () => {
     expect(screen.getByRole("heading", { name: /^Team$/ })).toBeDefined();
   });
 
-  test("defaults to yearly billing with the monthly-equivalent price and the annual charge", () => {
+  test("defaults to yearly billing with the monthly-equivalent price and a 'billed annually' caption", () => {
     render(<SubscriptionStep />);
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
     expect(screen.getByLabelText("$42.50")).toBeDefined();
     expect(screen.getByLabelText("$272.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $510.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $3,264.00")).toBeDefined();
+    expect(screen.getAllByText("billed annually").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
     expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
   });
 
@@ -117,7 +117,7 @@ describe("SubscriptionStep", () => {
       );
     });
     expect(screen.getByLabelText("$50.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
   });
 
   test("PostHog billing default does not override a user-selected cycle", async () => {
@@ -134,14 +134,14 @@ describe("SubscriptionStep", () => {
     expect(screen.getByLabelText("$42.50")).toBeDefined();
   });
 
-  test("switching to monthly shows the full monthly price and matching charged-today", () => {
+  test("switching to monthly shows the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
     fireEvent.click(screen.getByRole("button", { name: /Monthly billing/i }));
     expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
     expect(screen.getByLabelText("$50.00")).toBeDefined();
     expect(screen.getByLabelText("$320.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $50.00")).toBeDefined();
-    expect(screen.getByLabelText("Charged today: $320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
+    expect(screen.queryByText(/Charged today/i)).toBeNull();
   });
 
   test("selecting Pro persists selectedPlan and redirects to Stripe Checkout (Welcome on success, paywall on cancel)", async () => {
