@@ -9,9 +9,9 @@ from ._add_to_library import add_graph_to_library
 @pytest.mark.asyncio
 async def test_add_graph_to_library_create_new_agent() -> None:
     """When no matching LibraryAgent exists, create inserts a new one."""
-    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
     created_agent = MagicMock(name="CreatedLibraryAgent")
     converted_agent = MagicMock(name="ConvertedLibraryAgent")
+    mock_include = MagicMock(name="include_value")
 
     with (
         patch(
@@ -25,10 +25,20 @@ async def test_add_graph_to_library_create_new_agent() -> None:
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
         ),
+        patch(
+            "backend.api.features.library._add_to_library.library_agent_include",
+            return_value=mock_include,
+        ),
+        patch(
+            "backend.api.features.library._add_to_library.GraphSettings",
+        ),
+        patch(
+            "backend.api.features.library._add_to_library.SafeJson",
+        ),
     ):
         mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
 
-        result = await add_graph_to_library("slv-id", graph_model, "user-id")
+        result = await add_graph_to_library("graph-id", 2, "user-id")
 
     assert result is converted_agent
     mock_from_db.assert_called_once_with(created_agent, schedule_info={})
@@ -46,9 +56,9 @@ async def test_add_graph_to_library_create_new_agent() -> None:
 @pytest.mark.asyncio
 async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     """UniqueViolationError on create falls back to update."""
-    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
     updated_agent = MagicMock(name="UpdatedLibraryAgent")
     converted_agent = MagicMock(name="ConvertedLibraryAgent")
+    mock_include = MagicMock(name="include_value")
 
     with (
         patch(
@@ -62,6 +72,16 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
             "backend.api.features.library._add_to_library._fetch_schedule_info",
             new=AsyncMock(return_value={}),
         ),
+        patch(
+            "backend.api.features.library._add_to_library.library_agent_include",
+            return_value=mock_include,
+        ),
+        patch(
+            "backend.api.features.library._add_to_library.GraphSettings",
+        ),
+        patch(
+            "backend.api.features.library._add_to_library.SafeJson",
+        ),
     ):
         mock_prisma.return_value.create = AsyncMock(
             side_effect=prisma.errors.UniqueViolationError(
@@ -70,7 +90,7 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
         )
         mock_prisma.return_value.update = AsyncMock(return_value=updated_agent)
 
-        result = await add_graph_to_library("slv-id", graph_model, "user-id")
+        result = await add_graph_to_library("graph-id", 2, "user-id")
 
     assert result is converted_agent
     mock_from_db.assert_called_once_with(updated_agent, schedule_info={})

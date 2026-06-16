@@ -142,7 +142,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     )
     mocker.patch.object(
         library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     mocker.patch.object(
@@ -182,7 +182,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
     )
     mocker.patch.object(
         library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     mocker.patch.object(
@@ -224,7 +224,7 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
     mocker.patch.object(v1.graph_db, "get_graph", return_value=new_graph)
     mocker.patch.object(
         v1.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
@@ -267,7 +267,7 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
     mocker.patch.object(v1.graph_db, "get_graph", return_value=new_graph)
     mocker.patch.object(
         v1.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
@@ -300,7 +300,7 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
     mocker.patch.object(v1.graph_db, "set_graph_active_version")
     mocker.patch.object(
         v1.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
@@ -339,7 +339,7 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
     mocker.patch.object(v1.graph_db, "set_graph_active_version")
     mocker.patch.object(
         v1.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(

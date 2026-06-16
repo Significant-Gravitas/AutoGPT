@@ -766,7 +766,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")

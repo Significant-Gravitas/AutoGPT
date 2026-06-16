@@ -867,6 +867,7 @@ async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
         "StoreListingVersions": {
             "none": {
                 "isAvailable": True,
+                "isDeleted": False,
                 "StoreListing": {"is": {"isDeleted": False}},
             }
         },

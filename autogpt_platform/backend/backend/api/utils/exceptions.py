@@ -123,7 +123,7 @@ async def _handle_validation_error(
         "hint": "Ensure the request matches the API schema.",
     }
 
-    content_json = json.dumps(response_content)
+    content_json = json.dumps(response_content, default=str)
 
     return fastapi.responses.Response(
         content=content_json,

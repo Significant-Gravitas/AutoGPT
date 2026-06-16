@@ -148,15 +148,6 @@ async def test_add_agent_to_library(mocker):
         isAvailable=True,
         storeListingId="listing123",
         submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
-        AgentGraph=prisma.models.AgentGraph(
-            id="agent1",
-            version=1,
-            name="Test Agent",
-            description="Test Description",
-            userId="creator",
-            isActive=True,
-            createdAt=datetime.now(),
-        ),
     )
 
     mock_library_agent_data = prisma.models.LibraryAgent(
@@ -173,7 +164,15 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
-        AgentGraph=mock_store_listing_data.AgentGraph,
+        AgentGraph=prisma.models.AgentGraph(
+            id="agent1",
+            version=1,
+            name="Test Agent",
+            description="Test Description",
+            userId="creator",
+            isActive=True,
+            createdAt=datetime.now(),
+        ),
     )
 
     # Mock prisma calls
@@ -189,18 +188,11 @@ async def test_add_agent_to_library(mocker):
         return_value=mock_library_agent_data
     )
 
-    # Mock graph_db.get_graph function that's called in resolve_graph_for_library
-    # (lives in _add_to_library.py after refactor, not db.py)
-    mock_graph_db = mocker.patch(
-        "backend.api.features.library._add_to_library.graph_db"
+    # Mock _fetch_schedule_info used by add_graph_to_library
+    mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
     )
-    mock_graph_model = mocker.Mock()
-    mock_graph_model.id = "agent1"
-    mock_graph_model.version = 1
-    mock_graph_model.nodes = (
-        []
-    )  # Empty list so _has_human_in_the_loop_blocks returns False
-    mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
 
     # Mock the model conversion
     mock_from_db = mocker.patch(
@@ -211,9 +203,9 @@ async def test_add_agent_to_library(mocker):
     # Call function
     await db.add_store_agent_to_library("version123", "test-user")
 
-    # Verify mocks called correctly
+    # Verify resolve_graph_for_library looked up the store listing version
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
+        where={"id": "version123"}
     )
     # Check that create was called with the expected data including settings
     create_call_args = mock_library_agent.return_value.create.call_args
@@ -255,9 +247,9 @@ async def test_add_agent_to_library_not_found(mocker):
     with pytest.raises(db.NotFoundError):
         await db.add_store_agent_to_library("version123", "test-user")
 
-    # Verify mock called correctly
+    # Verify mock called correctly (no include after refactor)
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
+        where={"id": "version123"}
     )
 
 
@@ -329,7 +321,7 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         new=mocker.AsyncMock(return_value=current_library_agent),
     )
     mock_update_library_agent = mocker.patch(
-        "backend.api.features.library.db.update_library_agent_version_and_settings",
+        "backend.api.features.library.db.update_agent_version_in_library",
         new=mocker.AsyncMock(return_value=updated_library_agent),
     )
 
@@ -349,7 +341,7 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         "graph-id",
         include_archived=True,
     )
-    mock_update_library_agent.assert_awaited_once_with("test-user", created_graph)
+    mock_update_library_agent.assert_awaited_once_with("test-user", "graph-id", 2)
 
 
 @pytest.mark.asyncio
