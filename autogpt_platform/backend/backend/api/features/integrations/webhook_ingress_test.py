@@ -4,12 +4,10 @@ Tests for the webhook ingress endpoint's signature verification path.
 The endpoint is intentionally unauthenticated and delegates per-provider
 signature checks to each manager's `verify_signature`. This file pins:
 
-* Providers that DO sign (GitHub, Telegram) reject missing/invalid sigs and
-  accept valid ones.
-* Providers behind a rollout flag (Exa, Airtable) pass through when the flag
-  is off (back-compat) and enforce when the flag is on, including correct
-  use of the platform-issued signing secret (Exa's `config["exa_secret"]`,
-  Airtable's base64-decoded `config["mac_secret"]`).
+* Providers that DO sign (GitHub, Telegram, Exa, Airtable) reject
+  missing/invalid sigs and accept valid ones, including correct use of the
+  platform-issued signing secret (Exa's `config["exa_secret"]`, Airtable's
+  base64-decoded `config["mac_secret"]`).
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
 * Providers without a signing scheme (Compass, Slant3D) pass through.
@@ -253,15 +251,13 @@ class TestAlwaysSignedProviders:
 
 
 # ---------------------------------------------------------------------------
-# Rollout-flagged providers: Exa.
+# Exa signature verification.
 # ---------------------------------------------------------------------------
 
 
-class TestExaFlagRollout:
-    """Exa enforcement is gated. While the flag is off, ingress accepts the
-    request without checking the signature (today's behavior). While on, a
-    correct `X-Exa-Signature` HMAC over the raw body using
-    `config["exa_secret"]` is required."""
+class TestExaSignature:
+    """Exa enforces a correct `X-Exa-Signature` HMAC over the raw body using
+    `config["exa_secret"]`."""
 
     EXA_SECRET = "exa-signing-secret-deadbeef"
 
@@ -273,66 +269,42 @@ class TestExaFlagRollout:
     def _hmac(self, body: bytes) -> str:
         return hmac.new(self.EXA_SECRET.encode(), body, hashlib.sha256).hexdigest()
 
-    def test_flag_off_accepts_unsigned(self):
-        with patch(
-            "backend.blocks.exa._webhook.is_feature_enabled",
-            AsyncMock(return_value=False),
-        ):
-            resp = _run(self._webhook(), "exa")
-        assert resp.status_code != 403, resp.text
-
-    def test_flag_on_missing_signature_403(self):
-        with patch(
-            "backend.blocks.exa._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(self._webhook(), "exa")
+    def test_missing_signature_403(self):
+        resp = _run(self._webhook(), "exa")
         assert resp.status_code == 403, resp.text
 
-    def test_flag_on_wrong_signature_403(self):
-        with patch(
-            "backend.blocks.exa._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(self._webhook(), "exa", headers={"X-Exa-Signature": "nope"})
+    def test_wrong_signature_403(self):
+        resp = _run(self._webhook(), "exa", headers={"X-Exa-Signature": "nope"})
         assert resp.status_code == 403, resp.text
 
-    def test_flag_on_correct_signature_accepted(self):
+    def test_correct_signature_accepted(self):
         body = b'{"eventType":"webset.created"}'
-        with patch(
-            "backend.blocks.exa._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(
-                self._webhook(),
-                "exa",
-                body=body,
-                headers={"X-Exa-Signature": self._hmac(body)},
-            )
+        resp = _run(
+            self._webhook(),
+            "exa",
+            body=body,
+            headers={"X-Exa-Signature": self._hmac(body)},
+        )
         assert resp.status_code != 403, resp.text
 
-    def test_flag_on_missing_config_secret_403(self):
+    def test_missing_config_secret_403(self):
         """If a stored Exa webhook somehow lacks `config["exa_secret"]`
-        (e.g. legacy DB row), we must fail-closed once the flag is on rather
-        than silently accept."""
+        (e.g. legacy DB row), we must fail-closed rather than silently
+        accept."""
         wh = _make_webhook(ProviderName("exa"), config={})
-        with patch(
-            "backend.blocks.exa._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(wh, "exa", headers={"X-Exa-Signature": "anything"})
+        resp = _run(wh, "exa", headers={"X-Exa-Signature": "anything"})
         assert resp.status_code == 403, resp.text
 
 
 # ---------------------------------------------------------------------------
-# Rollout-flagged providers: Airtable.
+# Airtable signature verification.
 # ---------------------------------------------------------------------------
 
 
-class TestAirtableFlagRollout:
-    """Airtable enforcement is gated. The signing key is stored
-    base64-encoded as Airtable returns it — must be decoded before use as
-    the HMAC key. Header format is `hmac-sha256=<hex>`."""
+class TestAirtableSignature:
+    """Airtable's signing key is stored base64-encoded as Airtable returns it
+    — must be decoded before use as the HMAC key. Header format is
+    `hmac-sha256=<hex>`."""
 
     AIRTABLE_RAW_KEY = b"airtable-binary-signing-key-32-byte-x"
     AIRTABLE_B64_KEY = base64.b64encode(AIRTABLE_RAW_KEY).decode()
@@ -351,53 +323,33 @@ class TestAirtableFlagRollout:
             + hmac.new(self.AIRTABLE_RAW_KEY, body, hashlib.sha256).hexdigest()
         )
 
-    def test_flag_off_accepts_unsigned(self):
-        with patch(
-            "backend.blocks.airtable._webhook.is_feature_enabled",
-            AsyncMock(return_value=False),
-        ):
-            resp = _run(self._webhook(), "airtable")
-        assert resp.status_code != 403, resp.text
-
-    def test_flag_on_missing_signature_403(self):
-        with patch(
-            "backend.blocks.airtable._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(self._webhook(), "airtable")
+    def test_missing_signature_403(self):
+        resp = _run(self._webhook(), "airtable")
         assert resp.status_code == 403, resp.text
 
-    def test_flag_on_correct_signature_accepted(self):
+    def test_correct_signature_accepted(self):
         body = b'{"base":{"id":"app"},"webhook":{"id":"w"},"timestamp":"t"}'
-        with patch(
-            "backend.blocks.airtable._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(
-                self._webhook(),
-                "airtable",
-                body=body,
-                headers={"X-Airtable-Content-MAC": self._expected_header(body)},
-            )
+        resp = _run(
+            self._webhook(),
+            "airtable",
+            body=body,
+            headers={"X-Airtable-Content-MAC": self._expected_header(body)},
+        )
         assert resp.status_code != 403, resp.text
 
-    def test_flag_on_missing_config_mac_secret_403(self):
+    def test_missing_config_mac_secret_403(self):
         """Symmetric with the Exa case: a stored Airtable webhook lacking
-        `config["mac_secret"]` (legacy/corrupted row) must fail-closed once
-        the flag is on, not silently accept the request."""
+        `config["mac_secret"]` (legacy/corrupted row) must fail-closed, not
+        silently accept the request."""
         wh = self._webhook(config_override={})
-        with patch(
-            "backend.blocks.airtable._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(
-                wh,
-                "airtable",
-                headers={"X-Airtable-Content-MAC": "hmac-sha256=anything"},
-            )
+        resp = _run(
+            wh,
+            "airtable",
+            headers={"X-Airtable-Content-MAC": "hmac-sha256=anything"},
+        )
         assert resp.status_code == 403, resp.text
 
-    def test_flag_on_base64_string_used_as_key_would_fail(self):
+    def test_base64_string_used_as_key_would_fail(self):
         """Regression: the previous implementation used the base64 STRING as
         the HMAC key. A signature built that way must NOT verify under the
         new (correct) implementation that base64-decodes first."""
@@ -406,16 +358,12 @@ class TestAirtableFlagRollout:
             "hmac-sha256="
             + hmac.new(self.AIRTABLE_B64_KEY.encode(), body, hashlib.sha256).hexdigest()
         )
-        with patch(
-            "backend.blocks.airtable._webhook.is_feature_enabled",
-            AsyncMock(return_value=True),
-        ):
-            resp = _run(
-                self._webhook(),
-                "airtable",
-                body=body,
-                headers={"X-Airtable-Content-MAC": wrong_sig},
-            )
+        resp = _run(
+            self._webhook(),
+            "airtable",
+            body=body,
+            headers={"X-Airtable-Content-MAC": wrong_sig},
+        )
         assert resp.status_code == 403, resp.text
 
 

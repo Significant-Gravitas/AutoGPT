@@ -4,7 +4,6 @@ Exa Webhook Manager implementation.
 
 import hashlib
 import hmac
-import logging
 from enum import Enum
 
 from fastapi import HTTPException, Request
@@ -17,9 +16,6 @@ from backend.sdk import (
     Requests,
     Webhook,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
-
-logger = logging.getLogger(__name__)
 
 
 class ExaWebhookType(str, Enum):
@@ -58,17 +54,8 @@ class ExaWebhookManager(BaseWebhooksManager):
 
     @classmethod
     async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
-        # Enforcement is gated on a feature flag during rollout: the previous
-        # verification path was reading the wrong secret (`webhook.secret`
-        # instead of the one Exa returns at registration in
-        # `config["exa_secret"]`), so we have no production evidence that
-        # signature verification ever succeeded on a real delivery. Once
-        # smoke-tested against staging, the flag will be flipped on globally.
-        if not await is_feature_enabled(
-            Flag.ENFORCE_EXA_SIGNATURE, webhook.user_id, default=False
-        ):
-            return
-
+        # Exa signs deliveries with the secret it returns at registration time,
+        # stored in `config["exa_secret"]` (not `webhook.secret`).
         signing_secret = webhook.config.get("exa_secret")
         if not signing_secret:
             raise HTTPException(

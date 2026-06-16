@@ -82,16 +82,6 @@ class Flag(str, Enum):
     # targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
-    # Webhook signature enforcement rollout flags. Default off until we've
-    # smoke-tested verification against real provider deliveries — the
-    # pre-existing verify code paths for these two providers have never been
-    # exercised end-to-end (Exa was checking against the wrong secret;
-    # Airtable was failing to base64-decode the MAC key). When the flag is
-    # off, ingress accepts the request without checking the signature header
-    # (matching today's behavior). When on, missing/invalid signatures 403.
-    ENFORCE_EXA_SIGNATURE = "enforce-exa-webhook-signature"
-    ENFORCE_AIRTABLE_SIGNATURE = "enforce-airtable-webhook-signature"
-
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""

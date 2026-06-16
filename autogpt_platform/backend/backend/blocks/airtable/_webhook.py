@@ -19,7 +19,6 @@ from backend.sdk import (
     Webhook,
     update_webhook,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from ._api import (
     WebhookFilters,
@@ -45,17 +44,9 @@ class AirtableWebhookManager(BaseWebhooksManager):
 
     @classmethod
     async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
-        # Enforcement is gated on a feature flag during rollout: Airtable
-        # returns the signing secret base64-encoded as `macSecretBase64`, and
-        # the previous verification path was using the base64 string verbatim
-        # as the HMAC key instead of decoding it first — meaning the path has
-        # never validated a real Airtable delivery. The flag will be flipped
-        # on once smoke-tested against real Airtable notifications.
-        if not await is_feature_enabled(
-            Flag.ENFORCE_AIRTABLE_SIGNATURE, webhook.user_id, default=False
-        ):
-            return
-
+        # Airtable returns the signing secret base64-encoded as `macSecretBase64`
+        # (stored in `config["mac_secret"]`); it must be base64-decoded before
+        # use as the HMAC key.
         mac_secret_b64 = webhook.config.get("mac_secret")
         if not mac_secret_b64:
             raise HTTPException(
