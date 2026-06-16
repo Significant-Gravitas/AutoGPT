@@ -311,6 +311,69 @@ def _dependency_missing(
     )
 
 
+def _recording_not_found(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    rec_id = details.get("recording_id") or "<unknown>"
+    return (
+        f"No recording with id `{rec_id}` exists on the shim. It may have "
+        "been secure-erased after skill generation, or never started. Use "
+        "`list_recordings` to see what's still buffered, or start a new "
+        "recording with `record_workflow`."
+    )
+
+
+def _recording_channel_unavailable(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    channel = details.get("channel") or "<requested channel>"
+    return (
+        f"The `{channel}` capture channel isn't available on this machine "
+        "(e.g. the browser companion extension isn't connected, or the "
+        "desktop accessibility tree isn't exposed for the active app). The "
+        "recording can still proceed on the screenshot+action floor — drop "
+        f"`{channel}` from the channels list and retry. Steps in that app "
+        "will degrade to visual replay, not fail."
+    )
+
+
+def _recording_already_active(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    rec_id = details.get("recording_id") or "<active recording>"
+    return (
+        f"A recording (`{rec_id}`) is already in progress on this machine. "
+        "Only one recording can be active at a time. Stop it with "
+        "`record_workflow(action=stop)` before starting another."
+    )
+
+
+def _consent_required(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    return (
+        "Recording can't start without a consent token the shim issues "
+        "after the user confirms in an OS-native, shim-rendered dialog. The "
+        "platform cannot self-assert this consent. Ask the user to confirm "
+        "recording in the shim's prompt; the shim then supplies the token "
+        "for START_RECORDING."
+    )
+
+
+def _interpretation_unavailable(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    route = details.get("interpretation_route") or details.get("route") or "<route>"
+    return (
+        f"The interpretation route `{route}` needs a local model this "
+        "machine doesn't have (no local extractor / OCR / vision model), and "
+        "the user declined the cloud fallback. Either ask the user to "
+        "install a local model and re-record, or — if they consent — retry "
+        "with the `screenshots_to_cloud` route behind the shim's consent "
+        "gate."
+    )
+
+
 def _internal_error(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
@@ -346,6 +409,11 @@ _TRANSLATIONS: dict[str, _Translator] = {
     "WRITE_UNCONFIRMED": _write_unconfirmed,
     "FILE_TOO_LARGE": _file_too_large,
     "DEPENDENCY_MISSING": _dependency_missing,
+    "RECORDING_NOT_FOUND": _recording_not_found,
+    "RECORDING_CHANNEL_UNAVAILABLE": _recording_channel_unavailable,
+    "RECORDING_ALREADY_ACTIVE": _recording_already_active,
+    "CONSENT_REQUIRED": _consent_required,
+    "INTERPRETATION_UNAVAILABLE": _interpretation_unavailable,
     "INTERNAL_ERROR": _internal_error,
 }
 

@@ -148,9 +148,9 @@ async def test_streaming_text_content():
     # Reconstruct full text
     full_text = "".join(e.delta for e in text_events)
     assert len(full_text) > 0, "Text should not be empty"
-    assert "1" in full_text or "counted" in full_text.lower(), (
-        "Text should contain count"
-    )
+    assert (
+        "1" in full_text or "counted" in full_text.lower()
+    ), "Text should contain count"
 
     # Verify all deltas have IDs
     for text_event in text_events:
@@ -318,9 +318,9 @@ async def test_event_ordering():
     assert start_idx == 0, "StreamStart should be first"
 
     if text_indices:
-        assert all(start_idx < i for i in text_indices), (
-            "Text deltas should be after start"
-        )
+        assert all(
+            start_idx < i for i in text_indices
+        ), "Text deltas should be after start"
 
     print(f"✅ Event ordering: start({start_idx}) < text deltas")
 
@@ -340,19 +340,19 @@ async def test_stream_completeness():
 
     # Check for all required event types
     assert any(isinstance(e, StreamStart) for e in events), "Missing StreamStart"
-    assert any(isinstance(e, StreamStartStep) for e in events), (
-        "Missing StreamStartStep"
-    )
-    assert any(isinstance(e, StreamTextStart) for e in events), (
-        "Missing StreamTextStart"
-    )
-    assert any(isinstance(e, StreamTextDelta) for e in events), (
-        "Missing StreamTextDelta"
-    )
+    assert any(
+        isinstance(e, StreamStartStep) for e in events
+    ), "Missing StreamStartStep"
+    assert any(
+        isinstance(e, StreamTextStart) for e in events
+    ), "Missing StreamTextStart"
+    assert any(
+        isinstance(e, StreamTextDelta) for e in events
+    ), "Missing StreamTextDelta"
     assert any(isinstance(e, StreamTextEnd) for e in events), "Missing StreamTextEnd"
-    assert any(isinstance(e, StreamFinishStep) for e in events), (
-        "Missing StreamFinishStep"
-    )
+    assert any(
+        isinstance(e, StreamFinishStep) for e in events
+    ), "Missing StreamFinishStep"
     assert any(isinstance(e, StreamFinish) for e in events), "Missing StreamFinish"
 
     # Verify exactly one start
@@ -439,16 +439,16 @@ async def test_text_delta_consistency():
     # Verify all deltas have the same ID (same text block)
     if text_events:
         first_id = text_events[0].id
-        assert all(e.id == first_id for e in text_events), (
-            "All text deltas should share the same block ID"
-        )
+        assert all(
+            e.id == first_id for e in text_events
+        ), "All text deltas should share the same block ID"
 
     # Verify deltas build coherent text
     full_text = "".join(e.delta for e in text_events)
     assert len(full_text) > 0, "Deltas should build non-empty text"
-    assert full_text == full_text.strip(), (
-        "Text should not have leading/trailing whitespace artifacts"
-    )
+    assert (
+        full_text == full_text.strip()
+    ), "Text should not have leading/trailing whitespace artifacts"
 
     print(
         f"✅ Consistency: {len(text_events)} deltas with ID '{text_events[0].id if text_events else 'N/A'}', text: '{full_text}'"

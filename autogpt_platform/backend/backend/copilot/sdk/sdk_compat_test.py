@@ -105,12 +105,12 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
     from .service import _build_system_prompt_value
 
     preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
-    assert isinstance(preset, dict), (
-        "_build_system_prompt_value must return a dict when caching is on"
-    )
-    assert preset.get("exclude_dynamic_sections") is True, (
-        "Turn 1 must strip dynamic sections to keep the prefix cacheable cross-user"
-    )
+    assert isinstance(
+        preset, dict
+    ), "_build_system_prompt_value must return a dict when caching is on"
+    assert (
+        preset.get("exclude_dynamic_sections") is True
+    ), "Turn 1 must strip dynamic sections to keep the prefix cacheable cross-user"
 
     sdk_preset = cast(SystemPromptPreset, preset)
     opts = ClaudeAgentOptions(system_prompt=sdk_preset)

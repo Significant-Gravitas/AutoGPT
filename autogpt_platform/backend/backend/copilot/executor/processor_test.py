@@ -502,9 +502,9 @@ class TestExecuteSafetyNet:
 
         # The sync safety net must have fired despite the async path
         # blowing up — this is the core guarantee of the PR.
-        assert call_log == ["sync-ok"], (
-            f"expected sync_fail_close_session to run once, got {call_log!r}"
-        )
+        assert call_log == [
+            "sync-ok"
+        ], f"expected sync_fail_close_session to run once, got {call_log!r}"
 
     def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
         """A cancel request must not let ``_execute`` return while the

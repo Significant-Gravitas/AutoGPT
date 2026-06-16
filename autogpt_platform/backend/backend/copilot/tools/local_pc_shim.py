@@ -17,6 +17,7 @@ from fastapi import WebSocket
 
 from .local_pc_errors import translate_shim_error
 from .local_pc_metrics import record_rpc_retry
+from .recording_models import RecordingSummary, TrajectoryStep, WorkflowRecording
 
 logger = logging.getLogger(__name__)
 
@@ -1009,6 +1010,119 @@ class _LocalLLMProxy:
         return "".join(chunks)
 
 
+# ── Workflow recording ───────────────────────────────────────────────────────
+#
+# `_RecordingProxy` wraps the §6 wire ops: START_RECORDING / STOP_RECORDING /
+# RECORDING_FETCH. Demonstration mode buffers on the shim and the platform
+# pulls via `fetch()` after STOP + user approval. Co-pilot mode additionally
+# streams RECORDING_STEP frames — unsolicited, non-acked, modeled like STATUS
+# (§6) — which the recv loop fans out per recording_id into a queue the live
+# co-pilot loop drains via `stream_steps()`.
+#
+# See experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md.
+
+
+class ShimRecordingError(RuntimeError):
+    """Raised when a recording wire op returns a structured ERROR.
+
+    ``code`` mirrors the wire ``payload.code`` (RECORDING_NOT_FOUND,
+    RECORDING_CHANNEL_UNAVAILABLE, RECORDING_ALREADY_ACTIVE,
+    CONSENT_REQUIRED, INTERPRETATION_UNAVAILABLE) so the MCP-tool layer can
+    branch on the structured surface without parsing the human ``message``.
+    ``message`` is already LLM-friendly (produced by :mod:`local_pc_errors`).
+    """
+
+    def __init__(self, code: str, message: str, details: dict | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
+def _raise_recording(resp: dict, shim: "LocalPCShim | None", fallback: str) -> None:
+    """Translate a wire ERROR response into a typed ShimRecordingError."""
+    if resp.get("type") != "ERROR":
+        return
+    payload = resp.get("payload") or {}
+    raise ShimRecordingError(
+        code=str(payload.get("code") or "INTERNAL_ERROR"),
+        message=_friendly(payload, shim, fallback),
+        details=(
+            payload.get("details") if isinstance(payload.get("details"), dict) else {}
+        ),
+    )
+
+
+class _RecordingProxy:
+    """Wire-op wrapper for the shim's workflow-recording surface.
+
+    Mirrors ``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md``
+    §6. ``start`` / ``stop`` / ``fetch`` are request/response (count against
+    in-flight). RECORDING_STEP frames (co-pilot mode) arrive out-of-band and
+    are exposed via :meth:`stream_steps`.
+    """
+
+    def __init__(self, shim: "LocalPCShim") -> None:
+        self._shim = shim
+
+    async def start(
+        self,
+        *,
+        mode: str,
+        interpretation_route: str,
+        channels: list[str],
+        consent_token: str,
+    ) -> str:
+        """START_RECORDING → return the new recording_id.
+
+        ``consent_token`` is REQUIRED — the platform cannot self-assert it
+        (§9); START without a valid shim-issued token gets CONSENT_REQUIRED.
+        """
+        resp = await self._shim._rpc(
+            "START_RECORDING",
+            {
+                "mode": mode,
+                "interpretation_route": interpretation_route,
+                "channels": list(channels),
+                "consent_token": consent_token,
+            },
+        )
+        _raise_recording(resp, self._shim, "START_RECORDING failed")
+        recording_id = str((resp.get("payload") or {}).get("recording_id") or "")
+        if recording_id:
+            # Pre-create the step buffer so a fast first RECORDING_STEP frame
+            # (co-pilot mode) doesn't race the START response and get dropped.
+            self._shim._ensure_recording_buffer(recording_id)
+        return recording_id
+
+    async def stop(self, recording_id: str) -> "RecordingSummary":
+        """STOP_RECORDING → return the RECORDING_SUMMARY."""
+        resp = await self._shim._rpc("STOP_RECORDING", {"recording_id": recording_id})
+        _raise_recording(resp, self._shim, "STOP_RECORDING failed")
+        return RecordingSummary.from_payload(resp.get("payload") or {})
+
+    async def fetch(self, recording_id: str) -> "WorkflowRecording":
+        """RECORDING_FETCH → return the full post-redaction WorkflowRecording.
+
+        For demonstration mode this is the only path the data leaves the
+        machine — the shim buffers until STOP + user approval, then the
+        platform pulls (§6).
+        """
+        resp = await self._shim._rpc("RECORDING_FETCH", {"recording_id": recording_id})
+        _raise_recording(resp, self._shim, "RECORDING_FETCH failed")
+        return WorkflowRecording.from_payload(resp.get("payload") or {})
+
+    def stream_steps(self, recording_id: str):
+        """Async iterator over live RECORDING_STEP frames (co-pilot mode).
+
+        Yields :class:`TrajectoryStep` as the shim emits them. The iterator
+        runs until the caller breaks out of it (e.g. after STOP); the
+        underlying buffer is dropped via :meth:`LocalPCShim.close_recording`.
+        Demonstration mode never streams — this iterator simply blocks
+        until the buffer is closed.
+        """
+        return self._shim._iter_recording_steps(recording_id)
+
+
 class _RpcAttemptFailed(Exception):
     """Internal: one `_send_and_wait` attempt failed (timeout or WS error).
 
@@ -1048,6 +1162,12 @@ class LocalPCShim:
         ``LocalLLMRouter.should_route`` returns a model — see
         ``local_llm_router.py`` and
         ``experimental/local-pc-executor/docs/LOCAL_LLM.md``.
+
+    Workflow-recording surface:
+        .recording.start(...), .recording.stop(...), .recording.fetch(...),
+        and .recording.stream_steps(...) — see ``_RecordingProxy`` and
+        ``experimental/local-pc-executor/docs/WORKFLOW_RECORDING.md``.
+        Only usable when the shim advertised the ``recording`` capability.
     """
 
     def __init__(
@@ -1078,6 +1198,12 @@ class LocalPCShim:
         # terminal RESPONSE (or ERROR); the consumer in _LocalLLMProxy
         # drains it and unregisters when the stream closes.
         self._streaming: dict[str, asyncio.Queue[dict]] = {}
+        # Workflow recording — co-pilot mode streams RECORDING_STEP frames
+        # (unsolicited, non-acked, like STATUS — §6) keyed by recording_id.
+        # Each recording gets a queue the live co-pilot loop drains via
+        # `recording.stream_steps()`. A sentinel `None` put on the queue
+        # signals the iterator to stop (set by `close_recording`).
+        self._recording_steps: dict[str, asyncio.Queue[TrajectoryStep | None]] = {}
         # Backpressure — see PROTOCOL.md §Concurrency + STATUS frame
         # support. `pending_capacity` is the shim's self-reported headroom:
         # 0 = at the concurrency cap, refuse-new-work; >0 = slots free; None
@@ -1090,6 +1216,7 @@ class LocalPCShim:
         self.commands = _CommandsProxy(self)
         self.computer = _ComputerProxy(self)
         self.local_llm = _LocalLLMProxy(self)
+        self.recording = _RecordingProxy(self)
         self._recv_task = asyncio.create_task(self._recv_loop())
 
     @property
@@ -1308,6 +1435,12 @@ class LocalPCShim:
                     if msg_type == "STATUS":
                         self._handle_status_frame(msg)
                         continue
+                    if msg_type == "RECORDING_STEP":
+                        # Unsolicited, non-acked, out-of-band (co-pilot
+                        # mode only — §6). Buffered per recording_id; never
+                        # routed through _pending and never auto-retried.
+                        self._handle_recording_step(msg)
+                        continue
                     msg_id = msg.get("id")
                     # Streaming dispatch: LOCAL_LLM_COMPLETION_CHUNK and the
                     # terminal LOCAL_LLM_COMPLETION_RESPONSE share a wire id
@@ -1410,6 +1543,81 @@ class LocalPCShim:
             payload.get("uptime_seconds"),
             self._pending_capacity,
         )
+
+    # --- Workflow recording (RECORDING_STEP buffering) ---------------------
+
+    def _ensure_recording_buffer(
+        self, recording_id: str
+    ) -> "asyncio.Queue[TrajectoryStep | None]":
+        """Return (creating if needed) the per-recording step queue.
+
+        Pre-created on START_RECORDING so a fast first RECORDING_STEP frame
+        can't race the START response and be dropped.
+        """
+        queue = self._recording_steps.get(recording_id)
+        if queue is None:
+            queue = asyncio.Queue()
+            self._recording_steps[recording_id] = queue
+        return queue
+
+    def _handle_recording_step(self, msg: Any) -> None:
+        """Fan a RECORDING_STEP frame into its per-recording queue.
+
+        Frame shape (§6):
+            {type: "RECORDING_STEP",
+             payload: {recording_id, step: {TrajectoryStep}}}
+
+        A frame for an unknown recording_id is buffered anyway (the START
+        response may still be in flight) so nothing is lost; if it's truly
+        orphaned it's harmless — the queue is dropped on close_recording.
+        """
+        if not isinstance(msg, dict):
+            return
+        payload = msg.get("payload")
+        if not isinstance(payload, dict):
+            return
+        recording_id = str(payload.get("recording_id") or "")
+        if not recording_id:
+            logger.debug("[LocalPC] RECORDING_STEP without recording_id; dropping")
+            return
+        step_payload = payload.get("step")
+        if not isinstance(step_payload, dict):
+            logger.debug(
+                "[LocalPC] RECORDING_STEP for %s missing step body; dropping",
+                recording_id,
+            )
+            return
+        step = TrajectoryStep.from_payload(step_payload)
+        queue = self._ensure_recording_buffer(recording_id)
+        queue.put_nowait(step)
+
+    async def _iter_recording_steps(self, recording_id: str):
+        """Async iterator yielding TrajectoryStep frames as they arrive.
+
+        Backs ``recording.stream_steps()``. Runs until a sentinel ``None``
+        is enqueued by :meth:`close_recording`, then stops and drops the
+        buffer.
+        """
+        queue = self._ensure_recording_buffer(recording_id)
+        try:
+            while True:
+                step = await queue.get()
+                if step is None:
+                    return
+                yield step
+        finally:
+            self._recording_steps.pop(recording_id, None)
+
+    def close_recording(self, recording_id: str) -> None:
+        """Signal the step iterator for ``recording_id`` to stop.
+
+        Enqueues the stop sentinel so a live ``stream_steps()`` consumer
+        finishes cleanly after STOP_RECORDING. Safe to call multiple times
+        and for recordings that never streamed.
+        """
+        queue = self._recording_steps.get(recording_id)
+        if queue is not None:
+            queue.put_nowait(None)
 
     async def pause(self) -> None:
         pass  # no billing on local machine

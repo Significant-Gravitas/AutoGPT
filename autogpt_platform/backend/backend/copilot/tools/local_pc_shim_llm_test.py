@@ -13,12 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from .local_pc_shim import (
-    LocalLLMError,
-    LocalPCShim,
-    ShimHello,
-    _LocalLLMProxy,
-)
+from .local_pc_shim import LocalLLMError, LocalPCShim, ShimHello, _LocalLLMProxy
 
 
 def _make_shim_for_streaming(

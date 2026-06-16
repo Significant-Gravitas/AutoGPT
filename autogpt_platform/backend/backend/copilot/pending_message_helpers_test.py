@@ -641,9 +641,9 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Invariant 3: pending row is raw chip text only.
     chip_row = session.messages[1]
-    assert chip_row.content == "oh sleep 4 secs in between", (
-        f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
-    )
+    assert (
+        chip_row.content == "oh sleep 4 secs in between"
+    ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
     assert "<memory_context>" not in chip_row.content
     assert "can you sleep" not in chip_row.content, (
         "regression: chip row absorbed original text — "

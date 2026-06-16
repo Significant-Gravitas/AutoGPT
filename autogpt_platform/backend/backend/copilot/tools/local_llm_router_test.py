@@ -27,12 +27,14 @@ def _make_executor(
     """Build a duck-typed stand-in for LocalPCShim. The router only reads
     ``capabilities`` and ``local_llm_models`` so we can skip the WS dance."""
     return SimpleNamespace(
-        capabilities=capabilities
-        if capabilities is not None
-        else ["shell", "files", "local_llm"],
-        local_llm_models=local_llm_models
-        if local_llm_models is not None
-        else ["llama3.2:3b"],
+        capabilities=(
+            capabilities
+            if capabilities is not None
+            else ["shell", "files", "local_llm"]
+        ),
+        local_llm_models=(
+            local_llm_models if local_llm_models is not None else ["llama3.2:3b"]
+        ),
     )
 
 

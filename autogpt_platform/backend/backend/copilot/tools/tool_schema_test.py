@@ -80,12 +80,12 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
-            assert "type" in prop_def, (
-                f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
-            )
-            assert "description" in prop_def, (
-                f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
-            )
+            assert (
+                "type" in prop_def
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+            assert (
+                "description" in prop_def
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
 
 
 def test_browser_act_action_enum_complete() -> None:
@@ -158,16 +158,16 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
     }
 
     default = {t["function"]["name"] for t in get_available_tools()}
-    assert memory_tool_names.issubset(default), (
-        "sanity: memory_* tools should be present when no groups disabled"
-    )
+    assert memory_tool_names.issubset(
+        default
+    ), "sanity: memory_* tools should be present when no groups disabled"
 
     filtered = {
         t["function"]["name"] for t in get_available_tools(disabled_groups=["graphiti"])
     }
-    assert not (memory_tool_names & filtered), (
-        f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
-    )
+    assert not (
+        memory_tool_names & filtered
+    ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
     # Non-graphiti tools stay visible.
     assert "find_block" in filtered
     assert "TodoWrite" in filtered
@@ -188,9 +188,9 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
     assert memory_mcp_names.issubset(default)
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
-    assert not (memory_mcp_names & filtered), (
-        f"graphiti disabled but memory MCP names still present: {memory_mcp_names & filtered}"
-    )
+    assert not (
+        memory_mcp_names & filtered
+    ), f"graphiti disabled but memory MCP names still present: {memory_mcp_names & filtered}"
     # E2B path stays consistent.
     filtered_e2b = set(
         get_copilot_tool_names(use_e2b=True, disabled_groups=["graphiti"])

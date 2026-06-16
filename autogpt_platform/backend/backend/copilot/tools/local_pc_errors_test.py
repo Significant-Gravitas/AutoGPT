@@ -55,6 +55,19 @@ _EXPECTED_SUBSTRINGS: dict[str, list[str]] = {
     "WRITE_UNCONFIRMED": ["FILE_WRITE", "FILE_STAT"],
     "FILE_TOO_LARGE": ["exceeded", "Chunk", "offset+length"],
     "DEPENDENCY_MISSING": ["pipx install", "autogpt-local-executor"],
+    "RECORDING_NOT_FOUND": ["No recording", "list_recordings"],
+    "RECORDING_CHANNEL_UNAVAILABLE": [
+        "capture channel isn't available",
+        "screenshot+action floor",
+        "visual replay",
+    ],
+    "RECORDING_ALREADY_ACTIVE": ["already in progress", "Stop it"],
+    "CONSENT_REQUIRED": ["consent token", "OS-native", "platform cannot"],
+    "INTERPRETATION_UNAVAILABLE": [
+        "local model",
+        "re-record",
+        "screenshots_to_cloud",
+    ],
     "INTERNAL_ERROR": ["unexpected internal error", "audit.log"],
 }
 
