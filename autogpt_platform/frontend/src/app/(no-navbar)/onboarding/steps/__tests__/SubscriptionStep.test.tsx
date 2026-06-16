@@ -47,11 +47,28 @@ beforeEach(() => {
 });
 
 describe("subscription pricing experiment helpers", () => {
-  test("uses the current yearly Max experience as the default", () => {
+  test("defaults to monthly billing with no highlighted plan (matches the paywall)", () => {
     expect(getSubscriptionPricingExperimentConfig(undefined)).toMatchObject({
-      billing: "yearly",
-      highlightedPlan: "MAX",
+      billing: "monthly",
+      highlightedPlan: null,
       variant: "control",
+    });
+  });
+
+  test("highlights no plan when highlightedPlan is null", () => {
+    const plans = getSubscriptionPricingExperimentPlans(null);
+    const pro = plans.find((plan) => plan.key === "PRO");
+    const max = plans.find((plan) => plan.key === "MAX");
+
+    expect(pro).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
+    });
+    expect(max).toMatchObject({
+      highlighted: false,
+      badge: null,
+      buttonVariant: "secondary",
     });
   });
 
@@ -96,14 +113,18 @@ describe("SubscriptionStep", () => {
     expect(screen.getByRole("heading", { name: /^Team$/ })).toBeDefined();
   });
 
-  test("defaults to yearly billing with the monthly-equivalent price and a 'billed annually' caption", () => {
+  test("defaults to monthly billing with the full monthly price and a 'billed monthly' caption", () => {
     render(<SubscriptionStep />);
-    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("yearly");
-    expect(screen.getByLabelText("$42.50")).toBeDefined();
-    expect(screen.getByLabelText("$272.00")).toBeDefined();
-    expect(screen.getAllByText("billed annually").length).toBe(2);
+    expect(useOnboardingWizardStore.getState().selectedBilling).toBe("monthly");
+    expect(screen.getByLabelText("$50.00")).toBeDefined();
+    expect(screen.getByLabelText("$320.00")).toBeDefined();
+    expect(screen.getAllByText("billed monthly").length).toBe(2);
     expect(screen.queryByText(/Charged today/i)).toBeNull();
-    expect(screen.getAllByText(/Save 15%/).length).toBeGreaterThan(0);
+  });
+
+  test("highlights no plan by default — no 'Best value' badge", () => {
+    render(<SubscriptionStep />);
+    expect(screen.queryByText(/Best value/i)).toBeNull();
   });
 
   test("PostHog monthly Pro variant starts on monthly billing", async () => {
@@ -187,7 +208,7 @@ describe("SubscriptionStep", () => {
     expect(profileCalled).toBe(false);
   });
 
-  test("default yearly + selecting Pro forwards billing_cycle=yearly", async () => {
+  test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {
     let capturedTierBody: {
       tier?: string;
       billing_cycle?: string;
@@ -204,6 +225,7 @@ describe("SubscriptionStep", () => {
     );
 
     render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Yearly billing/i }));
     fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
 
     await waitFor(() => {
