@@ -3,9 +3,9 @@
 import { GlobalSearchModal } from "@/app/(platform)/components/GlobalSearchModal/GlobalSearchModal";
 import type { SearchResultItem } from "@/app/api/__generated__/models/searchResultItem";
 import { SidebarHeader } from "@/components/ui/sidebar";
-import { AgentActivityDropdown } from "@/components/layout/Navbar/components/AgentActivityDropdown/AgentActivityDropdown";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { GearIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -53,8 +53,14 @@ export function AppSidebarHeader() {
         height={40}
         className="size-10"
       />
-      <div className="flex items-center gap-2 [&_button]:size-8 [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-white [&_button]:p-1.5 [&_svg]:!size-4">
-        <AgentActivityDropdown />
+      <div className="flex items-center gap-2 [&_a]:size-8 [&_a]:border [&_a]:border-zinc-200 [&_a]:bg-white [&_a]:p-1.5 [&_button]:size-8 [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-white [&_button]:p-1.5 [&_svg]:!size-4">
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          className="flex items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+        >
+          <GearIcon className="text-black" />
+        </Link>
         <button
           type="button"
           aria-label="Search"

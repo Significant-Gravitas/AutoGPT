@@ -25,8 +25,10 @@ import {
   SquaresFourIcon,
   StorefrontIcon,
 } from "@phosphor-icons/react";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { ComponentProps, ReactNode } from "react";
 import {
@@ -58,6 +60,27 @@ function isLinkActive(pathname: string | null, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// Rendered inside the <Link>, so useLinkStatus reports that link's pending
+// navigation — show a spinner until the destination page is reached, then
+// fall back to the count badge.
+function NavLinkRight({ count }: { count?: number }) {
+  const { pending } = useLinkStatus();
+
+  if (pending) {
+    return (
+      <LoadingSpinner size="small" className="ml-auto shrink-0 text-zinc-500" />
+    );
+  }
+
+  if (count === undefined) return null;
+
+  return (
+    <span className="ml-auto shrink-0 text-sm font-normal text-zinc-500">
+      {count > 100 ? "100+" : count}
+    </span>
+  );
+}
+
 function NavMenu({ links }: { links: NavLink[] }) {
   const pathname = usePathname();
   const counts = useSidebarCounts();
@@ -76,11 +99,7 @@ function NavMenu({ links }: { links: NavLink[] }) {
               <Link href={link.href}>
                 <link.icon className="size-5" weight="bold" />
                 <span className="truncate">{link.name}</span>
-                {count !== undefined && (
-                  <span className="ml-auto shrink-0 text-sm font-normal text-zinc-500">
-                    {count > 100 ? "100+" : count}
-                  </span>
-                )}
+                <NavLinkRight count={count} />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -93,13 +112,23 @@ function NavMenu({ links }: { links: NavLink[] }) {
 function CollapsibleNavGroup({
   label,
   children,
+  scrollable = false,
 }: {
   label: string;
   children: ReactNode;
+  scrollable?: boolean;
 }) {
   return (
-    <Collapsible defaultOpen className="group/collapsible">
-      <SidebarGroup className="py-1">
+    <Collapsible
+      defaultOpen
+      className={cn(
+        "group/collapsible",
+        scrollable && "flex min-h-0 flex-1 flex-col",
+      )}
+    >
+      <SidebarGroup
+        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
+      >
         <SidebarGroupLabel asChild className="text-[13px] font-medium">
           <CollapsibleTrigger>
             {label}
@@ -109,8 +138,21 @@ function CollapsibleNavGroup({
             />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
+        <CollapsibleContent
+          className={cn(
+            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down",
+            scrollable && "flex min-h-0 flex-1 flex-col",
+          )}
+        >
+          <SidebarGroupContent
+            className={
+              scrollable
+                ? "mr-[10px] min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+                : undefined
+            }
+          >
+            {children}
+          </SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -130,12 +172,12 @@ export function AppSidebar(props: Props) {
     >
       <AppSidebarHeader />
 
-      <SidebarContent className="gap-2">
+      <SidebarContent className="gap-2 overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
           animate="show"
-          className="flex flex-col gap-2"
+          className="flex min-h-0 flex-1 flex-col gap-2"
         >
           <motion.div variants={itemVariants} className="px-2 pt-2">
             <Button
@@ -164,8 +206,11 @@ export function AppSidebar(props: Props) {
             </CollapsibleNavGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Recent chats">
+          <motion.div
+            variants={itemVariants}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <CollapsibleNavGroup label="Recent chats" scrollable>
               <RecentChats />
             </CollapsibleNavGroup>
           </motion.div>

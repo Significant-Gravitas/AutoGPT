@@ -2,6 +2,7 @@
 
 import { ChatOriginIcon } from "@/app/(platform)/copilot/components/ChatOriginIcon/ChatOriginIcon";
 import { resolvePlatformLogo } from "@/app/(platform)/copilot/components/ChatOriginIcon/platformLogos";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,10 +29,12 @@ interface Session {
   id: string;
   title?: string | null;
   source_platform?: string | null;
+  is_processing?: boolean | null;
 }
 
 interface Props {
   session: Session;
+  isActive: boolean;
   isEditing: boolean;
   editingTitle: string;
   onEditingTitleChange: (value: string) => void;
@@ -48,6 +51,7 @@ interface Props {
 
 export function RecentChatItem({
   session,
+  isActive,
   isEditing,
   editingTitle,
   onEditingTitleChange,
@@ -87,11 +91,17 @@ export function RecentChatItem({
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
+        isActive={isActive}
         tooltip={title}
         className="font-medium hover:!bg-zinc-200 data-[active=true]:!bg-zinc-200"
       >
         <Link href={`/copilot?sessionId=${session.id}`}>
-          {hasPlatformLogo ? (
+          {session.is_processing ? (
+            <LoadingSpinner
+              size="small"
+              className="size-4 shrink-0 text-purple-600"
+            />
+          ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : (
             <ChatCircleIcon

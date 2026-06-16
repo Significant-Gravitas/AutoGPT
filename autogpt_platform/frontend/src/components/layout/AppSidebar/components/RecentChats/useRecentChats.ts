@@ -10,11 +10,17 @@ import {
 import { useSessionDeletion } from "@/app/(platform)/copilot/useSessionDeletion";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function useRecentChats() {
   const queryClient = useQueryClient();
   const { sessions, isLoading } = useSessionList();
+
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeSessionId =
+    pathname === "/copilot" ? searchParams.get("sessionId") : null;
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -88,6 +94,7 @@ export function useRecentChats() {
   return {
     sessions,
     isLoading,
+    activeSessionId,
     editingSessionId,
     editingTitle,
     setEditingTitle,

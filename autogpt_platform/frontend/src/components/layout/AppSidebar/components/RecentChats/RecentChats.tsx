@@ -13,6 +13,7 @@ export function RecentChats() {
   const {
     sessions,
     isLoading,
+    activeSessionId,
     editingSessionId,
     editingTitle,
     setEditingTitle,
@@ -51,6 +52,7 @@ export function RecentChats() {
           <RecentChatItem
             key={session.id}
             session={session}
+            isActive={session.id === activeSessionId}
             isEditing={editingSessionId === session.id}
             editingTitle={editingTitle}
             onEditingTitleChange={setEditingTitle}
