@@ -21,7 +21,11 @@ bearer_jwt_auth = HTTPBearer(
 # (handled below by PyJWKClient's kid-miss refetch).
 JWKS_CACHE_LIFESPAN_SECONDS = 3600
 
+# Cached client keyed on the JWKS URL: if the URL changes (config reload,
+# test override), the old client is discarded instead of silently serving
+# keys from the previous endpoint.
 _jwks_client: jwt.PyJWKClient | None = None
+_jwks_client_url: str | None = None
 _jwks_client_lock = threading.Lock()
 
 
@@ -101,18 +105,20 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:
-    global _jwks_client
+    global _jwks_client, _jwks_client_url
 
-    if _jwks_client:
+    url = get_settings().JWT_JWKS_URL
+    if _jwks_client is not None and _jwks_client_url == url:
         return _jwks_client
 
     with _jwks_client_lock:
-        if not _jwks_client:
+        if _jwks_client is None or _jwks_client_url != url:
             _jwks_client = jwt.PyJWKClient(
-                get_settings().JWT_JWKS_URL,
+                url,
                 cache_keys=True,
                 lifespan=JWKS_CACHE_LIFESPAN_SECONDS,
             )
+            _jwks_client_url = url
     return _jwks_client
 
 

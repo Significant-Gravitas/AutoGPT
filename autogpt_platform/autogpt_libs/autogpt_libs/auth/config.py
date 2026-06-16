@@ -43,6 +43,16 @@ class Settings:
                 "Without a verification key, anyone could forge valid tokens."
             )
 
+        if self.JWT_JWKS_URL and not self.JWT_JWKS_URL.startswith(
+            ("http://", "https://")
+        ):
+            # Caught here rather than as a cryptic PyJWKClientError on the
+            # first request that hits the JWKS path.
+            raise AuthConfigError(
+                f"Invalid JWT_JWKS_URL: '{self.JWT_JWKS_URL}'. "
+                "Must be an http:// or https:// URL."
+            )
+
         if self.JWT_VERIFY_KEY and len(self.JWT_VERIFY_KEY) < 32:
             logger.warning(
                 "⚠️ JWT_VERIFY_KEY appears weak (less than 32 characters). "

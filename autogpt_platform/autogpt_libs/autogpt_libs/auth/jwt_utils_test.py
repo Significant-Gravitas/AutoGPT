@@ -39,6 +39,7 @@ def mock_config(mocker: MockerFixture):
     mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": MOCK_JWT_SECRET}, clear=True)
     mocker.patch.object(config, "_settings", Settings())
     mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
     yield
 
 
@@ -337,6 +338,7 @@ def jwks_config(mocker: MockerFixture):
     )
     mocker.patch.object(config, "_settings", Settings())
     mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
 
     private_key, jwk_set = make_es256_keypair()
     mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value=jwk_set)
@@ -406,8 +408,28 @@ def test_parse_jwt_token_symmetric_rejected_without_shared_secret(
     mocker.patch.dict(os.environ, {"JWT_JWKS_URL": MOCK_JWKS_URL}, clear=True)
     mocker.patch.object(config, "_settings", Settings())
     mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
 
     token = create_token(TEST_USER_PAYLOAD)
 
     with pytest.raises(ValueError, match="symmetric tokens are not accepted"):
         jwt_utils.parse_jwt_token(token)
+
+
+def test_jwks_client_rekeys_when_url_changes(mocker: MockerFixture):
+    """A changed JWT_JWKS_URL must produce a new client, not reuse the old
+    one pointed at the previous endpoint."""
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": "http://first/jwks"}, clear=True)
+    mocker.patch.object(config, "_settings", Settings())
+    first = jwt_utils._get_jwks_client()
+    assert jwt_utils._get_jwks_client() is first  # same URL -> cached
+
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": "http://second/jwks"}, clear=True)
+    mocker.patch.object(config, "_settings", Settings())
+    second = jwt_utils._get_jwks_client()
+
+    assert second is not first
+    assert second.uri == "http://second/jwks"

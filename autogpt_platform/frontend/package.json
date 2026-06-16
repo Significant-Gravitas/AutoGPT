@@ -198,6 +198,7 @@
     ]
   },
   "pnpm": {
+    "//kysely": "DO NOT UPGRADE past 0.28.x: @better-auth/kysely-adapter (better-auth) imports DEFAULT_MIGRATION_LOCK_TABLE from the kysely root, which 0.29 moved to kysely/migration — upgrading crashes every /api/auth route. Revisit when better-auth's adapter supports kysely 0.29+.",
     "overrides": {
       "@opentelemetry/instrumentation": "0.209.0",
       "lodash-es": "4.17.23",

@@ -371,3 +371,28 @@ def test_neither_key_nor_jwks_raises_error(mocker: MockerFixture):
         Settings()
     assert "JWT_JWKS_URL" in str(exc_info.value)
     assert "JWT_VERIFY_KEY" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    ["localhost:3000/jwks", "ftp://host/jwks", "/api/auth/jwks", "not a url"],
+)
+def test_jwks_url_must_be_http(mocker: MockerFixture, bad_url: str):
+    """A non-http(s) JWT_JWKS_URL is rejected at config time, not as a
+    cryptic PyJWKClientError on the first token."""
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": bad_url}, clear=True)
+
+    with pytest.raises(AuthConfigError) as exc_info:
+        Settings()
+    assert "JWT_JWKS_URL" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "good_url",
+    ["http://localhost:3000/api/auth/jwks", "https://app.example/api/auth/jwks"],
+)
+def test_jwks_url_accepts_http_and_https(mocker: MockerFixture, good_url: str):
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": good_url}, clear=True)
+
+    settings = Settings()
+    assert settings.JWT_JWKS_URL == good_url
