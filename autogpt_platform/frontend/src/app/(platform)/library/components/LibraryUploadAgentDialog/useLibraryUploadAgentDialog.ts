@@ -32,19 +32,21 @@ export function useLibraryUploadAgentDialog(options?: {
         },
         onError: (error: Error) => {
           // Try to extract backend error detail from the API response.
-          // Use unknown + checked property access instead of an 'as any' cast.
-          const err: Record<string, unknown> = error;
-          const apiError =
-            (
-              err.response as
-                | { data?: { detail?: string } }
-                | undefined
-            )?.data?.detail
-            ?? (err.body as { detail?: string } | undefined)?.detail
-            ?? error.message;
+          // Use a type predicate so we never cast through `any` or `unknown`.
+          const _isApiError = (e: unknown): e is {
+            response?: { data?: { detail?: string } };
+            body?: { detail?: string };
+          } => typeof e === "object" && e !== null;
+
+          const apiError = _isApiError(error)
+            ? error.response?.data?.detail ?? error.body?.detail
+            : undefined;
+
           const description = typeof apiError === "string"
             ? apiError
-            : "Error Uploading agent. The server did not provide additional details.";
+            : error instanceof Error
+              ? error.message
+              : "Error Uploading agent. The server did not provide additional details.";
           toast({
             title: "Error Uploading Agent",
             description,
@@ -117,7 +119,8 @@ export function useLibraryUploadAgentDialog(options?: {
         });
         form.resetField("agentFile");
         setAgentObject(null);
-        prevAgentObjectRef.current = null;
+        // Don't null prevAgentObjectRef here — the !agentFileValue effect
+        // below reads it to clean up stale name/description fields.
         return;
       }
 
