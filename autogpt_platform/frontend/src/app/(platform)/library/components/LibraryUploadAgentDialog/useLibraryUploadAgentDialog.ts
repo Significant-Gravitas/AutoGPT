@@ -32,9 +32,14 @@ export function useLibraryUploadAgentDialog(options?: {
         },
         onError: (error: Error) => {
           // Try to extract backend error detail from the API response
-          const apiError = (error as any)?.response?.data?.detail
-            ?? (error as any)?.body?.detail
-            ?? error?.message;
+          const axiosErr = error as unknown as {
+            response?: { data?: { detail?: string } };
+            body?: { detail?: string };
+          };
+          const apiError =
+            axiosErr.response?.data?.detail
+            ?? axiosErr.body?.detail
+            ?? error.message;
           const description = typeof apiError === "string"
             ? apiError
             : "Error Uploading agent. The server did not provide additional details.";

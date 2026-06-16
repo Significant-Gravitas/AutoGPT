@@ -55,7 +55,16 @@ export function sanitizeImportedGraph(graph: Graph): void {
 export function validateGraphStructure(graph: Graph): string[] {
   const errors: string[] = [];
 
-  if (!graph.nodes?.length) {
+  if (!Array.isArray(graph.nodes)) {
+    errors.push("Graph 'nodes' must be an array");
+    return errors;
+  }
+  if (!Array.isArray(graph.links)) {
+    errors.push("Graph 'links' must be an array");
+    return errors;
+  }
+
+  if (!graph.nodes.length) {
     errors.push("Graph has no nodes");
     return errors;
   }
@@ -69,14 +78,12 @@ export function validateGraphStructure(graph: Graph): string[] {
     }
   });
 
-  if (graph.links) {
-    graph.links.forEach((link, i) => {
-      if (!link.source_id) errors.push(`Link #${i + 1}: missing source_id`);
-      if (!link.sink_id) errors.push(`Link #${i + 1}: missing sink_id`);
-      if (!link.source_name) errors.push(`Link #${i + 1}: missing source_name`);
-      if (!link.sink_name) errors.push(`Link #${i + 1}: missing sink_name`);
-    });
-  }
+  graph.links.forEach((link, i) => {
+    if (!link.source_id) errors.push(`Link #${i + 1}: missing source_id`);
+    if (!link.sink_id) errors.push(`Link #${i + 1}: missing sink_id`);
+    if (!link.source_name) errors.push(`Link #${i + 1}: missing source_name`);
+    if (!link.sink_name) errors.push(`Link #${i + 1}: missing sink_name`);
+  });
 
   return errors;
 }

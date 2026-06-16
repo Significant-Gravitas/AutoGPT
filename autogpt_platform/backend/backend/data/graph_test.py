@@ -2320,8 +2320,9 @@ def test_agent_executor_block_link_validation_uses_schema():
     be empty or structured differently depending on export version,
     causing "Allowed fields: dict_keys([])" rejections.
     """
-    agent_block_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    from backend.blocks.agent import AgentExecutorBlock
 
+    agent_block = AgentExecutorBlock()
     source_node = Node(
         id="source-1",
         block_id=StoreValueBlock().id,
@@ -2329,7 +2330,7 @@ def test_agent_executor_block_link_validation_uses_schema():
     )
     agent_node = Node(
         id="agent-1",
-        block_id=agent_block_id,
+        block_id=agent_block.id,
         input_default={},  # empty — was causing issues before
     )
     link = Link(
