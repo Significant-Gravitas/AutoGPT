@@ -18,6 +18,7 @@ calling user has linked — enforced bridge-side.
 """
 
 import logging
+from functools import lru_cache
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -71,8 +72,13 @@ _ERROR_MESSAGES: dict[str, str] = {
 }
 
 
+@lru_cache(maxsize=1)
 def _any_chat_platform_configured() -> bool:
     """Whether any chat-platform bot is configured, gating tool availability.
+
+    Cached because ``get_available_tools`` reads ``is_available`` for every tool
+    on every request, and constructing ``Settings()`` re-parses the env each
+    time. The bot token is fixed at deploy time, so a one-time read is safe.
 
     Assumes the copilot/executor process shares the bot token env with the
     bridge pod (true for ``poetry run app`` and the standard deployment).
