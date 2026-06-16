@@ -47,6 +47,15 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   }),
 }));
 
+// The shared test wrapper mounts OnboardingProvider, which asynchronously
+// checks onboarding completion and can fire router.replace("/onboarding").
+// That shares this file's mocked next/navigation replace, so the stray
+// redirect races into assertions that the paywall did NOT navigate. Render
+// children directly to keep navigation owned solely by PaywallModal.
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 const mockReplace = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
