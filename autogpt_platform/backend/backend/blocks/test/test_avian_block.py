@@ -7,6 +7,7 @@ OpenAI, Anthropic, Groq, etc. are handled.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import openai
 import pytest
 from pydantic import SecretStr
 
@@ -141,7 +142,7 @@ class TestAvianLlmCall:
             mock_openai.return_value = mock_client
             mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            with pytest.raises(ValueError, match="Avian API error"):
+            with pytest.raises(ValueError, match="returned empty choices"):
                 await llm.llm_call(
                     credentials=AVIAN_CREDENTIALS,
                     llm_model=llm.LlmModel.AVIAN_MINIMAX_M2_5,
@@ -190,7 +191,7 @@ class TestAvianLlmCall:
             )
 
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["response_format"] is None
+        assert call_kwargs.get("response_format") in (None, openai.omit)
 
 
 class TestAvianModelMetadata:
