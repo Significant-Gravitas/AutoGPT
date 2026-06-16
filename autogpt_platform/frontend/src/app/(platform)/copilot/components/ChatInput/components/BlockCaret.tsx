@@ -100,6 +100,8 @@ export function BlockCaret({ textareaId }: Props) {
     ) as HTMLTextAreaElement | null;
     if (!textarea) return;
 
+    let frame = 0;
+
     function update() {
       if (!textarea) return;
       if (document.activeElement !== textarea) {
@@ -120,6 +122,18 @@ export function BlockCaret({ textareaId }: Props) {
       });
     }
 
+    // Each keystroke fires a burst of events (keydown + input + keyup, …).
+    // Coalesce them into a single measurement per animation frame so the
+    // synchronous reflow in getCaretCoordinates runs at most once per frame
+    // instead of several times per keystroke.
+    function scheduleUpdate() {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        update();
+      });
+    }
+
     update();
     const events = [
       "input",
@@ -131,12 +145,13 @@ export function BlockCaret({ textareaId }: Props) {
       "scroll",
       "select",
     ];
-    for (const ev of events) textarea.addEventListener(ev, update);
-    window.addEventListener("resize", update);
+    for (const ev of events) textarea.addEventListener(ev, scheduleUpdate);
+    window.addEventListener("resize", scheduleUpdate);
 
     return () => {
-      for (const ev of events) textarea.removeEventListener(ev, update);
-      window.removeEventListener("resize", update);
+      if (frame) window.cancelAnimationFrame(frame);
+      for (const ev of events) textarea.removeEventListener(ev, scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
     };
   }, [textareaId]);
 
