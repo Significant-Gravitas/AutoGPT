@@ -858,6 +858,10 @@ retrying).
 | `CLIPBOARD_READ` | yes | Pure read. |
 | `CLIPBOARD_WRITE` | yes | Last-write-wins. |
 | `LOCAL_LLM_COMPLETION` | yes | Same prompt almost certainly produces different output (sampling), but for retry semantics the platform CAN safely re-issue — the user-facing turn is non-destructive and the worst case is "you got a slightly different answer". The auto-retry layer treats it as idempotent. |
+| `START_RECORDING` | **no** | Mints a fresh `recording_id` and begins capture; a re-issue while one is active gets `RECORDING_ALREADY_ACTIVE`. Platform surfaces, doesn't auto-retry. |
+| `STOP_RECORDING` | **no** | Finalizes + secure-state-changes the session; re-issue after success → `RECORDING_NOT_FOUND`. |
+| `RECORDING_FETCH` | yes | Pure read of a finalized recording (post-redaction). Safe to re-issue. |
+| `RECORDING_STEP` | n/a | Unsolicited co-pilot-mode stream (shim → platform), modeled like `STATUS`: not acked, exempt from in-flight / `max_concurrent` accounting, and never part of the auto-retry layer. |
 
 Receivers MUST NOT rely on the platform retrying any specific op — this
 table just disciplines the platform's auto-retry layer. Application
