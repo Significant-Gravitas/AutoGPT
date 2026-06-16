@@ -13,6 +13,7 @@ export enum Flag {
   BUILDER_CHAT_PANEL = "builder-chat-panel",
   AGENT_BRIEFING = "agent-briefing",
   LOCAL_PC_EXECUTOR = "local-pc-executor",
+  WORKFLOW_RECORDING = "workflow-recording",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -26,6 +27,7 @@ const defaultFlags = {
   [Flag.BUILDER_CHAT_PANEL]: false,
   [Flag.AGENT_BRIEFING]: false,
   [Flag.LOCAL_PC_EXECUTOR]: false,
+  [Flag.WORKFLOW_RECORDING]: false,
 };
 
 type FlagValues = typeof defaultFlags;

@@ -23,6 +23,11 @@ export enum Key {
   COPILOT_DRY_RUN = "copilot-dry-run",
   COPILOT_LOCAL_PC_WARNING_ACKED = "copilot-local-pc-warning-acked",
   COPILOT_LOCAL_PC_COMPUTER_USE_ACKED_SESSIONS = "copilot-local-pc-computer-use-acked-sessions",
+  // Remembered cloud-fallback consent for workflow recording, per KIND of
+  // recording (not global, not per-session) — see WORKFLOW_RECORDING.md
+  // §9.1. JSON array of remembered recording-kind keys. Revocable in
+  // settings (clearing this key re-enables the prompt).
+  COPILOT_RECORDING_CLOUD_CONSENT_KINDS = "copilot-recording-cloud-consent-kinds",
 }
 
 function get(key: Key) {

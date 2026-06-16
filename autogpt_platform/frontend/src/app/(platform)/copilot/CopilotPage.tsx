@@ -12,6 +12,7 @@ import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { LocalPCBadge } from "./components/LocalPCBadge/LocalPCBadge";
 import { LocalPCComputerUseConsent } from "./components/LocalPCComputerUseConsent/LocalPCComputerUseConsent";
 import { LocalPCWarning } from "./components/LocalPCWarning/LocalPCWarning";
+import { RecordWorkflow } from "./components/RecordWorkflow/RecordWorkflow";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
@@ -32,6 +33,7 @@ export function CopilotPage() {
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const isRecordingEnabled = useGetFlag(Flag.WORKFLOW_RECORDING);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -63,6 +65,7 @@ export function CopilotPage() {
           {isLocalPCEnabled && (
             <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50/40 px-4 py-1.5">
               <LocalPCBadge />
+              {isRecordingEnabled && <RecordWorkflow />}
             </div>
           )}
           <CopilotChatHost
