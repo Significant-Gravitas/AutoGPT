@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getServerSessionMock = vi.fn();
 const getServerAuthTokenMock = vi.fn();
 const signOutMock = vi.fn();
+const { cookieJar } = vi.hoisted(() => ({
+  cookieJar: new Map<string, string>(),
+}));
 
 vi.mock("../auth", () => ({
   auth: {
@@ -22,6 +25,16 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
 
 vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers()),
+  cookies: async () => ({
+    getAll: () =>
+      [...cookieJar.keys()].map((name) => ({
+        name,
+        value: cookieJar.get(name) ?? "",
+      })),
+    delete: (name: string) => {
+      cookieJar.delete(name);
+    },
+  }),
 }));
 
 vi.mock("@sentry/nextjs", () => ({
@@ -161,8 +174,16 @@ describe("getWebSocketToken", () => {
 });
 
 describe("serverLogout", () => {
-  it("signs out via Better Auth with the request headers", async () => {
+  beforeEach(() => {
+    cookieJar.clear();
+  });
+
+  it("signs out via Better Auth and clears the auth cookies", async () => {
     signOutMock.mockResolvedValue({ success: true });
+    cookieJar.set("better-auth.session_token", "tok");
+    cookieJar.set("better-auth.session_data", "data");
+    cookieJar.set("sb-localhost-auth-token", "legacy");
+    cookieJar.set("theme", "dark");
 
     const result = await serverLogout();
 
@@ -170,17 +191,24 @@ describe("serverLogout", () => {
       headers: expect.any(Headers),
     });
     expect(result).toEqual({ success: true });
+    // All auth cookies (Better Auth + leftover Supabase) are expired;
+    // unrelated cookies survive.
+    expect(cookieJar.has("better-auth.session_token")).toBe(false);
+    expect(cookieJar.has("better-auth.session_data")).toBe(false);
+    expect(cookieJar.has("sb-localhost-auth-token")).toBe(false);
+    expect(cookieJar.has("theme")).toBe(true);
   });
 
-  it("reports failure when sign-out throws", async () => {
+  it("still clears the cookies and reports success when sign-out throws", async () => {
+    // A failed server-side revocation must not leave a half-dead session
+    // whose surviving cookie bounces the user back into the app.
     signOutMock.mockRejectedValue(new Error("session revocation failed"));
+    cookieJar.set("better-auth.session_token", "tok");
 
     const result = await serverLogout();
 
-    expect(result).toEqual({
-      success: false,
-      error: "session revocation failed",
-    });
+    expect(result).toEqual({ success: true });
+    expect(cookieJar.has("better-auth.session_token")).toBe(false);
   });
 });
 

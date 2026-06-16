@@ -21,6 +21,8 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import type { User } from "../../types";
+import { validateSession as validateSessionHelper } from "../helpers";
 import { useAuthStore } from "../useAuthStore";
 
 function makeRouter() {
@@ -116,5 +118,63 @@ describe("useAuthStore.setCurrentRequestContext", () => {
     expect(after.routerRef).toBe(next.router ?? baseRouter);
     expect(after.apiRef).toBe(next.api ?? baseApi);
     expect(after.currentPath).toBe(next.path ?? basePath);
+  });
+});
+
+describe("useAuthStore.validateSession", () => {
+  afterEach(() => {
+    useAuthStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      isUserLoading: false,
+      isValidating: false,
+      lastValidation: 0,
+    });
+    vi.clearAllMocks();
+  });
+
+  it("clears the user and redirects when the server says the session is invalid", async () => {
+    const router = makeRouter();
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Fbuild",
+      shouldUpdateUser: false,
+    });
+    useAuthStore.setState({
+      user: { id: "user-1" } as User,
+      hasLoadedUser: true,
+    });
+
+    const stillValid = await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(false);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Fbuild");
+  });
+
+  it("keeps the user and does not redirect when the session is valid", async () => {
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      user,
+      isValid: true,
+      shouldUpdateUser: false,
+    });
+    useAuthStore.setState({ user, hasLoadedUser: true });
+
+    const stillValid = await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(true);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

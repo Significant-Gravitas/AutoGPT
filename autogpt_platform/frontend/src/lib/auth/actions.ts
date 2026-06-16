@@ -1,7 +1,7 @@
 "use server";
 import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { auth } from "./auth";
 import { getRedirectPath } from "./helpers";
 import { getServerSession } from "./server/getServerSession";
@@ -109,11 +109,14 @@ export async function serverLogout(_options: ServerLogoutOptions = {}) {
         await auth.api.signOut({ headers: await headers() });
       } catch (error) {
         console.error("Logout error:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
       }
+
+      // Always expire the auth cookies, even when signOut() fails (revoked or
+      // already-rotated session token, auth API hiccup). If they survive, the
+      // middleware still sees a session and bounces the user from /login
+      // straight back into the app with a half-dead session: the paywall
+      // re-mounts while every API call fails with a 401.
+      await clearAuthCookies();
 
       // No `revalidatePath`: `/` is a client-only spinner that redirects to
       // `/copilot`, so there is no RSC payload to invalidate. The cross-tab
@@ -122,6 +125,23 @@ export async function serverLogout(_options: ServerLogoutOptions = {}) {
       return { success: true };
     },
   );
+}
+
+// Better Auth stores the session in `better-auth.session_token` /
+// `better-auth.session_data` cookies (prefixed `__Secure-` over HTTPS).
+// Also sweep any leftover `sb-`-prefixed Supabase cookies so a user mid-
+// migration is fully signed out.
+async function clearAuthCookies() {
+  const cookieStore = await cookies();
+  for (const cookie of cookieStore.getAll()) {
+    if (
+      cookie.name.startsWith("better-auth.") ||
+      cookie.name.startsWith("__Secure-better-auth.") ||
+      cookie.name.startsWith("sb-")
+    ) {
+      cookieStore.delete(cookie.name);
+    }
+  }
 }
 
 export async function refreshSession() {

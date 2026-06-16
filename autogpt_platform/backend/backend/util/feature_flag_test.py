@@ -1,4 +1,5 @@
 import datetime
+import logging
 import uuid
 
 import pytest
@@ -220,3 +221,86 @@ class TestUserContext:
         ctx = await _fetch_user_context_data(str(uuid.uuid4()))
 
         assert ctx.get("role") == "authenticated"
+
+
+class TestUserContextCacheDegradation:
+    """A failed user lookup must not poison the 24h context cache.
+
+    If the degraded anonymous (email-less) context were cached, one
+    database blip would make this process evaluate email/role-targeted
+    flags differently from its peers for a full day, silently.
+    """
+
+    @staticmethod
+    def _stub_failing_lookup(mocker):
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.authuser.find_unique = mocker.AsyncMock(
+            side_effect=ConnectionError("database unreachable")
+        )
+        return mock_prisma
+
+    @pytest.mark.asyncio
+    async def test_degraded_anonymous_context_is_not_cached(self, mocker):
+        mock_prisma = self._stub_failing_lookup(mocker)
+        user_id = str(uuid.uuid4())
+
+        first = await _fetch_user_context_data(user_id)
+        second = await _fetch_user_context_data(user_id)
+
+        assert first.anonymous is True
+        assert second.anonymous is True
+        assert mock_prisma.authuser.find_unique.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_successful_context_is_cached_across_calls(self, mocker):
+        mock_prisma = TestUserContext._stub_auth_user(mocker, created_at=None)
+        user_id = str(uuid.uuid4())
+
+        first = await _fetch_user_context_data(user_id)
+        second = await _fetch_user_context_data(user_id)
+
+        assert first.get("email") == "x@y.com"
+        assert second.get("email") == "x@y.com"
+        assert mock_prisma.authuser.find_unique.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_context_lookup_recovers_after_transient_failure(self, mocker):
+        user = mocker.MagicMock(role="authenticated", email="x@y.com", createdAt=None)
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.authuser.find_unique = mocker.AsyncMock(
+            side_effect=[ConnectionError("database blip"), user]
+        )
+        user_id = str(uuid.uuid4())
+
+        degraded = await _fetch_user_context_data(user_id)
+        recovered = await _fetch_user_context_data(user_id)
+
+        assert degraded.anonymous is True
+        assert degraded.get("email") is None
+        assert recovered.anonymous is False
+        assert recovered.get("email") == "x@y.com"
+
+    @pytest.mark.asyncio
+    async def test_degraded_lookup_logs_degradation_warning(self, mocker, caplog):
+        self._stub_failing_lookup(mocker)
+        user_id = str(uuid.uuid4())
+
+        with caplog.at_level(logging.WARNING, logger="backend.util.feature_flag"):
+            await _fetch_user_context_data(user_id)
+
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno >= logging.WARNING
+        ]
+        assert any(user_id in message and "degraded" in message for message in warnings)
+
+    @pytest.mark.asyncio
+    async def test_non_uuid_key_skips_user_lookup(self, mocker):
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.authuser.find_unique = mocker.AsyncMock()
+
+        ctx = await _fetch_user_context_data("system")
+
+        assert ctx.anonymous is True
+        mock_prisma.authuser.find_unique.assert_not_called()
