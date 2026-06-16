@@ -767,15 +767,23 @@ class GraphModel(Graph, GraphMeta):
             input_links[link.sink_id].append(link)
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
+        # Collect all invalid block IDs for a comprehensive error message
+        invalid_blocks: list[str] = []
         for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
-                # For invalid blocks, we still raise immediately as this is a structural issue
-                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
+                invalid_blocks.append(f"{node.block_id} (node #{node.id})")
+            elif block.disabled:
+                invalid_blocks.append(f"{node.block_id} (disabled, node #{node.id})")
 
-            if block.disabled:
-                raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in graphs"
-                )
+        if invalid_blocks:
+            raise ValueError(
+                f"Invalid block IDs found: {invalid_blocks}. "
+                "These blocks may have been renamed or removed. "
+                "Try re-exporting the agent from the current platform version."
+            )
+
+        for node in graph.nodes:
+            block = nodes_block[node.id]
 
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
@@ -1021,20 +1029,15 @@ class GraphModel(Graph, GraphMeta):
                     )
 
                 sanitized_name = sanitize_pin_name(name)
-                vals = node.input_default
                 if i == 0:
-                    fields = (
-                        block.output_schema.get_fields()
-                        if block.block_type not in [BlockType.AGENT]
-                        else vals.get("output_schema", {}).get("properties", {}).keys()
-                    )
+                    fields = block.output_schema.get_fields()
                 else:
-                    fields = (
-                        block.input_schema.get_fields()
-                        if block.block_type not in [BlockType.AGENT]
-                        else vals.get("input_schema", {}).get("properties", {}).keys()
-                    )
-                if sanitized_name not in fields and not is_tool_pin(name):
+                    fields = block.input_schema.get_fields()
+
+                # If the schema has no fields (dynamic sub-graph schemas),
+                # fall back to a permissive mode that allows any connection.
+                allow_any_field = not fields and block.block_type == BlockType.AGENT
+                if not allow_any_field and sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 

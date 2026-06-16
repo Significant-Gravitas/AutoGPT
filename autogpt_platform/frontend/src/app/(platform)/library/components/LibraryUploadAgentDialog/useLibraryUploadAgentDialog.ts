@@ -2,7 +2,7 @@ import { usePostV1CreateNewGraph } from "@/app/api/__generated__/endpoints/graph
 import { Graph } from "@/app/api/__generated__/models/graph";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { sanitizeImportedGraph } from "@/lib/autogpt-server-api";
+import { sanitizeImportedGraph, validateGraphStructure } from "@/lib/autogpt-server-api";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -30,10 +30,17 @@ export function useLibraryUploadAgentDialog(options?: {
           const qID = "flowID";
           window.location.href = `/build?${qID}=${(data as GraphModel).id}`;
         },
-        onError: () => {
+        onError: (error: Error) => {
+          // Try to extract backend error detail from the API response
+          const apiError = (error as any)?.response?.data?.detail
+            ?? (error as any)?.body?.detail
+            ?? error?.message;
+          const description = typeof apiError === "string"
+            ? apiError
+            : "Error Uploading agent. The server did not provide additional details.";
           toast({
-            title: "Error",
-            description: "Error Uploading agent",
+            title: "Error Uploading Agent",
+            description,
             variant: "destructive",
           });
         },
@@ -92,6 +99,21 @@ export function useLibraryUploadAgentDialog(options?: {
 
       const agent = obj as Graph;
       sanitizeImportedGraph(agent);
+
+      const validationErrors = validateGraphStructure(agent);
+      if (validationErrors.length > 0) {
+        toast({
+          title: "Invalid Agent File Structure",
+          description: validationErrors.join("\n"),
+          duration: 5000,
+          variant: "destructive",
+        });
+        form.resetField("agentFile");
+        setAgentObject(null);
+        prevAgentObjectRef.current = null;
+        return;
+      }
+
       setAgentObject(agent);
       prevAgentObjectRef.current = agent;
 
