@@ -202,6 +202,27 @@ def test_text_preview_caps_bytes(mocker):
     storage.retrieve_partial.assert_awaited_once_with("local://test.bin", 512)
 
 
+def test_markdown_preview_served_despite_non_text_mime(mocker):
+    # `.md` often stores as application/octet-stream (mimetypes can't guess it),
+    # but the extension fallback must still serve it as text.
+    _mock_lookups(
+        mocker,
+        _make_file(
+            name="README.md",
+            path="/README.md",
+            mime_type="application/octet-stream",
+        ),
+    )
+    storage = _mock_storage(mocker, b"# Title\n\nbody")
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview?bytes=4096")
+
+    assert response.status_code == 200
+    assert response.content == b"# Title\n\nbody"
+    storage.retrieve_partial.assert_awaited_once()
+
+
 def test_preview_404_when_file_missing(mocker):
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace",

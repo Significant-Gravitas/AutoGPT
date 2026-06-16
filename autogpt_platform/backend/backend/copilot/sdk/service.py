@@ -160,6 +160,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
     set_execution_context,
@@ -4486,6 +4487,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
+            # Drop orphaned tool outputs stashed by a rolled-back attempt —
+            # the name-keyed FIFO would otherwise serve them (off-by-one) to
+            # this attempt's tool calls, corrupting frontend tool payloads.
+            reset_pending_tool_outputs()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()

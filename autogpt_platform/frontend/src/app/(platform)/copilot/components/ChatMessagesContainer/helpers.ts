@@ -2,6 +2,7 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
 
 export type MessagePart = UIMessage<
@@ -23,6 +24,7 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-get_doc_page",
   "tool-run_block",
   "tool-continue_run_block",
+  "tool-connect_integration",
   "tool-run_mcp_tool",
   "tool-run_agent",
   "tool-schedule_agent",
@@ -176,7 +178,11 @@ export function splitReasoningAndResponse(parts: MessagePart[]): {
   const pinnedParts: MessagePart[] = [];
 
   for (const part of rawReasoning) {
-    if (isInteractiveToolPart(part)) {
+    // Corrupted card-capable parts are pinned too: their output failed to
+    // parse, so isInteractiveToolPart can't recognize them, but hiding them
+    // in the steps modal would silently swallow a lost sign-in/setup card.
+    // Pinning lets the tool renderer surface a visible error instead.
+    if (isInteractiveToolPart(part) || isCorruptedCardToolPart(part)) {
       pinnedParts.push(part);
     } else {
       // Reasoning / thinking parts stay inside the outer "Show steps" modal

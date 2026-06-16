@@ -211,6 +211,22 @@ describe("buildRenderSegments", () => {
     expect(segments[0].kind).toBe("part");
   });
 
+  it("never collapses connect_integration into a tool group", () => {
+    // The sign-in card must stay individually rendered — folding it into a
+    // collapsed group hides the card behind a "N tool calls" summary.
+    const parts = [
+      toolPart("generic_a", "output-available"),
+      toolPart("connect_integration", "output-available", {
+        type: "setup_requirements",
+        message: "Connect GitHub",
+      }),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(3);
+    expect(segments.every((s) => s.kind === "part")).toBe(true);
+  });
+
   it("preserves baseIndex offset in part segments", () => {
     const parts = [textPart("Hello")];
     const segments = buildRenderSegments(parts, 5);
@@ -539,6 +555,43 @@ describe("splitReasoningAndResponse", () => {
     expect(result.reasoning).toEqual([parts[0]]);
     expect(result.response).toHaveLength(2);
     expect(result.response[0]).toBe(askQuestion);
+  });
+
+  it("pins corrupted card-capable tool parts instead of hiding them", () => {
+    // Truncated setup_requirements JSON: isInteractiveToolPart can't parse
+    // it, but burying the part in "Show steps" would silently swallow a
+    // lost sign-in card — it must stay visible so the renderer can show
+    // an error.
+    const corruptedRunBlock = toolPart(
+      "run_block",
+      "output-available",
+      '{"type":"setup_requirements","message":"Connect Goo',
+    );
+    const parts = [
+      corruptedRunBlock,
+      reasoningPart("Thinking about the result..."),
+      textPart("A sign-in card has appeared."),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([parts[1]]);
+    expect(result.response).toHaveLength(2);
+    expect(result.response[0]).toBe(corruptedRunBlock);
+  });
+
+  it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
+    const okRunBlock = toolPart(
+      "run_block",
+      "output-available",
+      JSON.stringify({ type: "block_output", block_id: "b1", outputs: {} }),
+    );
+    const parts = [
+      okRunBlock,
+      reasoningPart("Reviewing output..."),
+      textPart("Done"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([okRunBlock, parts[1]]);
+    expect(result.response).toHaveLength(1);
   });
 
   it("keeps non-interactive reasoning tools in reasoning", () => {

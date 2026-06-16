@@ -173,6 +173,21 @@ def reset_tool_failure_counters() -> None:
     _consecutive_tool_failures.set({})
 
 
+def reset_pending_tool_outputs() -> None:
+    """Drop stashed tool outputs left over from a previous stream attempt.
+
+    The stash is a FIFO keyed by tool *name*, not tool_call_id. A rolled-back
+    attempt that executed tools but never consumed their results leaves
+    orphaned entries, so on the retry every ``pop_pending_tool_output`` for
+    that tool name returns the stale first-attempt output — shifting all
+    subsequent pops off-by-one and attaching wrong payloads to the frontend's
+    ``StreamToolOutputAvailable`` events (e.g. a ``setup_requirements`` card
+    silently replaced by an older result). Called at the top of each retry
+    attempt, where no tool call can be in flight.
+    """
+    _pending_tool_outputs.set({})
+
+
 def pop_pending_tool_output(tool_name: str) -> str | None:
     """Pop and return the oldest stashed output for *tool_name*.
 
