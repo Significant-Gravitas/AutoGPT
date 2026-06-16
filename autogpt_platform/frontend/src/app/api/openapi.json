@@ -1220,6 +1220,667 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/memory/{user_id}/communities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Communities",
+        "operationId": "getV2ListCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/communities/rebuild": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Rebuild Communities",
+        "description": "Fire a community rebuild and return 202 + job_id immediately.\n\nFrontend polls\n``GET /api/admin/memory/{user_id}/communities/rebuild/{job_id}``\nfor progress.",
+        "operationId": "postV2RebuildCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper.",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Reserved — the fire-and-forget wrapper currently always honours the activity gate. Kept on the signature so the frontend hook doesn't need a contract change when the force flag is threaded through to the wrapper."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/communities/rebuild/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Community Rebuild Status",
+        "description": "Read the current status of a fire-and-forget community rebuild job.",
+        "operationId": "getV2GetCommunityRebuildStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityRebuildJobStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/dream": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Trigger Dream Pass",
+        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter — for the full\nnightly fan-out use ``POST /{user_id}/nightly``.",
+        "operationId": "postV2TriggerDreamPass",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/dream/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Dream Pass Status",
+        "description": "Read the current status of a fire-and-forget dream pass job.",
+        "operationId": "getV2GetDreamPassStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DreamJobStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/entities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Entities",
+        "operationId": "getV2ListEntities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntityListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/facts": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Facts",
+        "operationId": "getV2ListFacts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["active", "superseded", "contradicted", "any"],
+              "type": "string",
+              "default": "any",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FactListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/graph": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Graph",
+        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
+        "operationId": "getV2GetGraph",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "node_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Node Limit"
+            }
+          },
+          {
+            "name": "edge_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Edge Limit"
+            }
+          },
+          {
+            "name": "include_episodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Episodes"
+            }
+          },
+          {
+            "name": "include_communities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Communities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/nightly": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Trigger Nightly Batch",
+        "description": "Fire the full nightly batch fan-out and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/nightly/{job_id}``\nfor progress. Same composition as the 03:00 cron — every enabled\nbatch-family submitter runs in sequence sharing one ``nightly_id``\nfor cost-log attribution.",
+        "operationId": "postV2TriggerNightlyBatch",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JobTriggerResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/nightly/{job_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Nightly Batch Status",
+        "description": "Read the current status of a fire-and-forget nightly batch job.",
+        "operationId": "getV2GetNightlyBatchStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Job id returned by the POST",
+              "title": "Job Id"
+            },
+            "description": "Job id returned by the POST"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NightlyJobStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/overview": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Memory Overview",
+        "operationId": "getV2GetMemoryOverview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/ratification": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Trigger Ratification Pass",
+        "description": "Trigger an on-demand ratification sweep for the user (in isolation).\n\nForwards to ``Scheduler.execute_ratification_pass_now``. Runs ONLY\nthe ratification supersession sweep — does NOT run dream pass or\ncommunity rebuild. Useful for testing ratification behavior\nwithout the full nightly fan-out.",
+        "operationId": "postV2TriggerRatificationPass",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RatificationResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
@@ -1438,6 +2099,28 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Graph Exec Id"
             }
+          },
+          {
+            "name": "execution_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter on metadata.execution_path (e.g. 'anthropic_batch', 'sync_baseline', 'flex'). Lets admins narrow rows to a single dispatch mode for cost-savings audits.",
+              "title": "Execution Path"
+            },
+            "description": "Filter on metadata.execution_path (e.g. 'anthropic_batch', 'sync_baseline', 'flex'). Lets admins narrow rows to a single dispatch mode for cost-savings audits."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter on metadata.source (e.g. 'dream_pass', 'copilot'). Distinguishes background/system spend from interactive.",
+              "title": "Source"
+            },
+            "description": "Filter on metadata.source (e.g. 'dream_pass', 'copilot'). Distinguishes background/system spend from interactive."
           }
         ],
         "responses": {
@@ -1548,6 +2231,24 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Graph Exec Id"
+            }
+          },
+          {
+            "name": "execution_path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Execution Path"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Source"
             }
           }
         ],
@@ -11581,7 +12282,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Builder (root-level) and Autopilot (session-scoped) uploads.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -11634,13 +12335,13 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "enum": ["builder", "autopilot"], "type": "string" },
+                { "enum": ["uploaded", "generated"], "type": "string" },
                 { "type": "null" }
               ],
-              "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin).",
+              "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set.",
               "title": "Origin"
             },
-            "description": "Filter by upload origin. ``autopilot`` matches files stored under ``/sessions/...`` (CoPilot chat uploads); ``builder`` matches everything else. Ignored when ``session_id`` is set (session scoping already implies origin)."
+            "description": "Filter by file origin. ``uploaded`` matches files the user uploaded (``metadata.origin == 'user-upload'``, set by the upload endpoint for both Builder and CoPilot uploads); ``generated`` matches everything else (agent/block output). Ignored when ``session_id`` is set."
           }
         ],
         "responses": {
@@ -13542,6 +14243,11 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "normal" },
+          "dream_pass_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Pass Id"
           }
         },
         "type": "object",
@@ -13650,6 +14356,103 @@
         "type": "object",
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
+      },
+      "CommunityListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/CommunitySummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "CommunityListResponse"
+      },
+      "CommunityRebuildJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RebuildResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "CommunityRebuildJobStatus",
+        "description": "JobStatus envelope for ``kind=\"rebuild\"``."
+      },
+      "CommunitySummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["uuid"],
+        "title": "CommunitySummary"
       },
       "ConfirmLinkResponse": {
         "properties": {
@@ -13925,6 +14728,14 @@
           "cache_creation_tokens": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Cache Creation Tokens"
+          },
+          "execution_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Path"
+          },
+          "source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -14088,7 +14899,7 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false }
+            "default": { "dry_run": false, "kind": "normal" }
           }
         },
         "type": "object",
@@ -14422,6 +15233,22 @@
         "required": ["success"],
         "title": "DeleteLinkResponse"
       },
+      "DemotionSummary": {
+        "properties": {
+          "edge_uuid": { "type": "string", "title": "Edge Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "new_status": {
+            "type": "string",
+            "enum": ["superseded", "contradicted"],
+            "title": "New Status"
+          },
+          "applied": { "type": "boolean", "title": "Applied", "default": true }
+        },
+        "type": "object",
+        "required": ["edge_uuid", "reason", "new_status"],
+        "title": "DemotionSummary",
+        "description": "One line per demoted RELATES_TO edge."
+      },
       "DiscoverToolsRequest": {
         "properties": {
           "server_url": {
@@ -14535,6 +15362,227 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "DreamJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "DreamJobStatus",
+        "description": "JobStatus envelope for ``kind=\"dream_pass\"``."
+      },
+      "DreamOperationsSnapshot": {
+        "properties": {
+          "writes": {
+            "items": { "$ref": "#/components/schemas/WriteSummary" },
+            "type": "array",
+            "title": "Writes"
+          },
+          "proposals": {
+            "items": { "$ref": "#/components/schemas/WriteSummary" },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "demotions": {
+            "items": { "$ref": "#/components/schemas/DemotionSummary" },
+            "type": "array",
+            "title": "Demotions"
+          },
+          "entity_invalidations": {
+            "items": {
+              "$ref": "#/components/schemas/EntityInvalidationSummary"
+            },
+            "type": "array",
+            "title": "Entity Invalidations"
+          }
+        },
+        "type": "object",
+        "title": "DreamOperationsSnapshot",
+        "description": "Detailed per-operation rollup of a single dream pass.\n\nShape used by three downstream consumers:\n  1. The admin memory-visualizer UI (renders the per-edge detail).\n  2. AgentProbe eval scorers (read via ``rawExchangeKey``).\n  3. The future chat-stream ``dream.operations`` SSE event (P6 + P9\n     daydreaming, see ``dream/TODO.md``).\n\nKept additive on ``DreamPassResult`` so adding fields here doesn't\nbump the count-only top-level columns existing clients rely on."
+      },
+      "DreamPassResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "pass_id": { "type": "string", "title": "Pass Id" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "execution_path": {
+            "type": "string",
+            "enum": ["sync_baseline", "anthropic_batch", "openai_batch"],
+            "title": "Execution Path",
+            "default": "sync_baseline"
+          },
+          "consolidated_count": {
+            "type": "integer",
+            "title": "Consolidated Count",
+            "default": 0
+          },
+          "proposal_count": {
+            "type": "integer",
+            "title": "Proposal Count",
+            "default": 0
+          },
+          "demotion_count": {
+            "type": "integer",
+            "title": "Demotion Count",
+            "default": 0
+          },
+          "entity_invalidation_count": {
+            "type": "integer",
+            "title": "Entity Invalidation Count",
+            "default": 0
+          },
+          "summary_for_user": {
+            "type": "string",
+            "title": "Summary For User",
+            "default": ""
+          },
+          "dream_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Session Id"
+          },
+          "operations": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
+              { "type": "null" }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassUsage" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "pass_id"],
+        "title": "DreamPassResult",
+        "description": "Return value of ``execute_dream_pass`` and the admin API.\n\nMirrors ``RebuildResponse`` from the community-rebuild endpoint so\nthe admin frontend can render both with the same toast logic."
+      },
+      "DreamPassUsage": {
+        "properties": {
+          "phases": {
+            "items": { "$ref": "#/components/schemas/PhaseUsage" },
+            "type": "array",
+            "title": "Phases"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Total Cost Usd"
+          },
+          "discount_applied": {
+            "type": "number",
+            "title": "Discount Applied",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "DreamPassUsage",
+        "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
       "EnableShareRequest": {
         "properties": {
           "auto_share_executions": {
@@ -14546,6 +15594,47 @@
         "type": "object",
         "title": "EnableShareRequest",
         "description": "Whether to auto-link every ``run_agent`` execution in this chat.\n\nWhen true, the backend creates ``ChatLinkedShare`` rows for every\nexisting agent run AND auto-links any new runs that land while the\nshare is active.  When false, only the chat messages are shared\n(cards in the viewer render in their \"execution not shared\" state)."
+      },
+      "EntityInvalidationSummary": {
+        "properties": {
+          "entity_uuid": { "type": "string", "title": "Entity Uuid" },
+          "reason": { "type": "string", "title": "Reason" },
+          "edges_touched": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Edges Touched"
+          }
+        },
+        "type": "object",
+        "required": ["entity_uuid", "reason"],
+        "title": "EntityInvalidationSummary",
+        "description": "Per-entity invalidation rollup."
+      },
+      "EntityListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/EntitySummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "EntityListResponse"
+      },
+      "EntitySummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "name": { "type": "string", "title": "Name" },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "name"],
+        "title": "EntitySummary"
       },
       "ErrorResponse": {
         "properties": {
@@ -14932,6 +16021,57 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "FactListResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/FactSummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "items"],
+        "title": "FactListResponse"
+      },
+      "FactSummary": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          },
+          "expired_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expired At"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "source", "target"],
+        "title": "FactSummary"
+      },
       "FailedExecutionDetail": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -15158,6 +16298,34 @@
         "required": ["name", "description"],
         "title": "Graph",
         "description": "Creatable graph model used in API create/update endpoints."
+      },
+      "GraphEdge": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "label": { "type": "string", "title": "Label" },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "label", "source", "target"],
+        "title": "GraphEdge",
+        "description": "An edge in the visualizer graph payload."
       },
       "GraphExecution": {
         "properties": {
@@ -15779,6 +16947,53 @@
         "title": "GraphModelWithoutNodes",
         "description": "GraphModel variant that excludes nodes, links, and sub-graphs from serialization.\n\nUsed in contexts like the store where exposing internal graph structure\nis not desired. Inherits all computed fields from GraphModel but marks\nnodes and links as excluded from JSON output."
       },
+      "GraphNode": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "label": { "type": "string", "title": "Label" },
+          "type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Type"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "label"],
+        "title": "GraphNode",
+        "description": "A node in the visualizer graph payload.\n\n``label`` is the primary FalkorDB label (Entity / Episodic /\nCommunity); ``type`` (if present) is the more-specific custom\nentity type from ``MemoryFact``-typed extraction (Person /\nOrganization / Project / Concept / Preference / Rule). The frontend\nuses ``type`` for color-coding when present, falls back to ``label``."
+      },
+      "GraphResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "group_id": { "type": "string", "title": "Group Id" },
+          "nodes": {
+            "items": { "$ref": "#/components/schemas/GraphNode" },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": { "$ref": "#/components/schemas/GraphEdge" },
+            "type": "array",
+            "title": "Edges"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "True when the result was capped by ``node_limit`` / ``edge_limit``. Frontend should surface this so the user knows they're not seeing the full graph.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "group_id", "nodes", "edges"],
+        "title": "GraphResponse"
+      },
       "GraphSettings": {
         "properties": {
           "human_in_the_loop_safe_mode": {
@@ -16044,6 +17259,31 @@
         ],
         "title": "InvoiceListItem",
         "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
+      },
+      "JobTriggerResponse": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": ["job_id", "user_id", "kind", "state", "started_at"],
+        "title": "JobTriggerResponse",
+        "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
       "LibraryAgent": {
         "properties": {
@@ -16850,6 +18090,32 @@
         "title": "MemoryForgetConfirmResponse",
         "description": "Response after deleting specific memory edges."
       },
+      "MemoryOverview": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "group_id": { "type": "string", "title": "Group Id" },
+          "entities": { "type": "integer", "title": "Entities" },
+          "episodes": { "type": "integer", "title": "Episodes" },
+          "relates_to_edges": {
+            "type": "integer",
+            "title": "Relates To Edges"
+          },
+          "mentions_edges": { "type": "integer", "title": "Mentions Edges" },
+          "communities": { "type": "integer", "title": "Communities" }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "group_id",
+          "entities",
+          "episodes",
+          "relates_to_edges",
+          "mentions_edges",
+          "communities"
+        ],
+        "title": "MemoryOverview",
+        "description": "Counts surfaced in the visualizer's header strip."
+      },
       "MemorySearchResponse": {
         "properties": {
           "type": {
@@ -16985,6 +18251,129 @@
         "required": ["message"],
         "title": "NeedLoginResponse",
         "description": "Response when login is needed."
+      },
+      "NightlyBatchResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "nightly_id": {
+            "type": "string",
+            "title": "Nightly Id",
+            "description": "UUID correlating every per-submitter cost-log row for this pass. The dream pass and ratification supersession sweep all share this id."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "dream": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassResult" },
+              { "type": "null" }
+            ]
+          },
+          "ratification": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RatificationResult" },
+              { "type": "null" }
+            ]
+          },
+          "dream_in_flight": {
+            "type": "boolean",
+            "title": "Dream In Flight",
+            "default": false
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "nightly_id", "started_at"],
+        "title": "NightlyBatchResult",
+        "description": "Structured outcome of one nightly-batch-submit pass.\n\nSurfaced via the scheduler wrapper + admin endpoint so we can\naudit \"what fired tonight for this user\" without scraping logs."
+      },
+      "NightlyJobStatus": {
+        "properties": {
+          "job_id": { "type": "string", "title": "Job Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["nightly", "dream_pass", "rebuild"],
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "running", "submitted", "complete", "errored"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "current_phase": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Phase",
+            "description": "Free-form phase label set by the work body. Dream pass uses 'consolidate' | 'recombine' | 'sanitize' | 'apply'; nightly batch reuses those plus 'ratification'; community rebuild uses 'leiden' | 'summarize' | 'persist'."
+          },
+          "batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Batch Id"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/NightlyBatchResult" },
+              { "type": "null" }
+            ]
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_id",
+          "kind",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "NightlyJobStatus",
+        "description": "JobStatus envelope for ``kind=\"nightly\"``."
       },
       "NoResultsResponse": {
         "properties": {
@@ -17702,6 +19091,44 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PhaseUsage": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": ["consolidate", "recombine", "sanitize"],
+            "title": "Phase"
+          },
+          "model": { "type": "string", "title": "Model" },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_creation_tokens": {
+            "type": "integer",
+            "title": "Cache Creation Tokens",
+            "default": 0
+          },
+          "cost_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": ["phase", "model"],
+        "title": "PhaseUsage",
+        "description": "Per-phase token + cost telemetry."
       },
       "PickerTokenResponse": {
         "properties": {
@@ -18544,6 +19971,103 @@
         "title": "RateLimitResetResponse",
         "description": "Response from resetting the daily rate limit."
       },
+      "RatificationResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "examined_count": {
+            "type": "integer",
+            "title": "Examined Count",
+            "default": 0
+          },
+          "ratified_count": {
+            "type": "integer",
+            "title": "Ratified Count",
+            "default": 0
+          },
+          "superseded_count": {
+            "type": "integer",
+            "title": "Superseded Count",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "per_edge_errors": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Per Edge Errors"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "started_at"],
+        "title": "RatificationResult",
+        "description": "Structured outcome of a single ratification pass.\n\nSurfaced via the scheduler wrapper so admin / future metrics can\nread promotion vs. supersession counts without re-scanning Graphiti."
+      },
+      "RebuildResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "started_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Started At"
+          },
+          "communities_built": { "title": "Communities Built" },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "activity": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Activity"
+          },
+          "forced": { "type": "boolean", "title": "Forced", "default": false },
+          "execution_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Path"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "RebuildResult",
+        "description": "Typed envelope around ``rebuild_communities_for_user``'s return dict.\n\nLives here (admin routes) rather than in ``copilot/graphiti/communities.py``\nbecause the dict-returning rebuild function predates the admin-API\ntyping pass. Hoisting it to ``communities.py`` (and changing the\nfunction signature) is a follow-up cleanup."
+      },
       "RecentExecution": {
         "properties": {
           "status": { "type": "string", "title": "Status" },
@@ -19272,7 +20796,7 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false }
+            "default": { "dry_run": false, "kind": "normal" }
           }
         },
         "type": "object",
@@ -22931,6 +24455,11 @@
             "type": "object",
             "title": "Metadata"
           },
+          "origin": {
+            "type": "string",
+            "enum": ["uploaded", "generated"],
+            "title": "Origin"
+          },
           "created_at": { "type": "string", "title": "Created At" }
         },
         "type": "object",
@@ -22940,9 +24469,48 @@
           "path",
           "mime_type",
           "size_bytes",
+          "origin",
           "created_at"
         ],
         "title": "WorkspaceFileItem"
+      },
+      "WriteSummary": {
+        "properties": {
+          "edge_uuid": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Edge Uuid"
+          },
+          "content": { "type": "string", "title": "Content" },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": "real:global"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "tentative"],
+            "title": "Status",
+            "default": "active"
+          },
+          "source_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Episode Uuids"
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["content"],
+        "title": "WriteSummary",
+        "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
       },
       "backend__api__features__chat__share__ShareResponse": {
         "properties": {
