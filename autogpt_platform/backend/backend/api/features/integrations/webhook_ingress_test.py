@@ -177,8 +177,7 @@ class TestUnsignedProvidersPassThrough:
         # Use a Slant3D-shaped payload so the provider's own payload check
         # doesn't 500; the assertion is about signature, not schema.
         body = (
-            b'{"orderId":"o","status":"shipped",'
-            b'"trackingNumber":"t","carrierCode":"c"}'
+            b'{"orderId":"o","status":"shipped","trackingNumber":"t","carrierCode":"c"}'
         )
         resp = _run(webhook, "slant3d", body=body)
         assert resp.status_code != 403, resp.text
@@ -256,25 +255,55 @@ class TestAlwaysSignedProviders:
 
 
 class TestExaSignature:
-    """Exa enforces a correct `X-Exa-Signature` HMAC over the raw body using
-    `config["exa_secret"]`."""
+    """Exa enforces a correct `Exa-Signature` header of the form
+    `t=<ts>,v1=<hex>`, where the signed payload is `<ts>.<raw body>` and the
+    HMAC key is `config["exa_secret"]`.
+    See https://docs.exa.ai/websets/api/webhooks/verifying-signatures"""
 
     EXA_SECRET = "exa-signing-secret-deadbeef"
+    TS = "1234567890"
 
     def _webhook(self):
         return _make_webhook(
             ProviderName("exa"), config={"exa_secret": self.EXA_SECRET}
         )
 
-    def _hmac(self, body: bytes) -> str:
-        return hmac.new(self.EXA_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    def _header(self, body: bytes, ts: str | None = None) -> str:
+        ts = ts or self.TS
+        sig = hmac.new(
+            self.EXA_SECRET.encode(), f"{ts}.".encode() + body, hashlib.sha256
+        ).hexdigest()
+        return f"t={ts},v1={sig}"
 
     def test_missing_signature_403(self):
         resp = _run(self._webhook(), "exa")
         assert resp.status_code == 403, resp.text
 
+    def test_malformed_signature_403(self):
+        resp = _run(self._webhook(), "exa", headers={"Exa-Signature": "nope"})
+        assert resp.status_code == 403, resp.text
+
     def test_wrong_signature_403(self):
-        resp = _run(self._webhook(), "exa", headers={"X-Exa-Signature": "nope"})
+        resp = _run(
+            self._webhook(),
+            "exa",
+            headers={"Exa-Signature": f"t={self.TS},v1=deadbeef"},
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_signature_over_body_only_rejected(self):
+        """A signature computed over the raw body WITHOUT the `<ts>.` prefix
+        (the previous broken implementation) must NOT verify."""
+        body = b'{"eventType":"webset.created"}'
+        body_only_sig = hmac.new(
+            self.EXA_SECRET.encode(), body, hashlib.sha256
+        ).hexdigest()
+        resp = _run(
+            self._webhook(),
+            "exa",
+            body=body,
+            headers={"Exa-Signature": f"t={self.TS},v1={body_only_sig}"},
+        )
         assert resp.status_code == 403, resp.text
 
     def test_correct_signature_accepted(self):
@@ -283,7 +312,7 @@ class TestExaSignature:
             self._webhook(),
             "exa",
             body=body,
-            headers={"X-Exa-Signature": self._hmac(body)},
+            headers={"Exa-Signature": self._header(body)},
         )
         assert resp.status_code != 403, resp.text
 
@@ -292,7 +321,7 @@ class TestExaSignature:
         (e.g. legacy DB row), we must fail-closed rather than silently
         accept."""
         wh = _make_webhook(ProviderName("exa"), config={})
-        resp = _run(wh, "exa", headers={"X-Exa-Signature": "anything"})
+        resp = _run(wh, "exa", headers={"Exa-Signature": f"t={self.TS},v1=anything"})
         assert resp.status_code == 403, resp.text
 
 

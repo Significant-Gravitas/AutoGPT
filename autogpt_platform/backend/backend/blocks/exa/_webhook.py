@@ -55,7 +55,11 @@ class ExaWebhookManager(BaseWebhooksManager):
     @classmethod
     async def verify_signature(cls, webhook: Webhook, request: Request) -> None:
         # Exa signs deliveries with the secret it returns at registration time,
-        # stored in `config["exa_secret"]` (not `webhook.secret`).
+        # stored in `config["exa_secret"]` (not `webhook.secret`). The
+        # `Exa-Signature` header carries a timestamp and one or more signatures:
+        # `t=<unix_ts>,v1=<hex>[,v1=<hex>...]`. The signed payload is
+        # `<timestamp>.<raw body>`, HMAC-SHA256 keyed with the secret.
+        # See https://docs.exa.ai/websets/api/webhooks/verifying-signatures
         signing_secret = webhook.config.get("exa_secret")
         if not signing_secret:
             raise HTTPException(
@@ -63,18 +67,33 @@ class ExaWebhookManager(BaseWebhooksManager):
                 detail="Webhook is missing Exa signing secret; re-register the webhook",
             )
 
-        signature = request.headers.get("X-Exa-Signature")
-        if not signature:
+        signature_header = request.headers.get("Exa-Signature")
+        if not signature_header:
+            raise HTTPException(status_code=403, detail="Missing Exa-Signature header")
+
+        timestamp: str | None = None
+        provided_signatures: list[str] = []
+        for part in signature_header.split(","):
+            key, _, value = part.strip().partition("=")
+            if key == "t":
+                timestamp = value
+            elif key == "v1":
+                provided_signatures.append(value)
+
+        if not timestamp or not provided_signatures:
             raise HTTPException(
-                status_code=403, detail="Missing X-Exa-Signature header"
+                status_code=403, detail="Malformed Exa-Signature header"
             )
 
         body = await request.body()
+        signed_payload = f"{timestamp}.".encode() + body
         expected_signature = hmac.new(
-            signing_secret.encode(), body, hashlib.sha256
+            signing_secret.encode(), signed_payload, hashlib.sha256
         ).hexdigest()
 
-        if not hmac.compare_digest(signature, expected_signature):
+        if not any(
+            hmac.compare_digest(expected_signature, sig) for sig in provided_signatures
+        ):
             raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
     @classmethod
