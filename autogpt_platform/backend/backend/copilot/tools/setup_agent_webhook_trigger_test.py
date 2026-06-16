@@ -100,7 +100,7 @@ def _make_preset(*, provider: str, url: str):
     return preset
 
 
-def _patches(graph, *, matched=None, missing=None, available=None, preset=None):
+def _patches(graph, *, matched=None, available=None, preset=None):
     """Patch graph resolution + credential matching + DB calls for the tool."""
     mock_graph_db = MagicMock()
     mock_graph_db.get_graph = AsyncMock(return_value=graph)
@@ -114,7 +114,7 @@ def _patches(graph, *, matched=None, missing=None, available=None, preset=None):
         ),
         patch(
             f"{_PATH}.match_user_credentials_to_graph",
-            new=AsyncMock(return_value=(matched or {}, missing or [])),
+            new=AsyncMock(return_value=(matched or {}, [])),
         ),
         patch(
             f"{_PATH}.get_user_credentials",
@@ -183,8 +183,9 @@ async def test_manual_webhook_missing_body_cred_returns_card(tool, session):
             )
         },
     )
-    # No match -> the body cred is missing.
-    ctxs, setup_mock = _patches(graph, matched={}, missing=["e2b_credentials"])
+    # No match + the body cred is in the graph's regular_credentials_inputs,
+    # so it surfaces as missing.
+    ctxs, setup_mock = _patches(graph, matched={})
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
         result = await tool._execute(
             user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
@@ -424,3 +425,16 @@ async def test_library_agent_not_found_returns_error(tool, session):
         )
     assert isinstance(result, ErrorResponse)
     assert result.error == "library_agent_not_found"
+
+
+def test_is_filled_treats_falsy_valid_values_as_filled():
+    """0/False are valid provided config values (filled); only None/empty
+    string/dict/list count as unset."""
+    from backend.copilot.tools.setup_agent_webhook_trigger import _is_filled
+
+    assert _is_filled(0) is True
+    assert _is_filled(False) is True
+    assert _is_filled(None) is False
+    assert _is_filled("") is False
+    assert _is_filled({}) is False
+    assert _is_filled([]) is False

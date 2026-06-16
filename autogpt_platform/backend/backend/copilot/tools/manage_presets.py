@@ -14,7 +14,11 @@ from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import (
+    InvalidInputError,
+    NotFoundError,
+    WebhookRegistrationError,
+)
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -286,7 +290,7 @@ class UpdatePresetTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        except InvalidInputError as e:
+        except (InvalidInputError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=str(e),
                 error="preset_update_failed",

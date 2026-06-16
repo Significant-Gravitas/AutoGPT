@@ -13,7 +13,11 @@ from backend.copilot.tools.manage_presets import (
     UpdatePresetTool,
 )
 from backend.copilot.tools.models import ErrorResponse
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import (
+    InvalidInputError,
+    NotFoundError,
+    WebhookRegistrationError,
+)
 
 from ._test_data import make_session
 
@@ -268,3 +272,38 @@ async def test_delete_success(session):
     assert isinstance(result, PresetDeletedResponse)
     assert result.name == "ToDelete"
     tdb.delete_preset_with_webhook_cleanup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_no_auth(session):
+    result = await UpdatePresetTool()._execute(user_id=None, session=session)
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "auth_required"
+
+
+@pytest.mark.asyncio
+async def test_delete_no_auth(session):
+    result = await DeletePresetTool()._execute(user_id=None, session=session)
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "auth_required"
+
+
+@pytest.mark.asyncio
+async def test_update_webhook_registration_error(session):
+    """A provider webhook failure during reconfigure surfaces as a clean
+    preset_update_failed, not an unhandled tool error."""
+    ldb = MagicMock()
+    ldb.get_preset = AsyncMock(return_value=_preset())
+    tdb = MagicMock()
+    tdb.update_triggered_preset = AsyncMock(
+        side_effect=WebhookRegistrationError("provider refused")
+    )
+    with patch(f"{_PATH}.library_db", return_value=ldb), patch(
+        f"{_PATH}.triggers_db", return_value=tdb
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER, session=session, preset_id="preset-1", inputs={"repo": "x"}
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "preset_update_failed"
+    assert "provider refused" in result.message
