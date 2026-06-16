@@ -3,6 +3,7 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
@@ -29,6 +30,7 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isNewLayoutEnabled = useGetFlag(Flag.AUTOGPT_NEW_LAYOUT);
   const { isUserLoading, isLoggedIn } = useSupabase();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -49,10 +51,13 @@ export function CopilotPage() {
       defaultOpen={true}
       className="h-[calc(100vh-72px)] min-h-0"
     >
-      {!isMobile && <ChatSidebar />}
+      {!isMobile && !isNewLayoutEnabled && <ChatSidebar />}
       <div className="flex h-full w-full flex-row overflow-hidden">
         <FileDropZone
-          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9] px-0"
+          className={cn(
+            "relative flex min-w-0 flex-1 flex-col overflow-hidden px-0",
+            !isNewLayoutEnabled && "bg-[#f8f8f9]",
+          )}
           onFilesDropped={setDroppedFiles}
         >
           {isMobile && <MobileHeader />}

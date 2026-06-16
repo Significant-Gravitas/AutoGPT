@@ -17,6 +17,7 @@ export enum Flag {
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
   CHAT_SHARING = "chat-sharing",
+  AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   // Graphiti memory + dream-system gates. Mirror of the backend
   // ``Flag`` enum in ``backend/util/feature_flag.py``. Frontend reads
   // them when memory/dream-related UI surfaces ship (P6+ on the
@@ -46,6 +47,7 @@ const defaultFlags = {
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
   [Flag.CHAT_SHARING]: false,
+  [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
@@ -96,6 +98,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
     case Flag.CHAT_SHARING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
+    case Flag.AUTOGPT_NEW_LAYOUT:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.GRAPHITI_MEMORY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY;
     case Flag.GRAPHITI_COMMUNITIES_ENABLED:
