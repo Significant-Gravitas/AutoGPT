@@ -18,6 +18,7 @@ function withFiles(): ListFilesResponse {
         mime_type: "text/csv",
         size_bytes: 4096,
         metadata: { origin: "agent" },
+        origin: "generated",
         created_at: "2026-05-20T11:00:00Z",
       },
     ],

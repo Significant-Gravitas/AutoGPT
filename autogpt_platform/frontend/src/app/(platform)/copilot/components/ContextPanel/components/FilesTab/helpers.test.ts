@@ -15,6 +15,7 @@ const baseItem: WorkspaceFileItem = {
   mime_type: "application/pdf",
   size_bytes: 2048,
   metadata: { origin: "user-upload" },
+  origin: "uploaded",
   created_at: "2026-05-20T10:00:00Z",
 };
 
@@ -24,12 +25,9 @@ describe("FilesTab helpers", () => {
     expect(formatFileSize(2048)).toBe("2 KB");
     expect(formatFileSize(5 * 1024 * 1024)).toBe("5 MB");
   });
-  test("isUploadedFile splits by metadata.origin", () => {
+  test("isUploadedFile splits by origin", () => {
     expect(isUploadedFile(baseItem)).toBe(true);
-    expect(isUploadedFile({ ...baseItem, metadata: { origin: "agent" } })).toBe(
-      false,
-    );
-    expect(isUploadedFile({ ...baseItem, metadata: {} })).toBe(false);
+    expect(isUploadedFile({ ...baseItem, origin: "generated" })).toBe(false);
   });
   test("fileItemToArtifactRef builds a proxy download URL + origin", () => {
     const ref = fileItemToArtifactRef(baseItem);

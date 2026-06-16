@@ -26,6 +26,7 @@ function listResponse(): ListFilesResponse {
         mime_type: "image/png",
         size_bytes: 1024,
         metadata: { origin: "user-upload" },
+        origin: "uploaded",
         created_at: "2026-05-20T10:00:00Z",
       },
       {
@@ -35,6 +36,7 @@ function listResponse(): ListFilesResponse {
         mime_type: "text/csv",
         size_bytes: 4096,
         metadata: { origin: "agent" },
+        origin: "generated",
         created_at: "2026-05-20T11:00:00Z",
       },
     ],

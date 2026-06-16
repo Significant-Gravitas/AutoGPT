@@ -8,8 +8,7 @@ export function fileDownloadUrl(fileId: string): string {
 }
 
 export function isUploadedFile(item: WorkspaceFileItem): boolean {
-  const metadata = item.metadata as { origin?: string } | undefined;
-  return metadata?.origin === "user-upload";
+  return item.origin === "uploaded";
 }
 
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
