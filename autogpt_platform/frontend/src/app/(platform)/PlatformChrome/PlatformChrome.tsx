@@ -29,9 +29,7 @@ export function PlatformChrome({ children }: Props) {
 
   if (showNewLayout) {
     return (
-      <SidebarProvider
-        style={{ "--sidebar-width": "19rem" } as CSSProperties}
-      >
+      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <AppSidebar />
         <SidebarInset className="bg-[#F8F8F9]">
           <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-4">

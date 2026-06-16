@@ -284,7 +284,9 @@ export function Wallet({ compact = false }: Props) {
             />
             <div>
               {!compact && (
-                <span className="mr-1 hidden xl:inline-block">Earn credits </span>
+                <span className="mr-1 hidden xl:inline-block">
+                  Earn credits{" "}
+                </span>
               )}
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}

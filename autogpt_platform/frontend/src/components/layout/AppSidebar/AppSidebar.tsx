@@ -21,6 +21,7 @@ import {
   CaretDownIcon,
   FlowArrowIcon,
   FolderIcon,
+  type Icon,
   SparkleIcon,
   SquaresFourIcon,
   StorefrontIcon,
@@ -31,10 +32,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { ComponentProps, ReactNode } from "react";
-import {
-  getSidebarItemVariants,
-  sidebarContainerVariants,
-} from "./animations";
+import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -42,7 +40,7 @@ import { useSidebarCounts } from "./useSidebarCounts";
 type NavLink = {
   name: string;
   href: string;
-  icon: typeof HouseIcon;
+  icon: Icon;
 };
 
 const MAIN_LINKS: NavLink[] = [
@@ -94,7 +92,7 @@ function NavMenu({ links }: { links: NavLink[] }) {
             <SidebarMenuButton
               asChild
               isActive={isLinkActive(pathname, link.href)}
-              className="font-medium text-zinc-700 hover:!bg-zinc-200 data-[active=true]:!bg-zinc-200"
+              className="font-medium text-zinc-700 data-[active=true]:!bg-zinc-200 hover:!bg-zinc-200"
             >
               <Link href={link.href}>
                 <link.icon className="size-5" weight="bold" />
@@ -166,10 +164,7 @@ export function AppSidebar(props: Props) {
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
 
   return (
-    <Sidebar
-      {...props}
-      className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]"
-    >
+    <Sidebar {...props} className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]">
       <AppSidebarHeader />
 
       <SidebarContent className="gap-2 overflow-hidden">

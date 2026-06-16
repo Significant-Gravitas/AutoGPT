@@ -93,7 +93,7 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-medium hover:!bg-zinc-200 data-[active=true]:!bg-zinc-200"
+        className="font-medium data-[active=true]:!bg-zinc-200 hover:!bg-zinc-200"
       >
         <Link href={`/copilot?sessionId=${session.id}`}>
           {session.is_processing ? (

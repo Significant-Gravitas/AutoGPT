@@ -14,13 +14,15 @@ export function InsetHeaderActions() {
   const logoutInProgress = isLogoutInProgress();
   const dynamicMenuItems = getAccountMenuItems(user?.role);
 
-  const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile({
-    query: {
-      select: okData,
-      enabled: isLoggedIn && !!user && !logoutInProgress,
-      queryKey: ["/api/store/profile", user?.id],
+  const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
+    {
+      query: {
+        select: okData,
+        enabled: isLoggedIn && !!user && !logoutInProgress,
+        queryKey: ["/api/store/profile", user?.id],
+      },
     },
-  });
+  );
 
   if (!isLoggedIn) return null;
 
@@ -28,7 +30,7 @@ export function InsetHeaderActions() {
 
   return (
     <div className="flex items-center gap-4">
-      <div className="[&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_button:hover]:bg-zinc-200 [&_svg]:!size-5">
+      <div className="[&_button:hover]:bg-zinc-200 [&_button]:flex [&_button]:h-8 [&_button]:w-8 [&_button]:items-center [&_button]:justify-center [&_button]:rounded-xl [&_button]:border [&_button]:border-zinc-200 [&_button]:bg-zinc-100 [&_button]:p-0 [&_svg]:!size-5">
         <AgentActivityDropdown />
       </div>
       {profile && <Wallet key={profile.username} compact />}
