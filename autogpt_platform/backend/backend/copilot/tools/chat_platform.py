@@ -1,18 +1,20 @@
-"""Tools for the copilot to post to Discord on the user's behalf.
+"""Tools for the copilot to post to a linked chat platform on the user's behalf.
 
-``post_to_discord`` lets AutoPilot send a standalone message or open a new
-thread in a channel of a Discord server the user has linked. The headline use
-case is *scheduled* output: the user asks the bot "every Monday post an update
-in #standup", AutoPilot schedules a follow-up turn (via ``schedule_followup``)
-whose message instructs it to post, and at fire time it calls this tool.
+``post_to_chat_platform`` lets AutoPilot send a standalone message or open a new
+thread in a channel of a chat platform (Discord today; Slack/Telegram as their
+adapters land) the user has linked. The headline use case is *scheduled*
+output: "every Monday post an update in #standup" — AutoPilot schedules a
+follow-up turn (via ``schedule_followup``) whose message instructs it to post,
+and at fire time it calls this tool.
 
-Delivery and authorization live in the bot bridge (``CoPilotChatBridge``): the
-tool only forwards the request over RPC. A post is only allowed into channels
-belonging to a server the calling user has linked — enforced bridge-side, so a
-scheduled turn running in a fresh session (no Discord context) is still safe.
+A single ``platform`` enum keeps the tool surface flat as platforms are added,
+instead of one ``post_to_<platform>`` tool per platform. Delivery and
+authorization live in the bot bridge (``CoPilotChatBridge``): the tool only
+forwards over RPC, and a post is only allowed into channels of a server the
+calling user has linked — enforced bridge-side.
 
-``list_discord_channels`` backs name disambiguation and the "pick a channel"
-flow when the user refers to a channel the model can't resolve on its own.
+``list_chat_platform_channels`` backs channel-name disambiguation and the
+"pick a channel" flow.
 """
 
 import logging
@@ -25,81 +27,102 @@ from backend.util.settings import Settings
 
 from .base import BaseTool
 from .models import (
-    DiscordChannelListResponse,
-    DiscordChannelSummary,
-    DiscordPostedResponse,
+    ChatPlatformChannelListResponse,
+    ChatPlatformChannelSummary,
+    ChatPlatformPostedResponse,
     ErrorResponse,
     ToolResponseBase,
 )
 
 logger = logging.getLogger(__name__)
 
+# Chat platforms with a wired bridge adapter. Add a value here (and its bot
+# token check in ``_any_chat_platform_configured``) when a new adapter ships —
+# the tool surface stays the same.
+SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord",)
+
 # Maps the bridge's stable DeliveryResult error codes to user-facing text the
 # model can relay or act on. Anything unmapped falls back to the raw code.
 _ERROR_MESSAGES: dict[str, str] = {
     "no_linked_servers": (
-        "No Discord server is linked to this AutoGPT account yet. Link one via "
-        "the bot's /setup command before posting."
+        "No server is linked to this AutoGPT account on that platform yet. "
+        "Link one via the bot's setup command before posting."
     ),
     "channel_not_found": (
-        "No channel matching that reference was found in your linked Discord "
-        "server(s). Call list_discord_channels to see valid options."
+        "No channel matching that reference was found in your linked server(s). "
+        "Call list_chat_platform_channels to see valid options."
     ),
     "not_authorized": (
-        "That channel belongs to a Discord server that isn't linked to your "
-        "account, so the bot won't post there."
+        "That channel belongs to a server that isn't linked to your account, "
+        "so the bot won't post there."
     ),
     "ambiguous_channel": (
         "More than one channel matches that name across your linked servers. "
-        "Use the numeric channel ID, or call list_discord_channels to pick one."
+        "Use the numeric channel ID, or call list_chat_platform_channels."
     ),
     "send_failed": (
-        "Discord rejected the message — the bot likely lacks permission to post "
-        "in that channel."
+        "The platform rejected the message — the bot likely lacks permission "
+        "to post in that channel."
     ),
     "thread_failed": (
-        "Couldn't create the thread — the bot likely lacks the 'Create Public "
-        "Threads' permission in that channel."
+        "Couldn't create the thread — the bot likely lacks permission to "
+        "create public threads in that channel."
     ),
 }
 
 
-def _discord_bot_configured() -> bool:
-    """Whether a Discord bot is configured, used to gate tool availability.
+def _any_chat_platform_configured() -> bool:
+    """Whether any chat-platform bot is configured, gating tool availability.
 
     Assumes the copilot/executor process shares the bot token env with the
-    bridge pod (true for ``poetry run app`` and the standard deployment). If
-    they ever diverge, gate on bridge reachability instead — actual delivery
-    still fails safe via the RPC; this only controls whether the LLM is
-    offered the tool at all.
+    bridge pod (true for ``poetry run app`` and the standard deployment).
     """
     return bool(Settings().secrets.autopilot_bot_discord_token)
 
 
 def _error_message(code: str | None) -> str:
     if not code:
-        return "The Discord post could not be completed."
-    return _ERROR_MESSAGES.get(code, f"The Discord post failed ({code}).")
+        return "The post could not be completed."
+    return _ERROR_MESSAGES.get(code, f"The post failed ({code}).")
 
 
-class PostToDiscordTool(BaseTool):
-    """Post a message or open a thread in a linked Discord server's channel."""
+def _platform_param() -> dict[str, Any]:
+    return {
+        "type": "string",
+        "enum": list(SUPPORTED_PLATFORMS),
+        "description": (
+            "Which linked chat platform to use. Defaults to 'discord' (the only "
+            "one currently supported)."
+        ),
+    }
+
+
+def _resolve_platform(value: str | None) -> tuple[Platform | None, str]:
+    """Map a platform string to the Platform enum; default to the sole one."""
+    name = (value or SUPPORTED_PLATFORMS[0]).lower()
+    if name not in SUPPORTED_PLATFORMS:
+        return None, name
+    return Platform(name.upper()), name
+
+
+class PostToChatPlatformTool(BaseTool):
+    """Post a message or open a thread in a linked chat-platform channel."""
 
     @property
     def name(self) -> str:
-        return "post_to_discord"
+        return "post_to_chat_platform"
 
     @property
     def description(self) -> str:
         return (
-            "Post to Discord on the user's behalf, into a channel of a Discord "
-            "server they've linked. Set 'mode' to 'message' to send a standalone "
-            "message, or 'thread' to open a NEW thread (provide 'thread_name'). "
-            "'channel' accepts a channel name ('#standup' or 'standup') or a "
-            "numeric channel ID. Pair this with schedule_followup for recurring "
-            "posts (e.g. 'every Monday post the standup prompt in #standup'): "
-            "schedule a follow-up whose message tells you to call this tool. If "
-            "the channel can't be resolved, call list_discord_channels first."
+            "Post to a linked chat platform (e.g. Discord) on the user's behalf, "
+            "into a channel of a server they've linked. Set 'mode' to 'message' "
+            "for a standalone message, or 'thread' to open a NEW thread (provide "
+            "'thread_name'). 'channel' accepts a channel name ('#standup' or "
+            "'standup') or a numeric channel ID. Pair with schedule_followup for "
+            "recurring posts (e.g. 'every Monday post the standup prompt in "
+            "#standup'). If the channel can't be resolved, call "
+            "list_chat_platform_channels first."
         )
 
     @property
@@ -108,13 +131,14 @@ class PostToDiscordTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return _discord_bot_configured()
+        return _any_chat_platform_configured()
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
+                "platform": _platform_param(),
                 "channel": {
                     "type": "string",
                     "description": (
@@ -146,6 +170,13 @@ class PostToDiscordTool(BaseTool):
     @staticmethod
     def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
         """Return an ``ErrorResponse`` for the first invalid param, else None."""
+        _platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if _platform is None:
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
         channel: str | None = kwargs.get("channel")
         content: str | None = kwargs.get("content")
         mode: str = kwargs.get("mode") or "message"
@@ -194,6 +225,13 @@ class PostToDiscordTool(BaseTool):
         if invalid is not None:
             return invalid
 
+        platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if platform is None:  # already validated; narrows the type
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
         channel: str = kwargs["channel"]
         content: str = kwargs["content"]
         mode: str = kwargs.get("mode") or "message"
@@ -201,7 +239,7 @@ class PostToDiscordTool(BaseTool):
         client = get_copilot_chat_bridge_client()
         if mode == "thread":
             result = await client.create_thread_in_channel(
-                platform=Platform.DISCORD,
+                platform=platform,
                 user_id=user_id,
                 channel=channel,
                 thread_name=kwargs["thread_name"],
@@ -209,7 +247,7 @@ class PostToDiscordTool(BaseTool):
             )
         else:
             result = await client.send_message_to_channel(
-                platform=Platform.DISCORD,
+                platform=platform,
                 user_id=user_id,
                 channel=channel,
                 content=content,
@@ -218,14 +256,15 @@ class PostToDiscordTool(BaseTool):
         if not result.ok:
             return ErrorResponse(
                 message=_error_message(result.error),
-                error=result.error or "discord_post_failed",
+                error=result.error or "chat_platform_post_failed",
                 session_id=session_id,
             )
 
         where = "thread" if result.kind == "thread" else "message"
         link_note = f" ({result.url})" if result.url else ""
-        return DiscordPostedResponse(
-            message=f"Posted {where} to Discord{link_note}.",
+        return ChatPlatformPostedResponse(
+            message=f"Posted {where} to {platform_name}{link_note}.",
+            platform=platform_name,
             kind=result.kind,
             channel_id=result.channel_id or channel,
             ref_id=result.ref_id,
@@ -234,20 +273,20 @@ class PostToDiscordTool(BaseTool):
         )
 
 
-class ListDiscordChannelsTool(BaseTool):
+class ListChatPlatformChannelsTool(BaseTool):
     """List channels the bot can post to across the user's linked servers."""
 
     @property
     def name(self) -> str:
-        return "list_discord_channels"
+        return "list_chat_platform_channels"
 
     @property
     def description(self) -> str:
         return (
-            "List the Discord channels the bot can post to, across every Discord "
-            "server the user has linked. Use this to resolve a channel name to an "
-            "ID, disambiguate duplicate names, or show the user a picker before "
-            "calling post_to_discord."
+            "List the channels the bot can post to on a linked chat platform "
+            "(e.g. Discord), across every server the user has linked. Use this "
+            "to resolve a channel name to an ID, disambiguate duplicate names, "
+            "or show the user a picker before calling post_to_chat_platform."
         )
 
     @property
@@ -256,11 +295,14 @@ class ListDiscordChannelsTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return _discord_bot_configured()
+        return _any_chat_platform_configured()
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
+        return {
+            "type": "object",
+            "properties": {"platform": _platform_param()},
+        }
 
     async def _execute(
         self,
@@ -275,13 +317,20 @@ class ListDiscordChannelsTool(BaseTool):
                 error="auth_required",
                 session_id=session_id,
             )
+        platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if platform is None:
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
 
         channels = await get_copilot_chat_bridge_client().list_channels(
-            platform=Platform.DISCORD,
+            platform=platform,
             user_id=user_id,
         )
         summaries = [
-            DiscordChannelSummary(
+            ChatPlatformChannelSummary(
                 id=c.id,
                 name=c.name,
                 server_id=c.server_id,
@@ -290,14 +339,17 @@ class ListDiscordChannelsTool(BaseTool):
             for c in channels
         ]
         if summaries:
-            message = f"Found {len(summaries)} channel(s) you can post to."
+            message = (
+                f"Found {len(summaries)} channel(s) you can post to on {platform_name}."
+            )
         else:
             message = (
-                "No postable Discord channels found. Link a server via the bot's "
-                "/setup command, or check the bot's channel permissions."
+                f"No postable {platform_name} channels found. Link a server via "
+                "the bot's setup command, or check the bot's channel permissions."
             )
-        return DiscordChannelListResponse(
+        return ChatPlatformChannelListResponse(
             message=message,
+            platform=platform_name,
             channels=summaries,
             count=len(summaries),
             session_id=session_id,

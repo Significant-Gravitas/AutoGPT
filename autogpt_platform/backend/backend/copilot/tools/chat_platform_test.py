@@ -1,4 +1,4 @@
-"""Tests for PostToDiscordTool and ListDiscordChannelsTool."""
+"""Tests for PostToChatPlatformTool and ListChatPlatformChannelsTool."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,20 +6,20 @@ import pytest
 
 from backend.copilot.bot.adapters.base import ChannelInfo
 from backend.copilot.bot.outbound import DeliveryResult
-from backend.copilot.tools.discord_output import (
-    ListDiscordChannelsTool,
-    PostToDiscordTool,
+from backend.copilot.tools.chat_platform import (
+    ListChatPlatformChannelsTool,
+    PostToChatPlatformTool,
 )
 from backend.copilot.tools.models import (
-    DiscordChannelListResponse,
-    DiscordPostedResponse,
+    ChatPlatformChannelListResponse,
+    ChatPlatformPostedResponse,
     ErrorResponse,
 )
 
 from ._test_data import make_session
 
-_USER = "test-user-discord"
-_PATH = "backend.copilot.tools.discord_output"
+_USER = "test-user-chat"
+_PATH = "backend.copilot.tools.chat_platform"
 
 
 @pytest.fixture
@@ -35,12 +35,12 @@ def _bridge() -> MagicMock:
     return bridge
 
 
-# ── PostToDiscordTool ──────────────────────────────────────────────
+# ── PostToChatPlatformTool ─────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_post_requires_auth(session):
-    result = await PostToDiscordTool()._execute(
+    result = await PostToChatPlatformTool()._execute(
         user_id=None, session=session, channel="#x", content="hi"
     )
     assert isinstance(result, ErrorResponse)
@@ -49,7 +49,7 @@ async def test_post_requires_auth(session):
 
 @pytest.mark.asyncio
 async def test_post_missing_channel(session):
-    result = await PostToDiscordTool()._execute(
+    result = await PostToChatPlatformTool()._execute(
         user_id=_USER, session=session, channel="  ", content="hi"
     )
     assert isinstance(result, ErrorResponse)
@@ -58,7 +58,7 @@ async def test_post_missing_channel(session):
 
 @pytest.mark.asyncio
 async def test_post_thread_requires_thread_name(session):
-    result = await PostToDiscordTool()._execute(
+    result = await PostToChatPlatformTool()._execute(
         user_id=_USER, session=session, channel="#x", content="hi", mode="thread"
     )
     assert isinstance(result, ErrorResponse)
@@ -66,7 +66,16 @@ async def test_post_thread_requires_thread_name(session):
 
 
 @pytest.mark.asyncio
-async def test_post_message_happy_path(session):
+async def test_post_unsupported_platform(session):
+    result = await PostToChatPlatformTool()._execute(
+        user_id=_USER, session=session, platform="myspace", channel="#x", content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "unsupported_platform"
+
+
+@pytest.mark.asyncio
+async def test_post_message_happy_path_defaults_to_discord(session):
     bridge = _bridge()
     bridge.send_message_to_channel.return_value = DeliveryResult(
         ok=True,
@@ -76,14 +85,18 @@ async def test_post_message_happy_path(session):
         url="https://discord.com/x",
     )
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToDiscordTool()._execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER, session=session, channel="#standup", content="hi"
         )
-    assert isinstance(result, DiscordPostedResponse)
+    assert isinstance(result, ChatPlatformPostedResponse)
+    assert result.platform == "discord"
     assert result.kind == "message"
     assert result.channel_id == "42"
     assert result.url == "https://discord.com/x"
-    bridge.send_message_to_channel.assert_awaited_once()
+    # platform forwarded to the bridge as the enum value.
+    assert (
+        bridge.send_message_to_channel.await_args.kwargs["platform"].value == "DISCORD"
+    )
     bridge.create_thread_in_channel.assert_not_awaited()
 
 
@@ -98,15 +111,16 @@ async def test_post_thread_happy_path(session):
         url="https://discord.com/t",
     )
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToDiscordTool()._execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER,
             session=session,
+            platform="discord",
             channel="42",
             content="body",
             mode="thread",
             thread_name="Monday",
         )
-    assert isinstance(result, DiscordPostedResponse)
+    assert isinstance(result, ChatPlatformPostedResponse)
     assert result.kind == "thread"
     assert result.ref_id == "t1"
     bridge.create_thread_in_channel.assert_awaited_once()
@@ -119,7 +133,7 @@ async def test_post_maps_authz_error(session):
         ok=False, kind="message", error="not_authorized"
     )
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToDiscordTool()._execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER, session=session, channel="999", content="hi"
         )
     assert isinstance(result, ErrorResponse)
@@ -129,7 +143,7 @@ async def test_post_maps_authz_error(session):
 
 @pytest.mark.asyncio
 async def test_post_missing_content(session):
-    result = await PostToDiscordTool()._execute(
+    result = await PostToChatPlatformTool()._execute(
         user_id=_USER, session=session, channel="#x", content="   "
     )
     assert isinstance(result, ErrorResponse)
@@ -138,7 +152,7 @@ async def test_post_missing_content(session):
 
 @pytest.mark.asyncio
 async def test_post_invalid_mode(session):
-    result = await PostToDiscordTool()._execute(
+    result = await PostToChatPlatformTool()._execute(
         user_id=_USER, session=session, channel="#x", content="hi", mode="shout"
     )
     assert isinstance(result, ErrorResponse)
@@ -152,7 +166,7 @@ async def test_post_message_send_failed_maps_error(session):
         ok=False, kind="message", channel_id="42", error="send_failed"
     )
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToDiscordTool()._execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER, session=session, channel="#x", content="hi"
         )
     assert isinstance(result, ErrorResponse)
@@ -167,7 +181,7 @@ async def test_post_thread_failed_maps_error(session):
         ok=False, kind="thread", channel_id="42", error="thread_failed"
     )
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToDiscordTool()._execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER,
             session=session,
             channel="#x",
@@ -181,13 +195,13 @@ async def test_post_thread_failed_maps_error(session):
 
 @pytest.mark.asyncio
 async def test_post_unavailable_without_token():
-    with patch(f"{_PATH}._discord_bot_configured", return_value=False):
-        assert PostToDiscordTool().is_available is False
-    with patch(f"{_PATH}._discord_bot_configured", return_value=True):
-        assert PostToDiscordTool().is_available is True
+    with patch(f"{_PATH}._any_chat_platform_configured", return_value=False):
+        assert PostToChatPlatformTool().is_available is False
+    with patch(f"{_PATH}._any_chat_platform_configured", return_value=True):
+        assert PostToChatPlatformTool().is_available is True
 
 
-# ── ListDiscordChannelsTool ────────────────────────────────────────
+# ── ListChatPlatformChannelsTool ───────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -197,16 +211,19 @@ async def test_list_channels_happy_path(session):
         ChannelInfo(id="10", name="general", server_id="g1", server_name="Guild"),
     ]
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await ListDiscordChannelsTool()._execute(
+        result = await ListChatPlatformChannelsTool()._execute(
             user_id=_USER, session=session
         )
-    assert isinstance(result, DiscordChannelListResponse)
+    assert isinstance(result, ChatPlatformChannelListResponse)
+    assert result.platform == "discord"
     assert result.count == 1
     assert result.channels[0].name == "general"
 
 
 @pytest.mark.asyncio
 async def test_list_channels_requires_auth(session):
-    result = await ListDiscordChannelsTool()._execute(user_id=None, session=session)
+    result = await ListChatPlatformChannelsTool()._execute(
+        user_id=None, session=session
+    )
     assert isinstance(result, ErrorResponse)
     assert result.error == "auth_required"

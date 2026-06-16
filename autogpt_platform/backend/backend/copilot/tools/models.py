@@ -105,9 +105,9 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
-    # Discord proactive output (post message / create thread)
-    DISCORD_CHANNEL_LIST = "discord_channel_list"
-    DISCORD_POSTED = "discord_posted"
+    # Chat-platform proactive output (post message / create thread)
+    CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
+    CHAT_PLATFORM_POSTED = "chat_platform_posted"
 
     # Skills (self-distilled procedure registry)
     SKILL_STORED = "skill_stored"
@@ -963,11 +963,11 @@ class PlatformInfoResponse(ToolResponseBase):
     billing_url: str | None = "/settings/billing"
 
 
-# --- Discord proactive output ---
+# --- Chat-platform proactive output (Discord today; Slack/Telegram later) ---
 
 
-class DiscordChannelSummary(BaseModel):
-    """A Discord channel the bot can post to on the user's behalf."""
+class ChatPlatformChannelSummary(BaseModel):
+    """A channel the bot can post to on the user's behalf."""
 
     id: str
     name: str
@@ -975,18 +975,20 @@ class DiscordChannelSummary(BaseModel):
     server_name: str | None = None
 
 
-class DiscordChannelListResponse(ToolResponseBase):
-    """Response for the ``list_discord_channels`` tool."""
+class ChatPlatformChannelListResponse(ToolResponseBase):
+    """Response for the ``list_chat_platform_channels`` tool."""
 
-    type: ResponseType = ResponseType.DISCORD_CHANNEL_LIST
-    channels: list[DiscordChannelSummary] = Field(default_factory=list)
+    type: ResponseType = ResponseType.CHAT_PLATFORM_CHANNEL_LIST
+    platform: str
+    channels: list[ChatPlatformChannelSummary] = Field(default_factory=list)
     count: int = 0
 
 
-class DiscordPostedResponse(ToolResponseBase):
-    """Response after the bot posts a message or creates a thread on Discord."""
+class ChatPlatformPostedResponse(ToolResponseBase):
+    """Response after the bot posts a message or creates a thread."""
 
-    type: ResponseType = ResponseType.DISCORD_POSTED
+    type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
+    platform: str
     kind: Literal["message", "thread"]
     channel_id: str
     ref_id: str | None = None
