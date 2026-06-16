@@ -55,9 +55,16 @@ EXCLUDED_BLOCK_IDS = frozenset(
 SearchResultItem = BlockInfo | library_model.LibraryAgent | store_model.StoreAgent
 
 
+# Triggers (webhooks) are the entry point of a triggered agent, so they belong
+# with the regular input blocks in the builder block menu.
+_INPUT_BLOCK_TYPES = frozenset(
+    {BlockType.INPUT, BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL}
+)
+
+
 def _block_menu_type(block_type: BlockType) -> BlockTypeFilter:
     """Block-menu category a block belongs to; triggers count as input blocks."""
-    if block_type in (BlockType.INPUT, BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL):
+    if block_type in _INPUT_BLOCK_TYPES:
         return "input"
     if block_type == BlockType.OUTPUT:
         return "output"
