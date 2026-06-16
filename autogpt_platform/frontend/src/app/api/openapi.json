@@ -17987,10 +17987,11 @@
             "items": { "$ref": "#/components/schemas/PresetSummary" },
             "type": "array",
             "title": "Presets"
-          }
+          },
+          "total_count": { "type": "integer", "title": "Total Count" }
         },
         "type": "object",
-        "required": ["message", "presets"],
+        "required": ["message", "presets", "total_count"],
         "title": "PresetListResponse",
         "description": "Response listing the user's presets."
       },

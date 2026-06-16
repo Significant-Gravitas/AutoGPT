@@ -56,7 +56,9 @@ async def test_list_no_auth(session):
 @pytest.mark.asyncio
 async def test_list_empty(session):
     ldb = MagicMock()
-    ldb.list_presets = AsyncMock(return_value=MagicMock(presets=[]))
+    ldb.list_presets = AsyncMock(
+        return_value=MagicMock(presets=[], pagination=MagicMock(total_items=0))
+    )
     with patch(f"{_PATH}.library_db", return_value=ldb):
         result = await ListPresetsTool()._execute(user_id=_USER, session=session)
     assert isinstance(result, PresetListResponse)
@@ -66,22 +68,43 @@ async def test_list_empty(session):
 @pytest.mark.asyncio
 async def test_list_populated_with_graph_filter(session):
     ldb = MagicMock()
-    ldb.list_presets = AsyncMock(return_value=MagicMock(presets=[_preset()]))
+    ldb.list_presets = AsyncMock(
+        return_value=MagicMock(presets=[_preset()], pagination=MagicMock(total_items=1))
+    )
     with patch(f"{_PATH}.library_db", return_value=ldb):
         result = await ListPresetsTool()._execute(
             user_id=_USER, session=session, graph_id="graph-1"
         )
     assert isinstance(result, PresetListResponse)
     assert len(result.presets) == 1
+    assert result.total_count == 1
     assert result.presets[0].webhook_url == "https://x/ingress"
     assert ldb.list_presets.await_args.kwargs["graph_id"] == "graph-1"
+
+
+@pytest.mark.asyncio
+async def test_list_truncation_hint_when_more_than_one_page(session):
+    # 1 preset returned but 247 total -> message must flag truncation + total.
+    ldb = MagicMock()
+    ldb.list_presets = AsyncMock(
+        return_value=MagicMock(
+            presets=[_preset()], pagination=MagicMock(total_items=247)
+        )
+    )
+    with patch(f"{_PATH}.library_db", return_value=ldb):
+        result = await ListPresetsTool()._execute(user_id=_USER, session=session)
+    assert isinstance(result, PresetListResponse)
+    assert result.total_count == 247
+    assert "247" in result.message and "first 1" in result.message
 
 
 @pytest.mark.asyncio
 async def test_list_resolves_library_agent_id(session):
     ldb = MagicMock()
     ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-xyz"))
-    ldb.list_presets = AsyncMock(return_value=MagicMock(presets=[]))
+    ldb.list_presets = AsyncMock(
+        return_value=MagicMock(presets=[], pagination=MagicMock(total_items=0))
+    )
     with patch(f"{_PATH}.library_db", return_value=ldb):
         await ListPresetsTool()._execute(
             user_id=_USER, session=session, library_agent_id="lib-1"

@@ -21,6 +21,10 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+# Presets are returned in a single page; the response carries total_count so the
+# model can tell when the list is truncated and narrow via a filter instead.
+_LIST_PAGE_SIZE = 100
+
 
 class PresetSummary(BaseModel):
     """Summary of a single preset (saved run config / webhook trigger)."""
@@ -43,6 +47,9 @@ class PresetListResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.PRESET_LIST
     presets: list[PresetSummary]
+    # Total presets matching the filter; > len(presets) means the list is
+    # truncated to one page — narrow with graph_id/library_agent_id.
+    total_count: int
 
 
 class PresetUpdatedResponse(ToolResponseBase):
@@ -135,8 +142,9 @@ class ListPresetsTool(BaseTool):
             graph_id = lib_agent.graph_id
 
         response = await ldb.list_presets(
-            user_id=user_id, page=1, page_size=100, graph_id=graph_id
+            user_id=user_id, page=1, page_size=_LIST_PAGE_SIZE, graph_id=graph_id
         )
+        total_count = response.pagination.total_items
         presets = [
             PresetSummary(
                 id=p.id,
@@ -152,10 +160,19 @@ class ListPresetsTool(BaseTool):
             for p in response.presets
         ]
 
-        message = f"Found {len(presets)} preset(s)." if presets else "No presets found."
+        if not presets:
+            message = "No presets found."
+        elif total_count > len(presets):
+            message = (
+                f"Showing the first {len(presets)} of {total_count} presets. "
+                "Narrow the list with graph_id or library_agent_id."
+            )
+        else:
+            message = f"Found {total_count} preset(s)."
         return PresetListResponse(
             message=message,
             presets=presets,
+            total_count=total_count,
             session_id=session_id,
         )
 
