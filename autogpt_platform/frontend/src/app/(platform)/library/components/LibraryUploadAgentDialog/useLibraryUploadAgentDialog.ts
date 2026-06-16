@@ -31,14 +31,16 @@ export function useLibraryUploadAgentDialog(options?: {
           window.location.href = `/build?${qID}=${(data as GraphModel).id}`;
         },
         onError: (error: Error) => {
-          // Try to extract backend error detail from the API response
-          const axiosErr = error as unknown as {
-            response?: { data?: { detail?: string } };
-            body?: { detail?: string };
-          };
+          // Try to extract backend error detail from the API response.
+          // Use unknown + checked property access instead of an 'as any' cast.
+          const err: Record<string, unknown> = error;
           const apiError =
-            axiosErr.response?.data?.detail
-            ?? axiosErr.body?.detail
+            (
+              err.response as
+                | { data?: { detail?: string } }
+                | undefined
+            )?.data?.detail
+            ?? (err.body as { detail?: string } | undefined)?.detail
             ?? error.message;
           const description = typeof apiError === "string"
             ? apiError
