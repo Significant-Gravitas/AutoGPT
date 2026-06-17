@@ -84,6 +84,23 @@ const nextConfig = {
   // Vercel has its own deployment mechanism and doesn't need standalone mode
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
+  // Self-hosted Next.js fonts are served with `Access-Control-Allow-Origin: *`.
+  // They are only loaded by our own (same-origin) pages, so scope CORS to our
+  // own origin instead of "*" to resolve the CASA "overly permissive CORS"
+  // finding without affecting how the fonts load.
+  async headers() {
+    return [
+      {
+        source: "/_next/static/media/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://platform.agpt.co",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // Only run the Sentry webpack plugin when we can actually upload source maps
