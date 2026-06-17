@@ -74,7 +74,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
 # exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
 # reliable without a separate tool. Net smaller than a dedicated tool would add.
-_CHAR_BUDGET = 41_000
+# Bumped 41000 -> 43000 for the proactive chat-platform tools
+# (post_to_chat_platform + list_chat_platform_channels): one platform-enum pair
+# instead of per-platform tools. Descriptions are already trimmed to the minimum
+# viable copy (~1400 chars for both schemas); the base had reached ~40.5k of the
+# 41k cap, leaving no headroom, so the bump also restores margin for drift.
+_CHAR_BUDGET = 43_000
 
 
 @pytest.fixture(scope="module")

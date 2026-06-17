@@ -13,6 +13,7 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
@@ -120,6 +121,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
         ListSchedulesTool(),
         DeleteScheduleTool(),
         ScheduleFollowupTool(),
+        # Proactive chat-platform output (post message / open thread on user's behalf)
+        PostToChatPlatformTool(),
+        ListChatPlatformChannelsTool(),
         # Trigger discovery (parent agent → its triggers)
         ListAgentTriggersTool(),
         # Web fetch for safe URL retrieval

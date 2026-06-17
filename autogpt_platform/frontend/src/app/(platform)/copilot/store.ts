@@ -40,14 +40,16 @@ export interface ArtifactRef {
 
 interface ArtifactPanelState {
   isOpen: boolean;
-  isMinimized: boolean;
-  isMaximized: boolean;
-  width: number;
   activeArtifact: ArtifactRef | null;
   history: ArtifactRef[];
+  activeTab: ContextPanelTab;
 }
 
-export const DEFAULT_PANEL_WIDTH = 600;
+export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
+export const DEFAULT_ARTIFACT_PANEL_WIDTH = 640;
+export const MIN_CONTEXT_PANEL_WIDTH = 280;
+export const MAX_CONTEXT_PANEL_WIDTH = 600;
+export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 
 /** Autopilot response mode. */
 export type CopilotMode = "extended_thinking" | "fast";
@@ -55,30 +57,50 @@ export type CopilotMode = "extended_thinking" | "fast";
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
+/** Context panel tab. */
+export type ContextPanelTab = "progress" | "files";
+
 const isClient = typeof window !== "undefined";
 
-function getPersistedWidth(): number {
-  if (!isClient) return DEFAULT_PANEL_WIDTH;
-  const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-  if (saved) {
-    const parsed = parseInt(saved, 10);
-    // Match the drag-handle clamp so a stale/corrupt value can't open the
-    // panel wider than 85% of the viewport.
-    const maxWidth = window.innerWidth * 0.85;
-    if (!isNaN(parsed) && parsed >= 320) {
-      return Math.min(parsed, maxWidth);
-    }
-  }
-  return DEFAULT_PANEL_WIDTH;
+function getPersistedOpen(): boolean {
+  if (!isClient) return false;
+  return storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN) === "true";
 }
 
-let panelWidthPersistTimer: ReturnType<typeof setTimeout> | null = null;
-function schedulePanelWidthPersist(width: number) {
+function getPersistedTab(): ContextPanelTab {
+  if (!isClient) return "files";
+  const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
+  return saved === "progress" ? saved : "files";
+}
+
+function clampWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getPersistedContextWidth(): number {
+  if (!isClient) return DEFAULT_PANEL_WIDTH;
+  const raw = Number(storage.get(Key.COPILOT_CONTEXT_PANEL_WIDTH));
+  return Number.isFinite(raw) && raw > 0
+    ? clampWidth(raw, MIN_CONTEXT_PANEL_WIDTH, MAX_CONTEXT_PANEL_WIDTH)
+    : DEFAULT_PANEL_WIDTH;
+}
+
+function getPersistedArtifactWidth(): number {
+  if (!isClient) return DEFAULT_ARTIFACT_PANEL_WIDTH;
+  const raw = Number(storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH));
+  return Number.isFinite(raw) && raw >= MIN_ARTIFACT_PANEL_WIDTH
+    ? raw
+    : DEFAULT_ARTIFACT_PANEL_WIDTH;
+}
+
+const widthPersistTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+function scheduleWidthPersist(key: Key, value: number) {
   if (!isClient) return;
-  if (panelWidthPersistTimer) clearTimeout(panelWidthPersistTimer);
-  panelWidthPersistTimer = setTimeout(() => {
-    storage.set(Key.COPILOT_ARTIFACT_PANEL_WIDTH, String(width));
-    panelWidthPersistTimer = null;
+  const existing = widthPersistTimers[key];
+  if (existing) clearTimeout(existing);
+  widthPersistTimers[key] = setTimeout(() => {
+    storage.set(key, String(Math.round(value)));
+    delete widthPersistTimers[key];
   }, 200);
 }
 
@@ -99,6 +121,11 @@ interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
   initialPrompt: string | null;
   setInitialPrompt: (prompt: string | null) => void;
+
+  contextPanelWidth: number;
+  artifactPanelWidth: number;
+  setContextPanelWidth: (width: number) => void;
+  setArtifactPanelWidth: (width: number) => void;
 
   sessionToDelete: DeleteTarget | null;
   setSessionToDelete: (target: DeleteTarget | null) => void;
@@ -127,12 +154,13 @@ interface CopilotUIState {
   artifactPanel: ArtifactPanelState;
   openArtifact: (ref: ArtifactRef) => void;
   closeArtifactPanel: () => void;
+  clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
-  minimizeArtifactPanel: () => void;
-  maximizeArtifactPanel: () => void;
-  restoreArtifactPanel: () => void;
-  setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
+  setActiveTab: (tab: ContextPanelTab) => void;
+  toggleContextPanel: () => void;
+  openContextPanelForFiles: () => void;
+  openContextPanelForProgress: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
   // decides whether to auto-open. Much simpler than message-scanning.
@@ -167,6 +195,17 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  contextPanelWidth: getPersistedContextWidth(),
+  artifactPanelWidth: getPersistedArtifactWidth(),
+  setContextPanelWidth: (width) => {
+    scheduleWidthPersist(Key.COPILOT_CONTEXT_PANEL_WIDTH, width);
+    set({ contextPanelWidth: width });
+  },
+  setArtifactPanelWidth: (width) => {
+    scheduleWidthPersist(Key.COPILOT_ARTIFACT_PANEL_WIDTH, width);
+    set({ artifactPanelWidth: width });
+  },
 
   sessionToDelete: null,
   setSessionToDelete: (target) => set({ sessionToDelete: target }),
@@ -223,12 +262,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   // Artifact panel
   artifactPanel: {
-    isOpen: false,
-    isMinimized: false,
-    isMaximized: false,
-    width: getPersistedWidth(),
+    isOpen: getPersistedOpen(),
     activeArtifact: null,
     history: [],
+    activeTab: getPersistedTab(),
   },
   openArtifact: (ref) =>
     set((state) => {
@@ -236,31 +273,51 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
       const shouldPushHistory =
-        state.artifactPanel.isOpen &&
-        activeArtifact != null &&
-        activeArtifact.id !== ref.id;
+        activeArtifact != null && activeArtifact.id !== ref.id;
       const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
         : shouldPushHistory
           ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
+      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
       return {
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: true,
-          isMinimized: false,
           activeArtifact: ref,
           history,
         },
       };
     }),
   closeArtifactPanel: () =>
+    set((state) => {
+      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+      // NOTE: deliberately does NOT set _autoOpenUserClosed. Unlike
+      // toggleContextPanel (a user action), closeArtifactPanel is also the
+      // programmatic collapse path — useCollapseContextPanelOnSession calls it
+      // on every session entry, right before the auto-open hooks reopen the
+      // panel. Suppressing auto-open here would break that collapse→reopen
+      // flow. Unwanted reopen-after-user-close is already prevented per-session
+      // by the auto-open hooks' own "triggered" guards.
+      return {
+        // Clear the preview too: the drawer is gated solely on activeArtifact,
+        // so leaving it set would float a drawer with no panel behind it (and
+        // a later openArtifact would wrongly treat the closed artifact as
+        // back-stack history).
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: false,
+          activeArtifact: null,
+          history: [],
+        },
+      };
+    }),
+  clearArtifactPreview: () =>
     set((state) => ({
       artifactPanel: {
         ...state.artifactPanel,
-        isOpen: false,
-        isMinimized: false,
+        activeArtifact: null,
         history: [],
       },
     })),
@@ -268,43 +325,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set((state) => ({
       artifactPanel: {
         ...state.artifactPanel,
-        isOpen: false,
-        isMinimized: false,
-        isMaximized: false,
         activeArtifact: null,
         history: [],
       },
     })),
-  minimizeArtifactPanel: () =>
-    set((state) => ({
-      artifactPanel: { ...state.artifactPanel, isMinimized: true },
-    })),
-  maximizeArtifactPanel: () =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isMaximized: true,
-        isMinimized: false,
-      },
-    })),
-  restoreArtifactPanel: () =>
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isMaximized: false,
-        isMinimized: false,
-      },
-    })),
-  setArtifactPanelWidth: (width) => {
-    schedulePanelWidthPersist(width);
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        width,
-        isMaximized: false,
-      },
-    }));
-  },
   goBackArtifact: () =>
     set((state) => {
       const { history } = state.artifactPanel;
@@ -318,12 +342,78 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  setActiveTab: (tab) =>
+    set((state) => {
+      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
+      return {
+        // Selecting a tab returns to the tabs view (drops any open preview).
+        artifactPanel: {
+          ...state.artifactPanel,
+          activeTab: tab,
+          activeArtifact: null,
+          history: [],
+        },
+      };
+    }),
+  toggleContextPanel: () =>
+    set((state) => {
+      const nextOpen = !state.artifactPanel.isOpen;
+      if (isClient)
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, String(nextOpen));
+      // Persist the new open state. Either direction clears any open preview:
+      // opening lands on the tabs view, and closing must also drop
+      // activeArtifact so the artifact drawer (gated solely on activeArtifact)
+      // can't stay floating after its parent panel is hidden. Closing also
+      // counts as an explicit close for files auto-open.
+      if (!nextOpen) _autoOpenUserClosed = true;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: nextOpen,
+          activeArtifact: null,
+          history: [],
+        },
+      };
+    }),
+  openContextPanelForFiles: () => {
+    if (_autoOpenUserClosed) return;
+    if (isClient) {
+      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "files");
+    }
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        activeTab: "files",
+        activeArtifact: null,
+        history: [],
+      },
+    }));
+  },
+  openContextPanelForProgress: () => {
+    if (_autoOpenUserClosed) return;
+    if (isClient) {
+      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
+    }
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: true,
+        activeTab: "progress",
+        activeArtifact: null,
+        history: [],
+      },
+    }));
+  },
 
   // ── Card-based auto-open actions ─────────────────────────────────
   registerArtifactForAutoOpen: (ref) => {
+    // Auto-open is disabled — the drawer only opens on explicit click.
+    // We still track the ID so we can upgrade activeArtifact metadata when
+    // a richer ref (e.g. file-part with real MIME) arrives for the same id.
     if (_autoOpenKnownIds.has(ref.id)) {
-      // Already known — upgrade activeArtifact metadata if this ref is richer
-      // (e.g. file-part ref with real MIME replacing text-extracted null MIME).
       const active = get().artifactPanel.activeArtifact;
       if (active?.id === ref.id && !active.mimeType && ref.mimeType) {
         set((state) => ({
@@ -333,9 +423,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       return;
     }
     _autoOpenKnownIds.add(ref.id);
-    if (!_autoOpenReady || _autoOpenUserClosed || ref.origin !== "agent")
-      return;
-    get().openArtifact(ref);
   },
   setAutoOpenReady: () => {
     _autoOpenReady = true;
@@ -386,6 +473,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+    storage.clean(Key.COPILOT_CONTEXT_PANEL_OPEN);
+    storage.clean(Key.COPILOT_CONTEXT_PANEL_TAB);
+    storage.clean(Key.COPILOT_CONTEXT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
@@ -393,16 +483,16 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_MODEL);
     set({
       completedSessionIDs: new Set<string>(),
+      contextPanelWidth: DEFAULT_PANEL_WIDTH,
+      artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       artifactPanel: {
         isOpen: false,
-        isMinimized: false,
-        isMaximized: false,
-        width: DEFAULT_PANEL_WIDTH,
         activeArtifact: null,
         history: [],
+        activeTab: "files",
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",

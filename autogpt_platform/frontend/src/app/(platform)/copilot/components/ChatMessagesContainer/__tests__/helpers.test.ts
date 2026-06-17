@@ -9,10 +9,12 @@ import {
   isReasoningToolPart,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart } from "ai";
+import type { TodoItem } from "../../ContextPanel/components/ProgressTab/helpers";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -209,6 +211,22 @@ describe("buildRenderSegments", () => {
     const segments = buildRenderSegments(parts);
     expect(segments).toHaveLength(1);
     expect(segments[0].kind).toBe("part");
+  });
+
+  it("never collapses connect_integration into a tool group", () => {
+    // The sign-in card must stay individually rendered — folding it into a
+    // collapsed group hides the card behind a "N tool calls" summary.
+    const parts = [
+      toolPart("generic_a", "output-available"),
+      toolPart("connect_integration", "output-available", {
+        type: "setup_requirements",
+        message: "Connect GitHub",
+      }),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(3);
+    expect(segments.every((s) => s.kind === "part")).toBe(true);
   });
 
   it("preserves baseIndex offset in part segments", () => {
@@ -541,6 +559,43 @@ describe("splitReasoningAndResponse", () => {
     expect(result.response[0]).toBe(askQuestion);
   });
 
+  it("pins corrupted card-capable tool parts instead of hiding them", () => {
+    // Truncated setup_requirements JSON: isInteractiveToolPart can't parse
+    // it, but burying the part in "Show steps" would silently swallow a
+    // lost sign-in card — it must stay visible so the renderer can show
+    // an error.
+    const corruptedRunBlock = toolPart(
+      "run_block",
+      "output-available",
+      '{"type":"setup_requirements","message":"Connect Goo',
+    );
+    const parts = [
+      corruptedRunBlock,
+      reasoningPart("Thinking about the result..."),
+      textPart("A sign-in card has appeared."),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([parts[1]]);
+    expect(result.response).toHaveLength(2);
+    expect(result.response[0]).toBe(corruptedRunBlock);
+  });
+
+  it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
+    const okRunBlock = toolPart(
+      "run_block",
+      "output-available",
+      JSON.stringify({ type: "block_output", block_id: "b1", outputs: {} }),
+    );
+    const parts = [
+      okRunBlock,
+      reasoningPart("Reviewing output..."),
+      textPart("Done"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([okRunBlock, parts[1]]);
+    expect(result.response).toHaveLength(1);
+  });
+
   it("keeps non-interactive reasoning tools in reasoning", () => {
     const parts = [
       toolPart("find_block"),
@@ -713,5 +768,65 @@ describe("filePartToArtifactRef with custom pattern", () => {
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
     const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
+  });
+});
+
+describe("shouldShowTaskListNotice", () => {
+  const activeTodos: TodoItem[] = [
+    { content: "Step 1", status: "in_progress" },
+    { content: "Step 2", status: "pending" },
+  ] as TodoItem[];
+  const completedTodos: TodoItem[] = [
+    { content: "Step 1", status: "completed" },
+  ] as TodoItem[];
+
+  it("returns true when the flag, streaming and an in-progress task list all line up", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when the context panel is disabled", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: false,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when the chat is not streaming", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: false,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when there is no task list yet", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when every todo is already completed", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: completedTodos,
+      }),
+    ).toBe(false);
   });
 });

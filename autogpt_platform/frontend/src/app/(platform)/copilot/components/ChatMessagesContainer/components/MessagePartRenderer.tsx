@@ -236,6 +236,12 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case "tool-TodoWrite":
+      // Hidden inline — the chat shows a single persistent
+      // "Progress shown in the sidebar" pill at the bottom of the message
+      // list while any task is active. See `TaskListNotice` rendering in
+      // `ChatMessagesContainer`.
+      return null;
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool

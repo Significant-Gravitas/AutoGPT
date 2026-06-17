@@ -11,6 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
@@ -26,6 +27,7 @@ import {
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
@@ -36,7 +38,9 @@ import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { StepsCollapse } from "./components/StepsCollapse";
+import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getLatestTaskList } from "../ContextPanel/components/ProgressTab/helpers";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -310,6 +314,15 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
 }: Props) {
+  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
+  const latestTaskList = getLatestTaskList(messages);
+  const isChatStreaming = status === "streaming" || status === "submitted";
+  const hasActiveTaskList = shouldShowTaskListNotice({
+    isContextPanelEnabled,
+    isChatStreaming,
+    latestTaskList,
+  });
+
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -357,7 +370,10 @@ export function ChatMessagesContainer({
     // data-status is transient copy for the Thinking indicator; neither
     // counts as "real" content that hides the indicator.
     const parts = lastMessage.parts.filter(
-      (p) => p.type !== "data-cursor" && p.type !== "data-status",
+      (p) =>
+        p.type !== "data-cursor" &&
+        p.type !== "data-status" &&
+        p.type !== "data-dream-operations",
     );
     if (parts.length === 0) return false;
 
@@ -398,6 +414,7 @@ export function ChatMessagesContainer({
     for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
       const part = lastMessage.parts[i];
       if (part.type === "data-cursor") continue;
+      if (part.type === "data-dream-operations") continue;
       if (part.type === "data-status") {
         const data = (part as { data?: { message?: unknown } }).data;
         return typeof data?.message === "string" ? data.message : null;
@@ -462,7 +479,7 @@ export function ChatMessagesContainer({
   return (
     <Conversation
       key={sessionID ?? "new"}
-      resize={settled ? "smooth" : "instant"}
+      resize="instant"
       className={
         "min-h-0 flex-1 " +
         (hideForScroll
@@ -471,7 +488,7 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6"
+        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-4"
         style={
           bottomContentPadding
             ? { paddingBottom: bottomContentPadding + 24 }
@@ -554,7 +571,11 @@ export function ChatMessagesContainer({
             : null;
 
           return (
-            <Message from={message.role} key={message.id}>
+            <Message
+              from={message.role}
+              key={message.id}
+              data-message-id={message.id}
+            >
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +
@@ -663,6 +684,11 @@ export function ChatMessagesContainer({
             </Message>
           );
         })}
+        {!readOnly && hasActiveTaskList && (
+          <div className="px-1">
+            <TaskListNotice />
+          </div>
+        )}
         {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
