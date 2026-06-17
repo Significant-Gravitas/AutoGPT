@@ -28,7 +28,7 @@ from backend.data.includes import (
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
@@ -686,6 +686,13 @@ async def create_graph_in_library(
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
 
+    # Validate credentials (and clean stale optional ones) BEFORE
+    # persisting so a credential issue can't leave the graph and library
+    # agent half-saved. Raises GraphActivationError for the caller to map
+    # to a user-friendly response.
+    if graph_model.is_active:
+        graph_model = await before_graph_activate(graph_model, user_id=user_id)
+
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
     library_agents = await create_library_agent(
@@ -696,9 +703,6 @@ async def create_graph_in_library(
         folder_id=folder_id,
         is_hidden=is_hidden,
     )
-
-    if created_graph.is_active:
-        created_graph = await on_graph_activate(created_graph, user_id=user_id)
 
     return created_graph, library_agents[0]
 
@@ -721,6 +725,11 @@ async def update_graph_in_library(
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=False)
 
+    # Validate BEFORE persisting so a credential issue can't leave the new
+    # version half-saved. Raises GraphActivationError for the caller.
+    if graph_model.is_active:
+        graph_model = await before_graph_activate(graph_model, user_id=user_id)
+
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
     library_agent = await get_library_agent_by_graph_id(
@@ -734,7 +743,6 @@ async def update_graph_in_library(
     )
 
     if created_graph.is_active:
-        created_graph = await on_graph_activate(created_graph, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=created_graph.id,
             version=created_graph.version,
@@ -2052,11 +2060,15 @@ async def fork_library_agent(
     #         f"User {user_id} cannot access library agent graph {library_agent_id}"
     #     )
 
-    # Fork the underlying graph and nodes
+    # Fork the underlying graph and nodes. We activate after the fork rather
+    # than before because the fork performs its own DB writes that we can't
+    # easily roll back here. If activation fails the user gets a clear
+    # GraphActivationError, but the forked graph row exists; callers should
+    # surface that as a 400 to the user.
     new_graph = await graph_db.fork_graph(
         original_agent.graph_id, original_agent.graph_version, user_id
     )
-    new_graph = await on_graph_activate(new_graph, user_id=user_id)
+    new_graph = await before_graph_activate(new_graph, user_id=user_id)
 
     # Create a library agent for the new graph, preserving safe mode settings
     return (
