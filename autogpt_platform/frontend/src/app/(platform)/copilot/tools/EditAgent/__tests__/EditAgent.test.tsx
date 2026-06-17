@@ -49,7 +49,7 @@ describe("EditAgentTool", () => {
             node_count: 1,
             message: "Here is your updated agent",
             agent_json: "{}",
-            description: "",
+            description: "Now with a new step",
           },
         })}
       />,

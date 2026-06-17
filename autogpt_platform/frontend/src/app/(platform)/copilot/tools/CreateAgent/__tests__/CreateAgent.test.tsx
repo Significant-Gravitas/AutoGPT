@@ -49,7 +49,7 @@ describe("CreateAgentTool", () => {
             node_count: 3,
             message: "Here is your agent",
             agent_json: "{}",
-            description: "",
+            description: "Summarizes the news",
           },
         })}
       />,
