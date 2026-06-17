@@ -17,6 +17,7 @@ from backend.sdk import (
     Webhook,
     update_webhook,
 )
+from backend.util.request import HTTPClientError, HTTPServerError
 
 from ._api import (
     WebhookFilters,
@@ -121,13 +122,18 @@ class AirtableWebhookManager(BaseWebhooksManager):
             )
         )
 
-        # Create webhook
-        webhook_data = await create_webhook(
-            credentials=credentials,
-            base_id=base_id,
-            webhook_specification=webhook_specification,
-            notification_url=ingress_url,
-        )
+        try:
+            webhook_data = await create_webhook(
+                credentials=credentials,
+                base_id=base_id,
+                webhook_specification=webhook_specification,
+                notification_url=ingress_url,
+            )
+        except (HTTPClientError, HTTPServerError) as e:
+            raise ValueError(
+                "Airtable returned error "
+                f"for webhook registration on base '{base_id}': {e}"
+            )
 
         webhook_id = webhook_data["id"]
         mac_secret = webhook_data.get("macSecretBase64")

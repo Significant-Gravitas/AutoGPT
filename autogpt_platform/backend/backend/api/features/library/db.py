@@ -114,6 +114,7 @@ async def list_library_agents(
     folder_id: Optional[str] = None,
     include_root_only: bool = False,
     is_hidden: Optional[bool] = None,
+    include_nodes: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -129,6 +130,12 @@ async def list_library_agents(
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
             Set to True when accurate status/metrics are needed (e.g., agent generator).
+        include_nodes: Whether to load graph nodes. Defaults to False for
+            performance (the main library page fetches node-derived data
+            separately). Set to True when node-derived fields are needed in the
+            listing itself — e.g. ``has_external_trigger`` / ``trigger_setup_info``,
+            which are False/None without nodes (used by the copilot to recognise
+            webhook-trigger agents without re-reading the full graph).
 
     Returns:
         A LibraryAgentResponse containing the list of agents and pagination details.
@@ -193,7 +200,9 @@ async def list_library_agents(
     library_agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where_clause,
         include=library_agent_include(
-            user_id, include_nodes=False, include_executions=include_executions
+            user_id,
+            include_nodes=include_nodes,
+            include_executions=include_executions,
         ),
         order=order_by,
         skip=(page - 1) * page_size,

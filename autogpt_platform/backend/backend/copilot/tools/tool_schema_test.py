@@ -74,12 +74,20 @@ from backend.copilot.tools import TOOL_REGISTRY
 # a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
 # exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
 # reliable without a separate tool. Net smaller than a dedicated tool would add.
-# Bumped 41000 -> 43000 for the proactive chat-platform tools
-# (post_to_chat_platform + list_chat_platform_channels): one platform-enum pair
-# instead of per-platform tools. Descriptions are already trimmed to the minimum
-# viable copy (~1400 chars for both schemas); the base had reached ~40.5k of the
-# 41k cap, leaving no headroom, so the bump also restores margin for drift.
-_CHAR_BUDGET = 43_000
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+_CHAR_BUDGET = 47_000
 
 
 @pytest.fixture(scope="module")
