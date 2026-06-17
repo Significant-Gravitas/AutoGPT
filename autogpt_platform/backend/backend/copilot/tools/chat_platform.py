@@ -96,10 +96,7 @@ def _platform_param() -> dict[str, Any]:
     return {
         "type": "string",
         "enum": list(SUPPORTED_PLATFORMS),
-        "description": (
-            "Which linked chat platform to use. Defaults to 'discord' (the only "
-            "one currently supported)."
-        ),
+        "description": "Chat platform to post to; defaults to 'discord'.",
     }
 
 
@@ -121,14 +118,11 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (e.g. Discord) on the user's behalf, "
-            "into a channel of a server they've linked. Set 'mode' to 'message' "
-            "for a standalone message, or 'thread' to open a NEW thread (provide "
-            "'thread_name'). 'channel' accepts a channel name ('#standup' or "
-            "'standup') or a numeric channel ID. Pair with schedule_followup for "
-            "recurring posts (e.g. 'every Monday post the standup prompt in "
-            "#standup'). If the channel can't be resolved, call "
-            "list_chat_platform_channels first."
+            "Post to a linked chat platform (e.g. Discord) for the user. "
+            "mode='message' sends a message; mode='thread' opens a new thread "
+            "(needs thread_name). 'channel' is a name (#standup) or numeric ID. "
+            "Pair with schedule_followup for recurring posts. If the channel "
+            "can't be resolved, call list_chat_platform_channels first."
         )
 
     @property
@@ -147,27 +141,20 @@ class PostToChatPlatformTool(BaseTool):
                 "platform": _platform_param(),
                 "channel": {
                     "type": "string",
-                    "description": (
-                        "Target channel: a name ('#standup' or 'standup') or a "
-                        "numeric channel ID."
-                    ),
+                    "description": "Channel name (#standup) or numeric ID.",
                 },
                 "content": {
                     "type": "string",
-                    "description": "The message body to post (or the thread's first message).",
+                    "description": "Message body to post.",
                 },
                 "mode": {
                     "type": "string",
                     "enum": ["message", "thread"],
-                    "description": (
-                        "'message' posts a standalone message; 'thread' opens a "
-                        "new thread named 'thread_name' and posts 'content' in it. "
-                        "Defaults to 'message'."
-                    ),
+                    "description": "'message' or 'thread'. Defaults to 'message'.",
                 },
                 "thread_name": {
                     "type": "string",
-                    "description": "Title for the new thread. Required when mode='thread'.",
+                    "description": "Thread title; required when mode='thread'.",
                 },
             },
             "required": ["channel", "content"],
@@ -289,10 +276,9 @@ class ListChatPlatformChannelsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List the channels the bot can post to on a linked chat platform "
-            "(e.g. Discord), across every server the user has linked. Use this "
-            "to resolve a channel name to an ID, disambiguate duplicate names, "
-            "or show the user a picker before calling post_to_chat_platform."
+            "List channels the bot can post to on a linked chat platform "
+            "(e.g. Discord). Use to resolve a channel name to an ID or pick "
+            "one before post_to_chat_platform."
         )
 
     @property
