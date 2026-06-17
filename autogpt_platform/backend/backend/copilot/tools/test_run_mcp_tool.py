@@ -1187,3 +1187,17 @@ async def test_no_agptfile_ref_skips_schema_lookup():
 
     mock_client.list_tools.assert_not_called()
     assert mock_client.call_tool.call_args.args[1] == raw_args
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_lookup_tool_schema_returns_none_on_any_failure():
+    """Schema lookup degrades gracefully on any list_tools failure (not just
+    HTTP/MCP errors) so expansion proceeds schema-less instead of crashing."""
+    tool = RunMCPToolTool()
+    mock_client = AsyncMock()
+    mock_client.server_url = _SERVER_URL
+    mock_client.list_tools = AsyncMock(side_effect=TimeoutError("network timeout"))
+
+    schema = await tool._lookup_tool_schema(mock_client, "notion-update-page")
+
+    assert schema is None

@@ -437,7 +437,10 @@ class RunMCPToolTool(BaseTool):
         """
         try:
             tools = await client.list_tools()
-        except (HTTPClientError, MCPClientError) as exc:
+        except Exception as exc:
+            # Schema lookup is best-effort — any failure (HTTP 4xx/5xx,
+            # timeouts, connection errors, protocol errors) degrades to
+            # schema-less expansion rather than failing the tool call.
             logger.debug(
                 "Could not list tools on %s for schema lookup: %s",
                 server_host(client.server_url),
