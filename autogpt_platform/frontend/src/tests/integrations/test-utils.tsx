@@ -41,7 +41,7 @@ function customRender(
 // MorphingTextAnimation renders one span per character and uses a non-breaking
 // space for spaces, so normalize all whitespace before asserting on the text.
 function normalizeWhitespace(container: HTMLElement): string {
-  return (container.textContent ?? "").replace(/\s/g, " ");
+  return (container.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 export * from "@testing-library/react";
