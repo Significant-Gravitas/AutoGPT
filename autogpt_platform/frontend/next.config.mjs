@@ -103,12 +103,35 @@ const nextConfig = {
           { key: "Document-Policy", value: "js-profiling" },
         ],
       },
+      // Self-hosted Next.js fonts are served from `/_next/static/media/`.
+      // `Access-Control-Allow-Origin` only accepts a single value, so we use
+      // `has` matchers on the request `Origin` header to echo back the
+      // requesting origin when it belongs to one of our known deployments.
       {
         source: "/_next/static/media/:path*",
+        has: [
+          { type: "header", key: "Origin", value: "https://platform.agpt.co" },
+        ],
         headers: [
           {
             key: "Access-Control-Allow-Origin",
             value: "https://platform.agpt.co",
+          },
+        ],
+      },
+      {
+        source: "/_next/static/media/:path*",
+        has: [
+          {
+            type: "header",
+            key: "Origin",
+            value: "https://dev-builder.agpt.co",
+          },
+        ],
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://dev-builder.agpt.co",
           },
         ],
       },
