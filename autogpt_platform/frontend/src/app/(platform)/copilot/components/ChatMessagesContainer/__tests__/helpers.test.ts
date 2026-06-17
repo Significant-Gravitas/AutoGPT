@@ -9,10 +9,12 @@ import {
   isReasoningToolPart,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
+  shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart } from "ai";
+import type { TodoItem } from "../../ContextPanel/components/ProgressTab/helpers";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -766,5 +768,65 @@ describe("filePartToArtifactRef with custom pattern", () => {
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
     const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
+  });
+});
+
+describe("shouldShowTaskListNotice", () => {
+  const activeTodos: TodoItem[] = [
+    { content: "Step 1", status: "in_progress" },
+    { content: "Step 2", status: "pending" },
+  ] as TodoItem[];
+  const completedTodos: TodoItem[] = [
+    { content: "Step 1", status: "completed" },
+  ] as TodoItem[];
+
+  it("returns true when the flag, streaming and an in-progress task list all line up", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when the context panel is disabled", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: false,
+        isChatStreaming: true,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when the chat is not streaming", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: false,
+        latestTaskList: activeTodos,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when there is no task list yet", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when every todo is already completed", () => {
+    expect(
+      shouldShowTaskListNotice({
+        isContextPanelEnabled: true,
+        isChatStreaming: true,
+        latestTaskList: completedTodos,
+      }),
+    ).toBe(false);
   });
 });

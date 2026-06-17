@@ -28,7 +28,7 @@ export function RecordingButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-0 bg-white text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700",
+        "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
         disabled && "opacity-40",
         isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
         isTranscribing && "bg-zinc-100 text-zinc-400",
