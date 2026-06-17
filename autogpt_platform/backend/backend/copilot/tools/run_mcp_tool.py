@@ -14,6 +14,11 @@ from backend.blocks.mcp.helpers import (
     server_host,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.file_ref import (
+    FILE_REF_PREFIX,
+    FileRefExpansionError,
+    expand_file_refs_in_args,
+)
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
 from backend.util.request import HTTPClientError, validate_url_host
 
@@ -38,6 +43,21 @@ _AUTH_STATUS_CODES = {401, 403}
 def _service_name(host: str) -> str:
     """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
     return host[4:] if host.startswith("mcp.") else host
+
+
+def _args_contain_file_ref(value: Any) -> bool:
+    """True if any nested string in *value* holds an ``@@agptfile:`` token.
+
+    Cheap pre-check so we only pay the ``list_tools`` round-trip (for
+    type-aware expansion) when a reference is actually present.
+    """
+    if isinstance(value, str):
+        return FILE_REF_PREFIX in value
+    if isinstance(value, dict):
+        return any(_args_contain_file_ref(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_args_contain_file_ref(item) for item in value)
+    return False
 
 
 class RunMCPToolTool(BaseTool):
@@ -259,7 +279,13 @@ class RunMCPToolTool(BaseTool):
             else:
                 # Stage 2: Execute the selected tool
                 return await self._execute_tool(
-                    client, server_url, tool_name, resolved_tool_arguments, session_id
+                    client,
+                    server_url,
+                    tool_name,
+                    resolved_tool_arguments,
+                    session_id,
+                    user_id,
+                    session,
                 )
 
         except HTTPClientError as e:
@@ -340,8 +366,17 @@ class RunMCPToolTool(BaseTool):
         tool_name: str,
         tool_arguments: dict[str, Any],
         session_id: str,
+        user_id: str | None,
+        session: ChatSession,
     ) -> MCPToolOutputResponse | ErrorResponse:
         """Execute a specific tool on an already-initialized MCPClient.
+
+        Before dispatch, any ``@@agptfile:`` references in *tool_arguments* are
+        expanded inline so the external server receives the real file contents
+        rather than the literal token. The opaque ``tool_arguments`` object is
+        skipped by the SDK-level wrapper expansion (it has no declared
+        properties), so it must be expanded here using the tool's own schema —
+        mirroring how RunBlockTool expands block inputs.
 
         Parses the MCP content response into a plain Python value:
         - text items: parsed as JSON when possible, kept as str otherwise
@@ -350,6 +385,21 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        if _args_contain_file_ref(tool_arguments):
+            input_schema = await self._lookup_tool_schema(client, tool_name)
+            try:
+                tool_arguments = await expand_file_refs_in_args(
+                    tool_arguments, user_id, session, input_schema=input_schema
+                )
+            except FileRefExpansionError as exc:
+                return ErrorResponse(
+                    message=(
+                        f"Failed to resolve file reference: {exc}. "
+                        "Ensure the file exists before referencing it."
+                    ),
+                    session_id=session_id,
+                )
+
         result = await client.call_tool(tool_name, tool_arguments)
 
         if result.is_error:
@@ -372,6 +422,31 @@ class RunMCPToolTool(BaseTool):
             result=result_value,
             success=True,
             session_id=session_id,
+        )
+
+    async def _lookup_tool_schema(
+        self,
+        client: MCPClient,
+        tool_name: str,
+    ) -> dict[str, Any] | None:
+        """Return the named tool's input schema for type-aware ref expansion.
+
+        Returns ``None`` if the tool can't be found or listing fails —
+        expansion still proceeds, just without schema-driven type coercion
+        (e.g. keeping a string field as raw text instead of parsing JSON).
+        """
+        try:
+            tools = await client.list_tools()
+        except (HTTPClientError, MCPClientError) as exc:
+            logger.debug(
+                "Could not list tools on %s for schema lookup: %s",
+                server_host(client.server_url),
+                exc,
+            )
+            return None
+        return next(
+            (t.input_schema for t in tools if t.name == tool_name),
+            None,
         )
 
     def _build_setup_requirements(
