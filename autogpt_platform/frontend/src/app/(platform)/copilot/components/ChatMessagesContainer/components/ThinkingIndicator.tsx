@@ -97,7 +97,7 @@ export function ThinkingIndicator({
   const transitionOpacity = statusMessage ? 1 : visible ? 1 : 0;
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-neutral-500">
+    <span className="inline-flex items-center gap-1.5 text-sm text-neutral-500">
       <ScaleLoader size={16} />
       <span
         className="transition-opacity duration-300"

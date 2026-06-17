@@ -2,46 +2,53 @@
 
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_PANEL_WIDTH } from "../../../store";
 
 interface Props {
+  /** CSS selector for the panel element this handle resizes (e.g. "[data-artifact-panel]"). */
+  panelSelector: string;
   onWidthChange: (width: number) => void;
-  minWidth?: number;
-  maxWidthPercent?: number;
+  minWidth: number;
+  maxWidth?: number;
+  /** Space reserved for everything else in the flex row (chat + opposite rail). */
+  reservedWidth?: number;
 }
 
-export function ArtifactDragHandle({
+export function PanelResizeHandle({
+  panelSelector,
   onWidthChange,
-  minWidth = 320,
-  maxWidthPercent = 85,
+  minWidth,
+  maxWidth,
+  reservedWidth = 440,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
-  // Use refs for the callback + bounds so the drag listeners can read the
-  // latest values without having to detach/reattach between re-renders.
+  const containerWidthRef = useRef(0);
   const onWidthChangeRef = useRef(onWidthChange);
   const minWidthRef = useRef(minWidth);
-  const maxWidthPercentRef = useRef(maxWidthPercent);
+  const maxWidthRef = useRef(maxWidth);
+  const reservedWidthRef = useRef(reservedWidth);
   onWidthChangeRef.current = onWidthChange;
   minWidthRef.current = minWidth;
-  maxWidthPercentRef.current = maxWidthPercent;
+  maxWidthRef.current = maxWidth;
+  reservedWidthRef.current = reservedWidth;
 
-  // Track the captured pointer id so pointerup can release it even after
-  // React re-renders.
   const pointerIdRef = useRef<number | null>(null);
 
-  // Attach document listeners only while dragging, and always tear them down
-  // on unmount — otherwise closing the panel mid-drag leaves listeners bound
-  // to a handler that calls setState on the unmounted component.
+  // DOM integration: document-level pointer listeners bound only while
+  // dragging, torn down on unmount so closing the panel mid-drag is safe.
   useEffect(() => {
     if (!isDragging) return;
 
     function handlePointerMove(moveEvent: PointerEvent) {
       const delta = startXRef.current - moveEvent.clientX;
-      const maxWidth = window.innerWidth * (maxWidthPercentRef.current / 100);
+      const available = containerWidthRef.current - reservedWidthRef.current;
+      const cappedMax = maxWidthRef.current
+        ? Math.min(maxWidthRef.current, available)
+        : available;
+      const effectiveMax = Math.max(minWidthRef.current, cappedMax);
       const newWidth = Math.min(
-        maxWidth,
+        effectiveMax,
         Math.max(minWidthRef.current, startWidthRef.current + delta),
       );
       onWidthChangeRef.current(newWidth);
@@ -64,23 +71,21 @@ export function ArtifactDragHandle({
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault();
     startXRef.current = e.clientX;
-
-    // Get the panel's current width from its parent
     const panel = (e.target as HTMLElement).closest(
-      "[data-artifact-panel]",
+      panelSelector,
     ) as HTMLElement | null;
-    startWidthRef.current = panel?.offsetWidth ?? DEFAULT_PANEL_WIDTH;
-
-    // Capture the pointer so pointermove/pointerup still reach us when the
-    // cursor drifts over sandboxed artifact iframes. Without this, the iframe
-    // eats the events and the drag gets stuck (SECRT-2256).
+    startWidthRef.current = panel?.offsetWidth ?? minWidthRef.current;
+    containerWidthRef.current =
+      panel?.parentElement?.offsetWidth ??
+      (typeof window !== "undefined"
+        ? window.innerWidth
+        : startWidthRef.current);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
       pointerIdRef.current = e.pointerId;
     } catch {
       // Non-supporting environments (older test DOMs) — safe to ignore.
     }
-
     setIsDragging(true);
   }
 
@@ -97,15 +102,11 @@ export function ArtifactDragHandle({
   }
 
   return (
-    // 12px transparent hit target with the visible 1px line centered inside
-    // (WCAG-compliant, matches ~8-12px conventions of other resizable panels).
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panel"
-      className={cn(
-        "group absolute -left-1.5 top-0 z-10 flex h-full w-3 cursor-col-resize items-stretch justify-center",
-      )}
+      className="group absolute left-0 top-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-stretch justify-center"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}

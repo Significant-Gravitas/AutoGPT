@@ -33,9 +33,7 @@ function formatSize(bytes?: number): string {
 
 export function ArtifactCard({ artifact, readOnly }: Props) {
   const isActive = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeArtifact?.id === artifact.id,
+    (s) => s.artifactPanel.activeArtifact?.id === artifact.id,
   );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const registerArtifactForAutoOpen = useCopilotUIStore(
