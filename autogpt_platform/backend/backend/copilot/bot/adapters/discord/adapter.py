@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import io
 import logging
 import re
 from typing import Optional
@@ -14,18 +15,31 @@ from discord import app_commands
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.text import split_at_boundary
 
 from ..base import (
+    ChannelInfo,
     ChannelType,
+    FileAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
     PlatformAdapter,
+    PostedRef,
 )
 from . import commands, config, intro
 
 logger = logging.getLogger(__name__)
-THREAD_HISTORY_LIMIT = 20
+
+# When the bot is @-ed into an existing thread it pulls the prior messages in as
+# context. Read the whole thread (up to this hard cap, ~10 Discord API pages)
+# rather than just the last handful — skipping older messages makes the bot act
+# on a partial conversation. THREAD_HISTORY_CHAR_BUDGET then keeps the assembled
+# context within the copilot request size limit, preferring the most recent
+# messages when a thread is very long.
+THREAD_HISTORY_LIMIT = 1000
+THREAD_HISTORY_CHAR_BUDGET = 24000
+_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -58,6 +72,10 @@ class DiscordAdapter(PlatformAdapter):
     @property
     def chunk_flush_at(self) -> int:
         return config.CHUNK_FLUSH_AT
+
+    @property
+    def max_attachment_bytes(self) -> int:
+        return config.MAX_ATTACHMENT_BYTES
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
@@ -113,6 +131,20 @@ class DiscordAdapter(PlatformAdapter):
             )
         )
         await channel.send(text, view=view, tts=False)
+
+    async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return
+        # spoiler=False — AutoPilot output is untrusted but spoilering every
+        # generated file would be noisy; the workspace fetcher already
+        # validated user ownership before we got bytes.
+        attachment = discord.File(
+            io.BytesIO(file.content),
+            filename=file.filename or "file",
+            spoiler=False,
+        )
+        await channel.send(text or None, file=attachment, tts=False)
 
     async def send_reply(
         self,
@@ -171,6 +203,113 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to rename thread %s", thread_id)
             return False
 
+    # -- Proactive output --
+
+    async def list_text_channels(
+        self, server_ids: tuple[str, ...]
+    ) -> list[ChannelInfo]:
+        wanted = set(server_ids)
+        channels: list[ChannelInfo] = []
+        for guild in self._client.guilds:
+            if str(guild.id) not in wanted:
+                continue
+            me = guild.me
+            for channel in guild.text_channels:
+                # Only surface channels the bot can actually post in, so the
+                # picker upstream never offers a target that would 403 on send.
+                # If the bot member isn't cached (`me is None`) we can't check,
+                # so we surface the channel and let the eventual send fail
+                # loudly rather than hide everything.
+                if me is not None and not channel.permissions_for(me).send_messages:
+                    continue
+                channels.append(
+                    ChannelInfo(
+                        id=str(channel.id),
+                        name=channel.name,
+                        server_id=str(guild.id),
+                        server_name=guild.name,
+                    )
+                )
+        return channels
+
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+        channel = await self._resolve_channel(channel_id)
+        # Guild channels and threads carry `.guild`; DM/group channels don't,
+        # so they resolve to None (never authorized for a server post).
+        if isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
+            return str(channel.guild.id)
+        return None
+
+    async def post_channel_message(
+        self, channel_id: str, text: str
+    ) -> Optional[PostedRef]:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            logger.warning("Cannot post to non-messageable channel %s", channel_id)
+            return None
+        try:
+            first = await self._send_chunked(channel, text)
+        except discord.HTTPException:
+            logger.exception("Failed to post message to channel %s", channel_id)
+            return None
+        if first is None:
+            return None
+        return PostedRef(id=str(first.id), url=first.jump_url)
+
+    async def create_channel_thread(
+        self, channel_id: str, name: str, text: str
+    ) -> Optional[PostedRef]:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.TextChannel):
+            logger.warning("Cannot create thread in non-text channel %s", channel_id)
+            return None
+        try:
+            thread = await channel.create_thread(
+                name=name[:100],
+                type=discord.ChannelType.public_thread,
+            )
+        except discord.HTTPException:
+            logger.exception("Failed to create thread in channel %s", channel_id)
+            return None
+        # The thread now exists on Discord. Surface its ref even if posting the
+        # body fails, so the caller reports partial success and doesn't retry
+        # into a duplicate thread.
+        try:
+            await self._send_chunked(thread, text)
+        except discord.HTTPException:
+            logger.exception(
+                "Thread %s created but posting its content failed", thread.id
+            )
+        return PostedRef(id=str(thread.id), url=thread.jump_url)
+
+    async def _send_chunked(
+        self, channel: discord.abc.Messageable, text: str
+    ) -> Optional[discord.Message]:
+        """Send ``text`` to ``channel``, splitting at natural boundaries to stay
+        under Discord's per-message cap. Returns the first message sent (the one
+        callers permalink to), or ``None`` if there was nothing to send.
+
+        Raises only if the *first* chunk fails — once anything is delivered, a
+        later-chunk failure stops the send and keeps the partial result rather
+        than discarding what already posted (a retry would duplicate it).
+        """
+        remaining = text.strip()
+        first: Optional[discord.Message] = None
+        while remaining:
+            chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
+            if not chunk:
+                break
+            try:
+                msg = await channel.send(chunk, tts=False)
+            except discord.HTTPException:
+                if first is None:
+                    raise
+                logger.exception("Dropping trailing chunk after partial send")
+                break
+            if first is None:
+                first = msg
+        return first
+
     # -- Internal --
 
     def _register_events(self) -> None:
@@ -182,6 +321,13 @@ class DiscordAdapter(PlatformAdapter):
             # rows that pre-date name capture. Cheap: in-memory cache only,
             # no Discord API calls.
             await self._refresh_known_server_names()
+            # Reconcile presence analytics: record every server we're currently
+            # in and mark any we've left while disconnected. Drives the admin
+            # server-count / sharding-prediction charts.
+            self._api.sync_guilds(
+                "discord",
+                [(str(guild.id), guild.name) for guild in self._client.guilds],
+            )
             # Sync slash commands once per process — on_ready fires on every
             # gateway reconnect, but the command tree only needs uploading once.
             if self._commands_synced:
@@ -196,6 +342,7 @@ class DiscordAdapter(PlatformAdapter):
         @self._client.event
         async def on_guild_join(guild: discord.Guild) -> None:
             await self._refresh_server_name(guild)
+            self._api.track_guild_joined("discord", str(guild.id), guild.name)
             channel = intro.pick_intro_channel(guild)
             if channel is None:
                 logger.info(
@@ -215,6 +362,12 @@ class DiscordAdapter(PlatformAdapter):
         async def on_guild_update(before: discord.Guild, after: discord.Guild) -> None:
             if before.name != after.name:
                 await self._refresh_server_name(after)
+
+        @self._client.event
+        async def on_guild_remove(guild: discord.Guild) -> None:
+            # Bot was kicked or the server was deleted — mark presence as left
+            # so the live server count and sharding prediction stay accurate.
+            self._api.track_guild_left("discord", str(guild.id))
 
         @self._client.event
         async def on_thread_remove(thread: discord.Thread) -> None:
@@ -238,6 +391,13 @@ class DiscordAdapter(PlatformAdapter):
             if self._on_message_callback is None:
                 return
 
+            # A locked thread rejects bot sends — processing the message would
+            # just burn a turn and error on every reply. Skip until it's
+            # unlocked. (`locked` is set on archive-locked threads too.)
+            channel = message.channel
+            if isinstance(channel, discord.Thread) and channel.locked:
+                return
+
             channel_type = self._channel_type(message)
             bot_mentioned = self._is_mentioned(message)
 
@@ -258,7 +418,7 @@ class DiscordAdapter(PlatformAdapter):
                 message_id=str(message.id),
                 user_id=str(message.author.id),
                 username=message.author.display_name,
-                text=self._strip_mentions(message),
+                text=self._message_text(message),
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
@@ -307,6 +467,43 @@ class DiscordAdapter(PlatformAdapter):
             return "thread"
         return "channel"
 
+    def _message_text(self, message: discord.Message) -> str:
+        """The full message body the LLM should see.
+
+        A Discord *forward* carries the forwarded message in
+        ``message.message_snapshots`` — separate from ``content``, which only
+        holds the comment the user typed alongside the forward. Reading
+        ``content`` alone (as ``_strip_mentions`` does) drops the forwarded
+        message entirely, so the LLM acts on just the comment and can badly
+        misread the request. Stitch the forwarded content back in here.
+        """
+        own = self._strip_mentions(message)
+        forwarded = self._forwarded_text(message)
+        if not forwarded:
+            return own
+        if own:
+            return f"{own}\n\n[Forwarded message]\n{forwarded}"
+        return f"[Forwarded message]\n{forwarded}"
+
+    @staticmethod
+    def _forwarded_text(message: discord.Message) -> str:
+        """Flatten any forwarded message snapshots into labelled text."""
+        # ``message_snapshots`` is a real runtime attribute (in ``Message``'s
+        # slots) but isn't in discord.py 2.6's type stubs yet; read it through
+        # getattr so the type checker is happy and older builds without message
+        # forwarding degrade to "no snapshots".
+        snapshots = getattr(message, "message_snapshots", [])
+        parts: list[str] = []
+        for snapshot in snapshots:
+            content = (snapshot.content or "").strip()
+            if content:
+                parts.append(content)
+            # Surface forwarded attachments by name so the LLM knows files came
+            # with the forward, even though we can't inline their bytes here.
+            for attachment in snapshot.attachments:
+                parts.append(f"[Attached file: {attachment.filename}]")
+        return "\n\n".join(parts).strip()
+
     def _strip_mentions(self, message: discord.Message) -> str:
         """Strip the bot's own mention; replace other users' raw mention
         tokens with `@displayname` so the LLM keeps the context.
@@ -338,12 +535,16 @@ class DiscordAdapter(PlatformAdapter):
             return ()
 
         entries: list[MessageHistoryEntry] = []
+        used_chars = 0
         bot_user_id = self._client.user.id if self._client.user else None
         try:
+            # Newest-first so that when a long thread exceeds the size budget we
+            # keep the most recent (most relevant) messages instead of the
+            # oldest; we reverse back to chronological order before returning.
             async for prior in message.channel.history(
                 limit=THREAD_HISTORY_LIMIT,
                 before=message,
-                oldest_first=True,
+                oldest_first=False,
             ):
                 # Skip our own outputs — copilot has its own transcript for
                 # that side. Other bots' messages are kept as context.
@@ -352,6 +553,19 @@ class DiscordAdapter(PlatformAdapter):
                 text = self._strip_mentions(prior)
                 if not text:
                     continue
+                remaining = THREAD_HISTORY_CHAR_BUDGET - used_chars
+                if remaining <= 0:
+                    break
+                oversized = len(text) > remaining
+                if oversized and entries:
+                    # No room for another whole message — stop and keep what we
+                    # have (the more recent messages).
+                    break
+                if oversized:
+                    # Lone most-recent message is itself over budget: keep a
+                    # truncated head of it.
+                    text = _truncate_to_budget(text, remaining)
+                used_chars += len(text)
                 entries.append(
                     MessageHistoryEntry(
                         username=prior.author.display_name,
@@ -359,11 +573,30 @@ class DiscordAdapter(PlatformAdapter):
                         text=text,
                     )
                 )
+                if oversized:
+                    # We just truncated the newest message to the budget; older
+                    # messages are both less relevant and would otherwise sneak
+                    # into the whitespace `rstrip` freed up. Stop here.
+                    break
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
             return ()
 
+        entries.reverse()  # chronological order for the prompt
         return tuple(entries)
+
+
+def _truncate_to_budget(text: str, limit: int) -> str:
+    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
+
+    Used only when a single thread message is itself larger than the history
+    budget — keep a head of it (with context that it was cut) rather than emit
+    an oversized payload or drop the message entirely.
+    """
+    if len(text) <= limit:
+        return text
+    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
+    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
 
 
 def _resolve_mentions(
