@@ -1,5 +1,5 @@
 import { RJSFSchema } from "@rjsf/utils";
-import React from "react";
+import React, { useCallback, useRef } from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
@@ -32,32 +32,37 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
 
     const isAgent = uiType === BlockUIType.AGENT;
 
-    const handleChange = ({ formData }: any) => {
-      if ("credentials" in formData && !formData.credentials?.id) {
-        delete formData.credentials;
-      }
+    // Use useCallback to stabilize the handleChange function reference
+    // This prevents unnecessary re-renders of the Form component
+    const handleChange = useCallback(
+      ({ formData }: any) => {
+        if ("credentials" in formData && !formData.credentials?.id) {
+          delete formData.credentials;
+        }
 
-      let updatedValues;
-      if (isAgent) {
-        updatedValues = {
-          ...getHardCodedValues(nodeId),
-          inputs: formData,
-        };
-      } else if (isMCPWithTool) {
-        // Separate credentials from tool arguments — credentials are stored
-        // at the top level of hardcodedValues, not inside tool_arguments.
-        const { credentials, ...toolArgs } = formData;
-        updatedValues = {
-          ...getHardCodedValues(nodeId),
-          tool_arguments: toolArgs,
-          ...(credentials?.id ? { credentials } : {}),
-        };
-      } else {
-        updatedValues = formData;
-      }
+        let updatedValues;
+        if (isAgent) {
+          updatedValues = {
+            ...getHardCodedValues(nodeId),
+            inputs: formData,
+          };
+        } else if (isMCPWithTool) {
+          // Separate credentials from tool arguments — credentials are stored
+          // at the top level of hardcodedValues, not inside tool_arguments.
+          const { credentials, ...toolArgs } = formData;
+          updatedValues = {
+            ...getHardCodedValues(nodeId),
+            tool_arguments: toolArgs,
+            ...(credentials?.id ? { credentials } : {}),
+          };
+        } else {
+          updatedValues = formData;
+        }
 
-      updateNodeData(nodeId, { hardcodedValues: updatedValues });
-    };
+        updateNodeData(nodeId, { hardcodedValues: updatedValues });
+      },
+      [nodeId, isAgent, isMCPWithTool, getHardCodedValues, updateNodeData],
+    );
 
     const hardcodedValues = getHardCodedValues(nodeId);
 
@@ -76,6 +81,16 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       initialValues = hardcodedValues;
     }
 
+    // Use useRef to maintain stable initialValues reference across renders
+    // Only update when the serialized values actually change
+    const initialValuesRef = useRef<Record<string, any>>({});
+    const initialValuesStr = JSON.stringify(initialValues);
+    const currentStr = JSON.stringify(initialValuesRef.current);
+
+    if (initialValuesStr !== currentStr) {
+      initialValuesRef.current = initialValues;
+    }
+
     return (
       <div
         className={className}
@@ -85,7 +100,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
           jsonSchema={jsonSchema}
           handleChange={handleChange}
           uiSchema={uiSchema}
-          initialValues={initialValues}
+          initialValues={initialValuesRef.current}
           formContext={{
             nodeId: nodeId,
             uiType: uiType,
