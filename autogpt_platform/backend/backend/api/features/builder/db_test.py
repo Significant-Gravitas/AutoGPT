@@ -63,7 +63,7 @@ def mixed_blocks(monkeypatch):
         "standard": _block("standard", "Action", BlockType.STANDARD),
     }
     monkeypatch.setattr(db, "load_all_blocks", lambda: blocks)
-    db._get_static_counts.clear_cache()
+    db._get_static_counts.cache_clear()
     return blocks
 
 
