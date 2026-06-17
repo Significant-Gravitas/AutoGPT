@@ -29,7 +29,8 @@ export type MessagePart = UIMessage<
 
 export type RenderSegment =
   | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] };
+  | { kind: "collapsed-group"; parts: ToolUIPart[] }
+  | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
 
 const CUSTOM_TOOL_TYPES = new Set([
   "tool-ask_question",
@@ -130,21 +131,42 @@ export function buildRenderSegments(
   baseIndex = 0,
 ): RenderSegment[] {
   const segments: RenderSegment[] = [];
-  let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingTools: Array<{ part: ToolUIPart; index: number }> | null = null;
+  let pendingReasoning: Array<{ part: MessagePart; index: number }> | null =
+    null;
 
-  function flushGroup() {
-    if (!pendingGroup) return;
-    if (pendingGroup.length >= 2) {
+  function flushTools() {
+    if (!pendingTools) return;
+    if (pendingTools.length >= 2) {
       segments.push({
         kind: "collapsed-group",
-        parts: pendingGroup.map((p) => p.part),
+        parts: pendingTools.map((p) => p.part),
       });
     } else {
-      for (const p of pendingGroup) {
+      for (const p of pendingTools) {
         segments.push({ kind: "part", part: p.part, index: p.index });
       }
     }
-    pendingGroup = null;
+    pendingTools = null;
+  }
+
+  // Consecutive native reasoning parts (one per agentic turn) are folded into a
+  // single collapsed block so a long multi-step task doesn't stack a wall of
+  // separate "Reasoning" accordions while streaming.
+  function flushReasoning() {
+    if (!pendingReasoning) return;
+    if (pendingReasoning.length >= 2) {
+      segments.push({
+        kind: "reasoning-group",
+        parts: pendingReasoning.map((p) => p.part),
+        index: pendingReasoning[0].index,
+      });
+    } else {
+      for (const p of pendingReasoning) {
+        segments.push({ kind: "part", part: p.part, index: p.index });
+      }
+    }
+    pendingReasoning = null;
   }
 
   parts.forEach((part, i) => {
@@ -153,15 +175,22 @@ export function buildRenderSegments(
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
-      if (!pendingGroup) pendingGroup = [];
-      pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
+      flushReasoning();
+      if (!pendingTools) pendingTools = [];
+      pendingTools.push({ part: part as ToolUIPart, index: absoluteIndex });
+    } else if (part.type === "reasoning") {
+      flushTools();
+      if (!pendingReasoning) pendingReasoning = [];
+      pendingReasoning.push({ part, index: absoluteIndex });
     } else {
-      flushGroup();
+      flushTools();
+      flushReasoning();
       segments.push({ kind: "part", part, index: absoluteIndex });
     }
   });
 
-  flushGroup();
+  flushTools();
+  flushReasoning();
   return segments;
 }
 

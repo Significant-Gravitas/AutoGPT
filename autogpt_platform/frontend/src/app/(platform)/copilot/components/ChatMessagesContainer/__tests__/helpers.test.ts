@@ -237,6 +237,64 @@ describe("buildRenderSegments", () => {
       expect(segments[0].index).toBe(5);
     }
   });
+
+  it("collapses consecutive reasoning parts into one reasoning-group", () => {
+    const parts = [
+      reasoningPart("Thinking step 1"),
+      reasoningPart("Thinking step 2"),
+      reasoningPart("Thinking step 3"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(3);
+    }
+  });
+
+  it("does not collapse a single reasoning part", () => {
+    const parts = [reasoningPart("Lone thought")];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("part");
+  });
+
+  it("breaks reasoning groups around interleaved text", () => {
+    const parts = [
+      reasoningPart("a"),
+      reasoningPart("b"),
+      textPart("Status update"),
+      reasoningPart("c"),
+      reasoningPart("d"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(3);
+    expect(segments[0].kind).toBe("reasoning-group");
+    expect(segments[1].kind).toBe("part");
+    expect(segments[2].kind).toBe("reasoning-group");
+  });
+
+  it("does not merge reasoning parts and generic tools together", () => {
+    const parts = [
+      reasoningPart("a"),
+      reasoningPart("b"),
+      toolPart("generic_a", "output-available"),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(2);
+    expect(segments[0].kind).toBe("reasoning-group");
+    expect(segments[1].kind).toBe("collapsed-group");
+  });
+
+  it("uses the first part's absolute index as the reasoning-group index", () => {
+    const parts = [reasoningPart("a"), reasoningPart("b")];
+    const segments = buildRenderSegments(parts, 3);
+    expect(segments).toHaveLength(1);
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].index).toBe(3);
+    }
+  });
 });
 
 describe("parseSpecialMarkers", () => {
