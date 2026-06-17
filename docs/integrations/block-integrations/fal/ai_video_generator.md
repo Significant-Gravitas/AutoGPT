@@ -6,7 +6,7 @@ Blocks for generating AI videos using FAL.ai models.
 ## AI Video Generator
 
 ### What it is
-Generate videos using FAL AI models.
+Generate videos using FAL AI models. When picking a model automatically, prefer the top-ranked text-to-video model on https://arena.ai/leaderboard/text-to-video unless a specific model is requested.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

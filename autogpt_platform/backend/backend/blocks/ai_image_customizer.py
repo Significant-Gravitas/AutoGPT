@@ -22,6 +22,10 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.file import MediaFileType, store_media_file
+from backend.util.media_generation_guidance import (
+    IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE,
+    image_generation_failure_message,
+)
 
 
 class GeminiImageModel(str, Enum):
@@ -105,7 +109,8 @@ class AIImageCustomizerBlock(Block):
             id="d76bbe4c-930e-4894-8469-b66775511f71",
             description=(
                 "Generate and edit custom images using Google's Nano-Banana models from Gemini. "
-                "Provide a prompt and optional reference images to create or modify images."
+                "Provide a prompt and optional reference images to create or modify images. "
+                f"{IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE}"
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=AIImageCustomizerBlock.Input,
@@ -140,7 +145,6 @@ class AIImageCustomizerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            # Convert local file paths to Data URIs (base64) so Replicate can access them
             processed_images = await asyncio.gather(
                 *(
                     store_media_file(
@@ -151,7 +155,11 @@ class AIImageCustomizerBlock(Block):
                     for img in input_data.images
                 )
             )
+        except Exception as e:
+            yield "error", str(e)
+            return
 
+        try:
             result = await self.run_model(
                 api_key=credentials.api_key,
                 model_name=input_data.model.value,
@@ -160,16 +168,21 @@ class AIImageCustomizerBlock(Block):
                 aspect_ratio=input_data.aspect_ratio.value,
                 output_format=input_data.output_format.value,
             )
+        except Exception as e:
+            yield "error", image_generation_failure_message(str(e))
+            return
 
-            # Store the generated image to the user's workspace for persistence
+        try:
             stored_url = await store_media_file(
                 file=result,
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
-            yield "image_url", stored_url
         except Exception as e:
             yield "error", str(e)
+            return
+
+        yield "image_url", stored_url
 
     async def run_model(
         self,

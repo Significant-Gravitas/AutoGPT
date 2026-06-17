@@ -228,12 +228,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
-| [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram image generation models with both simple and advanced settings |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
-| [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
+| [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux image generation models on Replicate with advanced settings |
 | [Replicate Model](block-integrations/replicate/replicate_block.md#replicate-model) | Run Replicate models synchronously |
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |

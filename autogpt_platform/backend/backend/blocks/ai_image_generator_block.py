@@ -20,6 +20,10 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.file import store_media_file
+from backend.util.media_generation_guidance import (
+    IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE,
+    image_generation_failure_message,
+)
 from backend.util.type import MediaFileType
 
 
@@ -159,7 +163,10 @@ class AIImageGeneratorBlock(Block):
     def __init__(self):
         super().__init__(
             id="ed1ae7a0-b770-4089-b520-1f0005fad19a",
-            description="Generate images using various AI models through a unified interface",
+            description=(
+                "Generate images using various AI models through a unified interface. "
+                f"{IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI},
             input_schema=AIImageGeneratorBlock.Input,
             output_schema=AIImageGeneratorBlock.Output,
@@ -348,19 +355,27 @@ class AIImageGeneratorBlock(Block):
     ):
         try:
             url = await self.generate_image(input_data, credentials)
-            if url:
-                # Store the generated image to the user's workspace/execution folder
-                stored_url = await store_media_file(
-                    file=MediaFileType(url),
-                    execution_context=execution_context,
-                    return_format="for_block_output",
-                )
-                yield "image_url", stored_url
-            else:
-                yield "error", "Image generation returned an empty result."
         except Exception as e:
-            # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
+            yield "error", image_generation_failure_message(str(e))
+            return
+
+        if not url:
+            yield "error", image_generation_failure_message(
+                "Image generation returned an empty result."
+            )
+            return
+
+        try:
+            stored_url = await store_media_file(
+                file=MediaFileType(url),
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+        except Exception as e:
             yield "error", str(e)
+            return
+
+        yield "image_url", stored_url
 
 
 # Test credentials stay the same

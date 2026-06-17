@@ -17,6 +17,11 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import ModerationError
+from backend.util.media_generation_guidance import (
+    IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE,
+    image_generation_failure_message,
+)
 from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -165,7 +170,11 @@ class IdeogramModelBlock(Block):
     def __init__(self):
         super().__init__(
             id="6ab085e2-20b3-4055-bc3e-08036e01eca6",
-            description="This block runs Ideogram models with both simple and advanced settings.",
+            description=(
+                "This block runs Ideogram image generation models with both simple "
+                "and advanced settings. "
+                f"{IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=IdeogramModelBlock.Input,
             output_schema=IdeogramModelBlock.Output,
@@ -195,8 +204,12 @@ class IdeogramModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: "https://ideogram.ai/api/images/test-generated-image-url.png",
-                "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
+                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: (
+                    "https://ideogram.ai/api/images/test-generated-image-url.png"
+                ),
+                "upscale_image": lambda api_key, image_url: (
+                    "https://ideogram.ai/api/images/test-upscaled-image-url.png"
+                ),
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -207,25 +220,35 @@ class IdeogramModelBlock(Block):
         seed = input_data.seed
 
         # Step 1: Generate the image
-        result = await self.run_model(
-            api_key=credentials.api_key,
-            model_name=input_data.ideogram_model_name.value,
-            prompt=input_data.prompt,
-            seed=seed,
-            aspect_ratio=input_data.aspect_ratio.value,
-            magic_prompt_option=input_data.magic_prompt_option.value,
-            style_type=input_data.style_type.value,
-            negative_prompt=input_data.negative_prompt,
-            color_palette_name=input_data.color_palette_name.value,
-            custom_colors=input_data.custom_color_palette,
-        )
+        try:
+            result = await self.run_model(
+                api_key=credentials.api_key,
+                model_name=input_data.ideogram_model_name.value,
+                prompt=input_data.prompt,
+                seed=seed,
+                aspect_ratio=input_data.aspect_ratio.value,
+                magic_prompt_option=input_data.magic_prompt_option.value,
+                style_type=input_data.style_type.value,
+                negative_prompt=input_data.negative_prompt,
+                color_palette_name=input_data.color_palette_name.value,
+                custom_colors=input_data.custom_color_palette,
+            )
+        except ModerationError:
+            raise
+        except Exception as e:
+            yield "error", image_generation_failure_message(str(e))
+            return
 
         # Step 2: Upscale the image if requested
         if input_data.upscale == UpscaleOption.AI_UPSCALE:
-            result = await self.upscale_image(
-                api_key=credentials.api_key,
-                image_url=result,
-            )
+            try:
+                result = await self.upscale_image(
+                    api_key=credentials.api_key,
+                    image_url=result,
+                )
+            except Exception as e:
+                yield "error", f"Image upscale failed: {e}"
+                return
 
         yield "result", result
 

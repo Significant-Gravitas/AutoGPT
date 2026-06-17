@@ -6,11 +6,14 @@ logger = logging.getLogger(__name__)
 
 ReplicateOutputs = FileOutput | list[FileOutput] | list[str] | str | list[dict]
 
+UNPROCESSABLE_OUTPUT_MESSAGE = (
+    "Unable to process result. Please contact us with the models and inputs used"
+)
+NO_OUTPUT_MESSAGE = "No output received"
+
 
 def extract_result(output: ReplicateOutputs) -> str:
-    result = (
-        "Unable to process result. Please contact us with the models and inputs used"
-    )
+    result = UNPROCESSABLE_OUTPUT_MESSAGE
     # Check if output is a list or a string and extract accordingly; otherwise, assign a default message
     if isinstance(output, list) and len(output) > 0:
         # we could use something like all(output, FileOutput) but it will be slower so we just type ignore
@@ -31,7 +34,7 @@ def extract_result(output: ReplicateOutputs) -> str:
     elif isinstance(output, str):
         result = output  # If output is a string (for some reason due to their janky type hinting), use it directly
     else:
-        result = "No output received"  # Fallback message if output is not as expected
+        result = NO_OUTPUT_MESSAGE  # Fallback message if output is not as expected
         logger.error(
             "We somehow didn't get an output from a replicate block. This is almost certainly an error"
         )

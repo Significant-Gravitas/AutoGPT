@@ -16,8 +16,18 @@ from backend.blocks.replicate._auth import (
     TEST_CREDENTIALS_INPUT,
     ReplicateCredentialsInput,
 )
-from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
+from backend.blocks.replicate._helper import (
+    NO_OUTPUT_MESSAGE,
+    UNPROCESSABLE_OUTPUT_MESSAGE,
+    ReplicateOutputs,
+    extract_result,
+)
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from backend.util.exceptions import ModerationError
+from backend.util.media_generation_guidance import (
+    IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE,
+    image_generation_failure_message,
+)
 
 
 # Model name enum
@@ -117,7 +127,11 @@ class ReplicateFluxAdvancedModelBlock(Block):
     def __init__(self):
         super().__init__(
             id="90f8c45e-e983-4644-aa0b-b4ebe2f531bc",
-            description="This block runs Flux models on Replicate with advanced settings.",
+            description=(
+                "This block runs Flux image generation models on Replicate with "
+                "advanced settings. "
+                f"{IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=ReplicateFluxAdvancedModelBlock.Input,
             output_schema=ReplicateFluxAdvancedModelBlock.Output,
@@ -149,26 +163,34 @@ class ReplicateFluxAdvancedModelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # If the seed is not provided, generate a random seed
-        seed = input_data.seed
-        if seed is None:
-            seed = int.from_bytes(os.urandom(4), "big")
+        try:
+            # If the seed is not provided, generate a random seed
+            seed = input_data.seed
+            if seed is None:
+                seed = int.from_bytes(os.urandom(4), "big")
 
-        # Run the model using the provided inputs
-        result = await self.run_model(
-            api_key=credentials.api_key,
-            model_name=input_data.replicate_model_name.api_name,
-            prompt=input_data.prompt,
-            seed=seed,
-            steps=input_data.steps,
-            guidance=input_data.guidance,
-            interval=input_data.interval,
-            aspect_ratio=input_data.aspect_ratio,
-            output_format=input_data.output_format,
-            output_quality=input_data.output_quality,
-            safety_tolerance=input_data.safety_tolerance,
-        )
-        yield "result", result
+            # Run the model using the provided inputs
+            result = await self.run_model(
+                api_key=credentials.api_key,
+                model_name=input_data.replicate_model_name.api_name,
+                prompt=input_data.prompt,
+                seed=seed,
+                steps=input_data.steps,
+                guidance=input_data.guidance,
+                interval=input_data.interval,
+                aspect_ratio=input_data.aspect_ratio,
+                output_format=input_data.output_format,
+                output_quality=input_data.output_quality,
+                safety_tolerance=input_data.safety_tolerance,
+            )
+            if result in (NO_OUTPUT_MESSAGE, UNPROCESSABLE_OUTPUT_MESSAGE):
+                yield "error", image_generation_failure_message(result)
+                return
+            yield "result", result
+        except ModerationError:
+            raise
+        except Exception as e:
+            yield "error", image_generation_failure_message(str(e))
 
     async def run_model(
         self,

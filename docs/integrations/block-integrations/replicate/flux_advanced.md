@@ -6,7 +6,7 @@ Blocks for generating images using Flux models on Replicate with advanced settin
 ## Replicate Flux Advanced Model
 
 ### What it is
-This block runs Flux models on Replicate with advanced settings.
+This block runs Flux image generation models on Replicate with advanced settings. When picking a model automatically, prefer the top-ranked text-to-image model on https://arena.ai/leaderboard/text-to-image unless a specific model is requested.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

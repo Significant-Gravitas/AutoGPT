@@ -23,6 +23,11 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import store_media_file
+from backend.util.media_generation_guidance import (
+    VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE,
+    response_detail,
+    video_generation_failure_message,
+)
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -155,6 +160,13 @@ class VisualMediaType(str, Enum):
 logger = logging.getLogger(__name__)
 
 
+def _missing_project_id_message(response: dict) -> str:
+    detail = response_detail(response)
+    if detail:
+        return f"Failed to create video: No project ID returned: {detail}"
+    return "Failed to create video: No project ID returned"
+
+
 class AIShortformVideoCreatorBlock(Block):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
@@ -212,18 +224,28 @@ class AIShortformVideoCreatorBlock(Block):
         """Create a video using the Revid API."""
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
+        try:
+            response = await Requests().post(url, json=payload, headers=headers)
+            logger.debug(
+                f"API Response Status Code: {response.status}, Content: {response.text}"
+            )
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video creation request failed: {e}")
+            ) from e
 
     async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         """Check the status of a video creation job."""
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
+        try:
+            response = await Requests().get(url, headers=headers)
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video status request failed: {e}")
+            ) from e
 
     async def wait_for_video(
         self,
@@ -242,16 +264,24 @@ class AIShortformVideoCreatorBlock(Block):
             elif status.get("status") == "error":
                 error_message = status.get("error", "Unknown error occurred")
                 logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {error_message}"
+                    )
+                )
             elif status.get("status") in ["FAILED", "CANCELED"]:
                 logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {status.get('message')}"
+                    )
+                )
 
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
         raise BlockExecutionError(
-            message="Video creation timed out",
+            message=video_generation_failure_message("Video creation timed out"),
             block_name=self.name,
             block_id=self.id,
         )
@@ -259,7 +289,10 @@ class AIShortformVideoCreatorBlock(Block):
     def __init__(self):
         super().__init__(
             id="361697fb-0c4f-4feb-aed3-8320c88c771b",
-            description="Creates a shortform video using revid.ai",
+            description=(
+                "Creates a shortform video using revid.ai. "
+                f"{VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.SOCIAL, BlockCategory.AI},
             input_schema=AIShortformVideoCreatorBlock.Input,
             output_schema=AIShortformVideoCreatorBlock.Output,
@@ -345,7 +378,7 @@ class AIShortformVideoCreatorBlock(Block):
             logger.error(
                 f"Failed to create video: No project ID returned. API Response: {response}"
             )
-            raise RuntimeError("Failed to create video: No project ID returned")
+            raise RuntimeError(_missing_project_id_message(response))
         else:
             logger.debug(
                 f"Video created with project ID: {pid}. Waiting for completion..."
@@ -407,18 +440,28 @@ class AIAdMakerVideoCreatorBlock(Block):
         """Create a video using the Revid API."""
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
+        try:
+            response = await Requests().post(url, json=payload, headers=headers)
+            logger.debug(
+                f"API Response Status Code: {response.status}, Content: {response.text}"
+            )
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video creation request failed: {e}")
+            ) from e
 
     async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         """Check the status of a video creation job."""
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
+        try:
+            response = await Requests().get(url, headers=headers)
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video status request failed: {e}")
+            ) from e
 
     async def wait_for_video(
         self,
@@ -437,16 +480,24 @@ class AIAdMakerVideoCreatorBlock(Block):
             elif status.get("status") == "error":
                 error_message = status.get("error", "Unknown error occurred")
                 logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {error_message}"
+                    )
+                )
             elif status.get("status") in ["FAILED", "CANCELED"]:
                 logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {status.get('message')}"
+                    )
+                )
 
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
         raise BlockExecutionError(
-            message="Video creation timed out",
+            message=video_generation_failure_message("Video creation timed out"),
             block_name=self.name,
             block_id=self.id,
         )
@@ -454,7 +505,10 @@ class AIAdMakerVideoCreatorBlock(Block):
     def __init__(self):
         super().__init__(
             id="58bd2a19-115d-4fd1-8ca4-13b9e37fa6a0",
-            description="Creates an AI‑generated 30‑second advert (text + images)",
+            description=(
+                "Creates an AI‑generated 30‑second advert (text + images). "
+                f"{VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.MARKETING, BlockCategory.AI},
             input_schema=AIAdMakerVideoCreatorBlock.Input,
             output_schema=AIAdMakerVideoCreatorBlock.Output,
@@ -556,7 +610,7 @@ class AIAdMakerVideoCreatorBlock(Block):
         response = await self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
         if not pid:
-            raise RuntimeError("Failed to create video: No project ID returned")
+            raise RuntimeError(_missing_project_id_message(response))
 
         video_url = await self.wait_for_video(credentials.api_key, pid)
         # Store the generated video to the user's workspace for persistence
@@ -604,18 +658,28 @@ class AIScreenshotToVideoAdBlock(Block):
         """Create a video using the Revid API."""
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
+        try:
+            response = await Requests().post(url, json=payload, headers=headers)
+            logger.debug(
+                f"API Response Status Code: {response.status}, Content: {response.text}"
+            )
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video creation request failed: {e}")
+            ) from e
 
     async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         """Check the status of a video creation job."""
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
+        try:
+            response = await Requests().get(url, headers=headers)
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"Video status request failed: {e}")
+            ) from e
 
     async def wait_for_video(
         self,
@@ -634,16 +698,24 @@ class AIScreenshotToVideoAdBlock(Block):
             elif status.get("status") == "error":
                 error_message = status.get("error", "Unknown error occurred")
                 logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {error_message}"
+                    )
+                )
             elif status.get("status") in ["FAILED", "CANCELED"]:
                 logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
+                raise ValueError(
+                    video_generation_failure_message(
+                        f"Video creation failed: {status.get('message')}"
+                    )
+                )
 
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
         raise BlockExecutionError(
-            message="Video creation timed out",
+            message=video_generation_failure_message("Video creation timed out"),
             block_name=self.name,
             block_id=self.id,
         )
@@ -651,7 +723,10 @@ class AIScreenshotToVideoAdBlock(Block):
     def __init__(self):
         super().__init__(
             id="0f3e4635-e810-43d9-9e81-49e6f4e83b7c",
-            description="Turns a screenshot into an engaging, avatar‑narrated video advert.",
+            description=(
+                "Turns a screenshot into an engaging, avatar‑narrated video advert. "
+                f"{VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI, BlockCategory.MARKETING},
             input_schema=AIScreenshotToVideoAdBlock.Input,
             output_schema=AIScreenshotToVideoAdBlock.Output,
@@ -751,7 +826,7 @@ class AIScreenshotToVideoAdBlock(Block):
         response = await self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
         if not pid:
-            raise RuntimeError("Failed to create video: No project ID returned")
+            raise RuntimeError(_missing_project_id_message(response))
 
         video_url = await self.wait_for_video(credentials.api_key, pid)
         # Store the generated video to the user's workspace for persistence

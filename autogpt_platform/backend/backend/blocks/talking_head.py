@@ -19,6 +19,11 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.file import store_media_file
+from backend.util.media_generation_guidance import (
+    VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE,
+    response_detail,
+    video_generation_failure_message,
+)
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -35,6 +40,13 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.type,
 }
+
+
+def _missing_clip_id_message(response: dict) -> str:
+    detail = response_detail(response)
+    if detail:
+        return f"Clip creation returned no clip ID: {detail}"
+    return "Clip creation returned no clip ID"
 
 
 class CreateTalkingAvatarVideoBlock(Block):
@@ -85,7 +97,10 @@ class CreateTalkingAvatarVideoBlock(Block):
     def __init__(self):
         super().__init__(
             id="98c6f503-8c47-4b1c-a96d-351fc7c87dab",
-            description="This block integrates with D-ID to create video clips and retrieve their URLs.",
+            description=(
+                "This block integrates with D-ID to create video clips and retrieve their URLs. "
+                f"{VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=CreateTalkingAvatarVideoBlock.Input,
             output_schema=CreateTalkingAvatarVideoBlock.Output,
@@ -129,8 +144,13 @@ class CreateTalkingAvatarVideoBlock(Block):
             "content-type": "application/json",
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
-        response = await Requests().post(url, json=payload, headers=headers)
-        return response.json()
+        try:
+            response = await Requests().post(url, json=payload, headers=headers)
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(f"D-ID clip request failed: {e}")
+            ) from e
 
     async def get_clip_status(self, api_key: SecretStr, clip_id: str) -> dict:
         url = f"https://api.d-id.com/clips/{clip_id}"
@@ -138,8 +158,15 @@ class CreateTalkingAvatarVideoBlock(Block):
             "accept": "application/json",
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
-        response = await Requests().get(url, headers=headers)
-        return response.json()
+        try:
+            response = await Requests().get(url, headers=headers)
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(
+                video_generation_failure_message(
+                    f"D-ID clip status request failed: {e}"
+                )
+            ) from e
 
     async def run(
         self,
@@ -168,7 +195,9 @@ class CreateTalkingAvatarVideoBlock(Block):
         }
 
         response = await self.create_clip(credentials.api_key, payload)
-        clip_id = response["id"]
+        clip_id = response.get("id")
+        if not clip_id:
+            raise RuntimeError(_missing_clip_id_message(response))
 
         # Poll for clip status
         for _ in range(input_data.max_polling_attempts):
@@ -185,9 +214,11 @@ class CreateTalkingAvatarVideoBlock(Block):
                 return
             elif status_response["status"] == "error":
                 raise RuntimeError(
-                    f"Clip creation failed: {status_response.get('error', 'Unknown error')}"
+                    video_generation_failure_message(
+                        f"Clip creation failed: {status_response.get('error', 'Unknown error')}"
+                    )
                 )
 
             await asyncio.sleep(input_data.polling_interval)
 
-        raise TimeoutError("Clip creation timed out")
+        raise TimeoutError(video_generation_failure_message("Clip creation timed out"))

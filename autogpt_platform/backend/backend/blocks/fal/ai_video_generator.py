@@ -20,6 +20,10 @@ from backend.blocks.fal._auth import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
+from backend.util.media_generation_guidance import (
+    VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE,
+    video_generation_failure_message,
+)
 from backend.util.request import ClientResponseError, Requests
 from backend.util.type import MediaFileType
 
@@ -57,7 +61,10 @@ class AIVideoGeneratorBlock(Block):
     def __init__(self):
         super().__init__(
             id="530cf046-2ce0-4854-ae2c-659db17c7a46",
-            description="Generate videos using FAL AI models.",
+            description=(
+                "Generate videos using FAL AI models. "
+                f"{VIDEO_GENERATION_MODEL_SELECTION_GUIDANCE}"
+            ),
             categories={BlockCategory.AI},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -224,13 +231,18 @@ class AIVideoGeneratorBlock(Block):
     ) -> BlockOutput:
         try:
             video_url = await self.generate_video(input_data, credentials)
-            # Store the generated video to the user's workspace for persistence
+        except Exception as e:
+            yield "error", video_generation_failure_message(str(e))
+            return
+
+        try:
             stored_url = await store_media_file(
                 file=MediaFileType(video_url),
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
-            yield "video_url", stored_url
         except Exception as e:
-            error_message = str(e)
-            yield "error", error_message
+            yield "error", str(e)
+            return
+
+        yield "video_url", stored_url

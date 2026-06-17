@@ -22,6 +22,10 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ModerationError
 from backend.util.file import MediaFileType, store_media_file
+from backend.util.media_generation_guidance import (
+    IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE,
+    image_generation_failure_message,
+)
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -120,7 +124,8 @@ class AIImageEditorBlock(Block):
             id="3fd9c73d-4370-4925-a1ff-1b86b99fabfa",
             description=(
                 "Edit images using Flux Kontext or Google Nano Banana models. Provide a prompt "
-                "and optional reference image to generate a modified image."
+                "and optional reference image to generate a modified image. "
+                f"{IMAGE_GENERATION_MODEL_SELECTION_GUIDANCE}"
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=AIImageEditorBlock.Input,
@@ -154,11 +159,8 @@ class AIImageEditorBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-        result = await self.run_model(
-            api_key=credentials.api_key,
-            model=input_data.model,
-            prompt=input_data.prompt,
-            input_image_b64=(
+        try:
+            input_image_b64 = (
                 await store_media_file(
                     file=input_data.input_image,
                     execution_context=execution_context,
@@ -166,18 +168,38 @@ class AIImageEditorBlock(Block):
                 )
                 if input_data.input_image
                 else None
-            ),
-            aspect_ratio=input_data.aspect_ratio.value,
-            seed=input_data.seed,
-            user_id=execution_context.user_id or "",
-            graph_exec_id=execution_context.graph_exec_id or "",
-        )
-        # Store the generated image to the user's workspace for persistence
-        stored_url = await store_media_file(
-            file=result,
-            execution_context=execution_context,
-            return_format="for_block_output",
-        )
+            )
+        except Exception as e:
+            yield "error", str(e)
+            return
+
+        try:
+            result = await self.run_model(
+                api_key=credentials.api_key,
+                model=input_data.model,
+                prompt=input_data.prompt,
+                input_image_b64=input_image_b64,
+                aspect_ratio=input_data.aspect_ratio.value,
+                seed=input_data.seed,
+                user_id=execution_context.user_id or "",
+                graph_exec_id=execution_context.graph_exec_id or "",
+            )
+        except ModerationError:
+            raise
+        except Exception as e:
+            yield "error", image_generation_failure_message(str(e))
+            return
+
+        try:
+            stored_url = await store_media_file(
+                file=result,
+                execution_context=execution_context,
+                return_format="for_block_output",
+            )
+        except Exception as e:
+            yield "error", str(e)
+            return
+
         yield "output_image", stored_url
 
     async def run_model(
