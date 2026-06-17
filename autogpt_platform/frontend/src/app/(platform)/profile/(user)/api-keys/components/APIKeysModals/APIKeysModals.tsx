@@ -74,25 +74,29 @@ export const APIKeysModals = () => {
             </div>
             <div className="grid gap-2">
               <Label>Permissions</Label>
-              {Object.values(APIKeyPermission).map((permission) => (
-                <div className="flex items-center space-x-2" key={permission}>
-                  <Checkbox
-                    id={permission}
-                    checked={keyState.selectedPermissions.includes(permission)}
-                    onCheckedChange={(checked: boolean) => {
-                      setKeyState((prev) => ({
-                        ...prev,
-                        selectedPermissions: checked
-                          ? [...prev.selectedPermissions, permission]
-                          : prev.selectedPermissions.filter(
-                              (p) => p !== permission,
-                            ),
-                      }));
-                    }}
-                  />
-                  <Label htmlFor={permission}>{permission}</Label>
-                </div>
-              ))}
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {Object.values(APIKeyPermission).map((permission) => (
+                  <div className="flex items-center space-x-2" key={permission}>
+                    <Checkbox
+                      id={permission}
+                      checked={keyState.selectedPermissions.includes(
+                        permission,
+                      )}
+                      onCheckedChange={(checked: boolean) => {
+                        setKeyState((prev) => ({
+                          ...prev,
+                          selectedPermissions: checked
+                            ? [...prev.selectedPermissions, permission]
+                            : prev.selectedPermissions.filter(
+                                (p) => p !== permission,
+                              ),
+                        }));
+                      }}
+                    />
+                    <Label htmlFor={permission}>{permission}</Label>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
