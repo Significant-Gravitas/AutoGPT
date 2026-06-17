@@ -582,6 +582,26 @@ describe("splitReasoningAndResponse", () => {
     expect(result.response[0]).toBe(corruptedRunBlock);
   });
 
+  it("pins the trigger-setup card even when reasoning follows it", () => {
+    // Regression: setup_agent_webhook_trigger emits a trigger_setup card, then
+    // the model adds a trailing reasoning part before its text reply. The card
+    // must stay pinned to the response so it never gets buried in "Show steps".
+    const triggerSetup = toolPart(
+      "setup_agent_webhook_trigger",
+      "output-available",
+      JSON.stringify({ type: "trigger_setup", message: "Trigger is set up." }),
+    );
+    const parts = [
+      triggerSetup,
+      reasoningPart("The webhook trigger has been set up successfully..."),
+      textPart("The webhook trigger is live!"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([parts[1]]);
+    expect(result.response).toHaveLength(2);
+    expect(result.response[0]).toBe(triggerSetup);
+  });
+
   it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
     const okRunBlock = toolPart(
       "run_block",

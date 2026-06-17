@@ -83,6 +83,7 @@ const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.setup_requirements,
+  ResponseType.trigger_setup,
   ResponseType.agent_details,
   ResponseType.block_details,
   ResponseType.review_required,

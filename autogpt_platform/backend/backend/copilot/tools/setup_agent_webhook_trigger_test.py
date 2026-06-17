@@ -167,6 +167,9 @@ async def test_manual_webhook_no_creds_proceeds(tool, session):
     assert isinstance(result, TriggerSetupResponse)
     assert result.manual_setup_required is True
     assert result.webhook_url and "backend.agpt.co" in result.webhook_url
+    # The URL lives on webhook_url (rendered in the card's copy box) and must
+    # NOT be duplicated inline in the user-facing message.
+    assert result.webhook_url not in result.message
     setup_mock.assert_awaited_once()
 
 

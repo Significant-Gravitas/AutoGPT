@@ -414,9 +414,9 @@ then call again with `trigger_config` filled in.
 
 **Two kinds of webhook:**
 
-- **Manual-setup (generic) webhooks:** `setup_agent_webhook_trigger` returns a `webhook_url`.
-  Give the user this **exact** URL to paste into their external service (e.g.
-  Typeform, Zapier). Never guess, modify, or reconstruct the URL or its host.
+- **Manual-setup (generic) webhooks:** the result card shows the ingress URL with
+  a copy button for the user to paste into their external service (e.g. Typeform,
+  Zapier).
 - **Provider webhooks (e.g. GitHub):** registered automatically once the account
   is chosen — no URL handoff is needed.
 

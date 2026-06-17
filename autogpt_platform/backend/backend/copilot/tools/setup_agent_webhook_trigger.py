@@ -102,10 +102,10 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             "Set up a webhook trigger for an agent with a webhook trigger block. "
             "This is the ONLY way to configure such a trigger: pass the trigger "
             "block's config as 'trigger_config' — never configure it by editing "
-            "the agent's graph. Manual/generic webhooks return the exact ingress "
-            "URL to give the user (never reconstruct it). If credentials are "
-            "needed it returns a setup card; after the user proceeds, call again "
-            "with the 'credentials' they selected."
+            "the agent's graph. If credentials are needed it returns a setup card; "
+            "after the user proceeds, call again with the 'credentials' they selected. "
+            "On success the result card shows any webhook URL with a copy button — "
+            "don't reprint the URL; point the user to the card."
         )
 
     @property
@@ -446,10 +446,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         provider = preset.webhook.provider if preset.webhook else None
 
         if manual and webhook_url:
+            # User-facing copy only — the card renders the URL itself in a copy
+            # box; the tool description tells the model not to reprint it.
             message = (
-                f"Trigger '{preset.name}' is set up. Give the user this exact "
-                f"webhook URL to configure in their external service — do not "
-                f"modify or reconstruct it: {webhook_url}"
+                f"Trigger '{preset.name}' is set up. Copy the webhook URL below "
+                "and paste it into your external service (e.g. TypeForm) to finish."
             )
         else:
             message = (
