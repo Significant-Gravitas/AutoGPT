@@ -84,7 +84,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
 # pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
 # copy the model needs to manage triggers without re-running setup.
-_CHAR_BUDGET = 45_000
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+_CHAR_BUDGET = 47_000
 
 
 @pytest.fixture(scope="module")

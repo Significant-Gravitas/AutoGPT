@@ -112,6 +112,10 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
+    # Chat-platform proactive output (post message / create thread)
+    CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
+    CHAT_PLATFORM_POSTED = "chat_platform_posted"
+
     # Skills (self-distilled procedure registry)
     SKILL_STORED = "skill_stored"
     SKILL_LOADED = "skill_loaded"
@@ -985,3 +989,35 @@ class PlatformInfoResponse(ToolResponseBase):
     topic: str
     tier: str | None = None
     billing_url: str | None = "/settings/billing"
+
+
+# --- Chat-platform proactive output (Discord today; Slack/Telegram later) ---
+
+
+class ChatPlatformChannelSummary(BaseModel):
+    """A channel the bot can post to on the user's behalf."""
+
+    id: str
+    name: str
+    server_id: str
+    server_name: str | None = None
+
+
+class ChatPlatformChannelListResponse(ToolResponseBase):
+    """Response for the ``list_chat_platform_channels`` tool."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_CHANNEL_LIST
+    platform: str
+    channels: list[ChatPlatformChannelSummary] = Field(default_factory=list)
+    count: int = 0
+
+
+class ChatPlatformPostedResponse(ToolResponseBase):
+    """Response after the bot posts a message or creates a thread."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
+    platform: str
+    kind: Literal["message", "thread"]
+    channel_id: str
+    ref_id: str | None = None
+    url: str | None = None
