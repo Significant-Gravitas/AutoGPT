@@ -4,6 +4,8 @@ import logging
 import uuid
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_library_check_outcome
 
@@ -21,6 +23,14 @@ class CreateAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "create_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            APIKeyPermission.READ_LIBRARY,  # for finding relevant library (sub-)agents
+        ]
 
     @property
     def description(self) -> str:

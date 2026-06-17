@@ -69,78 +69,83 @@ logger = logging.getLogger(__name__)
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
-    "add_understanding": AddUnderstandingTool(),
-    "create_agent": CreateAgentTool(),
-    "customize_agent": CustomizeAgentTool(),
-    "decompose_goal": DecomposeGoalTool(),
-    "edit_agent": EditAgentTool(),
-    "find_agent": FindAgentTool(),
-    "find_block": FindBlockTool(),
-    "find_library_agent": FindLibraryAgentTool(),
-    # Graphiti memory tools
-    "memory_forget_confirm": MemoryForgetConfirmTool(),
-    "memory_forget_search": MemoryForgetSearchTool(),
-    "memory_search": MemorySearchTool(),
-    "memory_store": MemoryStoreTool(),
-    # Folder management tools
-    "create_folder": CreateFolderTool(),
-    "list_folders": ListFoldersTool(),
-    "update_folder": UpdateFolderTool(),
-    "move_folder": MoveFolderTool(),
-    "delete_folder": DeleteFolderTool(),
-    "move_agents_to_folder": MoveAgentsToFolderTool(),
-    "run_agent": RunAgentTool(),
-    # Schedule management
-    "list_schedules": ListSchedulesTool(),
-    "delete_schedule": DeleteScheduleTool(),
-    "schedule_followup": ScheduleFollowupTool(),
-    # Proactive chat-platform output (post message / open thread on user's behalf)
-    "post_to_chat_platform": PostToChatPlatformTool(),
-    "list_chat_platform_channels": ListChatPlatformChannelsTool(),
-    # Trigger discovery (parent agent → its triggers)
-    "list_agent_triggers": ListAgentTriggersTool(),
-    "run_block": RunBlockTool(),
-    "continue_run_block": ContinueRunBlockTool(),
-    "run_sub_session": RunSubSessionTool(),
-    "get_sub_session_result": GetSubSessionResultTool(),
-    "TodoWrite": TodoWriteTool(),
-    "run_mcp_tool": RunMCPToolTool(),
-    "get_mcp_guide": GetMCPGuideTool(),
-    "view_agent_output": AgentOutputTool(),
-    "search_docs": SearchDocsTool(),
-    "get_doc_page": GetDocPageTool(),
-    "get_agent_building_guide": GetAgentBuildingGuideTool(),
-    # Skills (self-distilled procedure registry; see tools/skills.py).
-    # Defaults seed the agent-building / MCP guides so the registry is
-    # the single discovery surface for both built-in and user knowledge.
-    "store_skill": StoreSkillTool(),
-    "read_skill": ReadSkillTool(),
-    "delete_skill": DeleteSkillTool(),
-    "list_skills": ListSkillsTool(),
-    # Web fetch for safe URL retrieval
-    "web_fetch": WebFetchTool(),
-    "web_search": WebSearchTool(),
-    # Agent-browser multi-step automation (navigate, act, screenshot)
-    "browser_navigate": BrowserNavigateTool(),
-    "browser_act": BrowserActTool(),
-    "browser_screenshot": BrowserScreenshotTool(),
-    # Sandboxed code execution (bubblewrap)
-    "bash_exec": BashExecTool(),
-    "connect_integration": ConnectIntegrationTool(),
-    # Persistent workspace tools (cloud storage, survives across sessions)
-    # Feature request tools
-    "search_feature_requests": SearchFeatureRequestsTool(),
-    "create_feature_request": CreateFeatureRequestTool(),
-    # Platform info (subscription, billing)
-    "get_platform_info": PlatformInfoTool(),
-    # Agent generation tools (local validation/fixing)
-    "validate_agent_graph": ValidateAgentGraphTool(),
-    "fix_agent_graph": FixAgentGraphTool(),
-    # Workspace tools for CoPilot file operations
-    "list_workspace_files": ListWorkspaceFilesTool(),
-    "read_workspace_file": ReadWorkspaceFileTool(),
-    "write_workspace_file": WriteWorkspaceFileTool(),
-    "delete_workspace_file": DeleteWorkspaceFileTool(),
+    tool.name: tool
+    for tool in [
+        # Workflow tools
+        TodoWriteTool(),
+        RunMCPToolTool(),
+        GetMCPGuideTool(),
+        SearchDocsTool(),
+        GetDocPageTool(),
+        AddUnderstandingTool(),
+        # Graphiti memory tools
+        MemoryForgetConfirmTool(),
+        MemoryForgetSearchTool(),
+        MemorySearchTool(),
+        MemoryStoreTool(),
+        # Skills (self-distilled procedure registry; see tools/skills.py).
+        # Defaults seed the agent-building / MCP guides so the registry is
+        # the single discovery surface for both built-in and user knowledge.
+        StoreSkillTool(),
+        ReadSkillTool(),
+        DeleteSkillTool(),
+        ListSkillsTool(),
+        # Platform info (subscription, billing)
+        PlatformInfoTool(),
+        # Building and managing agents
+        GetAgentBuildingGuideTool(),
+        DecomposeGoalTool(),
+        CreateAgentTool(),
+        CustomizeAgentTool(),
+        EditAgentTool(),
+        FindAgentTool(),
+        FindBlockTool(),
+        FindLibraryAgentTool(),
+        ValidateAgentGraphTool(),
+        FixAgentGraphTool(),
+        # Library folder management tools
+        CreateFolderTool(),
+        ListFoldersTool(),
+        UpdateFolderTool(),
+        MoveFolderTool(),
+        DeleteFolderTool(),
+        MoveAgentsToFolderTool(),
+        # Running agents and blocks
+        RunAgentTool(),
+        RunBlockTool(),
+        ContinueRunBlockTool(),
+        RunSubSessionTool(),
+        GetSubSessionResultTool(),
+        AgentOutputTool(),
+        # Schedule management
+        ListSchedulesTool(),
+        DeleteScheduleTool(),
+        ScheduleFollowupTool(),
+        # Proactive chat-platform output (post message / open thread on user's behalf)
+        PostToChatPlatformTool(),
+        ListChatPlatformChannelsTool(),
+        # Trigger discovery (parent agent → its triggers)
+        ListAgentTriggersTool(),
+        # Web fetch for safe URL retrieval
+        WebFetchTool(),
+        WebSearchTool(),
+        # Agent-browser multi-step automation (navigate, act, screenshot)
+        BrowserNavigateTool(),
+        BrowserActTool(),
+        BrowserScreenshotTool(),
+        # Sandboxed code execution (bubblewrap)
+        BashExecTool(),
+        ConnectIntegrationTool(),
+        # Persistent workspace tools (cloud storage, survives across sessions)
+        # Feature request tools
+        SearchFeatureRequestsTool(),
+        CreateFeatureRequestTool(),
+        # Workspace tools for CoPilot file operations
+        ListWorkspaceFilesTool(),
+        ReadWorkspaceFileTool(),
+        WriteWorkspaceFileTool(),
+        DeleteWorkspaceFileTool(),
+    ]
 }
 
 # Export individual tool instances for backwards compatibility

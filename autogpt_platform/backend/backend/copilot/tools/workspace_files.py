@@ -6,6 +6,7 @@ import mimetypes
 import os
 from typing import Any, Optional
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -418,6 +419,10 @@ class ListWorkspaceFilesTool(BaseTool):
         return "list_workspace_files"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
+
+    @property
     def description(self) -> str:
         return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
 
@@ -518,6 +523,10 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "read_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
 
     @property
     def description(self) -> str:
@@ -780,6 +789,10 @@ class WriteWorkspaceFileTool(BaseTool):
         return "write_workspace_file"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
     def description(self) -> str:
         return (
             "Write a file to persistent workspace (survives across sessions). "
@@ -992,6 +1005,10 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
 
     @property
     def description(self) -> str:

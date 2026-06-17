@@ -31,13 +31,12 @@ from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
-    CreditTransactionItem,
     RefundRequest,
     TopUpType,
     TransactionHistory,
 )
 from backend.data.model import User as AppUser
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransaction, UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
@@ -1286,8 +1285,8 @@ class UserCredit(UserCreditBase):
             take=transaction_count_limit,
         )
 
-        grouped_transactions: dict[str, CreditTransactionItem] = defaultdict(
-            lambda: CreditTransactionItem(user_id=user_id)
+        grouped_transactions: dict[str, UserCreditTransaction] = defaultdict(
+            lambda: UserCreditTransaction(user_id=user_id)
         )
         tx_time = None
         for t in transactions:
@@ -3260,7 +3259,7 @@ async def admin_get_user_history(
         balance, _ = await user_credit_model._get_credits(tx.userId)
 
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,
@@ -3302,7 +3301,7 @@ async def admin_export_user_history(
     transaction_type: CreditTransactionType | None = None,
     user_id: str | None = None,
     include_inactive: bool = False,
-) -> list[UserTransaction]:
+) -> list[UserCreditTransactionAdminView]:
     """Return all CreditTransactions in the [start, end] window for export.
 
     Caps the window at CREDIT_EXPORT_MAX_DAYS and the row count at
@@ -3364,7 +3363,7 @@ async def admin_export_user_history(
         admin_id_to_email[admin_id] = email
         return email
 
-    history: list[UserTransaction] = []
+    history: list[UserCreditTransactionAdminView] = []
     for tx in transactions:
         metadata: dict = cast(dict, tx.metadata) or {}
         admin_id = metadata.get("admin_id") or ""
@@ -3376,7 +3375,7 @@ async def admin_export_user_history(
             raw_reason = raw_reason.get("reason", "")
         reason = str(raw_reason) if raw_reason is not None else ""
         history.append(
-            UserTransaction(
+            UserCreditTransactionAdminView(
                 transaction_key=tx.transactionKey,
                 transaction_time=tx.createdAt,
                 transaction_type=tx.type,

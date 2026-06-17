@@ -10483,7 +10483,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Profile" }
+              "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" }
             }
           },
           "required": true
@@ -11338,12 +11338,25 @@
           "WRITE_GRAPH",
           "EXECUTE_BLOCK",
           "READ_BLOCK",
-          "READ_STORE",
           "WRITE_LIBRARY",
           "USE_TOOLS",
           "MANAGE_INTEGRATIONS",
           "READ_INTEGRATIONS",
-          "DELETE_INTEGRATIONS"
+          "DELETE_INTEGRATIONS",
+          "READ_SCHEDULE",
+          "WRITE_SCHEDULE",
+          "READ_STORE",
+          "WRITE_STORE",
+          "READ_LIBRARY",
+          "RUN_AGENT",
+          "READ_RUN",
+          "WRITE_RUN",
+          "SHARE_RUN",
+          "READ_RUN_REVIEW",
+          "WRITE_RUN_REVIEW",
+          "READ_CREDITS",
+          "READ_FILES",
+          "WRITE_FILES"
         ],
         "title": "APIKeyPermission"
       },
@@ -13570,53 +13583,6 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
-      "CreditTransactionItem": {
-        "properties": {
-          "transaction_key": {
-            "type": "string",
-            "title": "Transaction Key",
-            "default": ""
-          },
-          "transaction_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Transaction Time",
-            "default": "0001-01-01T00:00:00Z"
-          },
-          "transaction_type": {
-            "$ref": "#/components/schemas/CreditTransactionType",
-            "default": "USAGE"
-          },
-          "amount": { "type": "integer", "title": "Amount", "default": 0 },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "usage_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Graph Id"
-          },
-          "usage_execution_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Execution Id"
-          },
-          "usage_node_count": {
-            "type": "integer",
-            "title": "Usage Node Count",
-            "default": 0
-          },
-          "usage_start_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Usage Start Time",
-            "default": "9999-12-31T23:59:59.999999Z"
-          },
-          "user_id": { "type": "string", "title": "User Id" }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "CreditTransactionItem"
-      },
       "CreditTransactionType": {
         "type": "string",
         "enum": [
@@ -13632,7 +13598,9 @@
       "CreditTransactionsExportResponse": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "Transactions"
           },
@@ -17935,26 +17903,6 @@
         ],
         "title": "PostmarkSubscriptionChangeWebhook"
       },
-      "Profile": {
-        "properties": {
-          "username": { "type": "string", "title": "Username" },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatar Url"
-          },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          }
-        },
-        "type": "object",
-        "required": ["username", "name", "description", "avatar_url", "links"],
-        "title": "Profile",
-        "description": "Marketplace user profile (only attributes that the user can update)"
-      },
       "ProfileDetails": {
         "properties": {
           "username": { "type": "string", "title": "Username" },
@@ -17982,6 +17930,36 @@
         ],
         "title": "ProfileDetails",
         "description": "Marketplace user profile (including read-only fields)"
+      },
+      "ProfileUpdateRequest": {
+        "properties": {
+          "username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Username"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "title": "ProfileUpdateRequest",
+        "description": "Marketplace user profile (only attributes that the user can update)"
       },
       "Provider": {
         "properties": {
@@ -21208,7 +21186,7 @@
       "TransactionHistory": {
         "properties": {
           "transactions": {
-            "items": { "$ref": "#/components/schemas/CreditTransactionItem" },
+            "items": { "$ref": "#/components/schemas/UserCreditTransaction" },
             "type": "array",
             "title": "Transactions"
           },
@@ -22049,6 +22027,126 @@
         ],
         "title": "UserCostSummary"
       },
+      "UserCreditTransaction": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserCreditTransaction"
+      },
+      "UserCreditTransactionAdminView": {
+        "properties": {
+          "transaction_key": {
+            "type": "string",
+            "title": "Transaction Key",
+            "default": ""
+          },
+          "transaction_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Time",
+            "default": "0001-01-01T00:00:00Z"
+          },
+          "transaction_type": {
+            "$ref": "#/components/schemas/CreditTransactionType",
+            "default": "USAGE"
+          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "usage_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Graph Id"
+          },
+          "usage_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Execution Id"
+          },
+          "usage_node_count": {
+            "type": "integer",
+            "title": "Usage Node Count",
+            "default": 0
+          },
+          "usage_start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Usage Start Time",
+            "default": "9999-12-31T23:59:59.999999Z"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "running_balance": {
+            "type": "integer",
+            "title": "Running Balance",
+            "default": 0
+          },
+          "current_balance": {
+            "type": "integer",
+            "title": "Current Balance",
+            "default": 0
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "admin_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Admin Email"
+          },
+          "extra_data": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Extra Data"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserCreditTransactionAdminView"
+      },
       "UserDailyCost": {
         "properties": {
           "date": { "type": "string", "format": "date", "title": "Date" },
@@ -22102,7 +22200,9 @@
       "UserHistoryResponse": {
         "properties": {
           "history": {
-            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "items": {
+              "$ref": "#/components/schemas/UserCreditTransactionAdminView"
+            },
             "type": "array",
             "title": "History"
           },
@@ -22394,79 +22494,6 @@
           "node_error_count"
         ],
         "title": "UserTopRun"
-      },
-      "UserTransaction": {
-        "properties": {
-          "transaction_key": {
-            "type": "string",
-            "title": "Transaction Key",
-            "default": ""
-          },
-          "transaction_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Transaction Time",
-            "default": "0001-01-01T00:00:00Z"
-          },
-          "transaction_type": {
-            "$ref": "#/components/schemas/CreditTransactionType",
-            "default": "USAGE"
-          },
-          "amount": { "type": "integer", "title": "Amount", "default": 0 },
-          "running_balance": {
-            "type": "integer",
-            "title": "Running Balance",
-            "default": 0
-          },
-          "current_balance": {
-            "type": "integer",
-            "title": "Current Balance",
-            "default": 0
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "usage_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Graph Id"
-          },
-          "usage_execution_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Execution Id"
-          },
-          "usage_node_count": {
-            "type": "integer",
-            "title": "Usage Node Count",
-            "default": 0
-          },
-          "usage_start_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Usage Start Time",
-            "default": "9999-12-31T23:59:59.999999Z"
-          },
-          "user_id": { "type": "string", "title": "User Id" },
-          "user_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Email"
-          },
-          "reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reason"
-          },
-          "admin_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Admin Email"
-          },
-          "extra_data": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Extra Data"
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "UserTransaction"
       },
       "ValidationError": {
         "properties": {

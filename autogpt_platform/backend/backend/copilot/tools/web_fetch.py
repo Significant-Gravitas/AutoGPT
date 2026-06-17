@@ -58,6 +58,10 @@ class WebFetchTool(BaseTool):
         return "web_fetch"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return "Fetch a public web page. Public URLs only — internal addresses blocked. Returns readable text from HTML by default."
 

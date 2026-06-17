@@ -6,9 +6,9 @@ This script imports the FastAPI app from backend.api.rest_api and outputs
 the OpenAPI specification as JSON to stdout or a specified file.
 
 Usage:
-  `poetry run python generate_openapi_json.py`
-  `poetry run python generate_openapi_json.py --output openapi.json`
-  `poetry run python generate_openapi_json.py --indent 4 --output openapi.json`
+  `poetry run export-api-schema`
+  `poetry run export-api-schema --output openapi.json`
+  `poetry run export-api-schema --api v2 --output openapi.json`
 """
 
 import json
@@ -17,8 +17,16 @@ from pathlib import Path
 
 import click
 
+API_CHOICES = ["internal", "v1", "v2"]
+
 
 @click.command()
+@click.option(
+    "--api",
+    type=click.Choice(API_CHOICES),
+    default="internal",
+    help="Which API schema to export (default: internal)",
+)
 @click.option(
     "--output",
     type=click.Path(dir_okay=False, path_type=Path),
@@ -26,13 +34,12 @@ import click
 )
 @click.option(
     "--pretty",
-    type=click.BOOL,
-    default=False,
+    is_flag=True,
     help="Pretty-print JSON output (indented 2 spaces)",
 )
-def main(output: Path, pretty: bool):
+def main(api: str, output: Path, pretty: bool):
     """Generate and output the OpenAPI JSON specification."""
-    openapi_schema = get_openapi_schema()
+    openapi_schema = get_openapi_schema(api)
 
     json_output = json.dumps(
         openapi_schema, indent=2 if pretty else None, ensure_ascii=False
@@ -46,11 +53,22 @@ def main(output: Path, pretty: bool):
         print(json_output)
 
 
-def get_openapi_schema():
-    """Get the OpenAPI schema from the FastAPI app"""
-    from backend.api.rest_api import app
+def get_openapi_schema(api: str = "internal"):
+    """Get the OpenAPI schema from the specified FastAPI app."""
+    if api == "internal":
+        from backend.api.rest_api import app
 
-    return app.openapi()
+        return app.openapi()
+    elif api == "v1":
+        from backend.api.external.v1.app import v1_app
+
+        return v1_app.openapi()
+    elif api == "v2":
+        from backend.api.external.v2.app import v2_app
+
+        return v2_app.openapi()
+    else:
+        raise click.BadParameter(f"Unknown API: {api}. Choose from {API_CHOICES}")
 
 
 if __name__ == "__main__":

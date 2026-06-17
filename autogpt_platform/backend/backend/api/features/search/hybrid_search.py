@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from prisma.enums import ContentType
 from rank_bm25 import BM25Okapi
@@ -27,6 +27,21 @@ from backend.api.features.search.embeddings import (
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+
+ContentTypeValue = Literal[
+    "STORE_AGENT",
+    "BLOCK",
+    "INTEGRATION",
+    "DOCUMENTATION",
+    "LIBRARY_AGENT",
+    "WORKSPACE_FILE",
+    "CHAT_SESSION",
+]
+"""The string *values* of :class:`ContentType`, as returned by raw SQL.
+
+Raw query rows carry the bare enum value (e.g. ``"STORE_AGENT"``), not a
+``ContentType`` member — so this, not the enum, is the honest row type.
+"""
 
 
 class HybridSearchRow(TypedDict):
@@ -39,7 +54,7 @@ class HybridSearchRow(TypedDict):
     the row leaves this module (``total_count``).
     """
 
-    content_type: ContentType | str
+    content_type: ContentTypeValue
     content_id: str
     searchable_text: str
     metadata: dict[str, Any]

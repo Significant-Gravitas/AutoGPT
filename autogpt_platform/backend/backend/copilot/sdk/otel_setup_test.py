@@ -36,7 +36,7 @@ class TestSetupLangfuseOtel:
         """OTEL env vars should be set when Langfuse credentials exist."""
         mock_settings = MagicMock()
         mock_settings.secrets.langfuse_public_key = "pk-test-123"
-        mock_settings.secrets.langfuse_secret_key = "sk-test-456"
+        mock_settings.secrets.langfuse_secret_key = "sk-test-456"  # pragma: allowlist secret  # noqa: E501; fmt: skip
         mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
         mock_settings.secrets.langfuse_tracing_environment = "test"
 
@@ -91,7 +91,7 @@ class TestSetupLangfuseOtel:
         """Explicit env-var overrides should not be clobbered."""
         mock_settings = MagicMock()
         mock_settings.secrets.langfuse_public_key = "pk-test"
-        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"  # pragma: allowlist secret  # noqa: E501; fmt: skip
         mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
 
         with (

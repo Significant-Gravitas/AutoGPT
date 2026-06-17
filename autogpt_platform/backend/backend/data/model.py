@@ -796,40 +796,30 @@ class AutoTopUpConfig(BaseModel):
     """Threshold to trigger auto top up."""
 
 
-class UserTransaction(BaseModel):
+class UserCreditTransaction(BaseModel):
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    running_balance: int = 0
-    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+
+
+class UserCreditTransactionAdminView(UserCreditTransaction):
+    running_balance: int = 0
+    current_balance: int = 0
     user_email: str | None = None
     reason: str | None = None
     admin_email: str | None = None
     extra_data: str | None = None
 
 
-class CreditTransactionItem(BaseModel):
-    transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
-    usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
-    user_id: str
-
-
 class TransactionHistory(BaseModel):
-    transactions: list[CreditTransactionItem]
+    transactions: list[UserCreditTransaction]
     next_transaction_time: datetime | None
 
 

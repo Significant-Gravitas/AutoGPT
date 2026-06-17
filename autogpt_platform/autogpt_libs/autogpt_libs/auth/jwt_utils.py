@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 import jwt
-from fastapi import HTTPException, Security
+from fastapi import FastAPI, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import get_settings
@@ -78,3 +78,12 @@ def verify_user(jwt_payload: dict | None, admin_only: bool) -> User:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     return User.from_payload(jwt_payload)
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints that use the bearer JWT authentication scheme.
+    """
+    from .helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(app, [bearer_jwt_auth.scheme_name])

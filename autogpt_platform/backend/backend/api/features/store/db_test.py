@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import MyAgentsSortBy, Profile, SubmissionStats
+from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -297,7 +297,7 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update = AsyncMock(return_value=mock_profile)
 
     # Test data
-    profile = Profile(
+    profile = ProfileUpdateRequest(
         name="Test Creator",
         username="creator",
         description="Test description",
@@ -867,6 +867,7 @@ async def test_get_my_agents_search_filters_agent_name_and_description(mocker):
         "StoreListingVersions": {
             "none": {
                 "isAvailable": True,
+                "isDeleted": False,
                 "StoreListing": {"is": {"isDeleted": False}},
             }
         },

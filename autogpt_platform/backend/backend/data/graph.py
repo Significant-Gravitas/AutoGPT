@@ -62,22 +62,6 @@ class GraphSettings(BaseModel):
     ] = False
     builder_chat_session_id: str | None = None
 
-    @classmethod
-    def from_graph(
-        cls,
-        graph: "GraphModel",
-        hitl_safe_mode: bool | None = None,
-        sensitive_action_safe_mode: bool = False,
-        builder_chat_session_id: str | None = None,
-    ) -> "GraphSettings":
-        if hitl_safe_mode is None:
-            hitl_safe_mode = True
-        return cls(
-            human_in_the_loop_safe_mode=hitl_safe_mode,
-            sensitive_action_safe_mode=sensitive_action_safe_mode,
-            builder_chat_session_id=builder_chat_session_id,
-        )
-
 
 class Link(BaseDbModel):
     source_id: str
@@ -1098,13 +1082,6 @@ class GraphModelWithoutNodes(GraphModel):
     sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
 
 
-class GraphsPaginated(BaseModel):
-    """Response schema for paginated graphs."""
-
-    graphs: list[GraphMeta]
-    pagination: Pagination
-
-
 # --------------------- CRUD functions --------------------- #
 
 
@@ -1138,7 +1115,7 @@ async def list_graphs_paginated(
     page: int = 1,
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
-) -> GraphsPaginated:
+) -> tuple[list[GraphMeta], Pagination]:
     """
     Retrieves paginated graph metadata objects.
 
@@ -1149,7 +1126,8 @@ async def list_graphs_paginated(
         filter_by: An optional filter to either select graphs.
 
     Returns:
-        GraphsPaginated: Paginated list of graph metadata.
+        list[GraphMeta]: List of graph info objects.
+        Pagination: Pagination information.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
@@ -1172,14 +1150,11 @@ async def list_graphs_paginated(
 
     graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
-    return GraphsPaginated(
-        graphs=graph_models,
-        pagination=Pagination(
-            total_items=total_count,
-            total_pages=total_pages,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return graph_models, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
     )
 
 
