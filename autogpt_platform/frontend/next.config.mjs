@@ -86,7 +86,6 @@ const nextConfig = {
   // Vercel has its own deployment mechanism and doesn't need standalone mode
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
- },
   // Baseline security response headers applied to every route. Defined here
   // (rather than in the Sentry options) so they apply on all build paths.
   // Self-hosted Next.js fonts are served with `Access-Control-Allow-Origin: *`.
