@@ -6,6 +6,8 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
+  poweredByHeader: false,
   productionBrowserSourceMaps: enableSourceMaps,
   // Externalize OpenTelemetry packages to fix Turbopack HMR issues
   serverExternalPackages: [
@@ -84,6 +86,21 @@ const nextConfig = {
   // Vercel has its own deployment mechanism and doesn't need standalone mode
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
+  // Baseline security response headers applied to every route. Defined here
+  // (rather than in the Sentry options) so they apply on all build paths.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Enables Sentry browser JS self-profiling.
+          { key: "Document-Policy", value: "js-profiling" },
+        ],
+      },
+    ];
+  },
 };
 
 // Only run the Sentry webpack plugin when we can actually upload source maps
@@ -149,18 +166,4 @@ export default skipSentryPlugin
       // https://docs.sentry.io/product/crons/
       // https://vercel.com/docs/cron-jobs
       automaticVercelMonitors: true,
-
-      async headers() {
-        return [
-          {
-            source: "/:path*",
-            headers: [
-              {
-                key: "Document-Policy",
-                value: "js-profiling",
-              },
-            ],
-          },
-        ];
-      },
     });
