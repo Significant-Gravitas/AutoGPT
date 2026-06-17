@@ -1,5 +1,6 @@
 """Unit tests for the run_mcp_tool copilot tool."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1067,7 +1068,7 @@ async def test_build_setup_requirements_returns_setup_response():
 # ---------------------------------------------------------------------------
 
 
-def _make_tool_schema(name: str, input_schema: dict):
+def _make_tool_schema(name: str, input_schema: dict[str, Any]):
     t = MagicMock()
     t.name = name
     t.input_schema = input_schema
@@ -1115,7 +1116,11 @@ async def test_agptfile_ref_expanded_before_mcp_call():
     await_args = mock_expand.await_args
     assert await_args is not None
     assert await_args.kwargs["input_schema"] == schema
-    # Expanded content (not the literal token) was sent to the server.
+    # user_id + session (positional) are forwarded — they gate file access
+    # permissions and are the reason _execute_tool's signature changed.
+    assert await_args.args[1] == _USER_ID
+    assert await_args.args[2] is session
+    # Expanded content (not the literal token) reached the server.
     assert mock_client.call_tool.call_args.args[1] == expanded
 
 
