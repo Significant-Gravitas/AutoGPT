@@ -198,6 +198,7 @@ async def test_create_store_submission(mocker):
         userId="user-id",
         createdAt=now,
         isActive=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         StoreListingVersions=[],
         User=mock_user,
     )
@@ -761,6 +762,7 @@ def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
         isActive=True,
         name=f"Agent {idx}",
         description=f"Description {idx}",
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
     return prisma.models.LibraryAgent.model_construct(
         id=f"library-{idx}",

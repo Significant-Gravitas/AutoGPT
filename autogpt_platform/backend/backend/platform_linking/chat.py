@@ -3,6 +3,7 @@
 import logging
 from uuid import uuid4
 
+from backend.api.features.orgs.db import get_user_default_team
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_copilot_turn
 from backend.copilot.model import (
@@ -56,6 +57,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     the full stream (Redis Streams, not pub/sub).
     """
     owner_user_id = await resolve_chat_owner(request)
+    org_id, team_id = await get_user_default_team(owner_user_id)
 
     session = None
     session_id = request.session_id
@@ -68,6 +70,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await create_chat_session(
             owner_user_id,
             dry_run=False,
+            organization_id=org_id,
+            team_id=team_id,
             source_platform=request.platform.value.lower(),
         )
     session_id = session.session_id
@@ -107,6 +111,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         message=request.message,
         turn_id=turn_id,
         is_user_message=True,
+        organization_id=org_id,
+        team_id=team_id,
     )
 
     logger.info(

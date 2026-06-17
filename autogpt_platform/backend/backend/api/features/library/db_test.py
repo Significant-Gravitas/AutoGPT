@@ -25,6 +25,7 @@ async def test_get_library_agents(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         )
     ]
 
@@ -43,6 +44,7 @@ async def test_get_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent2",
                 version=1,
@@ -51,6 +53,7 @@ async def test_get_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -156,6 +159,7 @@ async def test_add_agent_to_library(mocker):
             userId="creator",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 
@@ -173,6 +177,7 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=mock_store_listing_data.AgentGraph,
     )
 
@@ -454,6 +459,7 @@ async def test_list_favorite_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=True,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-fav",
                 version=1,
@@ -462,6 +468,7 @@ async def test_list_favorite_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -507,6 +514,7 @@ async def test_list_library_agents_skips_failed_agent(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             AgentGraph=prisma.models.AgentGraph(
                 id="agent-bad",
                 version=1,
@@ -515,6 +523,7 @@ async def test_list_library_agents_skips_failed_agent(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -590,6 +599,7 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,
@@ -598,6 +608,7 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 
@@ -710,6 +721,7 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id="trig-graph-id",
             version=1,
@@ -718,6 +730,7 @@ async def test_list_trigger_agents_propagates_schedule_info(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
     mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")

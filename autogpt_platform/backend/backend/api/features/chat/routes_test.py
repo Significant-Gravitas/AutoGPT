@@ -33,9 +33,11 @@ TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -611,7 +613,15 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
     """Mock create_chat_session to return a fake session."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_create(user_id: str, *, dry_run: bool):
+    async def _fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        source_platform: str | None = None,
+    ):
         return ChatSession.new(user_id, dry_run=dry_run)
 
     return mocker.patch(
@@ -2061,7 +2071,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
     ``get_or_create_builder_session`` and returns a session bound to the graph."""
     from backend.copilot.model import ChatSession
 
-    async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
+    async def _fake_get_or_create(
+        user_id: str,
+        graph_id: str,
+        *,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+    ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
@@ -2089,7 +2105,7 @@ def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
     """``get_or_create_builder_session`` raises ``NotFoundError`` when the
     user doesn't own the graph; the route must map that to HTTP 404."""
 
-    async def _fake_get_or_create(user_id: str, graph_id: str):
+    async def _fake_get_or_create(user_id: str, graph_id: str, **_kwargs):
         raise NotFoundError(f"Graph {graph_id} not found")
 
     mocker.patch(
@@ -2117,7 +2133,7 @@ def test_create_session_without_builder_graph_id_creates_fresh(
         new_callable=AsyncMock,
     )
 
-    async def _fake_create(user_id: str, *, dry_run: bool) -> ChatSession:
+    async def _fake_create(user_id: str, *, dry_run: bool, **_kwargs) -> ChatSession:
         return ChatSession.new(user_id, dry_run=dry_run)
 
     mocker.patch(

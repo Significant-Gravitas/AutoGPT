@@ -13,3 +13,4 @@ class APIAuthorizationInfo(BaseModel):
     expires_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
+    organization_id: Optional[str] = None

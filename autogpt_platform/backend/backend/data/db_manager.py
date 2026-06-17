@@ -103,6 +103,8 @@ from backend.data.notifications import (
     remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.org_credit import get_org_credits as _get_org_credits_raw
+from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
@@ -173,6 +175,26 @@ async def _get_credits(user_id: str) -> int:
 # Public aliases used by db_accessors.credit_db() when Prisma is connected
 get_credits = _get_credits
 spend_credits = _spend_credits
+
+
+async def _spend_org_credits(
+    org_id: str,
+    user_id: str,
+    cost: int,
+    metadata: UsageTransactionMetadata,
+    team_id: str | None = None,
+) -> int:
+    return await _spend_org_credits_raw(
+        org_id=org_id,
+        user_id=user_id,
+        amount=cost,
+        team_id=team_id,
+        metadata=metadata.model_dump(),
+    )
+
+
+async def _get_org_credits(org_id: str) -> int:
+    return await _get_org_credits_raw(org_id)
 
 
 class DatabaseManager(AppService):
@@ -261,6 +283,8 @@ class DatabaseManager(AppService):
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
     get_credits = _(_get_credits, name="get_credits")
+    spend_org_credits = _(_spend_org_credits, name="spend_org_credits")
+    get_org_credits = _(_get_org_credits, name="get_org_credits")
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
@@ -463,6 +487,8 @@ class DatabaseManagerClient(AppServiceClient):
     # Credits
     spend_credits = _(d.spend_credits)
     get_credits = _(d.get_credits)
+    spend_org_credits = _(d.spend_org_credits)
+    get_org_credits = _(d.get_org_credits)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -618,6 +644,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Credits ============ #
     spend_credits = d.spend_credits
     get_credits = d.get_credits
+    spend_org_credits = d.spend_org_credits
+    get_org_credits = d.get_org_credits
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding

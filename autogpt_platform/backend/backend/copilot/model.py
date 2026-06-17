@@ -970,6 +970,8 @@ async def create_chat_session(
     *,
     dry_run: bool,
     builder_graph_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     source_platform: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
@@ -1000,6 +1002,8 @@ async def create_chat_session(
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             metadata=session.metadata,
         )
     except Exception as e:
@@ -1020,6 +1024,8 @@ async def create_chat_session(
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1060,6 +1066,8 @@ async def get_or_create_builder_session(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1073,6 +1081,7 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    organization_id: str | None = None,
     title_contains: str | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
@@ -1087,30 +1096,41 @@ async def get_user_sessions(
     """
     db = chat_db()
     sessions = await db.get_user_chat_sessions(
-        user_id, limit, offset, title_contains=title_contains
+        user_id,
+        limit,
+        offset,
+        organization_id=organization_id,
+        title_contains=title_contains,
     )
-    # Total count ignores the filter — it's the user's overall session
-    # count, used by paginated listings. The /search/global caller
-    # discards it.
-    total_count = await db.get_user_session_count(user_id)
+    total_count = await db.get_user_session_count(
+        user_id, organization_id=organization_id
+    )
 
     return sessions, total_count
 
 
-async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+async def delete_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+) -> bool:
     """Delete a chat session from both cache and database.
 
     Args:
         session_id: The session ID to delete.
         user_id: If provided, validates that the session belongs to this user
             before deletion. This prevents unauthorized deletion.
+        organization_id: If provided, scopes the deletion to sessions
+            belonging to this organization.
 
     Returns:
         True if deleted successfully, False otherwise.
     """
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
-    deleted = await chat_db().delete_chat_session(session_id, user_id)
+    deleted = await chat_db().delete_chat_session(
+        session_id, user_id, organization_id=organization_id
+    )
 
     if not deleted:
         return False

@@ -377,6 +377,9 @@ async def delete_preset(
 async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
         ..., embed=True, default_factory=dict
@@ -415,4 +418,6 @@ async def execute_preset(
         preset_id=preset_id,
         inputs=merged_node_input,
         graph_credentials_inputs=merged_credential_inputs,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )

@@ -655,6 +655,10 @@ class RunAgentTool(BaseTool):
         # defend against a race (creds deleted between prereq and
         # execute) by turning credential errors back into the inline
         # setup card.
+        from backend.api.features.orgs.db import get_user_default_team
+
+        org_id, team_id = await get_user_default_team(user_id)
+
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
@@ -662,6 +666,8 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
                 dry_run=dry_run,
+                organization_id=org_id,
+                team_id=team_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

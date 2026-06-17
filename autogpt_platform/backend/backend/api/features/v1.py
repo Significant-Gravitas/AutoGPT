@@ -9,8 +9,9 @@ from urllib.parse import urlparse
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from fastapi import (
     APIRouter,
     Body,
@@ -74,11 +75,11 @@ from backend.data.credit import (
     create_subscription_checkout,
     get_active_subscription_period_end,
     get_auto_top_up,
+    get_credit_model,
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    get_user_credit_model,
     handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
@@ -486,7 +487,10 @@ async def get_graph_blocks() -> Response:
     },
 )
 async def execute_graph_block(
-    block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
+    block_id: str,
+    data: BlockInput,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
@@ -547,6 +551,7 @@ async def execute_graph_block(
 )
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     file: UploadFile = File(...),
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
@@ -636,9 +641,10 @@ async def upload_file(
 )
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, int]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return {"credits": await user_credit_model.get_credits(user_id)}
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return {"credits": await credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -650,6 +656,7 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     x_datafast_visitor_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
@@ -657,8 +664,8 @@ async def request_top_up(
         str | None, Header(include_in_schema=False)
     ] = None,
 ):
-    user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    checkout_url = await credit_model.top_up_intent(
         user_id,
         request.credit_amount,
         datafast_visitor_id=x_datafast_visitor_id,
@@ -675,11 +682,12 @@ async def request_top_up(
 )
 async def refund_top_up(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.top_up_refund(user_id, transaction_key, metadata)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -688,9 +696,12 @@ async def refund_top_up(
     tags=["credits"],
     dependencies=[Security(requires_user)],
 )
-async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
-    user_credit_model = await get_user_credit_model(user_id)
-    await user_credit_model.fulfill_checkout(user_id=user_id)
+async def fulfill_checkout(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
+):
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    await credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
 
@@ -701,7 +712,9 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
     dependencies=[Security(requires_user)],
 )
 async def configure_user_auto_top_up(
-    request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
+    request: AutoTopUpConfig,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
 
@@ -719,14 +732,14 @@ async def configure_user_auto_top_up(
             status_code=422, detail="Amount must be greater than or equal to threshold"
         )
 
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    current_balance = await credit_model.get_credits(user_id)
 
     try:
         if current_balance < request.threshold:
-            await user_credit_model.top_up_credits(user_id, request.amount)
+            await credit_model.top_up_credits(user_id, request.amount)
         else:
-            await user_credit_model.top_up_credits(user_id, 0)
+            await credit_model.top_up_credits(user_id, 0)
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -754,6 +767,7 @@ async def configure_user_auto_top_up(
 )
 async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -1515,9 +1529,10 @@ async def stripe_webhook(request: Request):
 )
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, str]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return {"url": await user_credit_model.create_billing_portal_session(user_id)}
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return {"url": await credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(
@@ -1528,6 +1543,7 @@ async def manage_payment_method(
 )
 async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
@@ -1535,8 +1551,8 @@ async def get_credit_history(
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
 
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.get_transaction_history(
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.get_transaction_history(
         user_id=user_id,
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
@@ -1552,9 +1568,10 @@ async def get_credit_history(
 )
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[RefundRequest]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.get_refund_requests(user_id)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.get_refund_requests(user_id)
 
 
 @v1_router.get(
@@ -1565,6 +1582,7 @@ async def get_refund_requests(
 )
 async def list_invoices(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     limit: int = Query(24, ge=1, le=100),
 ) -> list[InvoiceListItem]:
     """Recent Stripe invoices for the current user.
@@ -1573,8 +1591,8 @@ async def list_invoices(
     ``invoice_pdf_url`` (direct PDF download). Returns an empty list when
     the credit system is disabled or the user has no Stripe customer yet.
     """
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.list_invoices(user_id, limit=limit)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.list_invoices(user_id, limit=limit)
 
 
 ########################################################
@@ -1594,6 +1612,7 @@ class DeleteGraphResponse(TypedDict):
 )
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphMeta]:
     paginated_result = await graph_db.list_graphs_paginated(
         user_id=user_id,
@@ -1619,6 +1638,7 @@ async def list_graphs(
 async def get_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     version: int | None = None,
     for_export: bool = False,
 ) -> graph_db.GraphModel:
@@ -1641,7 +1661,9 @@ async def get_graph(
     dependencies=[Security(requires_user)],
 )
 async def get_graph_all_versions(
-    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphModel]:
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not graphs:
@@ -1658,12 +1680,18 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph, user_id=user_id)
+    await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
     await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
@@ -1677,7 +1705,9 @@ async def create_new_graph(
     dependencies=[Security(requires_user)],
 )
 async def delete_graph(
-    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(
         graph_id=graph_id, version=None, user_id=user_id
@@ -1697,6 +1727,7 @@ async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
@@ -1712,7 +1743,12 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
-    new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
+    new_graph_version = await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
@@ -1754,6 +1790,7 @@ async def set_graph_active_version(
     graph_id: str,
     request_body: SetGraphActiveVersion,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ):
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
@@ -1806,6 +1843,7 @@ async def update_graph_settings(
     graph_id: str,
     settings: GraphSettings,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> GraphSettings:
     """Update graph settings for the user's library agent."""
     library_agent = await library_db.get_library_agent_by_graph_id(
@@ -1844,6 +1882,7 @@ async def update_graph_settings(
 async def execute_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
@@ -1854,8 +1893,8 @@ async def execute_graph(
     dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
     if not dry_run:
-        user_credit_model = await get_user_credit_model(user_id)
-        current_balance = await user_credit_model.get_credits(user_id)
+        credit_model = await get_credit_model(user_id, ctx.org_id)
+        current_balance = await credit_model.get_credits(user_id)
         if current_balance <= 0:
             raise HTTPException(
                 status_code=402,
@@ -1871,6 +1910,8 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
@@ -1955,6 +1996,7 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[execution_db.GraphExecutionMeta]:
     paginated_result = await execution_db.get_graph_executions_paginated(
         user_id=user_id,
@@ -2015,6 +2057,7 @@ async def get_executions_cost_summary(
 async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
@@ -2072,6 +2115,7 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
     result = await execution_db.get_graph_execution(
         user_id=user_id,
@@ -2129,6 +2173,7 @@ async def hide_activity_summary_if_disabled(
 async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     await execution_db.delete_graph_execution(
         graph_exec_id=graph_exec_id, user_id=user_id
@@ -2156,6 +2201,7 @@ async def enable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     _body: ShareRequest = Body(default=ShareRequest()),
 ) -> ShareResponse:
     """Enable sharing for a graph execution."""
@@ -2212,6 +2258,7 @@ async def disable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     """Disable sharing for a graph execution."""
     # Verify the execution belongs to the user
@@ -2315,6 +2362,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -2345,6 +2393,8 @@ async def create_graph_execution_schedule(
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -2366,6 +2416,7 @@ async def create_graph_execution_schedule(
 )
 async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     return await get_scheduler_client().get_graph_execution_schedules(
@@ -2382,6 +2433,7 @@ async def list_graph_execution_schedules(
 )
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
 
@@ -2424,6 +2476,7 @@ async def list_copilot_turn_schedules(
 )
 async def delete_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
@@ -2592,7 +2645,9 @@ async def delete_copilot_skill(
     dependencies=[Security(requires_user)],
 )
 async def create_api_key(
-    request: CreateAPIKeyRequest, user_id: Annotated[str, Security(get_user_id)]
+    request: CreateAPIKeyRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
     api_key_info, plain_text_key = await api_key_db.create_api_key(
@@ -2600,6 +2655,7 @@ async def create_api_key(
         user_id=user_id,
         permissions=request.permissions,
         description=request.description,
+        organization_id=ctx.org_id,
     )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 
@@ -2612,9 +2668,12 @@ async def create_api_key(
 )
 async def get_api_keys(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
-    return await api_key_db.list_user_api_keys(user_id)
+    return await api_key_db.list_user_api_keys(
+        user_id, organization_id=ctx.org_id or None
+    )
 
 
 @v1_router.get(
@@ -2624,10 +2683,14 @@ async def get_api_keys(
     dependencies=[Security(requires_user)],
 )
 async def get_api_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(key_id, user_id)
+    api_key = await api_key_db.get_api_key_by_id(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
     return api_key
@@ -2640,10 +2703,14 @@ async def get_api_key(
     dependencies=[Security(requires_user)],
 )
 async def delete_api_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Revoke an API key"""
-    return await api_key_db.revoke_api_key(key_id, user_id)
+    return await api_key_db.revoke_api_key(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
 
 
 @v1_router.post(
@@ -2653,10 +2720,14 @@ async def delete_api_key(
     dependencies=[Security(requires_user)],
 )
 async def suspend_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Suspend an API key"""
-    return await api_key_db.suspend_api_key(key_id, user_id)
+    return await api_key_db.suspend_api_key(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
 
 
 @v1_router.put(
@@ -2669,8 +2740,9 @@ async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Update API key permissions"""
     return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions
+        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
     )

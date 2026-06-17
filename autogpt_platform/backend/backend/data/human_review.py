@@ -170,6 +170,8 @@ async def get_or_create_human_review(
     input_data: SafeJsonData,
     message: str,
     editable: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> Optional[ReviewResult]:
     """
     Get existing review or create a new pending review entry.
@@ -206,6 +208,8 @@ async def get_or_create_human_review(
                     "instructions": message,
                     "editable": editable,
                     "status": ReviewStatus.WAITING,
+                    **({"organizationId": organization_id} if organization_id else {}),
+                    **({"teamId": team_id} if team_id else {}),
                 },
                 "update": {},  # Do nothing on update - keep existing review as is
             },

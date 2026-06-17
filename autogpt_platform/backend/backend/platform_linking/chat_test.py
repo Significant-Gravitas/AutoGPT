@@ -22,6 +22,17 @@ def _request(**overrides) -> BotChatRequest:
 
 
 class TestStartChatTurn:
+    @pytest.fixture(autouse=True)
+    def _mock_org_lookup(self):
+        # Bot-originated chats resolve the owner's default org/team so the
+        # ChatSession is created with tenancy context. Tests don't seed
+        # OrgMember rows, so stub the lookup to return None tuples.
+        with patch(
+            "backend.platform_linking.chat.get_user_default_team",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
         db_mock = MagicMock()

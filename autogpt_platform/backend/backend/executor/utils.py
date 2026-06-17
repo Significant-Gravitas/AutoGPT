@@ -1179,6 +1179,8 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
     *,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
@@ -1291,6 +1293,8 @@ async def add_graph_execution(
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
             is_dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         logger.info(
@@ -1320,7 +1324,9 @@ async def add_graph_execution(
             ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
-            # Workspace (enables workspace:// file resolution in blocks)
+            # File-storage workspace (UserWorkspace) — enables
+            # workspace:// file resolution in blocks. Distinct from the
+            # org/team tenancy ``team_id`` field on ExecutionContext.
             workspace_id=workspace.id,
         )
 

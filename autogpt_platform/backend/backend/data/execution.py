@@ -105,9 +105,13 @@ class ExecutionContext(BaseModel):
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
 
-    # Workspace
+    # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
     session_id: Optional[str] = None
+
+    # Org/team tenancy context
+    organization_id: Optional[str] = None
+    team_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -541,6 +545,7 @@ async def get_graph_executions(
     started_time_gte: Optional[datetime] = None,
     started_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
+    team_id: Optional[str] = None,
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
@@ -564,8 +569,13 @@ async def get_graph_executions(
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
+    # Scope by user_id and optionally team_id. Don't conflate either with
+    # organizationId — those are separate columns in the schema and a
+    # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
+    if team_id:
+        where_filter["teamId"] = team_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
@@ -814,6 +824,8 @@ async def create_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
     is_dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -852,6 +864,9 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
+            # Tenancy dual-write fields
+            **({"organizationId": organization_id} if organization_id else {}),
+            **({"teamId": team_id} if team_id else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
