@@ -212,7 +212,7 @@ export function ChatSidebar() {
       <Sidebar
         variant="inset"
         collapsible="icon"
-        className="!top-[50px] !h-[calc(100vh-50px)] border-r border-zinc-100 px-0"
+        className="!top-[calc(50px+var(--preview-banner-height,0px))] !h-[calc(100vh-50px-var(--preview-banner-height,0px))] px-0 [&_[data-sidebar=sidebar]]:border-r [&_[data-sidebar=sidebar]]:border-r-[#80808017]"
       >
         {isCollapsed && (
           <SidebarHeader
@@ -259,7 +259,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -332,171 +332,178 @@ export function ChatSidebar() {
                   No conversations yet
                 </p>
               ) : (
-                sessions?.map((session) => (
-                  <div
-                    key={session.id}
-                    className={cn(
-                      "group relative w-full rounded-lg transition-colors",
-                      session.id === sessionId
-                        ? "bg-zinc-100"
-                        : "hover:bg-zinc-50",
-                    )}
-                  >
-                    {editingSessionId === session.id ? (
-                      <div className="px-3 py-2.5">
-                        <input
-                          ref={renameInputRef}
-                          type="text"
-                          aria-label="Rename chat"
-                          value={editingTitle}
-                          onChange={(e) => setEditingTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
-                            } else if (e.key === "Escape") {
-                              renameCancelledRef.current = true;
-                              setEditingSessionId(null);
-                            }
-                          }}
-                          onBlur={() => {
-                            if (renameCancelledRef.current) {
-                              renameCancelledRef.current = false;
-                              return;
-                            }
-                            handleRenameSubmit(session.id);
-                          }}
-                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleSelectSession(session.id)}
-                        className={cn(
-                          "w-full px-3 py-2.5 text-left",
-                          exportingSessionIds.has(session.id)
-                            ? "pr-[68px]"
-                            : "pr-10",
-                        )}
-                      >
-                        <ChatSessionBlock
-                          title={session.title}
-                          titleContent={
-                            <AnimatePresence mode="wait" initial={false}>
-                              <motion.span
-                                key={session.title || "untitled"}
-                                initial={{ opacity: 0, y: 4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                                transition={{ duration: 0.2 }}
-                                className="block truncate"
-                              >
-                                {session.title || "Untitled chat"}
-                              </motion.span>
-                            </AnimatePresence>
-                          }
-                          updatedAt={session.updated_at}
-                          sourcePlatform={session.source_platform}
-                          isActive={session.id === sessionId}
-                          chatStatus={session.chat_status}
-                          showProcessing={
-                            !!session.is_processing &&
-                            shouldShowSessionProcessingIndicator({
-                              sessionId: session.id,
-                              currentSessionId: sessionId,
-                              isProcessing: session.is_processing,
-                              hasCompletedIndicator: completedSessionIDs.has(
-                                session.id,
-                              ),
-                              needsReload: !!sessionNeedsReload[session.id],
-                            })
-                          }
-                          showCompleted={
-                            completedSessionIDs.has(session.id) &&
-                            session.id !== sessionId
-                          }
-                        />
-                      </button>
-                    )}
-                    {exportingSessionIds.has(session.id) && (
-                      <div
-                        className="pointer-events-none absolute right-9 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-sm"
-                        aria-label="Exporting chat"
-                        title="Exporting chat…"
-                      >
-                        <div className="relative h-7 w-7">
-                          <div className="absolute inset-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
-                          <DownloadSimpleIcon className="absolute inset-0 m-auto h-3.5 w-3.5" />
-                        </div>
-                      </div>
-                    )}
-                    {editingSessionId !== session.id && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
-                            aria-label="More actions"
-                          >
-                            <DotsThree className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleRenameClick(e, session.id, session.title)
-                            }
-                          >
-                            <PencilSimpleIcon className="mr-2 h-4 w-4" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleExportClick(e, session.id, session.title)
-                            }
-                            onSelect={(e) => {
-                              if (exportingSessionIds.has(session.id))
-                                e.preventDefault();
+                sessions?.map((session, index) => {
+                  const isActive = session.id === sessionId;
+                  const nextIsActive = sessions?.[index + 1]?.id === sessionId;
+                  return (
+                    <div
+                      key={session.id}
+                      className={cn(
+                        "group relative w-full transition-colors",
+                        isActive
+                          ? "rounded-lg bg-zinc-100"
+                          : cn(
+                              "border-b border-b-[#8080800f] last:border-b-0 hover:bg-zinc-50",
+                              nextIsActive && "!border-b-0",
+                            ),
+                      )}
+                    >
+                      {editingSessionId === session.id ? (
+                        <div className="px-3 py-2.5">
+                          <input
+                            ref={renameInputRef}
+                            type="text"
+                            aria-label="Rename chat"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              } else if (e.key === "Escape") {
+                                renameCancelledRef.current = true;
+                                setEditingSessionId(null);
+                              }
                             }}
-                            disabled={exportingSessionIds.has(session.id)}
-                          >
-                            {exportingSessionIds.has(session.id) ? (
-                              <CircleNotch
-                                className="mr-2 h-4 w-4 animate-spin"
-                                weight="bold"
-                              />
-                            ) : (
-                              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-                            )}
-                            {exportingSessionIds.has(session.id)
-                              ? "Exporting…"
-                              : "Export chat"}
-                          </DropdownMenuItem>
-                          {chatSharingEnabled && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSharingSessionId(session.id);
-                              }}
-                            >
-                              <ShareNetworkIcon className="mr-2 h-4 w-4" />
-                              Share chat
-                            </DropdownMenuItem>
+                            onBlur={() => {
+                              if (renameCancelledRef.current) {
+                                renameCancelledRef.current = false;
+                                return;
+                              }
+                              handleRenameSubmit(session.id);
+                            }}
+                            className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleSelectSession(session.id)}
+                          className={cn(
+                            "w-full px-3 py-2.5 text-left",
+                            exportingSessionIds.has(session.id)
+                              ? "pr-[68px]"
+                              : "pr-10",
                           )}
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleDeleteClick(e, session.id, session.title)
+                        >
+                          <ChatSessionBlock
+                            title={session.title}
+                            titleContent={
+                              <AnimatePresence mode="wait" initial={false}>
+                                <motion.span
+                                  key={session.title || "untitled"}
+                                  initial={{ opacity: 0, y: 4 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -4 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="block truncate"
+                                >
+                                  {session.title || "Untitled chat"}
+                                </motion.span>
+                              </AnimatePresence>
                             }
-                            disabled={isDeleting}
-                            className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                          >
-                            <TrashIcon className="mr-2 h-4 w-4" />
-                            Delete chat
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                ))
+                            updatedAt={session.updated_at}
+                            sourcePlatform={session.source_platform}
+                            isActive={session.id === sessionId}
+                            chatStatus={session.chat_status}
+                            showProcessing={
+                              !!session.is_processing &&
+                              shouldShowSessionProcessingIndicator({
+                                sessionId: session.id,
+                                currentSessionId: sessionId,
+                                isProcessing: session.is_processing,
+                                hasCompletedIndicator: completedSessionIDs.has(
+                                  session.id,
+                                ),
+                                needsReload: !!sessionNeedsReload[session.id],
+                              })
+                            }
+                            showCompleted={
+                              completedSessionIDs.has(session.id) &&
+                              session.id !== sessionId
+                            }
+                          />
+                        </button>
+                      )}
+                      {exportingSessionIds.has(session.id) && (
+                        <div
+                          className="pointer-events-none absolute right-9 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white text-zinc-600 shadow-sm"
+                          aria-label="Exporting chat"
+                          title="Exporting chat…"
+                        >
+                          <div className="relative h-7 w-7">
+                            <div className="absolute inset-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
+                            <DownloadSimpleIcon className="absolute inset-0 m-auto h-3.5 w-3.5" />
+                          </div>
+                        </div>
+                      )}
+                      {editingSessionId !== session.id && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                              aria-label="More actions"
+                            >
+                              <DotsThree className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleRenameClick(e, session.id, session.title)
+                              }
+                            >
+                              <PencilSimpleIcon className="mr-2 h-4 w-4" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleExportClick(e, session.id, session.title)
+                              }
+                              onSelect={(e) => {
+                                if (exportingSessionIds.has(session.id))
+                                  e.preventDefault();
+                              }}
+                              disabled={exportingSessionIds.has(session.id)}
+                            >
+                              {exportingSessionIds.has(session.id) ? (
+                                <CircleNotch
+                                  className="mr-2 h-4 w-4 animate-spin"
+                                  weight="bold"
+                                />
+                              ) : (
+                                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                              )}
+                              {exportingSessionIds.has(session.id)
+                                ? "Exporting…"
+                                : "Export chat"}
+                            </DropdownMenuItem>
+                            {chatSharingEnabled && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSharingSessionId(session.id);
+                                }}
+                              >
+                                <ShareNetworkIcon className="mr-2 h-4 w-4" />
+                                Share chat
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleDeleteClick(e, session.id, session.title)
+                              }
+                              disabled={isDeleting}
+                              className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                            >
+                              <TrashIcon className="mr-2 h-4 w-4" />
+                              Delete chat
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  );
+                })
               )}
               {hasMore && (
                 <Button
