@@ -1,4 +1,4 @@
-import { render } from "@/tests/integrations/test-utils";
+import { render, normalizeWhitespace } from "@/tests/integrations/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { EditAgentTool, type EditAgentToolPart } from "../EditAgent";
 
@@ -21,21 +21,15 @@ function makePart(
   };
 }
 
-// MorphingTextAnimation renders one span per character and uses a non-breaking
-// space for spaces, so normalize all whitespace before asserting on the text.
-function normalizedText(container: HTMLElement): string {
-  return (container.textContent ?? "").replace(/\s/g, " ");
-}
-
 describe("EditAgentTool", () => {
   it("shows the plain loading line (no mini-game) while operating", () => {
     const { container } = render(<EditAgentTool part={makePart()} />);
 
-    expect(normalizedText(container)).toContain(
+    expect(normalizeWhitespace(container)).toContain(
       "Editing agent, this might take a minute",
     );
-    expect(normalizedText(container)).not.toContain("Play while you wait");
-    expect(normalizedText(container)).not.toContain("WASD");
+    expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
+    expect(normalizeWhitespace(container)).not.toContain("WASD");
   });
 
   it("renders the agent preview accordion once a preview output arrives", () => {
@@ -55,7 +49,7 @@ describe("EditAgentTool", () => {
       />,
     );
 
-    expect(normalizedText(container)).toContain("Updated Agent");
-    expect(normalizedText(container)).toContain("1 block");
+    expect(normalizeWhitespace(container)).toContain("Updated Agent");
+    expect(normalizeWhitespace(container)).toContain("1 block");
   });
 });

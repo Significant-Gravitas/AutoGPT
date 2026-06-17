@@ -1,4 +1,4 @@
-import { render } from "@/tests/integrations/test-utils";
+import { render, normalizeWhitespace } from "@/tests/integrations/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { CreateAgentTool, type CreateAgentToolPart } from "../CreateAgent";
 
@@ -21,21 +21,15 @@ function makePart(
   };
 }
 
-// MorphingTextAnimation renders one span per character and uses a non-breaking
-// space for spaces, so normalize all whitespace before asserting on the text.
-function normalizedText(container: HTMLElement): string {
-  return (container.textContent ?? "").replace(/\s/g, " ");
-}
-
 describe("CreateAgentTool", () => {
   it("shows the plain loading line (no mini-game) while operating", () => {
     const { container } = render(<CreateAgentTool part={makePart()} />);
 
-    expect(normalizedText(container)).toContain(
+    expect(normalizeWhitespace(container)).toContain(
       "Creating agent, this might take a minute",
     );
-    expect(normalizedText(container)).not.toContain("Play while you wait");
-    expect(normalizedText(container)).not.toContain("WASD");
+    expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
+    expect(normalizeWhitespace(container)).not.toContain("WASD");
   });
 
   it("renders the agent preview accordion once a preview output arrives", () => {
@@ -55,8 +49,8 @@ describe("CreateAgentTool", () => {
       />,
     );
 
-    expect(normalizedText(container)).toContain("News Summarizer");
-    expect(normalizedText(container)).toContain("3 blocks");
+    expect(normalizeWhitespace(container)).toContain("News Summarizer");
+    expect(normalizeWhitespace(container)).toContain("3 blocks");
   });
 
   it("renders the suggested-goal card when the goal needs refinement", () => {
@@ -75,6 +69,6 @@ describe("CreateAgentTool", () => {
       />,
     );
 
-    expect(normalizedText(container)).toContain("Goal needs refinement");
+    expect(normalizeWhitespace(container)).toContain("Goal needs refinement");
   });
 });

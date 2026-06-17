@@ -6,7 +6,11 @@ vi.mock("@sentry/nextjs", async (importOriginal) => ({
 }));
 
 import * as Sentry from "@sentry/nextjs";
-import { render, screen } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  normalizeWhitespace,
+} from "@/tests/integrations/test-utils";
 import { RunAgentTool, type RunAgentToolPart } from "../RunAgent";
 
 function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
@@ -19,23 +23,17 @@ function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
   };
 }
 
-// MorphingTextAnimation renders one span per character and uses a non-breaking
-// space for spaces, so normalize all whitespace before asserting on the text.
-function normalizedText(container: HTMLElement): string {
-  return (container.textContent ?? "").replace(/\s/g, " ");
-}
-
 describe("RunAgentTool streaming state", () => {
   it("shows the plain loading line (no mini-game) while streaming", () => {
     const { container } = render(
       <RunAgentTool part={makePart({ state: "input-streaming" })} />,
     );
 
-    expect(normalizedText(container)).toContain(
+    expect(normalizeWhitespace(container)).toContain(
       "Running agent, this might take a minute",
     );
-    expect(normalizedText(container)).not.toContain("Play while you wait");
-    expect(normalizedText(container)).not.toContain("WASD");
+    expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
+    expect(normalizeWhitespace(container)).not.toContain("WASD");
   });
 });
 
