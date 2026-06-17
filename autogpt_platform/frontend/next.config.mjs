@@ -88,6 +88,10 @@ const nextConfig = {
   transpilePackages: ["geist"],
   // Baseline security response headers applied to every route. Defined here
   // (rather than in the Sentry options) so they apply on all build paths.
+  // Self-hosted Next.js fonts are served with `Access-Control-Allow-Origin: *`.
+  // They are only loaded by our own (same-origin) pages, so scope CORS to our
+  // own origin instead of "*" to resolve the CASA "overly permissive CORS"
+  // finding without affecting how the fonts load.
   async headers() {
     return [
       {
@@ -97,6 +101,38 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           // Enables Sentry browser JS self-profiling.
           { key: "Document-Policy", value: "js-profiling" },
+        ],
+      },
+      // Self-hosted Next.js fonts are served from `/_next/static/media/`.
+      // `Access-Control-Allow-Origin` only accepts a single value, so we use
+      // `has` matchers on the request `Origin` header to echo back the
+      // requesting origin when it belongs to one of our known deployments.
+      {
+        source: "/_next/static/media/:path*",
+        has: [
+          { type: "header", key: "Origin", value: "https://platform.agpt.co" },
+        ],
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://platform.agpt.co",
+          },
+        ],
+      },
+      {
+        source: "/_next/static/media/:path*",
+        has: [
+          {
+            type: "header",
+            key: "Origin",
+            value: "https://dev-builder.agpt.co",
+          },
+        ],
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "https://dev-builder.agpt.co",
+          },
         ],
       },
     ];
