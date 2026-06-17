@@ -93,7 +93,7 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-medium data-[active=true]:!bg-zinc-200 hover:!bg-zinc-200"
+        className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal hover:!bg-zinc-200"
       >
         <Link href={`/copilot?sessionId=${session.id}`}>
           {session.is_processing ? (
@@ -104,10 +104,7 @@ export function RecentChatItem({
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : (
-            <ChatCircleIcon
-              weight="bold"
-              className="size-4 shrink-0 text-zinc-500"
-            />
+            <ChatCircleIcon className="size-4 shrink-0 text-zinc-500" />
           )}
           <span className="truncate">{title}</span>
         </Link>

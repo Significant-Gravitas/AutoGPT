@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -35,7 +34,7 @@ import { ComponentProps, ReactNode } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
-import { useSidebarCounts } from "./useSidebarCounts";
+import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 
 type NavLink = {
   name: string;
@@ -59,50 +58,60 @@ function isLinkActive(pathname: string | null, href: string) {
 }
 
 // Rendered inside the <Link>, so useLinkStatus reports that link's pending
-// navigation — show a spinner until the destination page is reached, then
-// fall back to the count badge.
-function NavLinkRight({ count }: { count?: number }) {
+// navigation — show a spinner until the destination page is reached.
+function NavLinkLoader() {
   const { pending } = useLinkStatus();
 
-  if (pending) {
-    return (
-      <LoadingSpinner size="small" className="ml-auto shrink-0 text-zinc-500" />
-    );
-  }
-
-  if (count === undefined) return null;
+  if (!pending) return null;
 
   return (
-    <span className="ml-auto shrink-0 text-sm font-normal text-zinc-500">
-      {count > 100 ? "100+" : count}
-    </span>
+    <LoadingSpinner
+      size="small"
+      className="ml-auto !size-4 shrink-0 text-zinc-500"
+    />
   );
 }
 
-function NavMenu({ links }: { links: NavLink[] }) {
+// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
+// navigation to /copilot is pending, then back to the sparkle once it lands.
+function NewTaskIcon() {
+  const { pending } = useLinkStatus();
+
+  if (pending) {
+    return <LoadingSpinner size="small" className="shrink-0" />;
+  }
+
+  return <SparkleIcon className="size-4" />;
+}
+
+function NavMenu({
+  links,
+  leading,
+}: {
+  links: NavLink[];
+  leading?: ReactNode;
+}) {
   const pathname = usePathname();
-  const counts = useSidebarCounts();
 
   return (
-    <SidebarMenu className="gap-2">
-      {links.map((link) => {
-        const count = counts[link.href];
-        return (
-          <SidebarMenuItem key={link.href}>
-            <SidebarMenuButton
-              asChild
-              isActive={isLinkActive(pathname, link.href)}
-              className="font-medium text-zinc-700 data-[active=true]:!bg-zinc-200 hover:!bg-zinc-200"
-            >
-              <Link href={link.href}>
-                <link.icon className="size-5" weight="bold" />
-                <span className="truncate">{link.name}</span>
-                <NavLinkRight count={count} />
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        );
-      })}
+    <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
+      {leading}
+      {links.map((link) => (
+        <SidebarMenuItem key={link.href}>
+          <SidebarMenuButton
+            asChild
+            tooltip={link.name}
+            isActive={isLinkActive(pathname, link.href)}
+            className="font-normal data-[active=true]:!bg-zinc-200 data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-200 [&>svg]:size-5"
+          >
+            <Link href={link.href}>
+              <link.icon className="size-5" />
+              <span className="truncate">{link.name}</span>
+              <NavLinkLoader />
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
     </SidebarMenu>
   );
 }
@@ -164,7 +173,11 @@ export function AppSidebar(props: Props) {
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
 
   return (
-    <Sidebar {...props} className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]">
+    <Sidebar
+      collapsible="icon"
+      {...props}
+      className="[&_[data-sidebar=sidebar]]:bg-[#F3F3F4]"
+    >
       <AppSidebarHeader />
 
       <SidebarContent className="gap-2 overflow-hidden">
@@ -174,23 +187,31 @@ export function AppSidebar(props: Props) {
           animate="show"
           className="flex min-h-0 flex-1 flex-col gap-2"
         >
-          <motion.div variants={itemVariants} className="px-2 pt-2">
-            <Button
-              as="NextLink"
-              href="/copilot"
-              variant="secondary"
-              size="small"
-              className="w-full rounded-xl bg-zinc-300 hover:bg-zinc-400"
-              leftIcon={<SparkleIcon className="size-4" weight="bold" />}
-            >
-              New Task
-            </Button>
+          <motion.div variants={itemVariants}>
+            <SidebarGroup className="mt-2 py-1 group-data-[collapsible=icon]:mt-0">
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip="New Task"
+                      className="justify-center rounded-lg bg-zinc-800 font-medium text-white group-data-[collapsible=icon]:justify-start hover:!bg-zinc-900 hover:!text-white"
+                    >
+                      <Link href="/copilot">
+                        <NewTaskIcon />
+                        <span className="truncate">New Task</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           </motion.div>
 
           <motion.div variants={itemVariants}>
             <SidebarGroup className="py-1">
               <SidebarGroupContent>
-                <NavMenu links={MAIN_LINKS} />
+                <NavMenu links={MAIN_LINKS} leading={<SidebarSearch />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
@@ -203,7 +224,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div
             variants={itemVariants}
-            className="flex min-h-0 flex-1 flex-col"
+            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
           >
             <CollapsibleNavGroup label="Recent chats" scrollable>
               <RecentChats />
