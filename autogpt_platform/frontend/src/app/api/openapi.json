@@ -18504,6 +18504,8 @@
           "memory_forget_confirm",
           "todo_write",
           "platform_info",
+          "chat_platform_channel_list",
+          "chat_platform_posted",
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
