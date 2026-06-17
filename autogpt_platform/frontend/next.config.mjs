@@ -95,12 +95,17 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/_next/static/media/:path*",
+        source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           // Enables Sentry browser JS self-profiling.
           { key: "Document-Policy", value: "js-profiling" },
+        ],
+      },
+      {
+        source: "/_next/static/media/:path*",
+        headers: [
           {
             key: "Access-Control-Allow-Origin",
             value: "https://platform.agpt.co",
