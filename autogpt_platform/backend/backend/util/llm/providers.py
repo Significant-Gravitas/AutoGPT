@@ -101,6 +101,28 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # sync fallback with a log line.
 _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 
+# Anthropic deprecated ``temperature`` on its newest model generation —
+# the API rejects it outright with "`temperature` is deprecated for
+# this model." (verified live: opus-4-7 and opus-4-8 reject;
+# sonnet-4-6 accepts). Strip the param for known-rejecting families.
+# The sync path additionally retries once without it on that exact
+# error, so unknown future models self-heal; this list only matters
+# for batch submissions, whose errors come back hours later in the
+# result rows.
+_ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+)
+
+
+def _anthropic_accepts_temperature(model: str) -> bool:
+    return not model.startswith(_ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES)
+
+
+def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
+    error_text = str(exc).lower()
+    return "temperature" in error_text and "deprecated" in error_text
+
 
 # ---------------------------------------------------------------------------
 # Result + submission carriers
@@ -422,7 +444,12 @@ async def _call_openai_responses(
         text=text_config,  # type: ignore[arg-type]
         store=False,
         timeout=timeout_seconds,
-        extra_body=extra_body or openai.omit,  # type: ignore[arg-type]
+        # ``omit`` is only valid for TYPED params — the SDK strips it
+        # there. ``extra_body`` flows raw into ``options.extra_json``
+        # (``make_request_options`` checks ``is not None``), and
+        # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+        # mapping`` on the sentinel. Absent extra_body must be ``None``.
+        extra_body=extra_body or None,
     )
 
     raw_tool_calls = extract_responses_tool_calls(response)
@@ -500,7 +527,7 @@ async def _call_anthropic_messages(
         tools=an_tools,
         timeout=timeout_seconds,
     )
-    if temperature is not None:
+    if temperature is not None and _anthropic_accepts_temperature(model):
         create_kwargs["temperature"] = temperature
     if tool_choice is not None:
         create_kwargs["tool_choice"] = tool_choice
@@ -515,7 +542,21 @@ async def _call_anthropic_messages(
             }
         ]
 
-    resp = await client.messages.create(**create_kwargs)
+    try:
+        resp = await client.messages.create(**create_kwargs)
+    except anthropic.BadRequestError as exc:
+        # Self-heal for models the deny-list doesn't know yet.
+        if "temperature" not in create_kwargs or not (
+            _is_temperature_deprecation_error(exc)
+        ):
+            raise
+        logger.warning(
+            "Anthropic model %s rejected temperature — retrying without it. "
+            "Add the model to _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES.",
+            model,
+        )
+        create_kwargs.pop("temperature")
+        resp = await client.messages.create(**create_kwargs)
     if not resp.content:
         raise ValueError("No content returned from Anthropic.")
 
@@ -1087,7 +1128,9 @@ async def _submit_anthropic_batch(
         "messages": anth_messages,
         "max_tokens": max_tokens,
     }
-    if temperature is not None:
+    # Batch errors surface hours later in the result rows — never submit
+    # temperature to models that reject it (no cheap retry exists here).
+    if temperature is not None and _anthropic_accepts_temperature(model):
         params["temperature"] = temperature
     # Only attach tools / tool_choice when the caller actually passed
     # them — Anthropic rejects empty arrays with HTTP 400.

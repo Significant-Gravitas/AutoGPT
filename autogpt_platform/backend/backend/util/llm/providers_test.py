@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
 import pytest
 
 from backend.util.llm.providers import (
@@ -129,6 +130,61 @@ class TestExecutionModeStubs:
             )
 
         assert captured.get("extra_body") == {"service_tier": "flex"}
+
+    @pytest.mark.asyncio
+    async def test_no_service_tier_passes_none_extra_body_not_omit_sentinel(self):
+        """Sentry AUTOGPT-SERVER-99S: ``extra_body=openai.omit`` crashes the
+        real SDK — ``make_request_options`` only checks ``is not None``, so
+        the Omit sentinel lands in ``options.extra_json`` and
+        ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+        mapping`` on EVERY plain OpenAI Responses call (no service_tier).
+        ``omit`` is only valid for typed params; ``extra_body``'s absent
+        value is ``None``."""
+        from backend.util.llm.providers import _call_openai_responses
+
+        captured: dict[str, object] = {}
+
+        class _StubResponses:
+            async def create(self, **kwargs):
+                captured.update(kwargs)
+                resp = MagicMock()
+                resp.output = []
+                resp.usage = MagicMock(input_tokens=1, output_tokens=1)
+                return resp
+
+        class _StubClient:
+            def __init__(self, *args, **kwargs):
+                self.responses = _StubResponses()
+
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI", new=_StubClient
+        ), patch(
+            "backend.util.llm.providers.extract_responses_content",
+            return_value="",
+        ), patch(
+            "backend.util.llm.providers.extract_responses_tool_calls",
+            return_value=[],
+        ), patch(
+            "backend.util.llm.providers.extract_responses_usage",
+            return_value=(1, 1),
+        ), patch(
+            "backend.util.llm.providers.extract_responses_reasoning",
+            return_value=None,
+        ):
+            await _call_openai_responses(
+                model="gpt-4o",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=None,
+                tools=None,
+                force_json_output=False,
+                parallel_tool_calls=False,
+                timeout_seconds=30.0,
+                service_tier=None,
+            )
+
+        assert captured.get("extra_body") is None
 
     @pytest.mark.asyncio
     async def test_flex_mode_passes_service_tier_via_openrouter_extra_body(
@@ -1832,3 +1888,154 @@ class TestCancelBatch:
                 provider="anthropic", provider_batch_id="b1", api_key="sk-test"
             )
         assert ok is False
+
+
+class TestAnthropicTemperatureDeprecation:
+    """Anthropic rejects ``temperature`` on its newest models with
+    '`temperature` is deprecated for this model.' (verified live:
+    claude-opus-4-7 and claude-opus-4-8 reject; sonnet-4-6 accepts).
+    The dream pass's recombine phase died on this nightly — the param
+    must be stripped for known-rejecting models, and the sync path
+    must self-heal for unknown future ones."""
+
+    def _fake_response(self):
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="ok")],
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+            stop_reason="end_turn",
+        )
+
+    @pytest.mark.asyncio
+    async def test_sync_omits_temperature_for_deprecating_model(self):
+        async_create = AsyncMock(return_value=self._fake_response())
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=async_create))
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            await call_provider(
+                provider="anthropic",
+                model="claude-opus-4-7",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.9,
+            )
+        assert "temperature" not in async_create.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_sync_retries_without_temperature_on_deprecation_error(self):
+        """Self-healing for future models the deny-list doesn't know:
+        one retry without the param, same call otherwise."""
+        import httpx
+
+        err = anthropic.BadRequestError(
+            message="`temperature` is deprecated for this model.",
+            response=httpx.Response(
+                400, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body={"error": {"message": "`temperature` is deprecated for this model."}},
+        )
+        async_create = AsyncMock(side_effect=[err, self._fake_response()])
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=async_create))
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            result = await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-9-9",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.9,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert async_create.await_count == 2
+        first, second = async_create.await_args_list
+        assert first.kwargs["temperature"] == 0.9
+        assert "temperature" not in second.kwargs
+
+    @pytest.mark.asyncio
+    async def test_sync_retry_detection_is_case_insensitive(self):
+        """The deprecation message wording/casing isn't contractual — a
+        future model returning 'Temperature ... Deprecated' must still
+        trigger the self-healing retry, not fall through and fail."""
+        import httpx
+
+        err = anthropic.BadRequestError(
+            message="Temperature is Deprecated for this model.",
+            response=httpx.Response(
+                400, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body={"error": {"message": "Temperature is Deprecated for this model."}},
+        )
+        async_create = AsyncMock(side_effect=[err, self._fake_response()])
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=async_create))
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            result = await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-9-9",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                temperature=0.9,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert async_create.await_count == 2
+        first, second = async_create.await_args_list
+        assert first.kwargs["temperature"] == 0.9
+        assert "temperature" not in second.kwargs
+
+    @pytest.mark.asyncio
+    async def test_batch_omits_temperature_for_deprecating_model(self):
+        """Batch errors come back hours later in the result rows — the
+        param must never be submitted for known-rejecting models."""
+        fake_batch = SimpleNamespace(id="msgbatch_x")
+        async_create = AsyncMock(return_value=fake_batch)
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(create=async_create)),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            await call_provider(
+                provider="anthropic",
+                model="claude-opus-4-7",
+                api_key="sk-ant-test",
+                messages=[_msg("user", "recombine this")],
+                max_tokens=100,
+                temperature=0.9,
+                execution_mode="batch",
+                custom_id="p1_recombine",
+            )
+        params = async_create.call_args.kwargs["requests"][0]["params"]
+        assert "temperature" not in params
+
+    @pytest.mark.asyncio
+    async def test_batch_keeps_temperature_for_supporting_model(self):
+        fake_batch = SimpleNamespace(id="msgbatch_y")
+        async_create = AsyncMock(return_value=fake_batch)
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(batches=SimpleNamespace(create=async_create)),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-ant-test",
+                messages=[_msg("user", "consolidate this")],
+                max_tokens=100,
+                temperature=0.2,
+                execution_mode="batch",
+                custom_id="p1_consolidate",
+            )
+        params = async_create.call_args.kwargs["requests"][0]["params"]
+        assert params["temperature"] == 0.2

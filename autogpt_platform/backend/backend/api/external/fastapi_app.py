@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from backend.api.middleware.security import SecurityHeadersMiddleware
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
 
 from .v1.routes import v1_router
@@ -25,6 +26,13 @@ external_api.include_router(v1_router, prefix="/v1")
 @external_api.exception_handler(UserPaywalledError)
 async def _user_paywalled_handler(_request: Request, exc: UserPaywalledError):
     return JSONResponse(status_code=402, content={"detail": str(exc)})
+
+
+# Mirror of rest_api.py's mapping — bad/revoked node credentials during graph
+# activation surface as a clear 400 instead of an opaque 500.
+@external_api.exception_handler(GraphActivationError)
+async def _graph_activation_error_handler(_request: Request, exc: GraphActivationError):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 # Add Prometheus instrumentation

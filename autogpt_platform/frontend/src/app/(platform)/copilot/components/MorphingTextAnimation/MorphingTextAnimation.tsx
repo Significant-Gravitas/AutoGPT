@@ -10,9 +10,13 @@ export function MorphingTextAnimation({ text, className }: Props) {
   const letters = text.split("");
 
   return (
-    <div className={cn(className)}>
+    // min-w-0 + overflow-hidden lets the parent flex item shrink and clip;
+    // the inner whitespace-nowrap keeps the per-character animation on one
+    // line without forcing the chat column wider than the viewport on long
+    // command strings.
+    <div className={cn("min-w-0 overflow-hidden", className)}>
       <AnimatePresence mode="popLayout" initial={false}>
-        <motion.div key={text} className="whitespace-nowrap">
+        <motion.div key={text} className="truncate whitespace-nowrap">
           <motion.span className="inline-flex overflow-hidden">
             {letters.map((char, index) => (
               <motion.span

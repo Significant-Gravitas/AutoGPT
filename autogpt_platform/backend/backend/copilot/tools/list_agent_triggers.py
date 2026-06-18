@@ -6,12 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from backend.api.features.library.db import (
-    get_library_agent,
-    list_presets,
-    list_trigger_agents,
-)
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import library_db
 from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
@@ -44,6 +40,11 @@ class AgentTriggerInfo(BaseModel):
     # Webhook-trigger only.
     is_active: bool | None = None
     webhook_id: str | None = None
+    # Ingress URL for manual-setup webhooks — give this to the user verbatim
+    # so they can wire it up in their external service. None for trigger agents
+    # and for webhooks without an attached URL.
+    webhook_url: str | None = None
+    provider: str | None = None
 
 
 class AgentTriggerListResponse(ToolResponseBase):
@@ -112,8 +113,9 @@ class ListAgentTriggersTool(BaseTool):
                 session_id=session_id,
             )
 
+        ldb = library_db()
         try:
-            parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+            parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
         except NotFoundError as e:
             return ErrorResponse(
                 message=f"Library agent not found: {e}",
@@ -126,12 +128,12 @@ class ListAgentTriggersTool(BaseTool):
         # Both queries can run concurrently since they don't depend
         # on each other once we have the parent's graph_id.
         trigger_agents, preset_response = await asyncio.gather(
-            list_trigger_agents(
+            ldb.list_trigger_agents(
                 user_id=user_id,
                 library_agent_id=library_agent_id,
                 parent_graph_id=parent.graph_id,
             ),
-            list_presets(
+            ldb.list_presets(
                 user_id=user_id,
                 page=1,
                 page_size=100,
@@ -161,6 +163,8 @@ class ListAgentTriggersTool(BaseTool):
                 description=p.description or "",
                 is_active=p.is_active,
                 webhook_id=p.webhook_id,
+                webhook_url=p.webhook.url if p.webhook else None,
+                provider=p.webhook.provider if p.webhook else None,
             )
             for p in webhook_presets
         ]
