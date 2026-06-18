@@ -16,8 +16,8 @@ from backend.util.retry import (
     conn_retry,
     create_retry_decorator,
     is_shutting_down,
-    request_shutdown,
     should_send_alert,
+    stop_retry_loops,
 )
 
 
@@ -81,7 +81,7 @@ def test_conn_retry_sync_aborts_on_shutdown():
     def test_function():
         nonlocal attempts
         attempts += 1
-        request_shutdown()  # signal shutdown mid-flight
+        stop_retry_loops()  # signal shutdown mid-flight
         raise ConnectionError("Redis down")
 
     start = time.monotonic()
@@ -100,7 +100,7 @@ async def test_conn_retry_async_aborts_on_shutdown():
     async def test_function():
         nonlocal attempts
         attempts += 1
-        request_shutdown()
+        stop_retry_loops()
         raise ConnectionError("Redis down")
 
     start = time.monotonic()
@@ -117,7 +117,7 @@ def test_create_retry_decorator_aborts_on_shutdown():
     def always_failing_function():
         nonlocal attempts
         attempts += 1
-        request_shutdown()
+        stop_retry_loops()
         raise ValueError("persistent failure")
 
     with pytest.raises(ValueError):
@@ -126,7 +126,7 @@ def test_create_retry_decorator_aborts_on_shutdown():
 
 
 def test_interruptible_sleep_returns_early_on_shutdown():
-    request_shutdown()
+    stop_retry_loops()
     assert is_shutting_down()
     start = time.monotonic()
     _interruptible_sleep(30)
@@ -135,7 +135,7 @@ def test_interruptible_sleep_returns_early_on_shutdown():
 
 @pytest.mark.asyncio
 async def test_interruptible_async_sleep_returns_early_on_shutdown():
-    request_shutdown()
+    stop_retry_loops()
     start = time.monotonic()
     await _interruptible_async_sleep(30)
     assert time.monotonic() - start < 1

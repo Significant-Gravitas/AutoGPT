@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import os
 import threading
@@ -22,16 +23,16 @@ logger = logging.getLogger(__name__)
 EXCESSIVE_RETRY_THRESHOLD = 50
 
 # Process-wide shutdown flag. The AppProcess/AppService signal handlers set this
-# (via request_shutdown) so in-flight retry loops abort promptly instead of
-# blocking shutdown for up to max_retry * max_wait seconds while the backing
-# service (Redis/RabbitMQ/RPC peer) stays unreachable.
+# (via stop_retry_loops) so in-flight retry loops abort promptly instead of
+# blocking shutdown for up to max_retry * max_wait seconds if e.g. a backing
+# service (Redis/RabbitMQ/RPC peer) is unreachable.
 _shutdown_event = threading.Event()
 
 # How often the async interruptible sleep re-checks the shutdown flag.
 _SHUTDOWN_POLL_INTERVAL = 0.5
 
 
-def request_shutdown() -> None:
+def stop_retry_loops() -> None:
     """Tell every retry loop in this process to stop ASAP.
 
     Safe to call from a signal handler: it only sets a ``threading.Event``.
@@ -41,38 +42,6 @@ def request_shutdown() -> None:
 
 def is_shutting_down() -> bool:
     return _shutdown_event.is_set()
-
-
-class _StopOnShutdown(stop_base):
-    """Tenacity stop condition that fires once a process shutdown is requested."""
-
-    def __call__(self, retry_state) -> bool:
-        return _shutdown_event.is_set()
-
-
-def _interruptible_sleep(seconds: float) -> None:
-    """``time.sleep`` replacement that wakes immediately on shutdown.
-
-    Worker threads don't receive SIGINT/SIGTERM (only the main thread does), so
-    a plain ``time.sleep`` here can't be interrupted; waiting on the shutdown
-    Event can.
-    """
-    _shutdown_event.wait(seconds)
-
-
-async def _interruptible_async_sleep(seconds: float) -> None:
-    """``asyncio.sleep`` replacement that returns early on shutdown.
-
-    Polls the shared shutdown flag so async retry loops on background event
-    loops (which nothing cancels on shutdown) don't sit through a full backoff.
-    """
-    loop = asyncio.get_running_loop()
-    end = loop.time() + seconds
-    while not _shutdown_event.is_set():
-        remaining = end - loop.time()
-        if remaining <= 0:
-            return
-        await asyncio.sleep(min(remaining, _SHUTDOWN_POLL_INTERVAL))
 
 
 # Rate limiting for alerts - track last alert time per function+error combination
@@ -208,7 +177,7 @@ def create_retry_decorator(
         # pending backoff doesn't keep the process alive after a shutdown signal.
         sleep = (
             _interruptible_async_sleep
-            if asyncio.iscoroutinefunction(func)
+            if inspect.iscoroutinefunction(func)
             else _interruptible_sleep
         )
         if retry_on is not None:
@@ -280,7 +249,7 @@ def conn_retry(
             )
 
     def decorator(func):
-        is_coroutine = asyncio.iscoroutinefunction(func)
+        is_coroutine = inspect.iscoroutinefunction(func)
         # Use static retry configuration. _StopOnShutdown + the interruptible
         # sleep let an in-flight retry bail out promptly on SIGINT/SIGTERM
         # instead of blocking shutdown for up to max_retry * max_wait seconds.
@@ -329,13 +298,45 @@ def conn_retry(
     return decorator
 
 
+class _StopOnShutdown(stop_base):
+    """Tenacity stop condition that fires once a process shutdown is requested."""
+
+    def __call__(self, retry_state) -> bool:
+        return _shutdown_event.is_set()
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    """``time.sleep`` replacement that wakes immediately on shutdown.
+
+    Worker threads don't receive SIGINT/SIGTERM (only the main thread does), so
+    a plain ``time.sleep`` here can't be interrupted; waiting on the shutdown
+    Event can.
+    """
+    _shutdown_event.wait(seconds)
+
+
+async def _interruptible_async_sleep(seconds: float) -> None:
+    """``asyncio.sleep`` replacement that returns early on shutdown.
+
+    Polls the shared shutdown flag so async retry loops on background event
+    loops (which nothing cancels on shutdown) don't sit through a full backoff.
+    """
+    loop = asyncio.get_running_loop()
+    end = loop.time() + seconds
+    while not _shutdown_event.is_set():
+        remaining = end - loop.time()
+        if remaining <= 0:
+            return
+        await asyncio.sleep(min(remaining, _SHUTDOWN_POLL_INTERVAL))
+
+
 # Preconfigured retry decorator for general functions
 func_retry = create_retry_decorator(max_attempts=5)
 
 
 def continuous_retry(*, retry_delay: float = 1.0):
     def decorator(func):
-        is_coroutine = asyncio.iscoroutinefunction(func)
+        is_coroutine = inspect.iscoroutinefunction(func)
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
