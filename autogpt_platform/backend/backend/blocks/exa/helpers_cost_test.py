@@ -5,7 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.blocks.exa.helpers import extract_exa_cost_usd, merge_exa_cost
+from backend.blocks.exa.helpers import (
+    ContentSettings,
+    SummarySettings,
+    extract_exa_cost_usd,
+    merge_exa_cost,
+    process_contents_settings,
+)
 from backend.data.model import NodeExecutionStats
 
 
@@ -63,3 +69,66 @@ def test_merge_exa_cost_noops_when_response_is_none():
     block = MagicMock()
     merge_exa_cost(block, None)
     block.merge_stats.assert_not_called()
+
+
+# Tests for process_contents_settings and output_schema mapping
+
+
+def test_process_contents_settings_with_output_schema():
+    """Test that output_schema is correctly mapped to 'schema' in the result."""
+    contents = ContentSettings(
+        summary=SummarySettings(
+            query="test query",
+            output_schema={"type": "object"},
+        )
+    )
+    result = process_contents_settings(contents)
+
+    assert result == {
+        "summary": {
+            "query": "test query",
+            "schema": {"type": "object"},
+        }
+    }
+
+
+def test_process_contents_settings_with_empty_output_schema():
+    """Test that empty dict {} for output_schema is preserved."""
+    contents = ContentSettings(
+        summary=SummarySettings(
+            query=None,
+            output_schema={},
+        )
+    )
+    result = process_contents_settings(contents)
+
+    assert result == {
+        "summary": {
+            "schema": {},
+        }
+    }
+
+
+def test_process_contents_settings_with_none_output_schema():
+    """Test that None for output_schema is handled correctly."""
+    contents = ContentSettings(
+        summary=SummarySettings(
+            query="test query",
+            output_schema=None,
+        )
+    )
+    result = process_contents_settings(contents)
+
+    assert result == {
+        "summary": {
+            "query": "test query",
+        }
+    }
+
+
+def test_process_contents_settings_without_summary():
+    """Test that contents without summary returns empty dict."""
+    contents = ContentSettings(summary=None)
+    result = process_contents_settings(contents)
+
+    assert result == {}
