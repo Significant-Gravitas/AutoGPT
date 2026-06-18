@@ -4,6 +4,8 @@ import {
   buildRenderSegments,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
+  getMessageArtifacts,
+  getMostRecentArtifact,
   isCompletedToolPart,
   isInteractiveToolPart,
   isReasoningToolPart,
@@ -13,7 +15,7 @@ import {
   splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
-import type { FileUIPart } from "ai";
+import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { TodoItem } from "../../ContextPanel/components/ProgressTab/helpers";
 
 function textPart(text: string): MessagePart {
@@ -638,6 +640,26 @@ describe("splitReasoningAndResponse", () => {
     expect(result.response[0]).toBe(corruptedRunBlock);
   });
 
+  it("pins the trigger-setup card even when reasoning follows it", () => {
+    // Regression: setup_agent_webhook_trigger emits a trigger_setup card, then
+    // the model adds a trailing reasoning part before its text reply. The card
+    // must stay pinned to the response so it never gets buried in "Show steps".
+    const triggerSetup = toolPart(
+      "setup_agent_webhook_trigger",
+      "output-available",
+      JSON.stringify({ type: "trigger_setup", message: "Trigger is set up." }),
+    );
+    const parts = [
+      triggerSetup,
+      reasoningPart("The webhook trigger has been set up successfully..."),
+      textPart("The webhook trigger is live!"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([parts[1]]);
+    expect(result.response).toHaveLength(2);
+    expect(result.response[0]).toBe(triggerSetup);
+  });
+
   it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
     const okRunBlock = toolPart(
       "run_block",
@@ -826,6 +848,89 @@ describe("filePartToArtifactRef with custom pattern", () => {
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
     const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
+  });
+});
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+const FILE_A = "550e8400-e29b-41d4-a716-446655440000";
+const FILE_B = "660e8400-e29b-41d4-a716-446655440111";
+
+function message(role: Message["role"], parts: MessagePart[]): Message {
+  return { id: `m-${role}`, role, parts } as unknown as Message;
+}
+
+function filePart(fileId: string, filename: string): MessagePart {
+  return {
+    type: "file",
+    filename,
+    mediaType: "image/png",
+    url: `/api/proxy/api/workspace/files/${fileId}/download`,
+  } as unknown as MessagePart;
+}
+
+describe("getMessageArtifacts", () => {
+  it("collects file-part artifacts before text artifacts", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "from-file.png"),
+      textPart(`Here is [doc](workspace://${FILE_B})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out.map((a) => a.id)).toEqual([FILE_A, FILE_B]);
+    expect(out[0].title).toBe("from-file.png");
+  });
+
+  it("does not double-count a file referenced as both a file part and in text", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "rich.png"),
+      textPart(`[again](workspace://${FILE_A})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out).toHaveLength(1);
+    // File-part metadata wins over the text-derived entry.
+    expect(out[0].title).toBe("rich.png");
+  });
+
+  it("marks user-uploaded files with the user-upload origin", () => {
+    const msg = message("user", [filePart(FILE_A, "upload.png")]);
+    expect(getMessageArtifacts(msg)[0].origin).toBe("user-upload");
+  });
+});
+
+describe("getMostRecentArtifact", () => {
+  it("returns null when there are no artifacts", () => {
+    expect(
+      getMostRecentArtifact([message("assistant", [textPart("hi")])]),
+    ).toBeNull();
+  });
+
+  it("returns the last file-part artifact scanning from the end", () => {
+    const messages = [
+      message("assistant", [filePart(FILE_A, "old.png")]),
+      message("assistant", [filePart(FILE_B, "new.png")]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_B);
+  });
+
+  it("finds the most recent text-derived artifact", () => {
+    const messages = [
+      message("assistant", [textPart(`[a](workspace://${FILE_A})`)]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_A);
+  });
+
+  it("filters by origin when requested", () => {
+    const messages = [
+      message("user", [filePart(FILE_A, "upload.png")]),
+      message("assistant", [textPart(`[b](workspace://${FILE_B})`)]),
+    ];
+    // Only agent-origin artifacts are eligible; the latest such one wins.
+    expect(getMostRecentArtifact(messages, { origin: "agent" })?.id).toBe(
+      FILE_B,
+    );
+    expect(getMostRecentArtifact(messages, { origin: "user-upload" })?.id).toBe(
+      FILE_A,
+    );
   });
 });
 

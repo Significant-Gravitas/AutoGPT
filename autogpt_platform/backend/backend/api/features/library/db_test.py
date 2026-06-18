@@ -307,7 +307,7 @@ async def test_get_library_agent_by_graph_id_can_include_archived(mocker):
 async def test_update_graph_in_library_allows_archived_library_agent(mocker):
     graph = mocker.Mock(id="graph-id")
     existing_version = mocker.Mock(version=1, is_active=True)
-    graph_model = mocker.Mock()
+    graph_model = mocker.Mock(is_active=False)
     created_graph = mocker.Mock(id="graph-id", version=2, is_active=False)
     current_library_agent = mocker.Mock()
     updated_library_agent = mocker.Mock()

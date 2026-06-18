@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.data.graph import BaseGraph
+from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
 
@@ -52,6 +52,13 @@ class ResponseType(str, Enum):
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
+    TRIGGER_SETUP = "trigger_setup"
+    TRIGGER_CONFIG_REQUIRED = "trigger_config_required"
+
+    # Presets (list / update / delete)
+    PRESET_LIST = "preset_list"
+    PRESET_UPDATED = "preset_updated"
+    PRESET_DELETED = "preset_deleted"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -169,6 +176,16 @@ class AgentInfo(BaseModel):
         default=None,
         description="Full graph structure (nodes + links) when include_graph is requested",
     )
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentsFoundResponse(ToolResponseBase):
@@ -220,7 +237,16 @@ class AgentDetails(BaseModel):
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
-    trigger_info: dict[str, Any] | None = None
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentDetailsResponse(ToolResponseBase):
@@ -277,6 +303,8 @@ class ExecutionStartedResponse(ToolResponseBase):
     library_agent_id: str | None = None
     library_agent_link: str | None = None
     status: str = "QUEUED"
+    # Set when the run was started with save_as_preset=true.
+    saved_preset_id: str | None = None
 
 
 # Auth/error models

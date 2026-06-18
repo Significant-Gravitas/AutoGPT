@@ -39,12 +39,14 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-find_library_agent",
   "tool-search_docs",
   "tool-get_doc_page",
+  "tool-connect_integration",
   "tool-run_block",
   "tool-continue_run_block",
   "tool-connect_integration",
   "tool-run_mcp_tool",
   "tool-run_agent",
   "tool-schedule_agent",
+  "tool-setup_agent_webhook_trigger",
   "tool-create_agent",
   "tool-edit_agent",
   "tool-view_agent_output",
@@ -82,6 +84,7 @@ const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.setup_requirements,
+  ResponseType.trigger_setup,
   ResponseType.agent_details,
   ResponseType.block_details,
   ResponseType.review_required,
