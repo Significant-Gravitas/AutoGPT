@@ -46,7 +46,6 @@ class HybridSearchRow(TypedDict):
     updated_at: datetime | None
     semantic_score: float
     lexical_score: float
-    lexical_raw: float
     category_score: float
     recency_score: float
     combined_score: float

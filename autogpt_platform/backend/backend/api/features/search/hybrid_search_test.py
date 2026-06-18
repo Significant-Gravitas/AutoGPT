@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 from prisma.enums import ContentType
+from pydantic import TypeAdapter
 
 from backend.api.features.search import embeddings
 from backend.api.features.search.hybrid_search import (
+    HybridSearchRow,
     UnifiedSearchWeights,
     tokenize,
     unified_hybrid_search,
@@ -89,6 +91,51 @@ async def test_unified_hybrid_search_basic():
             assert total == 2
             assert results[0]["content_type"] == "STORE_AGENT"
             assert results[1]["content_type"] == "BLOCK"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.integration
+async def test_unified_hybrid_search_output_matches_rpc_contract():
+    """Returned rows must validate against the function's declared return
+    annotation — the contract the RPC boundary enforces in
+    ``service._get_return``. ``lexical_raw`` is computed in SQL only to
+    derive ``lexical_score`` and is never projected into result rows, so a
+    required ``lexical_raw`` field on ``HybridSearchRow`` made every
+    cross-service search RPC log a return-type validation warning."""
+    mock_results = [
+        {
+            "content_type": "BLOCK",
+            "content_id": "block-1",
+            "searchable_text": "Test Block Description",
+            "metadata": {"name": "Test Block"},
+            "updated_at": "2025-01-01T00:00:00Z",
+            "semantic_score": 0.6,
+            "lexical_score": 0.7,
+            "category_score": 0.4,
+            "recency_score": 0.2,
+            "combined_score": 0.5,
+            "total_count": 1,
+        },
+    ]
+
+    with patch(
+        "backend.api.features.search.hybrid_search.query_raw_with_schema"
+    ) as mock_query:
+        with patch(
+            "backend.api.features.search.hybrid_search.embed_query"
+        ) as mock_embed:
+            mock_query.return_value = mock_results
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+            result = await unified_hybrid_search(
+                query="test",
+                page=1,
+                page_size=20,
+            )
+
+    # Mirror the RPC boundary: this raises ValidationError if the row shape
+    # drifts from what callers actually receive over the wire.
+    TypeAdapter(tuple[list[HybridSearchRow], int]).validate_python(result)
 
 
 @pytest.mark.asyncio(loop_scope="session")
