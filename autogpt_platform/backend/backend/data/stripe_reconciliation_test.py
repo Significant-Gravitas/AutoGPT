@@ -118,8 +118,14 @@ async def test_sweep_upgrades_downgrades_and_skips_unchanged(
     assert len(summary.discrepancies) == 2
     mock_alert.assert_awaited_once()
     alert_msg = mock_alert.await_args.args[0]
-    assert "2 discrepancy" in alert_msg
-    assert "1 downgrade" in alert_msg and "1 upgrade" in alert_msg
+    # Count header up front.
+    assert "reconciled 2 account" in alert_msg
+    assert "1 upgraded" in alert_msg and "1 downgraded" in alert_msg
+    # Full affected-user list at the end, each with its tier change.
+    assert "Affected users:" in alert_msg
+    assert "u_up" in alert_msg and "u_down" in alert_msg
+    assert "NO_TIER → PRO (upgrade)" in alert_msg
+    assert "PRO → NO_TIER (downgrade)" in alert_msg
 
 
 @pytest.mark.asyncio

@@ -232,6 +232,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Interval in hours between execution accuracy alert checks.",
     )
 
+    # Embeddings
+    store_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description=(
+            "Embedding model used by the unified content embeddings service. "
+            "Overridable so deployments with a compatible backend (vLLM, "
+            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
+            "OpenAI, ...) can swap models without code changes. Model MUST "
+            "emit 1536-dim vectors to match the hardcoded pgvector column."
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -298,6 +310,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=8010,
         description="The port for the CoPilot chat bridge (multi-platform bot) "
         "service daemon to run on",
+    )
+
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
     )
 
     otto_api_url: str = Field(

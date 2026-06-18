@@ -8,6 +8,7 @@ from strenum import StrEnum
 from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.request import Requests, Response
 
 from ._base import BaseWebhooksManager
@@ -113,7 +114,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
             },
         }
 
-        response = await Requests().post(
+        response = await Requests(raise_for_status=False).post(
             f"{self.GITHUB_API_URL}/repos/{resource}/hooks",
             headers=headers,
             json=webhook_data,
@@ -121,13 +122,19 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if response.status != 201:
             error_msg = extract_github_error_msg(response)
-            if "not found" in error_msg.lower():
-                error_msg = (
-                    f"{error_msg} "
-                    "(Make sure the GitHub account or API key has 'repo' or "
-                    f"webhook create permissions to '{resource}')"
+            if response.status == 404:
+                raise NotFoundError(
+                    f"GitHub repository '{resource}' was not found, or the "
+                    "selected account doesn't have access to it: "
+                    f"{error_msg}"
                 )
-            raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
+            if response.status in (401, 403):
+                raise NotAuthorizedError(
+                    "The selected GitHub account isn't allowed to create "
+                    f"webhooks on '{resource}' — admin access to the repository "
+                    f"is required: {error_msg}"
+                )
+            raise ValueError(f"GitHub returned error: {error_msg}")
 
         resp = response.json()
         webhook_id = resp["id"]

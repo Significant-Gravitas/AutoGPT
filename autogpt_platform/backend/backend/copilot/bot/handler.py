@@ -7,11 +7,16 @@ persistent typing indicator.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
 
 from backend.data.redis_client import get_redis_async
+from backend.data.sharing.workspace_refs import (
+    WorkspaceArtifactLink,
+    extract_artifact_links,
+)
 from backend.util.exceptions import (
     DuplicateChatMessageError,
     LinkAlreadyExistsError,
@@ -20,8 +25,8 @@ from backend.util.exceptions import (
 from backend.util.settings import Settings
 
 from . import sessions, threads
-from .adapters.base import MessageContext, PlatformAdapter
-from .bot_backend import BotBackend
+from .adapters.base import FileAttachment, MessageContext, PlatformAdapter
+from .bot_backend import BotBackend, BotStreamError
 from .config import SESSION_TTL
 from .text import format_batch, split_at_boundary
 
@@ -85,6 +90,14 @@ class MessageHandler:
         target_id = await self._resolve_target(ctx, adapter)
         if not target_id:
             return  # Thread not subscribed, ignore silently
+
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="message_received",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=len(ctx.text),
+        )
 
         message_text = self._message_text(ctx) if include_thread_history else ctx.text
         await self._enqueue_and_process(ctx, adapter, target_id, message_text)
@@ -157,6 +170,125 @@ class MessageHandler:
             if not state.pending:
                 self._targets.pop(target_id, None)
 
+    async def _send_text_and_artifacts(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        text: str,
+        ctx: MessageContext,
+        session_id: str | None,
+    ) -> bool:
+        """Send a finished chunk of text, then any workspace artifacts it
+        referenced. Returns True if anything was sent to the channel.
+
+        Each artifact gets its own platform message — files attach inline
+        when small enough, otherwise we drop a link button pointing at the
+        chat on the platform so the user can grab it from there.
+        """
+        stripped, artifacts = extract_artifact_links(text)
+        sent_any = False
+        if stripped:
+            await adapter.send_message(
+                target_id, stripped, mentionable_users=ctx.mentionable_users
+            )
+            sent_any = True
+        for artifact in artifacts:
+            sent = await self._deliver_artifact(
+                adapter, target_id, artifact, session_id
+            )
+            sent_any = sent_any or sent
+        return sent_any
+
+    async def _deliver_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str | None,
+    ) -> bool:
+        """Attach the file inline when possible; otherwise drop a link to
+        the chat on the platform. Returns whether anything was sent."""
+        if session_id is None:
+            # Can't fetch or build a link button without a session id. Surface
+            # the artifact name as plain text so the user knows something was
+            # produced, even if they can't grab it from here.
+            logger.warning(
+                "Workspace artifact %s referenced before session id known",
+                artifact.file_id,
+            )
+            await self._send_artifact_note(adapter, target_id, artifact)
+            return True
+        if await self._attach_artifact(adapter, target_id, artifact, session_id):
+            return True
+        await self._send_artifact_fallback(adapter, target_id, artifact, session_id)
+        return True
+
+    async def _attach_artifact(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> bool:
+        """Fetch and inline-attach the file. Returns False when it's missing,
+        unowned, too large, or the fetch errored."""
+        try:
+            fetched = await self._api.fetch_workspace_artifact(
+                session_id=session_id,
+                file_id=artifact.file_id,
+                max_bytes=adapter.max_attachment_bytes,
+            )
+        except Exception:
+            logger.exception("Failed to fetch workspace artifact %s", artifact.file_id)
+            return False
+        if fetched is None:
+            return False
+        await adapter.send_file(
+            target_id,
+            text="",
+            file=FileAttachment(
+                filename=artifact.display_name or fetched.filename,
+                mime_type=fetched.mime_type,
+                content=fetched.content,
+            ),
+        )
+        return True
+
+    async def _send_artifact_fallback(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+        session_id: str,
+    ) -> None:
+        """Link the user to the chat when the file can't be attached here —
+        covers missing, unavailable, errored and too-large cases alike."""
+        session_url = _copilot_session_url(session_id)
+        if session_url is None:
+            logger.warning(
+                "No base URL configured; can't render fallback link for %s",
+                artifact.file_id,
+            )
+            await self._send_artifact_note(adapter, target_id, artifact)
+            return
+        await adapter.send_link(
+            target_id,
+            f"Open AutoGPT to download `{artifact.display_name}`.",
+            link_label="Open in AutoGPT",
+            link_url=session_url,
+        )
+
+    async def _send_artifact_note(
+        self,
+        adapter: PlatformAdapter,
+        target_id: str,
+        artifact: WorkspaceArtifactLink,
+    ) -> None:
+        await adapter.send_message(
+            target_id,
+            f"_(produced `{artifact.display_name}` — open the chat to download)_",
+        )
+
     async def _stream_batch(
         self,
         batch: list[tuple[str, str, str]],
@@ -193,16 +325,21 @@ class MessageHandler:
             setup_output: dict[str, Any],
             _tool_name: str | None,
         ) -> None:
-            nonlocal buffer, sent_any_content, setup_prompt_sent
+            nonlocal active_session_id, buffer, sent_any_content, setup_prompt_sent
             if setup_prompt_sent:
                 return
             setup_prompt_sent = True
+            # This callback carries the authoritative session id — adopt it so
+            # buffered workspace artifacts resolve instead of falling back to
+            # the "no session" plain-text note.
+            active_session_id = session_id
             # Drain any pending text first so the link button doesn't render
             # ahead of the message it belongs to.
             if buffer.strip():
-                await adapter.send_message(
-                    target_id, buffer, mentionable_users=ctx.mentionable_users
-                )
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
                 buffer = ""
             sent_any_content = True
             session_url = _copilot_session_url(session_id)
@@ -225,6 +362,29 @@ class MessageHandler:
                 link_url=session_url,
             )
 
+        async def _on_setup_dropped(
+            session_id: str,
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal active_session_id, buffer, sent_any_content
+            active_session_id = session_id
+            # Drain pending text first so the notice doesn't jump ahead of the
+            # message it follows.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            await adapter.send_message(
+                target_id,
+                _setup_dropped_message(),
+                mentionable_users=ctx.mentionable_users,
+            )
+
+        started_at = time.monotonic()
+        reply_chars = 0
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
             async for chunk in self._api.stream_chat(
@@ -235,25 +395,41 @@ class MessageHandler:
                 platform_server_id=ctx.server_id,
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
+                on_setup_dropped=_on_setup_dropped,
             ):
                 buffer += chunk
+                reply_chars += len(chunk)
                 if len(buffer) >= flush_at:
                     post, buffer = split_at_boundary(buffer, flush_at)
-                    if post:
-                        await adapter.send_message(
-                            target_id,
-                            post,
-                            mentionable_users=ctx.mentionable_users,
-                        )
-                        if post.strip():
+                    if post and post.strip():
+                        if await self._send_text_and_artifacts(
+                            adapter, target_id, post, ctx, active_session_id
+                        ):
                             sent_any_content = True
         except DuplicateChatMessageError:
             # Another in-flight turn is already processing this exact message —
             # stay quiet so the user doesn't get a double response.
             logger.info("Duplicate message dropped for target %s", target_id)
             return
+        except BotStreamError as exc:
+            # Stream couldn't complete (timeout, subscribe fail, backend stream
+            # error). Track the specific kind, surface a generic message, and
+            # do NOT fire reply_sent below.
+            logger.warning(
+                "Stream failed for target %s: %s (%s)",
+                target_id,
+                exc,
+                exc.error_kind,
+            )
+            self._track_stream_error(ctx, exc.error_kind)
+            await adapter.send_message(
+                target_id,
+                "AutoPilot ran into an error. Try again in a moment.",
+            )
+            return
         except NotFoundError:
             logger.exception("Chat turn rejected")
+            self._track_stream_error(ctx, "chat_turn_rejected")
             await adapter.send_message(
                 target_id, "AutoPilot ran into an error. Try again later."
             )
@@ -262,6 +438,7 @@ class MessageHandler:
             logger.exception(
                 "Unexpected error during streaming for target %s", target_id
             )
+            self._track_stream_error(ctx, "stream_exception")
             await adapter.send_message(
                 target_id,
                 "Something went wrong. Try again in a moment.",
@@ -276,16 +453,27 @@ class MessageHandler:
             await adapter.stop_typing(target_id)
 
         if buffer.strip():
-            await adapter.send_message(
-                target_id, buffer, mentionable_users=ctx.mentionable_users
-            )
-            sent_any_content = True
+            if await self._send_text_and_artifacts(
+                adapter, target_id, buffer, ctx, active_session_id
+            ):
+                sent_any_content = True
 
         if not sent_any_content:
             await adapter.send_message(
                 target_id,
                 "AutoPilot didn't produce a response. Try rephrasing your question.",
             )
+            self._track_stream_error(ctx, "empty_reply")
+            return
+
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="reply_sent",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=reply_chars,
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+        )
 
         if (
             ctx.channel_type == "channel"
@@ -324,6 +512,15 @@ class MessageHandler:
                 return
             if attempt < TITLE_RENAME_ATTEMPTS - 1:
                 await asyncio.sleep(TITLE_RENAME_INTERVAL_SECONDS)
+
+    def _track_stream_error(self, ctx: MessageContext, error_kind: str) -> None:
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="stream_error",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            error_kind=error_kind,
+        )
 
     # -- Linking --
 
@@ -436,6 +633,14 @@ def _copilot_session_url(session_id: str) -> str | None:
     if not base_url:
         return None
     return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
+
+
+def _setup_dropped_message() -> str:
+    return (
+        "⚠️ AutoPilot tried to send you a sign-in link, but the data arrived "
+        "corrupted so the button couldn't be shown. Please ask it to try that "
+        "step again."
+    )
 
 
 def _setup_required_message(setup_output: dict[str, Any]) -> str:

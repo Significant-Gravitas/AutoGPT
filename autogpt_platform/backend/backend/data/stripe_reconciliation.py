@@ -29,10 +29,6 @@ from backend.data.credit import (
 
 logger = logging.getLogger(__name__)
 
-# Cap how many per-user lines are inlined into the Discord ops alert so a mass
-# incident doesn't post a wall of text; the full set is in the logs/PostHog.
-_ALERT_DETAIL_CAP = 25
-
 # Bound the Stripe pagination so a runaway/unexpected dataset can't loop forever.
 # At 100 subs/page this caps a single sweep at 500k subscriptions; if it's ever
 # hit the sweep logs and stops rather than silently truncating without notice.
@@ -103,35 +99,34 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
 
 
 async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
-    """Loudly surface that the sweep had to correct tiers.
+    """Post a Discord (PLATFORM) system alert summarizing the sweep's corrections.
 
     A non-empty sweep means Stripe webhooks were dropped or missed — a payments-
-    integrity incident, not a routine correction. Steady state must be ZERO, so
-    any correction pages the ops channel and logs at ERROR (→ Sentry).
+    integrity signal, not a routine correction. ONE aggregate ops notification:
+    a count header (how many reconciled, up vs down) followed by the FULL
+    affected-user list — each line ``user_id  from_tier → to_tier (direction)``.
+    Sent as a single message; ``SendDiscordMessageBlock`` splits anything over
+    Discord's 2000-char limit on its own. Discord is the alert surface; this path
+    logs at WARNING and never raises to Sentry.
     """
-    lines = "\n".join(
-        f"- {d.direction}: {d.previous_tier.value} → {d.new_tier.value} "
-        f"user={d.user_id} customer={d.stripe_customer_id}"
-        for d in summary.discrepancies[:_ALERT_DETAIL_CAP]
-    )
-    overflow = len(summary.discrepancies) - _ALERT_DETAIL_CAP
-    if overflow > 0:
-        lines += f"\n…and {overflow} more"
-    logger.error(
-        "Stripe tier reconciliation sweep corrected %d discrepancy(ies) "
-        "(%d downgrade, %d upgrade) — Stripe webhooks are likely dropping events; "
-        "steady state must be ZERO.",
-        len(summary.discrepancies),
-        summary.downgrades,
+    n = len(summary.discrepancies)
+    logger.warning(
+        "Stripe tier reconciliation sweep reconciled %d account(s) "
+        "(%d upgraded, %d downgraded); webhooks likely dropping events — "
+        "steady state should be ZERO.",
+        n,
         summary.upgrades,
+        summary.downgrades,
+    )
+    user_lines = "\n".join(
+        f"- `{d.user_id}`  {d.previous_tier.value} → {d.new_tier.value} ({d.direction})"
+        for d in summary.discrepancies
     )
     await alert_tier_reconciliation_discrepancy(
-        f"🚨 **Stripe tier reconciliation sweep corrected "
-        f"{len(summary.discrepancies)} discrepancy(ies)** "
-        f"({summary.downgrades} downgrade, {summary.upgrades} upgrade).\n"
-        f"Each means a Stripe webhook was likely missed — **investigate the "
-        f"webhook pipeline**; this is a payments-integrity signal, not a routine "
-        f"correction. Steady state must be ZERO.\n{lines}"
+        f"🔁 **Stripe tier reconciliation: reconciled {n} account(s)** — "
+        f"{summary.upgrades} upgraded, {summary.downgrades} downgraded.\n"
+        f"Each means a Stripe webhook was likely missed — investigate the webhook "
+        f"pipeline; steady state should be ZERO.\nAffected users:\n{user_lines}"
     )
 
 

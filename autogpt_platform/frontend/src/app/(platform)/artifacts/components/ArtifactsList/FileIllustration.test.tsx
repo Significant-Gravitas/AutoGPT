@@ -26,6 +26,18 @@ describe("pickFileTypeKey", () => {
   ])("pickFileTypeKey(%s) === %s", (mime, expected) => {
     expect(pickFileTypeKey(mime)).toBe(expected);
   });
+
+  test("detects React apps by .jsx/.tsx extension", () => {
+    expect(pickFileTypeKey("text/plain", "App.jsx")).toBe("react");
+    expect(pickFileTypeKey(undefined, "Component.tsx")).toBe("react");
+  });
+
+  test("detects code by extension even when the MIME is misleading", () => {
+    // `.ts` resolves to video/mp2t in the browser/OS MIME database.
+    expect(pickFileTypeKey("video/mp2t", "main.ts")).toBe("code");
+    expect(pickFileTypeKey("text/plain", "script.py")).toBe("code");
+    expect(pickFileTypeKey(undefined, "query.sql")).toBe("code");
+  });
 });
 
 describe("deriveBadgeLabel", () => {
@@ -68,6 +80,8 @@ describe("FileIllustration", () => {
       "img",
       "html",
       "video",
+      "react",
+      "code",
       "generic",
     ] as const) {
       const { unmount } = render(<FileIllustration typeKey={key} />);

@@ -2,13 +2,15 @@
 
 import logging
 
-from backend.data.db_accessors import platform_linking_db
+from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
 from .chat import list_user_chats, start_chat_turn
 from .models import (
     BotChatRequest,
+    BotEventInput,
+    BotGuildInput,
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
@@ -17,6 +19,7 @@ from .models import (
     ListUserChatsResponse,
     Platform,
     ResolveResponse,
+    WorkspaceArtifact,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +63,19 @@ class PlatformLinkingManager(AppService):
         return await platform_linking_db().get_link_token_status(token)
 
     @expose
+    async def list_user_server_ids(self, platform: Platform, user_id: str) -> list[str]:
+        """Bot-scoped: the platform server IDs ``user_id`` has linked.
+
+        Deliberately returns only the IDs (not full ``PlatformLinkInfo``) so the
+        bot client stays a narrow surface — the user-facing ``list_server_links``
+        stays off the bot client. Backs proactive-output authorization.
+        """
+        links = await platform_linking_db().list_server_links(user_id)
+        return [
+            link.platform_server_id for link in links if link.platform == platform.value
+        ]
+
+    @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
         return await start_chat_turn(request)
 
@@ -81,6 +97,32 @@ class PlatformLinkingManager(AppService):
     ) -> ListUserChatsResponse:
         return await list_user_chats(platform, platform_user_id, limit, offset)
 
+    @expose
+    async def fetch_workspace_artifact(
+        self, session_id: str, file_id: str, max_bytes: int
+    ) -> WorkspaceArtifact | None:
+        return await platform_linking_db().fetch_workspace_artifact(
+            session_id, file_id, max_bytes
+        )
+
+    @expose
+    async def record_bot_event(self, event: BotEventInput) -> None:
+        await bot_analytics_db().record_bot_event(event)
+
+    @expose
+    async def record_guild_joined(self, guild: BotGuildInput) -> None:
+        await bot_analytics_db().record_guild_joined(guild)
+
+    @expose
+    async def mark_guild_left(self, platform: Platform, server_id: str) -> None:
+        await bot_analytics_db().mark_guild_left(platform, server_id)
+
+    @expose
+    async def sync_guild_presence(
+        self, platform: Platform, guilds: list[BotGuildInput]
+    ) -> None:
+        await bot_analytics_db().sync_guild_presence(platform, guilds)
+
 
 class PlatformLinkingManagerClient(AppServiceClient):
     @classmethod
@@ -98,8 +140,18 @@ class PlatformLinkingManagerClient(AppServiceClient):
     get_link_token_status = endpoint_to_async(
         PlatformLinkingManager.get_link_token_status
     )
+    list_user_server_ids = endpoint_to_async(
+        PlatformLinkingManager.list_user_server_ids
+    )
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
     refresh_server_link_name = endpoint_to_async(
         PlatformLinkingManager.refresh_server_link_name
     )
     list_user_chats = endpoint_to_async(PlatformLinkingManager.list_user_chats)
+    fetch_workspace_artifact = endpoint_to_async(
+        PlatformLinkingManager.fetch_workspace_artifact
+    )
+    record_bot_event = endpoint_to_async(PlatformLinkingManager.record_bot_event)
+    record_guild_joined = endpoint_to_async(PlatformLinkingManager.record_guild_joined)
+    mark_guild_left = endpoint_to_async(PlatformLinkingManager.mark_guild_left)
+    sync_guild_presence = endpoint_to_async(PlatformLinkingManager.sync_guild_presence)
