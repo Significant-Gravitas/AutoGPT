@@ -298,16 +298,17 @@ class TestRunSubSession:
         listing for the sub and surfaces it as sub_workspace_files."""
         from backend.copilot.sdk.session_waiter import SessionResult
 
-        from .models import SubWorkspaceFileInfo
+        from .models import WorkspaceFileInfoData
 
         res = SessionResult()
         res.response_text = "delivered in the docs, what's next?"
         mock_waiter.return_value = ("completed", res)
         stub_workspace_listing.return_value = [
-            SubWorkspaceFileInfo(
+            WorkspaceFileInfoData(
                 file_id="file-1",
                 name="PLAN.md",
                 path="/sessions/inner-1/PLAN.md",
+                mime_type="text/markdown",
                 size_bytes=14563,
             )
         ]
@@ -594,7 +595,7 @@ class TestGetSubSessionResult:
         poll, last message terminal) the waiter is skipped and the tool-call
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
-        from .models import SubWorkspaceFileInfo
+        from .models import WorkspaceFileInfoData
 
         sub = MagicMock(user_id="alice")
         assistant = MagicMock()
@@ -618,10 +619,11 @@ class TestGetSubSessionResult:
             no_active_session,
         )
         stub_workspace_listing.return_value = [
-            SubWorkspaceFileInfo(
+            WorkspaceFileInfoData(
                 file_id="file-1",
                 name="AUDIT.md",
                 path="/sessions/inner-9/AUDIT.md",
+                mime_type="text/markdown",
                 size_bytes=16170,
             )
         ]

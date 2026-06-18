@@ -343,25 +343,21 @@ class SubSessionProgressSnapshot(BaseModel):
     )
 
 
-class SubWorkspaceFileInfo(BaseModel):
-    """A persistent workspace file a sub-AutoPilot wrote during its run.
+class WorkspaceFileInfoData(BaseModel):
+    """Workspace file metadata (not a response itself).
 
-    Surfaced under ``sub_workspace_files`` on :class:`SubSessionStatusResponse`
-    so the parent can recover work a sub delivered via files instead of inline
-    text (SECRT-2377). The sub writes to its own session, so ``path`` is already
-    session-qualified (``/sessions/<sub_id>/...``) and the parent passes it
-    straight to ``read_workspace_file(path=...)`` for cross-session retrieval.
+    Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
+    on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
+    sub-AutoPilot wrote, ``path`` is already session-qualified
+    (``/sessions/<sub_id>/...``) and can be passed straight to
+    ``read_workspace_file(path=...)`` for cross-session retrieval.
     """
 
-    file_id: str = Field(description="Workspace file id written by the sub.")
-    name: str = Field(description="Filename the sub wrote.")
-    path: str = Field(
-        description=(
-            "Fully-qualified virtual path (e.g. /sessions/<sub_id>/report.md). "
-            "Pass directly to read_workspace_file(path=...) to read the file."
-        ),
-    )
-    size_bytes: int = Field(description="Size of the written file in bytes.")
+    file_id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
 
 
 class SubSessionStatusResponse(ToolResponseBase):
@@ -411,7 +407,7 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description="Tool calls made during the sub-AutoPilot run.",
     )
-    sub_workspace_files: list[SubWorkspaceFileInfo] | None = Field(
+    sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
         default=None,
         description=(
             "Persistent workspace files the sub wrote during the run. "

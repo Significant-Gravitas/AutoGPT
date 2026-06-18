@@ -43,8 +43,8 @@ from .base import BaseTool
 from .models import (
     ErrorResponse,
     SubSessionStatusResponse,
-    SubWorkspaceFileInfo,
     ToolResponseBase,
+    WorkspaceFileInfoData,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,7 +202,7 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
 async def list_sub_workspace_files(
     user_id: str,
     inner_session_id: str,
-) -> list[SubWorkspaceFileInfo] | None:
+) -> list[WorkspaceFileInfoData] | None:
     """Authoritative manifest of the persistent files a sub wrote, read from
     the sub's session workspace.
 
@@ -211,6 +211,13 @@ async def list_sub_workspace_files(
     session for ``agent-created`` files directly, so it captures writes from
     *any* turn — including ones absent from the current turn's tool-call log
     (e.g. the cold-poll / already-terminal path in ``get_sub_session_result``).
+
+    The ``origin=agent-created`` filter means only files the sub persisted via
+    ``write_workspace_file`` are listed — transient working-directory artefacts
+    (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
+    files and never appear here. When the sub persists more than
+    ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
+    (the listing is ordered ``createdAt`` descending).
 
     Returns ``None`` on lookup failure so callers can fall back to mining the
     tool-call log; an empty list means the sub genuinely wrote nothing.
@@ -223,16 +230,16 @@ async def list_sub_workspace_files(
         )
     except Exception:
         logger.warning(
-            "Failed to list workspace files for sub %s",
-            inner_session_id[:12],
+            f"Failed to list workspace files for sub {inner_session_id[:12]}",
             exc_info=True,
         )
         return None
     return [
-        SubWorkspaceFileInfo(
+        WorkspaceFileInfoData(
             file_id=f.id,
             name=f.name,
             path=f.path,
+            mime_type=f.mime_type,
             size_bytes=f.size_bytes,
         )
         for f in files
@@ -241,7 +248,7 @@ async def list_sub_workspace_files(
 
 def _workspace_files_from_tool_calls(
     tool_calls: list[ToolCallEntry],
-) -> list[SubWorkspaceFileInfo]:
+) -> list[WorkspaceFileInfoData]:
     """Mine the files a sub wrote from its tool-call log — the cheap fallback
     when the authoritative workspace listing is unavailable.
 
@@ -252,7 +259,7 @@ def _workspace_files_from_tool_calls(
     a dict on the persisted-replay path — so we parse defensively and skip
     anything that doesn't carry the fields we need.
     """
-    files: list[SubWorkspaceFileInfo] = []
+    files: list[WorkspaceFileInfoData] = []
     seen_ids: set[str] = set()
     for tc in tool_calls:
         if tc.tool_name != "write_workspace_file" or tc.success is False:
@@ -266,14 +273,25 @@ def _workspace_files_from_tool_calls(
             continue
         seen_ids.add(file_id)
         files.append(
-            SubWorkspaceFileInfo(
+            WorkspaceFileInfoData(
                 file_id=file_id,
                 name=payload.get("name") or path.rsplit("/", 1)[-1],
                 path=path,
-                size_bytes=payload.get("size_bytes") or 0,
+                mime_type=payload.get("mime_type") or "",
+                size_bytes=_coerce_size_bytes(payload.get("size_bytes")),
             )
         )
     return files
+
+
+def _coerce_size_bytes(raw: Any) -> int:
+    """Coerce a mined ``size_bytes`` to a non-negative int — the payload is
+    untrusted (JSON parsed from the tool log), so a missing, malformed, or
+    negative value must not surface as invalid size data."""
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _as_payload(output: Any) -> dict[str, Any] | None:
@@ -297,7 +315,7 @@ def response_from_outcome(
     inner_session_id: str,
     parent_session_id: str | None,
     elapsed: float,
-    workspace_files: list[SubWorkspaceFileInfo] | None = None,
+    workspace_files: list[WorkspaceFileInfoData] | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
