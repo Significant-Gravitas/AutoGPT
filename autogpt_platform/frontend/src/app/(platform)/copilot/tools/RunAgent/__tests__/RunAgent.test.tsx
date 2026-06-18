@@ -35,6 +35,22 @@ describe("RunAgentTool streaming state", () => {
     expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
     expect(normalizeWhitespace(container)).not.toContain("WASD");
   });
+
+  it("shows the scheduling loading line when the input is a schedule", () => {
+    const { container } = render(
+      <RunAgentTool
+        part={makePart({
+          state: "input-streaming",
+          input: { agent_id: "a1", cron: "0 0 * * *" },
+        })}
+      />,
+    );
+
+    expect(normalizeWhitespace(container)).toContain(
+      "Scheduling agent, this might take a minute",
+    );
+    expect(normalizeWhitespace(container)).not.toContain("Running agent");
+  });
 });
 
 describe("RunAgentTool corrupted output", () => {

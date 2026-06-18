@@ -138,12 +138,15 @@ export function getAnimationText(part: {
   const actionPhrase = isSchedule
     ? "Scheduling the agent to run"
     : "Running the agent";
+  const loadingPhrase = isSchedule
+    ? "Scheduling agent, this might take a minute"
+    : "Running agent, this might take a minute";
   const identifierText = agentIdentifier ? ` "${agentIdentifier}"` : "";
 
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `${actionPhrase}${identifierText}`;
+      return loadingPhrase;
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return `${actionPhrase}${identifierText}`;
