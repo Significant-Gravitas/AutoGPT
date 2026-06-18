@@ -1,9 +1,11 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { sendAuthEmail } from "./email";
+import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
 
 const baseURL =
@@ -43,6 +45,25 @@ export const auth = betterAuth({
     options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
   }),
   telemetry: { enabled: false },
+  databaseHooks: {
+    user: {
+      create: {
+        // Env-driven signup gate (see signup-gate.ts). Fires for both
+        // email/password signup AND a first OAuth sign-in, since both create
+        // a user row. Existing users and the SQL data-migration bypass it.
+        // The thrown message is phrased so the frontend `isWaitlistError()`
+        // maps it to the existing "not allowed" modal.
+        before: async (user: { email: string }) => {
+          const decision = isSignupAllowed(user.email, readSignupGateConfig());
+          if (!decision.allowed) {
+            throw new APIError("FORBIDDEN", {
+              message: decision.reason ?? "Signups are not allowed.",
+            });
+          }
+        },
+      },
+    },
+  },
   advanced: {
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
