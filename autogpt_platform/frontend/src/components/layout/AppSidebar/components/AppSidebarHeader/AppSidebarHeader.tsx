@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -8,7 +9,6 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { SidebarSimpleIcon } from "@phosphor-icons/react";
-import Image from "next/image";
 import Link from "next/link";
 
 export function AppSidebarHeader() {
@@ -23,23 +23,9 @@ export function AppSidebarHeader() {
         className={cn("flex items-center", isCollapsed && "group-hover:hidden")}
       >
         {isCollapsed ? (
-          <Image
-            src="/agpt-logo.png"
-            alt="AutoGPT"
-            width={545}
-            height={553}
-            className="size-8"
-            priority
-          />
+          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
         ) : (
-          <Image
-            src="/autogpt-logo-light-bg.png"
-            alt="AutoGPT"
-            width={790}
-            height={356}
-            className="h-7 w-auto"
-            priority
-          />
+          <AutoGPTLogo className="h-7 w-auto" />
         )}
       </Link>
 
