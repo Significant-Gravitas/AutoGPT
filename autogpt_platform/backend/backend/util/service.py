@@ -39,7 +39,7 @@ from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
-from backend.util.retry import conn_retry, create_retry_decorator
+from backend.util.retry import conn_retry, create_retry_decorator, request_shutdown
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -367,6 +367,10 @@ class AppService(BaseAppService, ABC):
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
+        # Abort in-flight connection-retry loops (e.g. the eager Redis connect in
+        # `lifespan`) so they don't keep Uvicorn stuck in startup and block the
+        # graceful shutdown below.
+        request_shutdown()
         signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True

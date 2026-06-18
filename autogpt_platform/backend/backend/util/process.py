@@ -8,6 +8,7 @@ from typing import Optional
 
 from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
+from backend.util.retry import request_shutdown
 from backend.util.settings import set_service_name
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,8 @@ class AppProcess(ABC):
         os.write(sys.stdout.fileno(), (message + "\n").encode())
 
     def _self_terminate(self, signum: int, frame):
+        # Abort in-flight connection-retry loops so they don't block shutdown.
+        request_shutdown()
         if not self._shutting_down:
             self._shutting_down = True
             sys.exit(0)
