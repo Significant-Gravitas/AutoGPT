@@ -2286,14 +2286,14 @@ requests = ">=2.20.0,<3.0"
 
 [[package]]
 name = "graphiti-core"
-version = "0.29.2"
+version = "0.28.2"
 description = "A temporal graph building library"
 optional = false
 python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "graphiti_core-0.29.2-py3-none-any.whl", hash = "sha256:536780d1dd5d2e16f50fcc75b29bc1c2f2a53e5d651fb49482c43b7d8c2841d5"},
-    {file = "graphiti_core-0.29.2.tar.gz", hash = "sha256:dd746a2546abfe5ff9025f088f4793a027bce949e044762cb2ea3ec8f1db8e63"},
+    {file = "graphiti_core-0.28.2-py3-none-any.whl", hash = "sha256:4e1c19b7bc70a73a612a473144ed4b3fe615ac6d4c5d6b10f48e206a858bcb53"},
+    {file = "graphiti_core-0.28.2.tar.gz", hash = "sha256:9b2a72f117827e015a21b610eb2c3acbe05310b79736abef7372e81247578e9d"},
 ]
 
 [package.dependencies]
@@ -2307,9 +2307,8 @@ tenacity = ">=9.0.0"
 
 [package.extras]
 anthropic = ["anthropic (>=0.49.0)"]
-dev = ["anthropic (>=0.49.0)", "boto3 (>=1.39.16)", "falkordb (>=1.1.2,<2.0.0)", "google-genai (>=1.8.0)", "groq (>=0.2.0)", "ipykernel (>=6.29.5)", "jupyterlab (>=4.2.4)", "kuzu (>=0.11.3)", "langchain-anthropic (>=0.2.4)", "langchain-aws (>=0.2.29)", "langchain-openai (>=0.2.6)", "langgraph (>=1.0.10)", "langsmith (>=0.1.108)", "opensearch-py (>=3.0.0)", "opentelemetry-sdk (>=1.20.0)", "pyright (>=1.1.404)", "pytest (>=8.3.3)", "pytest-asyncio (>=0.24.0)", "pytest-xdist (>=3.6.1)", "ruff (>=0.7.1)", "sentence-transformers (>=3.2.1)", "transformers (>=4.45.2)", "voyageai (>=0.2.3)"]
+dev = ["anthropic (>=0.49.0)", "boto3 (>=1.39.16)", "falkordb (>=1.1.2,<2.0.0)", "google-genai (>=1.8.0)", "groq (>=0.2.0)", "ipykernel (>=6.29.5)", "jupyterlab (>=4.2.4)", "kuzu (>=0.11.3)", "langchain-anthropic (>=0.2.4)", "langchain-aws (>=0.2.29)", "langchain-openai (>=0.2.6)", "langgraph (>=0.2.15)", "langsmith (>=0.1.108)", "opensearch-py (>=3.0.0)", "opentelemetry-sdk (>=1.20.0)", "pyright (>=1.1.404)", "pytest (>=8.3.3)", "pytest-asyncio (>=0.24.0)", "pytest-xdist (>=3.6.1)", "ruff (>=0.7.1)", "sentence-transformers (>=3.2.1)", "transformers (>=4.45.2)", "voyageai (>=0.2.3)"]
 falkordb = ["falkordb (>=1.1.2,<2.0.0)"]
-falkordblite = ["falkordblite (>=0.5.0) ; python_version >= \"3.12\"", "redis (<8) ; python_version >= \"3.12\""]
 gliner2 = ["gliner2 (>=1.2.0) ; python_version >= \"3.11\""]
 google-genai = ["google-genai (>=1.62.0)"]
 groq = ["groq (>=0.2.0)"]
@@ -8649,4 +8648,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "a5ed3803a80a493db2cb7c0e2109bcb576c2db23ce05c3ba8ab04aaf3ffddfed"
+content-hash = "5e12386c4a72e8674b912a8cb531b972c2bd501e4dd026251549a3894aea3edb"
