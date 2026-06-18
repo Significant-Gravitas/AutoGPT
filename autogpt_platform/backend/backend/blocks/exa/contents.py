@@ -168,13 +168,13 @@ class ExaContentsBlock(Block):
         # Handle summary - only include if modified from defaults
         if input_data.summary and (
             input_data.summary.query is not None
-            or input_data.summary.schema is not None
+            or input_data.summary.output_schema is not None
         ):
             summary_dict = {}
             if input_data.summary.query:
                 summary_dict["query"] = input_data.summary.query
-            if input_data.summary.schema:
-                summary_dict["schema"] = input_data.summary.schema
+            if input_data.summary.output_schema:
+                summary_dict["schema"] = input_data.summary.output_schema
             sdk_kwargs["summary"] = summary_dict
 
         if input_data.livecrawl:

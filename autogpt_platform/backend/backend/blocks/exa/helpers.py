@@ -60,7 +60,7 @@ class SummarySettings(BaseModel):
         description="Custom query for the LLM-generated summary",
         placeholder="Main developments",
     )
-    schema: Optional[dict] = SchemaField(  # type: ignore
+    output_schema: Optional[dict] = SchemaField(  # type: ignore
         default=None,
         description="JSON schema for structured output from summary",
         advanced=True,
@@ -369,8 +369,8 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
         summary_dict = {}
         if contents.summary.query:
             summary_dict["query"] = contents.summary.query
-        if contents.summary.schema:
-            summary_dict["schema"] = contents.summary.schema
+        if contents.summary.output_schema:
+            summary_dict["schema"] = contents.summary.output_schema
         content_settings["summary"] = summary_dict
 
     if contents.livecrawl:
