@@ -9,7 +9,7 @@ For Playwright and Storybook testing setup, see [TESTING.md](./TESTING.md).
 
 ### Prerequisites
 
-Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js by default.
+Make sure you have Node.js 22.x installed. Corepack is included with Node.js by default.
 
 ## Setup
 
