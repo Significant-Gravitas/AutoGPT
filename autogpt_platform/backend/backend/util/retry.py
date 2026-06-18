@@ -341,7 +341,7 @@ def continuous_retry(*, retry_delay: float = 1.0):
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             counter = 0
-            while True:
+            while not is_shutting_down():
                 try:
                     return func(*args, **kwargs)
                 except Exception as exc:
@@ -357,12 +357,13 @@ def continuous_retry(*, retry_delay: float = 1.0):
                         str(exc) or type(exc).__name__,
                         retry_delay,
                     )
-                    time.sleep(retry_delay)
+                    _interruptible_sleep(retry_delay)
+            logger.info("%s stopped retrying: shutting down", func.__name__)
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             counter = 0
-            while True:
+            while not is_shutting_down():
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
@@ -378,7 +379,8 @@ def continuous_retry(*, retry_delay: float = 1.0):
                         str(exc) or type(exc).__name__,
                         retry_delay,
                     )
-                    await asyncio.sleep(retry_delay)
+                    await _interruptible_async_sleep(retry_delay)
+            logger.info("%s stopped retrying: shutting down", func.__name__)
 
         return async_wrapper if is_coroutine else sync_wrapper
 
