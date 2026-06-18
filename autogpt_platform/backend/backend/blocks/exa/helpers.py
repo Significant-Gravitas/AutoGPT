@@ -60,7 +60,7 @@ class SummarySettings(BaseModel):
         description="Custom query for the LLM-generated summary",
         placeholder="Main developments",
     )
-    output_schema: Optional[dict] = SchemaField(  # type: ignore
+    output_schema: Optional[dict] = SchemaField(
         default=None,
         description="JSON schema for structured output from summary",
         advanced=True,
