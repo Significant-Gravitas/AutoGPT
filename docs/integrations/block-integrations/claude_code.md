@@ -42,7 +42,7 @@ The block supports conversation continuation through three mechanisms:
 | Output | Description |
 |--------|-------------|
 | Response | The output/response from Claude Code execution |
-| Files | List of text files created/modified during execution. Each file includes path, relative_path, name, and content fields |
+| Files | List of text files created/modified during execution. Each file includes path, relative_path, name, content, and workspace_ref fields |
 | Conversation History | Full conversation history including this turn. Use to restore context on a fresh sandbox |
 | Session ID | Session ID for this conversation. Pass back with sandbox_id to continue the conversation |
 | Sandbox ID | ID of the sandbox instance (null if disposed). Pass back with session_id to continue the conversation |
