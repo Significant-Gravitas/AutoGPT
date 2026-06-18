@@ -15,8 +15,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse
+from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
@@ -78,7 +82,6 @@ def mock_waiter(monkeypatch):
     ``run_copilot_turn_via_queue`` mock (used by run_sub_session) and
     the ``wait_for_session_result`` mock (used by get_sub_session_result)
     wired to return ``("running", SessionResult())`` by default."""
-    from backend.copilot.sdk.session_waiter import SessionResult
 
     turn_mock = AsyncMock(return_value=("running", SessionResult()))
     result_mock = AsyncMock(return_value=("running", SessionResult()))
@@ -218,7 +221,6 @@ class TestRunSubSession:
     ):
         """The parent's CopilotPermissions must be passed through to the
         queue primitive so the worker applies the same filter."""
-        from backend.copilot.permissions import CopilotPermissions
 
         perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
         monkeypatch.setattr(
@@ -261,8 +263,6 @@ class TestRunSubSession:
         """When the queue primitive returns 'completed' + a SessionResult,
         the tool surfaces response_text + tool_calls directly — no DB
         round-trip needed for the content."""
-        from backend.copilot.sdk.session_waiter import SessionResult
-        from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
         res = SessionResult()
         res.response_text = "the answer"
@@ -296,9 +296,6 @@ class TestRunSubSession:
     ):
         """On completion run_sub_session reads the authoritative workspace
         listing for the sub and surfaces it as sub_workspace_files."""
-        from backend.copilot.sdk.session_waiter import SessionResult
-
-        from .models import WorkspaceFileInfoData
 
         res = SessionResult()
         res.response_text = "delivered in the docs, what's next?"
@@ -333,7 +330,6 @@ class TestRunSubSession:
         """When the shared primitive reports the target session already has
         a turn running, the tool surfaces ``status='queued'`` so the LLM can
         decide whether to poll or move on."""
-        from backend.copilot.sdk.session_waiter import SessionResult
 
         queued_res = SessionResult(queued=True, pending_buffer_length=2)
         mock_waiter.return_value = ("queued", queued_res)
@@ -442,7 +438,6 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
-        from backend.copilot.sdk.session_waiter import SessionResult
 
         sub = MagicMock(user_id="alice", messages=[])  # not terminal-looking
 
@@ -595,7 +590,6 @@ class TestGetSubSessionResult:
         poll, last message terminal) the waiter is skipped and the tool-call
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
-        from .models import WorkspaceFileInfoData
 
         sub = MagicMock(user_id="alice")
         assistant = MagicMock()
@@ -671,8 +665,6 @@ class TestHollowResponseRepro:
     def _hollow_completed_result():
         """A completed SessionResult mirroring the incident: 3 large files
         written to the workspace, then a 227-token hollow final message."""
-        from backend.copilot.sdk.session_waiter import SessionResult
-        from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
         def _write_call(idx: int, name: str, size: int) -> ToolCallEntry:
             # write_workspace_file's stream output is a WorkspaceWriteResponse
@@ -755,8 +747,6 @@ class TestHollowResponseRepro:
     def test_no_manifest_when_sub_returned_inline(self):
         """A sub that answered inline (no file writes) must not grow an empty
         or noisy manifest — sub_workspace_files stays None."""
-        from backend.copilot.sdk.session_waiter import SessionResult
-        from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
         res = SessionResult()
         res.response_text = "Here is the full answer, inline."
