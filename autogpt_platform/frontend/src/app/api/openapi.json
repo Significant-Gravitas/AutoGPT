@@ -3269,6 +3269,9 @@
                     },
                     { "$ref": "#/components/schemas/ScheduleListResponse" },
                     { "$ref": "#/components/schemas/ScheduleDeletedResponse" },
+                    { "$ref": "#/components/schemas/PresetListResponse" },
+                    { "$ref": "#/components/schemas/PresetUpdatedResponse" },
+                    { "$ref": "#/components/schemas/PresetDeletedResponse" },
                     { "$ref": "#/components/schemas/MemoryStoreResponse" },
                     { "$ref": "#/components/schemas/MemorySearchResponse" },
                     {
@@ -11486,10 +11489,10 @@
           },
           "trigger_info": {
             "anyOf": [
-              { "additionalProperties": true, "type": "object" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ],
-            "title": "Trigger Info"
+            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger — never by editing the trigger node in the graph. None for agents without a webhook trigger."
           }
         },
         "type": "object",
@@ -11648,6 +11651,13 @@
               { "type": "null" }
             ],
             "description": "Full graph structure (nodes + links) when include_graph is requested"
+          },
+          "trigger_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
+              { "type": "null" }
+            ],
+            "description": "Webhook-trigger setup info (provider, config_schema, credentials_input_name) for agents with an external trigger. Configure the trigger by passing config_schema fields to setup_agent_webhook_trigger — never by editing the trigger node in the graph. None for agents without a webhook trigger."
           }
         },
         "type": "object",
@@ -14484,7 +14494,15 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Link"
           },
-          "status": { "type": "string", "title": "Status", "default": "QUEUED" }
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "QUEUED"
+          },
+          "saved_preset_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Saved Preset Id"
+          }
         },
         "type": "object",
         "required": ["message", "execution_id", "graph_id", "graph_name"],
@@ -17935,6 +17953,102 @@
         ],
         "title": "PostmarkSubscriptionChangeWebhook"
       },
+      "PresetDeletedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "preset_deleted"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "preset_id": { "type": "string", "title": "Preset Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["message", "preset_id", "name"],
+        "title": "PresetDeletedResponse",
+        "description": "Response confirming a preset was deleted."
+      },
+      "PresetListResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "preset_list"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "presets": {
+            "items": { "$ref": "#/components/schemas/PresetSummary" },
+            "type": "array",
+            "title": "Presets"
+          },
+          "total_count": { "type": "integer", "title": "Total Count" }
+        },
+        "type": "object",
+        "required": ["message", "presets", "total_count"],
+        "title": "PresetListResponse",
+        "description": "Response listing the user's presets."
+      },
+      "PresetSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "is_active": { "type": "boolean", "title": "Is Active" },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
+          "webhook_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Url"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "graph_id", "graph_version", "is_active"],
+        "title": "PresetSummary",
+        "description": "Summary of a single preset (saved run config / webhook trigger)."
+      },
+      "PresetUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "preset_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "preset_id": { "type": "string", "title": "Preset Id" },
+          "name": { "type": "string", "title": "Name" },
+          "is_active": { "type": "boolean", "title": "Is Active" },
+          "webhook_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Url"
+          }
+        },
+        "type": "object",
+        "required": ["message", "preset_id", "name", "is_active"],
+        "title": "PresetUpdatedResponse",
+        "description": "Response confirming a preset was updated."
+      },
       "Profile": {
         "properties": {
           "username": { "type": "string", "title": "Username" },
@@ -18474,6 +18588,11 @@
           "schedule_deleted",
           "schedule_created",
           "agent_trigger_list",
+          "trigger_setup",
+          "trigger_config_required",
+          "preset_list",
+          "preset_updated",
+          "preset_deleted",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",

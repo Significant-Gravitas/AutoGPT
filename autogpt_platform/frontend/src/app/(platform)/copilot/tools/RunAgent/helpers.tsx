@@ -154,6 +154,9 @@ export function getAnimationText(part: {
         return `Started "${output.graph_name}"`;
       }
       if (isRunAgentAgentDetailsOutput(output)) {
+        if (output.agent.trigger_info) {
+          return `Webhook trigger setup for "${output.agent.name}"`;
+        }
         return `Agent inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
@@ -225,7 +228,9 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
     return {
       icon,
       title: output.agent.name,
-      description: "Inputs required",
+      description: output.agent.trigger_info
+        ? "Webhook trigger setup"
+        : "Inputs required",
     };
   }
 
