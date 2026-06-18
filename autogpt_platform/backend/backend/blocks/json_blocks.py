@@ -19,7 +19,10 @@ class JSONEncoderBlock(Block):
 
     class Input(BlockSchemaInput):
         data: Any = SchemaField(
-            description="The data structure/value (object, list, string, etc.) to encode into a JSON string.",
+            description=(
+                "The data structure/value (object, list, string, etc.) to encode "
+                "into a JSON string."
+            ),
             placeholder='e.g., {"key": "value"}',
         )
 
@@ -65,7 +68,10 @@ class JSONDecoderBlock(Block):
     def __init__(self):
         super().__init__(
             id="2b935639-65bc-48fd-9f88-823cd706fcd9",
-            description="Decodes a JSON string into the value or data structure, it represents, e.g. an object, list, string, or number.",
+            description=(
+                "Decodes a JSON string into the value or data structure, it "
+                "represents, e.g. an object, list, string, or number."
+            ),
             categories={BlockCategory.DATA},
             input_schema=JSONDecoderBlock.Input,
             output_schema=JSONDecoderBlock.Output,
