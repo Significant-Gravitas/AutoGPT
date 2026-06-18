@@ -7,7 +7,7 @@ The Send Email block is a tool for sending emails using SMTP (Simple Mail Transf
 This block allows users to send an email to a specified recipient with a custom subject and body. It uses provided SMTP credentials to connect to an email server and send the message.
 
 ## How it works
-The block takes the recipient's email address, subject, and body of the email as inputs. It also requires SMTP credentials, including the server address, port, username, and password. The block then connects to the specified SMTP server, authenticates using the provided credentials, and sends the email. After attempting to send the email, it reports back whether the operation was successful or if an error occurred.
+The block takes the recipient's email address, subject, and body of the email as inputs. It also requires SMTP credentials, including the server address, one of the allowed ports (25, 465, 587, or 2525), username, and password. The block then connects to the specified SMTP server, authenticates using the provided credentials, and sends the email. After attempting to send the email, it reports back whether the operation was successful or if an error occurred.
 
 ## Inputs
 | Input | Description |
