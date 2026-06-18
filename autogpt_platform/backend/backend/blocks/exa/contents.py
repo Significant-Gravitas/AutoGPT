@@ -171,9 +171,9 @@ class ExaContentsBlock(Block):
             or input_data.summary.output_schema is not None
         ):
             summary_dict = {}
-            if input_data.summary.query:
+            if input_data.summary.query is not None:
                 summary_dict["query"] = input_data.summary.query
-            if input_data.summary.output_schema:
+            if input_data.summary.output_schema is not None:
                 summary_dict["schema"] = input_data.summary.output_schema
             sdk_kwargs["summary"] = summary_dict
 

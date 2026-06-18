@@ -369,7 +369,7 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
         summary_dict = {}
         if contents.summary.query:
             summary_dict["query"] = contents.summary.query
-        if contents.summary.output_schema:
+        if contents.summary.output_schema is not None:
             summary_dict["schema"] = contents.summary.output_schema
         content_settings["summary"] = summary_dict
 
