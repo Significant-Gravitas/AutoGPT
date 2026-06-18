@@ -21,9 +21,12 @@ const PROMOTED_BUBBLE_ID_PREFIX = "promoted-";
  * (it only fetches messages older than what's loaded). See SECRT-2424.
  *
  * Keep the `prev` messages whose DB sequence predates the window so the
- * force-hydrated result stays contiguous with the older history. Streaming
- * rows (AI SDK uuids, no `-seq-N` id) return null and are excluded — they're
- * already persisted inside the refetched window.
+ * force-hydrated result stays contiguous with the older history. Both arrays
+ * are in ascending DB-sequence order, so the window's oldest sequence is the
+ * first `-seq-N` row in `hydrated`, and the older `prev` messages are the
+ * leading run before that boundary — a single slice. Streaming / idx-fallback
+ * rows (no `-seq-N` id) carry no sequence and mark the end of that run; they
+ * are excluded because they already live inside the refetched window.
  */
 function retainOlderHistory(
   prev: UIMessage[],
@@ -31,22 +34,20 @@ function retainOlderHistory(
 ): UIMessage[] {
   let oldestHydratedSeq: number | null = null;
   for (const message of hydrated) {
-    const seq = extractDbSequence(message);
-    if (seq === null) continue;
-    if (oldestHydratedSeq === null || seq < oldestHydratedSeq) {
-      oldestHydratedSeq = seq;
-    }
+    oldestHydratedSeq = extractDbSequence(message);
+    if (oldestHydratedSeq !== null) break;
   }
   if (oldestHydratedSeq === null) return hydrated;
   const windowStart = oldestHydratedSeq;
 
-  const olderTail = prev.filter((message) => {
+  const windowStartIndex = prev.findIndex((message) => {
     const seq = extractDbSequence(message);
-    return seq !== null && seq < windowStart;
+    return seq === null || seq >= windowStart;
   });
-  if (olderTail.length === 0) return hydrated;
+  const olderCount = windowStartIndex === -1 ? prev.length : windowStartIndex;
+  if (olderCount === 0) return hydrated;
 
-  return [...olderTail, ...hydrated];
+  return [...prev.slice(0, olderCount), ...hydrated];
 }
 
 function getMessageText(message: UIMessage): string {

@@ -146,4 +146,23 @@ describe("useHydrateOnStreamEnd — sliding-window history retention (SECRT-2424
     expect(result).not.toBeNull();
     expect(result!.map(seqOf)).toEqual(freshWindow.map(seqOf));
   });
+
+  it("retains all of prev when the window shares no sequence with memory", () => {
+    // Pathological no-overlap: every in-memory message is older than the whole
+    // refetched window (the leading run is the entire array). All of prev must
+    // survive, prepended to the disjoint window.
+    const prev = range(1, 40);
+    const freshWindow = range(60, 102);
+    const result = runForceHydrate({
+      prev,
+      staleWindow: range(60, 100),
+      freshWindow,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.map(seqOf)).toEqual([
+      ...range(1, 40).map(seqOf),
+      ...freshWindow.map(seqOf),
+    ]);
+  });
 });
