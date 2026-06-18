@@ -195,10 +195,18 @@ def shutdown_launchdarkly() -> None:
         logger.info("LaunchDarkly client closed successfully")
 
 
-@cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
     Fetch user context for LaunchDarkly from Supabase.
+
+    Successful lookups are cached for 24h (see
+    ``_fetch_supabase_user_context``).  Failed lookups are NOT cached: the
+    degraded anonymous fallback is built outside the cache so the next
+    evaluation retries Supabase instead of pinning this process to an
+    email-less context for a full TTL — which would make its
+    email/role-targeted flag evaluations silently diverge from peer
+    processes.  The degraded path costs one failed Supabase call per
+    evaluation; bounded, and acceptable versus a 24h-poisoned cache.
 
     Args:
         user_id: The user ID to fetch data for
@@ -206,36 +214,58 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     Returns:
         LaunchDarkly Context object
     """
-    builder = Context.builder(user_id).kind("user").anonymous(True)
-
     try:
         uuid.UUID(user_id)
     except ValueError:
         # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
-        return builder.build()
+        return _anonymous_context(user_id)
 
     try:
-        from backend.util.clients import get_supabase
-
-        # If we have user data, update context
-        response = get_supabase().auth.admin.get_user_by_id(user_id)
-        if response and response.user:
-            user = response.user
-            builder.anonymous(False)
-            if user.role:
-                builder.set("role", user.role)
-                # It's weird, I know, but it is what it is.
-                builder.set("custom", {"role": user.role})
-            if user.email:
-                builder.set("email", user.email)
-                builder.set("email_domain", user.email.split("@")[-1])
-            if user.created_at:
-                # ISO-8601 string — LD supports RFC3339 date targeting on
-                # this attribute (e.g. cohort users by signup window).
-                builder.set("created_at", user.created_at.isoformat())
-
+        return await _fetch_supabase_user_context(user_id)
     except Exception as e:
-        logger.warning(f"Failed to fetch user context for {user_id}: {e}")
+        logger.warning(
+            f"Failed to fetch user context for {user_id}: {e} — "
+            "falling back to an uncached anonymous context; flag "
+            "evaluations for this user may be degraded until the lookup "
+            "succeeds"
+        )
+        return _anonymous_context(user_id)
+
+
+def _anonymous_context(user_id: str) -> Context:
+    """Build a minimal anonymous LD context carrying only the user key."""
+    return Context.builder(user_id).kind("user").anonymous(True).build()
+
+
+@cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
+async def _fetch_supabase_user_context(user_id: str) -> Context:
+    """
+    Build the full LaunchDarkly context for ``user_id`` from Supabase.
+
+    Raises on Supabase lookup failure: ``@cached`` never stores results
+    of calls that raise, so a degraded context can't be cached here —
+    the caller handles the fallback outside the cache.
+    """
+    from backend.util.clients import get_supabase
+
+    builder = Context.builder(user_id).kind("user").anonymous(True)
+
+    # If we have user data, update context
+    response = get_supabase().auth.admin.get_user_by_id(user_id)
+    if response and response.user:
+        user = response.user
+        builder.anonymous(False)
+        if user.role:
+            builder.set("role", user.role)
+            # It's weird, I know, but it is what it is.
+            builder.set("custom", {"role": user.role})
+        if user.email:
+            builder.set("email", user.email)
+            builder.set("email_domain", user.email.split("@")[-1])
+        if user.created_at:
+            # ISO-8601 string — LD supports RFC3339 date targeting on
+            # this attribute (e.g. cohort users by signup window).
+            builder.set("created_at", user.created_at.isoformat())
 
     return builder.build()
 

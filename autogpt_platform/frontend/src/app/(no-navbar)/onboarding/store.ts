@@ -59,7 +59,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       painPoints: [],
       otherPainPoint: "",
       selectedPlan: null,
-      selectedBilling: "yearly",
+      selectedBilling: "monthly",
       hasUserSelectedBilling: false,
       selectedCountryCode: "US",
       setName(name) {
@@ -122,7 +122,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
           painPoints: [],
           otherPainPoint: "",
           selectedPlan: null,
-          selectedBilling: "yearly",
+          selectedBilling: "monthly",
           hasUserSelectedBilling: false,
           selectedCountryCode: "US",
         });

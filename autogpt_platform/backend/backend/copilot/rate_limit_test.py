@@ -9,6 +9,7 @@ from redis.exceptions import RedisClusterException, RedisError
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
     _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
+    _STRIPE_RECONCILE_PREFIX,
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
     CoPilotUsagePublic,
@@ -22,6 +23,7 @@ from .rate_limit import (
     _fetch_cost_limits_flag,
     _fetch_tier_multipliers_flag,
     _fetch_workspace_storage_limits_flag,
+    _maybe_reconcile_stripe_tier,
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
@@ -1376,6 +1378,105 @@ class TestGetUserTier:
 
         # Should get PRO — the not-found result was not cached
         assert tier2 == SubscriptionTier.PRO
+
+
+# ---------------------------------------------------------------------------
+# _maybe_reconcile_stripe_tier
+# ---------------------------------------------------------------------------
+
+
+class TestMaybeReconcileStripeTier:
+    """The lazy Stripe reconcile must resolve its DB work via the accessor
+    layer (``credit_db()``) so it works from Prisma-less processes
+    (scheduler-server, copilot-executor). A direct ``backend.data.credit``
+    call raises ``ClientNotConnectedError`` there, which is swallowed —
+    silently disabling tier reconciliation in those processes.
+    """
+
+    def _mock_redis(self, gate_acquired: bool = True):
+        redis = AsyncMock()
+        redis.set = AsyncMock(return_value=gate_acquired)
+        redis.delete = AsyncMock()
+        return redis
+
+    def _mock_credit_db(self, result: bool = True, raises: Exception | None = None):
+        accessor = AsyncMock()
+        if raises is not None:
+            accessor.reconcile_stripe_tier_for_user = AsyncMock(side_effect=raises)
+        else:
+            accessor.reconcile_stripe_tier_for_user = AsyncMock(return_value=result)
+        return accessor
+
+    @pytest.mark.asyncio
+    async def test_reconcile_resolves_db_call_via_accessor(self):
+        """The reconcile call must go through credit_db(), not a direct import."""
+        redis = self._mock_redis()
+        accessor = self._mock_credit_db(result=True)
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+            patch("backend.copilot.rate_limit.credit_db", return_value=accessor),
+        ):
+            result = await _maybe_reconcile_stripe_tier(_USER)
+        assert result is True
+        accessor.reconcile_stripe_tier_for_user.assert_awaited_once_with(_USER)
+
+    @pytest.mark.asyncio
+    async def test_gate_already_held_skips_reconcile(self):
+        """When the Redis NX gate is already set, no DB call is made."""
+        redis = self._mock_redis(gate_acquired=False)
+        accessor = self._mock_credit_db()
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+            patch("backend.copilot.rate_limit.credit_db", return_value=accessor),
+        ):
+            result = await _maybe_reconcile_stripe_tier(_USER)
+        assert result is False
+        accessor.reconcile_stripe_tier_for_user.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reconcile_failure_returns_false_and_releases_gate(self):
+        """A failing reconcile is swallowed and the NX gate is released for retry."""
+        redis = self._mock_redis()
+        accessor = self._mock_credit_db(raises=RuntimeError("RPC unavailable"))
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+            patch("backend.copilot.rate_limit.credit_db", return_value=accessor),
+        ):
+            result = await _maybe_reconcile_stripe_tier(_USER)
+        assert result is False
+        redis.delete.assert_awaited_once_with(f"{_STRIPE_RECONCILE_PREFIX}{_USER}")
+
+    @pytest.mark.asyncio
+    async def test_get_user_tier_survives_reconcile_failure(self):
+        """Reconcile failure stays non-fatal for rate limiting: get_user_tier
+        still resolves the DB-confirmed NO_TIER instead of raising."""
+        get_user_tier.cache_clear()  # type: ignore[attr-defined]
+        mock_user = MagicMock()
+        mock_user.subscription_tier = None
+        mock_db = AsyncMock()
+        mock_db.get_user_by_id = AsyncMock(return_value=mock_user)
+        redis = self._mock_redis()
+        accessor = self._mock_credit_db(raises=RuntimeError("RPC unavailable"))
+        with (
+            patch("backend.copilot.rate_limit.user_db", return_value=mock_db),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+            patch("backend.copilot.rate_limit.credit_db", return_value=accessor),
+        ):
+            tier = await get_user_tier(_USER)
+        assert tier == SubscriptionTier.NO_TIER
+        accessor.reconcile_stripe_tier_for_user.assert_awaited_once_with(_USER)
 
 
 # ---------------------------------------------------------------------------
