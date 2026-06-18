@@ -153,27 +153,32 @@ export function buildRenderSegments(
     pendingTools = null;
   }
 
-  // Consecutive native reasoning parts (one per agentic turn) are folded into a
-  // single collapsed block so a long multi-step task doesn't stack a wall of
-  // separate "Reasoning" accordions while streaming.
+  // Native reasoning parts (one per agentic turn) are always emitted as a
+  // reasoning-group — including a lone part. This folds a multi-step task's
+  // consecutive reasoning into one collapsed block instead of a stacked wall of
+  // "Reasoning" accordions, and gives the run a single stable identity
+  // (`reasoning-group` keyed by its first index) so a single block doesn't
+  // remount — losing its open/closed state — the moment a second consecutive
+  // block arrives and turns it into a group.
   function flushReasoning() {
     if (!pendingReasoning) return;
-    if (pendingReasoning.length >= 2) {
-      segments.push({
-        kind: "reasoning-group",
-        parts: pendingReasoning.map((p) => p.part),
-        index: pendingReasoning[0].index,
-      });
-    } else {
-      for (const p of pendingReasoning) {
-        segments.push({ kind: "part", part: p.part, index: p.index });
-      }
-    }
+    segments.push({
+      kind: "reasoning-group",
+      parts: pendingReasoning.map((p) => p.part),
+      index: pendingReasoning[0].index,
+    });
     pendingReasoning = null;
   }
 
   parts.forEach((part, i) => {
     const absoluteIndex = baseIndex + i;
+
+    // `step-start` markers delimit turns in multi-step agentic streams and
+    // render as nothing. Treat them as transparent: skipping them (rather than
+    // flushing) keeps the reasoning blocks on either side in a single run, which
+    // is exactly the consecutive-reasoning case this grouping targets.
+    if (part.type === "step-start") return;
+
     const isGenericCompletedTool =
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
 

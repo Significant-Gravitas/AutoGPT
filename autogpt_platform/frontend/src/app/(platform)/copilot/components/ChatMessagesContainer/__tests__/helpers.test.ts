@@ -26,6 +26,10 @@ function reasoningPart(text: string): MessagePart {
   return { type: "reasoning", text, state: "done" } as MessagePart;
 }
 
+function stepStartPart(): MessagePart {
+  return { type: "step-start" } as MessagePart;
+}
+
 function toolPart(
   toolName: string,
   state: string = "output-available",
@@ -254,11 +258,14 @@ describe("buildRenderSegments", () => {
     }
   });
 
-  it("does not collapse a single reasoning part", () => {
+  it("wraps a single reasoning part in a reasoning-group for stable identity", () => {
     const parts = [reasoningPart("Lone thought")];
     const segments = buildRenderSegments(parts);
     expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("part");
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(1);
+    }
   });
 
   it("breaks reasoning groups around interleaved text", () => {
@@ -296,6 +303,31 @@ describe("buildRenderSegments", () => {
     if (segments[0].kind === "reasoning-group") {
       expect(segments[0].index).toBe(3);
     }
+  });
+
+  it("treats step-start markers as transparent so reasoning stays grouped", () => {
+    const parts = [
+      reasoningPart("turn 1"),
+      stepStartPart(),
+      reasoningPart("turn 2"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("reasoning-group");
+    if (segments[0].kind === "reasoning-group") {
+      expect(segments[0].parts).toHaveLength(2);
+    }
+  });
+
+  it("treats step-start markers as transparent within tool groups", () => {
+    const parts = [
+      toolPart("generic_a", "output-available"),
+      stepStartPart(),
+      toolPart("generic_b", "output-available"),
+    ];
+    const segments = buildRenderSegments(parts);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("collapsed-group");
   });
 });
 
