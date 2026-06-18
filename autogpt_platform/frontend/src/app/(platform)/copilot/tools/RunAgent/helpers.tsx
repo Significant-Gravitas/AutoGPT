@@ -138,15 +138,12 @@ export function getAnimationText(part: {
   const actionPhrase = isSchedule
     ? "Scheduling the agent to run"
     : "Running the agent";
-  const loadingPhrase = isSchedule
-    ? "Scheduling agent, this might take a minute"
-    : "Running agent, this might take a minute";
   const identifierText = agentIdentifier ? ` "${agentIdentifier}"` : "";
 
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return loadingPhrase;
+      return `${actionPhrase}${identifierText}`;
     case "output-available": {
       const output = parseOutput(part.output);
       if (!output) return `${actionPhrase}${identifierText}`;
@@ -171,6 +168,16 @@ export function getAnimationText(part: {
     default:
       return actionPhrase;
   }
+}
+
+export function getStreamingLoadingText(part: { input?: unknown }): string {
+  const input = part.input as RunAgentInput | undefined;
+  const isSchedule = Boolean(
+    input?.schedule_name?.trim() || input?.cron?.trim(),
+  );
+  return isSchedule
+    ? "Scheduling agent, this might take a minute"
+    : "Running agent, this might take a minute";
 }
 
 export function ToolIcon({

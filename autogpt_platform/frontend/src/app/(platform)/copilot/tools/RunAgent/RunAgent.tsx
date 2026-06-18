@@ -8,6 +8,7 @@ import {
   getAccordionMeta,
   getAnimationText,
   getRunAgentToolOutput,
+  getStreamingLoadingText,
   isRunAgentAgentDetailsOutput,
   isRunAgentAgentOutputResponse,
   isRunAgentErrorOutput,
@@ -104,7 +105,7 @@ export function RunAgentTool({ part }: Props) {
       {isStreaming && !output && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <ToolIcon isStreaming isError={isError} />
-          <MorphingTextAnimation text={text} />
+          <MorphingTextAnimation text={getStreamingLoadingText(part)} />
         </div>
       )}
 
