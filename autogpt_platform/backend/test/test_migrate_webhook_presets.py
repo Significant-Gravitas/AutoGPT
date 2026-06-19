@@ -28,6 +28,7 @@ def _make_graph(
     provider: str = "github",
     webhook_type: str = "repo",
     has_trigger: bool = True,
+    has_config: bool = True,
     graph_id: str = "graph-abc",
     version: int = 5,
 ):
@@ -35,31 +36,38 @@ def _make_graph(
     graph = MagicMock()
     graph.id = graph_id
     graph.version = version
-    if has_trigger:
+    if not has_trigger:
+        graph.webhook_input_node = None
+    elif not has_config:
+        # Trigger node present but without a webhook_config (defensive branch).
+        graph.webhook_input_node.block.webhook_config = None
+    else:
         config = MagicMock()
         config.provider.value = provider
         config.webhook_type = webhook_type
         graph.webhook_input_node.block.webhook_config = config
-    else:
-        graph.webhook_input_node = None
     return graph
 
 
 def _make_preset(
     preset_id: str,
     *,
-    provider: str,
-    webhook_type: str,
+    provider: str = "github",
+    webhook_type: str = "repo",
     version: int = 1,
+    has_webhook: bool = True,
 ):
     """Stand-in for a prisma AgentPreset row with its Webhook relation."""
     preset = MagicMock()
     preset.id = preset_id
     preset.agentGraphVersion = version
-    webhook = MagicMock()
-    webhook.provider = provider
-    webhook.webhookType = webhook_type
-    preset.Webhook = webhook
+    if has_webhook:
+        webhook = MagicMock()
+        webhook.provider = provider
+        webhook.webhookType = webhook_type
+        preset.Webhook = webhook
+    else:
+        preset.Webhook = None
     return preset
 
 
@@ -90,7 +98,12 @@ async def test_migrate_updates_compatible_presets(mock_prisma):
         include={"Webhook": True},
     )
     mock_prisma.update_many.assert_called_once_with(
-        where={"id": {"in": ["p1", "p2"]}},
+        where={
+            "id": {"in": ["p1", "p2"]},
+            "userId": "user-123",
+            "agentGraphVersion": {"lt": 5},
+            "isDeleted": False,
+        },
         data={"agentGraphVersion": 5},
     )
 
@@ -152,7 +165,12 @@ async def test_migrate_only_updates_compatible_in_mixed_set(mock_prisma):
 
     assert count == 2
     mock_prisma.update_many.assert_called_once_with(
-        where={"id": {"in": ["ok1", "ok2"]}},
+        where={
+            "id": {"in": ["ok1", "ok2"]},
+            "userId": "user-123",
+            "agentGraphVersion": {"lt": 7},
+            "isDeleted": False,
+        },
         data={"agentGraphVersion": 7},
     )
 
@@ -171,6 +189,43 @@ async def test_migrate_returns_zero_when_no_trigger_node(mock_prisma):
     assert count == 0
     mock_prisma.find_many.assert_not_called()
     mock_prisma.update_many.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_returns_zero_when_trigger_has_no_webhook_config(mock_prisma):
+    """Trigger node present but without a webhook_config -> no DB access."""
+    graph = _make_graph(has_config=False)
+    mock_prisma.find_many = AsyncMock()
+    mock_prisma.update_many = AsyncMock()
+
+    count = await migrate_webhook_presets_to_new_version(
+        user_id="user-123", new_graph=graph
+    )
+
+    assert count == 0
+    mock_prisma.find_many.assert_not_called()
+    mock_prisma.update_many.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_excludes_preset_with_missing_webhook(mock_prisma, caplog):
+    """A preset whose Webhook relation is None is skipped, not migrated."""
+    graph = _make_graph(provider="github", webhook_type="repo", version=5)
+    mock_prisma.find_many = AsyncMock(
+        return_value=[_make_preset("orphan", has_webhook=False)]
+    )
+    mock_prisma.update_many = AsyncMock(return_value=0)
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
+        count = await migrate_webhook_presets_to_new_version(
+            user_id="user-123", new_graph=graph
+        )
+
+    assert count == 0
+    mock_prisma.update_many.assert_not_called()
+    assert any(
+        "Not migrating preset #orphan" in record.message for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio

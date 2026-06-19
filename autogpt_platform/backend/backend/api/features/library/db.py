@@ -2027,13 +2027,13 @@ async def migrate_webhook_presets_to_new_version(
         include={"Webhook": True},
     )
 
-    compatible_ids = [
+    compatible_ids = {
         preset.id
         for preset in candidates
         if preset.Webhook
         and preset.Webhook.provider == webhook_config.provider.value
         and preset.Webhook.webhookType == webhook_config.webhook_type
-    ]
+    }
 
     for preset in candidates:
         if preset.id in compatible_ids:
@@ -2052,8 +2052,18 @@ async def migrate_webhook_presets_to_new_version(
     if not compatible_ids:
         return 0
 
+    # Preserve candidate order for a deterministic query. Re-assert userId and
+    # the version guard so a concurrent activation that already bumped a preset
+    # past new_graph.version can't be downgraded between the find_many above
+    # and this update.
+    ids_to_migrate = [preset.id for preset in candidates if preset.id in compatible_ids]
     count = await prisma.models.AgentPreset.prisma().update_many(
-        where={"id": {"in": compatible_ids}},
+        where={
+            "id": {"in": ids_to_migrate},
+            "userId": user_id,
+            "agentGraphVersion": {"lt": new_graph.version},
+            "isDeleted": False,
+        },
         data={"agentGraphVersion": new_graph.version},
     )
     if count > 0:
