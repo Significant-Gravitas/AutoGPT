@@ -732,7 +732,8 @@ class ChatConfig(BaseSettings):
         while ``main_client_credentials`` still routes to OpenRouter (gated on
         ``openrouter_active``) would send direct-Anthropic shape to an
         OpenRouter endpoint.  ``local`` is checked first because its default
-        ``api_key="ollama"`` also satisfies the shape-only ``openrouter_active``.  # pragma: allowlist secret
+        ``api_key="ollama"``  # pragma: allowlist secret
+        also satisfies the shape-only ``openrouter_active``.
         """
         if self.transport.name == "local":
             return "local"

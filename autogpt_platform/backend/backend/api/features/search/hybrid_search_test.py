@@ -118,20 +118,20 @@ async def test_unified_hybrid_search_output_matches_rpc_contract():
         },
     ]
 
-    with patch(
-        "backend.api.features.search.hybrid_search.query_raw_with_schema"
-    ) as mock_query:
-        with patch(
-            "backend.api.features.search.hybrid_search.embed_query"
-        ) as mock_embed:
-            mock_query.return_value = mock_results
-            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+    with (
+        patch(
+            "backend.api.features.search.hybrid_search.query_raw_with_schema"
+        ) as mock_query,
+        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
+    ):
+        mock_query.return_value = mock_results
+        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
 
-            result = await unified_hybrid_search(
-                query="test",
-                page=1,
-                page_size=20,
-            )
+        result = await unified_hybrid_search(
+            query="test",
+            page=1,
+            page_size=20,
+        )
 
     # Mirror the RPC boundary: this raises ValidationError if the row shape
     # drifts from what callers actually receive over the wire.

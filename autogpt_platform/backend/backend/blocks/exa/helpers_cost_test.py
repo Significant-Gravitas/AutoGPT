@@ -132,3 +132,21 @@ def test_process_contents_settings_without_summary():
     result = process_contents_settings(contents)
 
     assert result == {}
+
+
+def test_summary_settings_backward_compatibility_with_schema_alias():
+    """Test that SummarySettings accepts 'schema' as an alias for 'output_schema'."""
+    # Test that we can create SummarySettings with the old 'schema' key
+    summary = SummarySettings(**{"schema": {"type": "object"}})
+    assert summary.output_schema == {"type": "object"}
+
+    # Test that we can also create with the new 'output_schema' key
+    summary2 = SummarySettings(output_schema={"type": "object"})
+    assert summary2.output_schema == {"type": "object"}
+
+    # Test that serialization uses 'output_schema'
+    assert summary.model_dump() == {"query": None, "output_schema": {"type": "object"}}
+
+    # Test that model_validate also works with the old key
+    summary3 = SummarySettings.model_validate({"schema": {"type": "object"}})
+    assert summary3.output_schema == {"type": "object"}

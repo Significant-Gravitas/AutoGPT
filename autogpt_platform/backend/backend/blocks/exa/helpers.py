@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional, Union
 
+from pydantic import model_validator
+
 from backend.data.model import NodeExecutionStats
 from backend.sdk import BaseModel, Block, MediaFileType, SchemaField
 
@@ -65,6 +67,15 @@ class SummarySettings(BaseModel):
         description="JSON schema for structured output from summary",
         advanced=True,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_backward_compat(cls, data: Any) -> Any:
+        """Handle backward compatibility with 'schema' -> 'output_schema' rename."""
+        if isinstance(data, dict) and "schema" in data and "output_schema" not in data:
+            data = data.copy()
+            data["output_schema"] = data.pop("schema")
+        return data
 
 
 class ExtrasSettings(BaseModel):
@@ -356,24 +367,24 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
         content_settings["text"] = text_value
 
     # Handle highlights
-    if contents.highlights:
+    if contents.highlights is not None:
         highlights_dict: Dict[str, Any] = {
             "numSentences": contents.highlights.num_sentences,
             "highlightsPerUrl": contents.highlights.highlights_per_url,
         }
-        if contents.highlights.query:
+        if contents.highlights.query is not None:
             highlights_dict["query"] = contents.highlights.query
         content_settings["highlights"] = highlights_dict
 
-    if contents.summary:
+    if contents.summary is not None:
         summary_dict = {}
-        if contents.summary.query:
+        if contents.summary.query is not None:
             summary_dict["query"] = contents.summary.query
         if contents.summary.output_schema is not None:
             summary_dict["schema"] = contents.summary.output_schema
         content_settings["summary"] = summary_dict
 
-    if contents.livecrawl:
+    if contents.livecrawl is not None:
         content_settings["livecrawl"] = contents.livecrawl.value
 
     if contents.livecrawl_timeout is not None:
@@ -382,14 +393,14 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
     if contents.subpages is not None:
         content_settings["subpages"] = contents.subpages
 
-    if contents.subpage_target:
+    if contents.subpage_target is not None:
         content_settings["subpageTarget"] = contents.subpage_target
 
-    if contents.extras:
+    if contents.extras is not None:
         extras_dict = {}
-        if contents.extras.links:
+        if contents.extras.links is not None:
             extras_dict["links"] = contents.extras.links
-        if contents.extras.image_links:
+        if contents.extras.image_links is not None:
             extras_dict["imageLinks"] = contents.extras.image_links
         content_settings["extras"] = extras_dict
 
