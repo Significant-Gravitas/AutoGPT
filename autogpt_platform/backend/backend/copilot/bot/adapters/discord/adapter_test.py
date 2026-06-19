@@ -919,6 +919,40 @@ class TestReplyContext:
         assert "fact about space" in ctx.text
         assert "can you tell me?" in ctx.text
 
+    @pytest.mark.asyncio
+    async def test_links_inside_replied_message_are_not_fetched(self):
+        # A link that only appears in the quoted reply (not the user's own
+        # message) is context, not a request — it must not trigger a fetch or
+        # get rewritten. Guards against scanning the combined text.
+        adapter, client = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied(
+            "see https://discord.com/channels/111/222/333", author_name="Krz"
+        )
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)
+        msg.content = "<@1000> thanks!"  # no link of its own
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        # No channel history fetched, and the quoted link is left as-is.
+        client.get_channel.assert_not_called()
+        assert ctx.referenced_conversations == ()
+        assert "https://discord.com/channels/111/222/333" in ctx.text
+
 
 # ── Proactive output (backend → platform) ──────────────────────────────
 

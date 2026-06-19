@@ -428,7 +428,9 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history = await self._thread_history(message)
 
             message_text = self._message_text(message)
-            message_text = await self._with_reply_context(message, message_text)
+            # Scan only the user's own message for references — links inside a
+            # replied-to message are quoted context, not the user's request, so
+            # reference handling runs before reply context is prepended.
             referenced = await self._fetch_referenced_conversations(
                 message, message_text
             )
@@ -440,6 +442,9 @@ class DiscordAdapter(PlatformAdapter):
                 message_text = replace_referenced_links(
                     message_text, {c.channel_id: c.title for c in referenced}
                 )
+            # Reply context is added last so its own links stay untouched —
+            # neither fetched nor rewritten.
+            message_text = await self._with_reply_context(message, message_text)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,

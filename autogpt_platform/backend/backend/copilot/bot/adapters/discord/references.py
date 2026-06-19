@@ -9,7 +9,8 @@ live Discord connection lives here, so it's cheap to test.
 """
 
 import re
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 # A single positional pass over either form so references are returned in the
 # order they appear in the text:
@@ -24,10 +25,11 @@ _REFERENCE_RE = re.compile(
 )
 
 
-@dataclass(frozen=True)
-class ReferenceTarget:
+class ReferenceTarget(BaseModel):
     """A channel/thread the message points at, plus the specific message ID
     when the link named one (a ``.../channel/message`` permalink)."""
+
+    model_config = ConfigDict(frozen=True)
 
     channel_id: str
     message_id: str | None

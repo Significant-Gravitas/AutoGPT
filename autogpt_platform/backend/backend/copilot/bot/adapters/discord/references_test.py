@@ -89,6 +89,8 @@ def test_replace_without_labels_is_noop():
 
 
 def test_reference_target_is_hashable():
-    # Used in a set for de-duplication.
-    assert ReferenceTarget("1", None) == ReferenceTarget("1", None)
-    assert len({ReferenceTarget("1", "2"), ReferenceTarget("1", "2")}) == 1
+    # Frozen model — equal values compare equal and collapse in a set.
+    a = ReferenceTarget(channel_id="1", message_id="2")
+    b = ReferenceTarget(channel_id="1", message_id="2")
+    assert a == b
+    assert len({a, b}) == 1
