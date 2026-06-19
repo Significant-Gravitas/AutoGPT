@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid as uuidlib
 from datetime import datetime, timezone
 
@@ -96,6 +97,58 @@ def _resolve_lock_ttl(transport_is_local: bool) -> int:
     return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
+# High-precision filter for "transient intent" facts — content that
+# records what the user is ASKING/wants to KNOW rather than a durable
+# fact about them. The sanitize prompt is told to drop these, but
+# prompt-only sanitization leaks them (#13388: "User is asking how
+# Kubernetes works", "User is interested in knowing which PRs are open"),
+# so this is a deterministic belt-and-suspenders gate.
+#
+# Deliberately NARROW to knowledge-seeking intent. We do NOT match goals
+# like "user wants to create/build X" — those are legitimate durable
+# memories. Generic world-knowledge pollution ("Kubernetes uses pods…")
+# is left to the sanitize prompt: it needs LLM judgment (is the subject
+# the user?) that a regex can't do without false-positives.
+#
+# ``learn`` is the sharp edge: "wants to learn Spanish" / "interested in
+# learning Rust" are durable skill GOALS, not questions, so ``learn`` only
+# counts as transient when followed by an interrogative ("wants to learn
+# HOW X works"). ``know``/``understand``/``find out`` need no complement —
+# they read as transient on their own.
+# Known limitation (nice-to-have, low frequency): a standing notification
+# preference phrased "wants to know when X happens" is dropped; separating
+# it from a one-off "wants to know when the deploy is" isn't reliably
+# regex-able, so it's left to the sanitize prompt + human review.
+_TRANSIENT_INTENT_RE = re.compile(
+    r"^(the\s+)?user\s+(is\s+|has\s+|was\s+)?"
+    r"(asking\b"
+    r"|wondering\b"
+    r"|curious\b"
+    r"|confused\s+about\b"
+    r"|unsure\s+about\b"
+    r"|trying\s+to\s+understand\b"
+    r"|interested\s+in\s+(knowing|understanding)\b"
+    r"|interested\s+in\s+learning\s+(how|what|why|whether|when|where|about)\b"
+    r"|wants?\s+to\s+(know|understand|find\s+out)\b"
+    r"|wants?\s+to\s+learn\s+(how|what|why|whether|when|where|about)\b"
+    r"|asked\s+(how|what|why|whether|if|when|where|about)\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_transient_intent(content: str) -> bool:
+    """True when ``content`` reads as a question/knowledge-seeking intent
+    rather than a durable fact about the user."""
+    return bool(_TRANSIENT_INTENT_RE.match(content.strip()))
+
+
+def _drop_transient_intent(items: list) -> tuple[list, int]:
+    """Filter ConsolidatedFact / ProposedFinding items whose ``.content``
+    is a transient intent. Returns (kept, dropped_count)."""
+    kept = [it for it in items if not _is_transient_intent(it.content)]
+    return kept, len(items) - len(kept)
+
+
 def _clamp_operations(
     ops: DreamOperations,
     active_fact_count: int,
@@ -145,9 +198,21 @@ def _clamp_operations(
         demotion_cap = 0
     elif active_fact_count > 0:
         demotion_cap = min(MAX_DEMOTIONS_PER_PASS, max(1, active_fact_count * 5 // 100))
+
+    # Drop transient-intent pollution ("user is asking…") before the cap
+    # slice so a leaked question never displaces a real fact (#13388).
+    writes, w_dropped = _drop_transient_intent(ops.writes)
+    proposals, p_dropped = _drop_transient_intent(ops.proposals)
+    if w_dropped or p_dropped:
+        logger.info(
+            "Dream clamp: dropped %d transient-intent write(s) and %d "
+            "proposal(s) (questions captured as facts)",
+            w_dropped,
+            p_dropped,
+        )
     return DreamOperations(
-        writes=ops.writes[:MAX_WRITES_PER_PASS],
-        proposals=ops.proposals[:MAX_PROPOSALS_PER_PASS],
+        writes=writes[:MAX_WRITES_PER_PASS],
+        proposals=proposals[:MAX_PROPOSALS_PER_PASS],
         demotions=demotions[:demotion_cap],
         entity_invalidations=ops.entity_invalidations[
             :MAX_ENTITY_INVALIDATIONS_PER_PASS
