@@ -43,3 +43,20 @@ def extract_referenced_channel_ids(
         seen.add(channel_id)
         ids.append(channel_id)
     return ids[:limit]
+
+
+def replace_referenced_links(text: str, labels: dict[str, str]) -> str:
+    """Rewrite each channel link / ``<#id>`` mention into a readable ``#label``.
+
+    Only references whose channel ID is in ``labels`` (the ones we actually
+    fetched) are rewritten; anything else is left untouched. This keeps the
+    model from fixating on a raw URL it thinks it must open, when the linked
+    content has already been supplied to it under that ``#label``.
+    """
+
+    def _sub(match: "re.Match[str]") -> str:
+        channel_id = match.group(1) or match.group(2)
+        label = labels.get(channel_id)
+        return f"#{label}" if label else match.group(0)
+
+    return _REFERENCE_RE.sub(_sub, text)

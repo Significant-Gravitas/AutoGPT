@@ -1002,6 +1002,7 @@ class TestFetchReferencedConversations:
 
         assert len(result) == 1
         assert result[0].title == "Release v0.6.61"
+        assert result[0].channel_id == "222"
         assert result[0].messages[0].text == "bump the version"
 
     @pytest.mark.asyncio

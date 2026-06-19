@@ -36,10 +36,13 @@ class ReferencedConversation:
     fetched by the bot via its own gateway so the model can read it directly
     instead of trying to web-fetch a JS-rendered Discord page.
 
+    ``channel_id`` ties this content back to the raw link/mention in the user's
+    message so the renderer can rewrite that link into a readable ``#name``.
     ``messages`` is in chronological order and already bounded to a char budget.
     """
 
     title: str
+    channel_id: str
     messages: tuple[MessageHistoryEntry, ...]
 
 

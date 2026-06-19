@@ -104,7 +104,7 @@ class MessageHandler:
             char_count=len(ctx.text),
         )
 
-        message_text = self._message_text(ctx) if include_thread_history else ctx.text
+        message_text = self._message_text(ctx, include_thread_history)
         await self._enqueue_and_process(ctx, adapter, target_id, message_text)
 
     # -- Target resolution --
@@ -131,25 +131,36 @@ class MessageHandler:
 
     # -- Batched streaming --
 
-    def _message_text(self, ctx: MessageContext) -> str:
-        if not ctx.thread_history and not ctx.referenced_conversations:
+    def _message_text(self, ctx: MessageContext, include_thread_history: bool) -> str:
+        # Referenced conversations (links/@-mentions the user pasted) are always
+        # surfaced — that's the whole point of fetching them. Thread history is
+        # only included on the first @-into a thread we don't own; a subscribed
+        # thread's prior turns already live in the session.
+        thread_history = ctx.thread_history if include_thread_history else ()
+        if not thread_history and not ctx.referenced_conversations:
             return ctx.text
 
         platform_display = ctx.platform.capitalize()
         lines: list[str] = []
-        for convo in ctx.referenced_conversations:
-            # The bot already fetched this linked/@-referenced conversation via
-            # its own connection — tell the model so it reads the content below
-            # instead of trying to web-fetch the (JS-rendered) platform page.
+        if ctx.referenced_conversations:
+            # The user pointed at other channels/threads; their content is
+            # already fetched and inlined below. Lead with a firm instruction so
+            # the model answers from it instead of fixating on the link and
+            # claiming it can't access the platform.
             lines.append(
-                f"[Referenced {platform_display} conversation: {convo.title} — "
-                f"fetched for you; do not web-fetch {platform_display}]"
+                f"[The {platform_display} channel(s) the user referenced have "
+                f"already been read for you — their full content is included "
+                f"below under each #name. Answer directly from it. Do NOT say you "
+                f"can't open links or access {platform_display}; you already have "
+                f"the content.]"
             )
-            for entry in convo.messages:
-                lines.append(self._format_history_entry(entry, platform_display))
-        if ctx.thread_history:
-            lines.append("[Recent thread context before this message]")
-            for entry in ctx.thread_history:
+            for convo in ctx.referenced_conversations:
+                lines.append(f"\n[Content of #{convo.title}]")
+                for entry in convo.messages:
+                    lines.append(self._format_history_entry(entry, platform_display))
+        if thread_history:
+            lines.append("\n[Recent thread context before this message]")
+            for entry in thread_history:
                 lines.append(self._format_history_entry(entry, platform_display))
         lines.append(f"\n[Current message]\n{ctx.text}")
         return "\n".join(lines)

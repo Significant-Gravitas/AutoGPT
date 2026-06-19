@@ -2,6 +2,7 @@
 
 from backend.copilot.bot.adapters.discord.references import (
     extract_referenced_channel_ids,
+    replace_referenced_links,
 )
 
 
@@ -47,3 +48,30 @@ def test_respects_limit():
 
 def test_no_references_returns_empty():
     assert _extract("just a normal message, no links") == []
+
+
+# ── replace_referenced_links ───────────────────────────────────────────
+
+
+def test_replace_rewrites_link_to_readable_name():
+    text = "read into https://discord.com/channels/111/222/333 please"
+    out = replace_referenced_links(text, {"222": "Random Fact"})
+    assert out == "read into #Random Fact please"
+
+
+def test_replace_rewrites_channel_mention():
+    out = replace_referenced_links("look at <#999> ok", {"999": "standup"})
+    assert out == "look at #standup ok"
+
+
+def test_replace_leaves_unknown_references_untouched():
+    # Only channels we actually fetched (in the label map) get rewritten.
+    text = "https://discord.com/channels/1/222/3 and <#777>"
+    out = replace_referenced_links(text, {"222": "known"})
+    assert "#known" in out
+    assert "<#777>" in out
+
+
+def test_replace_without_labels_is_noop():
+    text = "https://discord.com/channels/1/2/3"
+    assert replace_referenced_links(text, {}) == text

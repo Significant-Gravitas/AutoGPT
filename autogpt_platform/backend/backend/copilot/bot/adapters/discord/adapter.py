@@ -29,7 +29,7 @@ from ..base import (
     ReferencedConversation,
 )
 from . import commands, config, intro
-from .references import extract_referenced_channel_ids
+from .references import extract_referenced_channel_ids, replace_referenced_links
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +421,17 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history = await self._thread_history(message)
 
             message_text = self._message_text(message)
+            referenced = await self._fetch_referenced_conversations(
+                message, message_text
+            )
+            if referenced:
+                # Swap the raw channel links/mentions for readable "#name"
+                # tokens — the fetched content is supplied under those names, so
+                # this stops the model from treating the paste as a URL it must
+                # open (and then claiming it can't access Discord).
+                message_text = replace_referenced_links(
+                    message_text, {c.channel_id: c.title for c in referenced}
+                )
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -433,9 +444,7 @@ class DiscordAdapter(PlatformAdapter):
                 bot_mentioned=bot_mentioned,
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
-                referenced_conversations=await self._fetch_referenced_conversations(
-                    message, message_text
-                ),
+                referenced_conversations=referenced,
             )
             await self._on_message_callback(ctx, self)
 
@@ -644,7 +653,9 @@ class DiscordAdapter(PlatformAdapter):
             return None
         if not messages:
             return None
-        return ReferencedConversation(title=channel.name, messages=messages)
+        return ReferencedConversation(
+            title=channel.name, channel_id=channel_id, messages=messages
+        )
 
 
 def _truncate_to_budget(text: str, limit: int) -> str:
