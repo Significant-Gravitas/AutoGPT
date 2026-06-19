@@ -963,11 +963,15 @@ class TestProactiveOutput:
 # ── Referenced-conversation fetch ──────────────────────────────────────
 
 
-def _referenced_channel(name: str, guild_id: int, priors: list[MagicMock]) -> MagicMock:
+def _referenced_channel(
+    name: str, guild_id: int, priors: list[MagicMock], *, can_access: bool = True
+) -> MagicMock:
     channel = MagicMock(spec=discord.TextChannel)
     channel.name = name
     channel.guild = MagicMock(id=guild_id)
     channel.history = MagicMock(return_value=_AsyncHistory(priors))
+    perms = MagicMock(view_channel=can_access, read_message_history=can_access)
+    channel.permissions_for = MagicMock(return_value=perms)
     return channel
 
 
@@ -981,8 +985,16 @@ def _prior(author_id: int, display_name: str, content: str) -> MagicMock:
 
 def _incoming(guild_id: int | None, channel_id: int) -> MagicMock:
     message = MagicMock()
-    message.guild = MagicMock(id=guild_id) if guild_id is not None else None
     message.channel = MagicMock(id=channel_id)
+    message.author = MagicMock(id=42)
+    if guild_id is None:
+        message.guild = None
+    else:
+        guild = MagicMock(id=guild_id)
+        # By default the requester is a member of the guild; tests override
+        # get_member / channel perms to exercise the access checks.
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        message.guild = guild
     return message
 
 
@@ -1016,6 +1028,35 @@ class TestFetchReferencedConversations:
         )
 
         assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_skips_channel_requester_cannot_view(self):
+        # The bot's gateway can read this channel, but the requesting member
+        # can't — its history must not leak to them.
+        adapter, client = _bare_adapter()
+        ref = _referenced_channel(
+            "Private", 111, [_prior(2000, "X", "secret")], can_access=False
+        )
+        client.get_channel.return_value = ref
+
+        result = await adapter._fetch_referenced_conversations(
+            _incoming(111, 555), "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_requester_not_a_member(self):
+        adapter, client = _bare_adapter()
+        message = _incoming(111, 555)
+        message.guild.get_member = MagicMock(return_value=None)
+
+        result = await adapter._fetch_referenced_conversations(
+            message, "https://discord.com/channels/111/222/333"
+        )
+
+        assert result == ()
+        client.get_channel.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_no_reference_makes_no_fetch(self):

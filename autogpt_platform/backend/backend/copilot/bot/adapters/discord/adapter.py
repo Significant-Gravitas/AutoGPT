@@ -615,10 +615,15 @@ class DiscordAdapter(PlatformAdapter):
     ) -> tuple[ReferencedConversation, ...]:
         """Fetch the recent content of any thread/channel ``text`` references.
 
-        Same-guild only: the bot never surfaces content from a server the
-        requester may not be in, even when its own gateway could read it.
+        Read as the *requesting member* would: same-guild only, and only
+        channels they can actually see. The bot's gateway can read more than
+        the user can, so we must never surface a private channel's history to
+        someone who lacks access to it themselves.
         """
         if message.guild is None:
+            return ()
+        requester = message.guild.get_member(message.author.id)
+        if requester is None:
             return ()
         channel_ids = extract_referenced_channel_ids(
             text,
@@ -627,19 +632,26 @@ class DiscordAdapter(PlatformAdapter):
         )
         conversations: list[ReferencedConversation] = []
         for channel_id in channel_ids:
-            convo = await self._fetch_one_referenced(message.guild, channel_id)
+            convo = await self._fetch_one_referenced(
+                message.guild, requester, channel_id
+            )
             if convo is not None:
                 conversations.append(convo)
         return tuple(conversations)
 
     async def _fetch_one_referenced(
-        self, guild: discord.Guild, channel_id: str
+        self, guild: discord.Guild, requester: discord.Member, channel_id: str
     ) -> Optional[ReferencedConversation]:
         channel = await self._resolve_channel(channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return None
         if channel.guild.id != guild.id:
             # Cross-guild reference — don't read content from another server.
+            return None
+        # Gate on the requester's own access, not the bot's: a private channel
+        # the bot can read must stay hidden from a user who couldn't read it.
+        perms = channel.permissions_for(requester)
+        if not (perms.view_channel and perms.read_message_history):
             return None
         try:
             messages = await self._budgeted_history(
