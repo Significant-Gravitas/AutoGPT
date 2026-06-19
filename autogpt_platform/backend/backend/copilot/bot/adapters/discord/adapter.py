@@ -421,6 +421,7 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history = await self._thread_history(message)
 
             message_text = self._message_text(message)
+            message_text = await self._with_reply_context(message, message_text)
             referenced = await self._fetch_referenced_conversations(
                 message, message_text
             )
@@ -507,6 +508,46 @@ class DiscordAdapter(PlatformAdapter):
         if own:
             return f"{own}\n\n[Forwarded message]\n{forwarded}"
         return f"[Forwarded message]\n{forwarded}"
+
+    async def _with_reply_context(
+        self, message: discord.Message, message_text: str
+    ) -> str:
+        """Prepend the replied-to message so the bot sees what's being answered.
+
+        A Discord reply (``message.reference``) only carries the short reply
+        text; the message it replies to holds the actual intent. It's always in
+        the same channel the user is already posting in, so surfacing it leaks
+        nothing they can't already see.
+        """
+        replied = await self._resolve_reply(message)
+        if replied is None:
+            return message_text
+        quoted = self._message_text(replied)
+        if not quoted:
+            return message_text
+        prefix = f"[Replying to {replied.author.display_name}]\n{quoted}"
+        return f"{prefix}\n\n{message_text}" if message_text else prefix
+
+    async def _resolve_reply(
+        self, message: discord.Message
+    ) -> Optional[discord.Message]:
+        ref = message.reference
+        if ref is None:
+            return None
+        # Forwards also use ``reference`` but carry their body in snapshots,
+        # which ``_message_text`` already stitches in — don't re-resolve those.
+        if getattr(message, "message_snapshots", None):
+            return None
+        if isinstance(ref.resolved, discord.Message):
+            return ref.resolved
+        if ref.message_id is None or not isinstance(
+            message.channel, discord.abc.Messageable
+        ):
+            return None
+        try:
+            return await message.channel.fetch_message(ref.message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
 
     @staticmethod
     def _forwarded_text(message: discord.Message) -> str:

@@ -825,6 +825,101 @@ class TestLockedThread:
         assert "discord.com/channels" not in ctx.text
 
 
+class TestReplyContext:
+    @staticmethod
+    def _replied(content: str, author_name: str = "Bently") -> MagicMock:
+        replied = MagicMock(spec=discord.Message)
+        replied.content = content
+        replied.mentions = []
+        replied.message_snapshots = []
+        replied.author = MagicMock(display_name=author_name)
+        return replied
+
+    @pytest.mark.asyncio
+    async def test_resolve_reply_uses_resolved_message(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fact about space")
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+        assert await adapter._resolve_reply(msg) is replied
+
+    @pytest.mark.asyncio
+    async def test_no_reference_resolves_to_none(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.reference = None
+        assert await adapter._resolve_reply(msg) is None
+
+    @pytest.mark.asyncio
+    async def test_forward_is_not_treated_as_reply(self):
+        # A forward also populates ``reference`` but is handled via snapshots.
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.message_snapshots = [MagicMock()]
+        msg.reference = MagicMock(resolved=self._replied("x"))
+        assert await adapter._resolve_reply(msg) is None
+
+    @pytest.mark.asyncio
+    async def test_fetches_reply_when_not_resolved(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fetched body")
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.fetch_message = AsyncMock(return_value=replied)
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=None, message_id=42)
+        msg.channel = channel
+        assert await adapter._resolve_reply(msg) is replied
+        channel.fetch_message.assert_awaited_once_with(42)
+
+    @pytest.mark.asyncio
+    async def test_with_reply_context_prepends_quoted_message(self):
+        adapter, _ = _bare_adapter()
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        msg = MagicMock()
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+        out = await adapter._with_reply_context(msg, "can you tell me?")
+        assert "[Replying to AutoBoostBot]" in out
+        assert "fact about space" in out
+        assert out.endswith("can you tell me?")
+
+    @pytest.mark.asyncio
+    async def test_with_reply_context_noop_without_reply(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.reference = None
+        assert await adapter._with_reply_context(msg, "hi") == "hi"
+
+    @pytest.mark.asyncio
+    async def test_on_message_includes_replied_message(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        callback = AsyncMock()
+        adapter.on_message(callback)
+        handlers = _register_events_with_mocked_decorator(adapter)
+
+        replied = self._replied("fact about space", author_name="AutoBoostBot")
+        guild = MagicMock(id=111)
+        guild.get_member = MagicMock(return_value=MagicMock(spec=discord.Member))
+        msg = MagicMock()
+        msg.id = 999
+        msg.author = MagicMock(id=2000, bot=False, display_name="Bently")
+        msg.guild = guild
+        msg.channel = MagicMock(id=555)  # a normal channel, not a Thread
+        msg.content = "<@1000> can you tell me?"
+        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.message_snapshots = []
+        msg.reference = MagicMock(resolved=replied)
+
+        await handlers["on_message"](msg)
+
+        callback.assert_awaited_once()
+        ctx = callback.await_args.args[0]
+        assert "fact about space" in ctx.text
+        assert "can you tell me?" in ctx.text
+
+
 # ── Proactive output (backend → platform) ──────────────────────────────
 
 
